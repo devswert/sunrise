@@ -19,11 +19,11 @@ import { useBoard } from "../tasks/useBoard";
 import { dateLabel, isoWeekId, parseISODate, shiftWeeks, weekDates } from "../../lib/date";
 import { useToday } from "../../lib/day";
 import { useCapacitySettings, useWorkHours } from "../../lib/settings";
-import { anclaTrasCambioDeDia } from "./anchor";
+import { anchorAfterDayChange } from "./anchor";
 import { SyncButton } from "../calendar/SyncButton";
 import { CalendarRail } from "../calendar/CalendarRail";
 import { SideDock } from "./SideDock";
-import { useTrabajoDelDia } from "../calendar/useTrabajoDelDia";
+import { useDayWork } from "../calendar/useTrabajoDelDia";
 
 export function WeekView() {
   const [anchor, setAnchor] = useState<Date>(() => new Date());
@@ -34,22 +34,22 @@ export function WeekView() {
 
   // El ancla se fija al montar, así que una sesión abierta que cruza un domingo
   // seguía mostrando la semana pasada. Sigue al día solo si corresponde: ver
-  // `anclaTrasCambioDeDia`.
+  // `anchorAfterDayChange`.
   const today = useToday();
   const hoyPrevio = useRef(today);
   useEffect(() => {
     if (hoyPrevio.current === today) return;
     const previo = hoyPrevio.current;
     hoyPrevio.current = today;
-    const nueva = anclaTrasCambioDeDia(dates, previo, today);
-    if (nueva) setAnchor(nueva);
+    const fresh = anchorAfterDayChange(dates, previo, today);
+    if (fresh) setAnchor(fresh);
   }, [today, dates]);
   const start = dates[0];
   const end = dates[6];
 
   const board = useBoard(start, end);
   const capacity = useCapacitySettings();
-  const jornada = useWorkHours();
+  const workday = useWorkHours();
 
   // El rail muestra un día, y de fábrica es hoy —o el lunes, si la semana que
   // miras no lo contiene—. Clickear la cabecera de otra columna lo cambia, que
@@ -59,18 +59,18 @@ export function WeekView() {
   // Al cambiar de semana la elección deja de tener sentido: el día elegido ya no
   // está en pantalla y el rail mostraría algo que no se ve en ninguna columna.
   const diaDelRail = diaElegido != null && dates.includes(diaElegido) ? diaElegido : porDefecto;
-  const { trabajo, segundosEnCurso } = useTrabajoDelDia(diaDelRail);
+  const { work, segundosEnCurso } = useDayWork(diaDelRail);
 
   // Escape cierra el rail, pero **no si hay un modal abierto**: el de `TaskModal`
   // escucha en `window` igual que este, y `preventDefault()` no frena a los
   // demás listeners de la ventana — un solo Escape cerraría los dos.
   useEffect(() => {
     if (!railAbierto || selectedId != null) return;
-    const alTeclear = (e: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setRailAbierto(false);
     };
-    window.addEventListener("keydown", alTeclear);
-    return () => window.removeEventListener("keydown", alTeclear);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [railAbierto, selectedId]);
 
   const sensors = useSensors(
@@ -209,9 +209,9 @@ export function WeekView() {
             today={today}
             tasks={board.tasksByDate[diaDelRail] ?? []}
             categoryMap={board.categoryMap}
-            workStart={jornada.start}
-            workEnd={jornada.end}
-            trabajo={trabajo}
+            workStart={workday.start}
+            workEnd={workday.end}
+            work={work}
             segundosEnCurso={segundosEnCurso}
             onOpen={(t) => setSelectedId(t.id)}
             onClose={() => setRailAbierto(false)}

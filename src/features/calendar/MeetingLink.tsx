@@ -43,10 +43,10 @@ function servicio(url: string): string {
  * puede entrar. Sale del último tramo de la ruta; `null` si no parece un código
  * (una URL con query larga, por ejemplo).
  */
-export function idDeSala(url: string): string | null {
+export function roomId(url: string): string | null {
   try {
-    const partes = new URL(url).pathname.split("/").filter(Boolean);
-    const ultima = partes[partes.length - 1];
+    const parts = new URL(url).pathname.split("/").filter(Boolean);
+    const ultima = parts[parts.length - 1];
     if (!ultima) return null;
     // Un código de Meet es `abc-defg-hij`; el de Zoom, dígitos. Cualquier cosa
     // muy larga probablemente sea un token y no algo que se dicte en voz alta.
@@ -71,7 +71,7 @@ export function MeetingLink({
   className?: string;
 }) {
   if (!url) return null;
-  const sala = idDeSala(url);
+  const sala = roomId(url);
 
   return (
     <div className={`meet ${className}`}>

@@ -200,7 +200,7 @@ que el intervalo puede disparar tarde o ninguna vez, y una comparación pura
 acierta igual.
 
 `WeekView` además mueve su `anchor`, pero solo si corresponde:
-`anclaTrasCambioDeDia` deja la vista quieta si el usuario había navegado a otra
+`anchorAfterDayChange` deja la vista quieta si el usuario había navegado a otra
 semana a propósito, o si el día nuevo ya cae en la semana visible (dormir el
 viernes y despertar el domingo no requiere mover nada).
 
@@ -220,7 +220,7 @@ proyecto (Weekly review).
 
 `src-tauri/src/calendar/` en tres capas, y la separación es lo que hace testeable
 lo difícil: `fetch` (lo único que toca la red), `ics` (interpreta el texto, puro,
-con fixtures) y `repo::import_eventos` (escribe, puro sobre `&Connection`).
+con fixtures) y `repo::import_events` (escribe, puro sobre `&Connection`).
 `commands::sync_calendar_feed` es el pegamento y no decide nada. Deps:
 `reqwest` (rustls, sin OpenSSL del sistema), `icalendar` con `chrono-tz` y
 `recurrence`.
@@ -274,7 +274,7 @@ mano**, dos feeds con el mismo UID, borrar el feed no borra las tareas) y 4 del
 intervalo del poller. En el front, 6 de la UI de feeds.
 
 **Falta 3.2**: nada se borra todavía. Un evento que desaparece del feed deja su
-tarea donde está — `import_eventos` ya devuelve los UIDs que vio, que es
+tarea donde está — `import_events` ya devuelve los UIDs que vio, que es
 exactamente lo que el reconciler necesita.
 
 ### 3.2 ✅ Reconciler — Regla 1 (borrado no destructivo) — hecho
@@ -286,7 +286,7 @@ Es la regla de diseño más delicada de M3:
 > Si tiene tiempo trackeado o está completada ⇒ `source_state = 'ORPHANED'`
 > (sale de los listados, sobrevive en historial y review).
 
-`repo::reconciliar_feed` corre después de cada import, con los UIDs que el
+`repo::reconcile_feed` corre después de cada import, con los UIDs que el
 import acaba de ver. Se agregó una condición que el plan no tenía y que resultó
 crítica: **solo se borran las futuras**. La ventana de import arranca hoy, así
 que cada mañana las reuniones de ayer dejan de venir en el feed — sin ese filtro,
@@ -369,7 +369,7 @@ consultar, no para arrastrar.
 **Cuarta pasada**, con la app ya en uso:
 
 - El rail muestra **lo que pasó** y no solo lo planificado. Comando nuevo
-  `trabajo_del_dia`: una fila por tarea con el primer inicio del día y los
+  `day_work`: una fila por tarea con el primer inicio del día y los
   segundos cerrados. Una reunión que arrancó tarde y duró distinto se dibuja
   donde ocurrió — lo que pasó no se estima. Las completadas se quedan, con un
   punto verde.
@@ -403,11 +403,11 @@ otro evento. Inventar un `lunch_start` sin pedirlo era de más.
 > **El carry-over se retiró.** Con el ritual andando, arrastrar todo a hoy
 > automáticamente dejó de tener sentido: decidía por el usuario antes de que
 > viera nada, y el repaso del día anterior tuvo que reconstruirse desde el
-> historial dos veces seguidas. Ahora `degradar_pendientes` **preserva el último
+> historial dos veces seguidas. Ahora `demote_pending` **preserva el último
 > día con actividad** —el que repasa el ritual— y baja al backlog, en primera
 > posición, lo anterior. Detalle en SPECS §4.2. Con eso se fueron `carry_over`,
 > `arrastradas_a`, el tipo `Arrastre` y la sección "se movieron solas" del paso 1;
-> entró `rescatadas_del_backlog` y el grupo **"venían de un día"**.
+> entró `rescued_from_backlog` y el grupo **"venían de un día"**.
 
 Dos pasos a la izquierda —cómo cerró ayer, qué hay para hoy— y el rail (§4.13,
 sin tocarlo: recibe las mismas props que en Today) a la derecha. Detalle en
@@ -547,10 +547,10 @@ Lo que valía la pena decidir:
      estados (`null` / `""` / texto). Con dos estados, vaciar el resumen bajaba la
      tarea de los highlights: borrar una palabra la hacía desaparecer.
 4. **`closed_at` no se re-sella**: "a qué hora cerré" es el dato. Idempotente,
-   con `reabrir_dia` para volver a borrador sin perder nada.
+   con `reopen_day` para volver a borrador sin perder nada.
 5. **Una reunión no se mueve** desde "qué quedó pendiente": es el registro de algo
    que pasó ese día. Misma regla que la degradación diaria (§4.2).
-6. **El rollup se extrajo a `trabajo_por_dia`**, compartido con la weekly review:
+6. **El rollup se extrajo a `work_by_day`**, compartido con la weekly review:
    la atribución local, las Reglas 2 y 3, el no-filtrar `ORPHANED` y el piso en 0
    viven en un solo lugar. Dos consultas se habrían separado con el primer cambio.
 
@@ -580,7 +580,7 @@ M2 justamente para esto), `work_end` en `settings`, y el patrón `planned_on` pa
 avisar una vez al día.
 
 **El aviso nativo de `work_end` solo se puede verificar con `pnpm tauri dev`**: en
-el browser y en jsdom no hay notificaciones. La decisión (`tocaAvisarCierre`) sí
+el browser y en jsdom no hay notificaciones. La decisión (`shouldRemindShutdown`) sí
 está testeada.
 
 ---
@@ -646,7 +646,7 @@ que es más preciso que la fecha del nombre) y cuánto hace, con qué datos qued
 dónde está la copia de seguridad. Del manifest se deja **fuera** el tamaño y el
 número de esquema: no permiten decidir nada. La versión sale solo si difiere.
 
-**Respaldar y podar quedaron como un solo paso** (`crear_y_podar`). Ya corría en el
+**Respaldar y podar quedaron como un solo paso** (`create_and_prune`). Ya corría en el
 manual —es el mismo comando que el automático— pero era una propiedad del llamador
 y no del módulo; ahora no hay forma de respaldar sin podar, y un test aprieta siete
 veces para fijarlo.

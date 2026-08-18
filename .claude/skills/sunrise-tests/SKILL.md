@@ -99,3 +99,10 @@ escribir en este repo.
   `pnpm` de `package.json`. Ahí está `onlyBuiltDependencies: [esbuild]`.
 - Hay un warning de `act()` en el test del `Sidebar`: pasa, pero ensucia la
   salida. Si tocas ese componente, vale limpiarlo de paso.
+
+## Idioma: código en inglés, texto en español
+
+Convención del proyecto (CLAUDE.md). Identificadores —variables, funciones,
+tipos, campos, archivos, comandos IPC— en **inglés**. Comentarios, texto de la
+app, descripciones de tests y documentación en **español**. El nombre de un
+`#[test]` de Rust es su descripción, así que va en español.

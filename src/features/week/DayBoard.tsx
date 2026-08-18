@@ -32,7 +32,7 @@ interface Props {
   /** Si viene, se dibuja el backlog como segunda columna y acepta drops. */
   backlog?: Task[];
   /** `taskId` → día del que vino, para el grupo de arriba del backlog. */
-  rescatadas?: Map<number, string>;
+  rescued?: Map<number, string>;
 }
 
 /**
@@ -60,7 +60,7 @@ export function DayBoard({
   onMove,
   colClassName,
   backlog,
-  rescatadas,
+  rescued,
 }: Props) {
   const [activeId, setActiveId] = useState<number | null>(null);
   const sensors = useSensors(
@@ -75,7 +75,7 @@ export function DayBoard({
     setActiveId(null);
     const { active, over } = event;
     if (!over) return;
-    const arrastrada = Number(String(active.id).replace("task-", ""));
+    const carriedOver = Number(String(active.id).replace("task-", ""));
     // `date: null` es el backlog, y es un destino válido: no se puede tratar
     // como "no hay destino" (que es lo que hace la vista semana, donde no hay
     // ninguna columna sin fecha).
@@ -84,14 +84,14 @@ export function DayBoard({
       | undefined;
     if (!destino) return;
 
-    const lista = destino.date == null ? (backlog ?? []) : tasks;
-    let indice = lista.length;
+    const list = destino.date == null ? (backlog ?? []) : tasks;
+    let indice = list.length;
     if (destino.type === "task") {
       const encima = Number(String(over.id).replace("task-", ""));
-      const found = lista.findIndex((t) => t.id === encima);
+      const found = list.findIndex((t) => t.id === encima);
       if (found >= 0) indice = found;
     }
-    onMove(arrastrada, destino.date, indice);
+    onMove(carriedOver, destino.date, indice);
   }
 
   return (
@@ -121,7 +121,7 @@ export function DayBoard({
         <div className={colClassName}>
           <BacklogColumn
             tasks={backlog}
-            rescatadas={rescatadas}
+            rescued={rescued}
             categoryMap={categoryMap}
             categories={categories}
             onToggle={onToggle}

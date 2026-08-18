@@ -14,8 +14,8 @@ import type {
 } from "../../lib/types";
 import { extractLinks, taskEventLine } from "./history";
 import { abrirExterno } from "../calendar/MeetingLink";
-import { EventoDelCalendario } from "../calendar/EventoDelCalendario";
-import { duracionCorta, tiempoPorDia } from "./timeByDay";
+import { CalendarEventCard } from "../calendar/EventoDelCalendario";
+import { shortDuration, timeByDay } from "./timeByDay";
 import { formatMinutes } from "../../lib/capacity";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { TimePicker } from "../../components/TimePicker";
@@ -84,7 +84,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   }, [task.id, dataVersion]);
 
   const porDia = useMemo(
-    () => tiempoPorDia(entries, running ? timer.runTotal : 0),
+    () => timeByDay(entries, running ? timer.runTotal : 0),
     [entries, running, timer.runTotal],
   );
 
@@ -463,7 +463,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
             * Arriba de las notas y separado por una línea: el orden en que uno
             * los necesita antes de una reunión es a qué hora, por dónde entro,
             * quién viene y de qué se trata. Las notas propias van después. */}
-          <EventoDelCalendario task={task} />
+          <CalendarEventCard task={task} />
 
           {/* --- Notas (markdown) --- */}
           <div className="tmodal__notes">
@@ -532,7 +532,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                     <span className="tmodal__bydays-day">
                       {d.date === toISODate(new Date()) ? "Hoy" : shortDate(d.date)}
                     </span>
-                    <span className="tmodal__bydays-dur">{duracionCorta(d.seconds)}</span>
+                    <span className="tmodal__bydays-dur">{shortDuration(d.seconds)}</span>
                   </li>
                 ))}
               </ul>

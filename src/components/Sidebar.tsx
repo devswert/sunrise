@@ -13,7 +13,7 @@ import {
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
-import { usePerfil } from "../lib/perfil";
+import { useProfile } from "../lib/profile";
 import { useTheme } from "../lib/theme";
 import { SunriseMark } from "./SunriseMark";
 import { ThemeToggle } from "./ThemeToggle";
@@ -124,7 +124,7 @@ function useBacklogFolders() {
 export function Sidebar() {
   const { theme, toggle } = useTheme();
   const backlogFolders = useBacklogFolders();
-  const perfil = usePerfil();
+  const profile = useProfile();
 
   return (
     <nav className="sidebar" aria-label="Navegación principal">
@@ -133,8 +133,8 @@ export function Sidebar() {
         sunrise
         {/* Dev y la versión instalada se ven idénticas y usan bases distintas
             (§4.20). Sin esto, con las dos abiertas no sabes en cuál estás. */}
-        {perfil?.dev && (
-          <span className="sidebar__perfil" title={`Base en uso: ${perfil.base}`}>
+        {profile?.dev && (
+          <span className="sidebar__perfil" title={`Base en uso: ${profile.dbFile}`}>
             dev
           </span>
         )}

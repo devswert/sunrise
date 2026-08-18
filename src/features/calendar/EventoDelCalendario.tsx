@@ -1,8 +1,8 @@
 import { Clock, StickyNote } from "lucide-react";
 import type { Task } from "../../lib/types";
 import { MeetingLink } from "./MeetingLink";
-import { Participantes } from "./Participantes";
-import { descripcionLegible } from "./descripcion";
+import { AttendeeList } from "./Participantes";
+import { readableDescription } from "./descripcion";
 
 /** '2026-08-13T19:00:00Z' → '4:00 PM' en hora local. */
 function hora12(iso: string): string {
@@ -16,11 +16,11 @@ function hora12(iso: string): string {
 }
 
 /** '4:00 PM - 4:30 PM', o solo el inicio si no hay fin. */
-export function rangoHorario(inicio: string | null, fin: string | null): string | null {
-  if (!inicio) return null;
-  const a = hora12(inicio);
+export function timeRange(start: string | null, end: string | null): string | null {
+  if (!start) return null;
+  const a = hora12(start);
   if (!a) return null;
-  const b = fin ? hora12(fin) : "";
+  const b = end ? hora12(end) : "";
   return b ? `${a} - ${b}` : a;
 }
 
@@ -36,35 +36,35 @@ export function rangoHorario(inicio: string | null, fin: string | null): string 
  * cualquier tarea escrita a mano, y también de una reunión importada de un
  * calendario compartido "ocultando los detalles".
  */
-export function EventoDelCalendario({ task }: { task: Task }) {
-  const rango = rangoHorario(task.eventStart, task.eventEnd);
-  const descripcion = task.eventDescription
-    ? descripcionLegible(task.eventDescription)
+export function CalendarEventCard({ task }: { task: Task }) {
+  const range = timeRange(task.eventStart, task.eventEnd);
+  const description = task.eventDescription
+    ? readableDescription(task.eventDescription)
     : "";
-  const hayAlgo = rango || task.meetingUrl || task.attendees.length > 0 || descripcion;
+  const hayAlgo = range || task.meetingUrl || task.attendees.length > 0 || description;
   if (!hayAlgo) return null;
 
   return (
     <div className="evento">
-      {rango && (
+      {range && (
         <div className="evento__fila">
           <Clock size={14} className="evento__icono" aria-hidden />
-          <span className="evento__hora">{rango}</span>
+          <span className="evento__hora">{range}</span>
         </div>
       )}
 
       <MeetingLink url={task.meetingUrl} />
 
-      <Participantes gente={task.attendees} />
+      <AttendeeList gente={task.attendees} />
 
-      {descripcion && (
+      {description && (
         <div className="evento__fila evento__desc">
           <StickyNote size={14} className="evento__icono" aria-hidden />
           {/* Texto y no markdown ni HTML: la descripción de Google llega con
             * etiquetas dentro. Se convierte a texto legible (ver `descripcion.ts`)
             * y el salto de línea lo respeta el CSS. Inyectarla como HTML sería un
             * agujero de XSS por una invitación de calendario. */}
-          <span>{descripcion}</span>
+          <span>{description}</span>
         </div>
       )}
     </div>

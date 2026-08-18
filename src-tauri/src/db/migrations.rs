@@ -141,7 +141,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         -- `attendees` guarda JSON y no una tabla aparte a propósito: es un dato
         -- de solo lectura que siempre se muestra completo junto a su tarea, así
         -- que no hay consulta que justifique normalizarlo. Si algún día se
-        -- quiere buscar "reuniones con X", ahí sí conviene la tabla.
+        -- quiere buscar "meetings con X", ahí sí conviene la tabla.
         ALTER TABLE tasks ADD COLUMN event_description TEXT;
         ALTER TABLE tasks ADD COLUMN attendees TEXT;
         "#,

@@ -7,35 +7,35 @@
  * local ya la resolvió `repo::weekly_rollup`.
  */
 import type { Category, Task, WeeklyRollup } from "../../lib/types";
-import { agrupar, type Segmento } from "../../lib/segmentos";
+import { groupBy, type Segmento } from "../../lib/segmentos";
 import { shortWeekday } from "../../lib/date";
 // Se re-exportan: el formato de duraciones vive en `lib/capacity.ts` —lo comparten
 // la review y la bitácora—, pero la vista lo pide junto al resto de sus cuentas.
-export { horas, horasDeMinutos } from "../../lib/capacity";
+export { hours, hoursFromMinutes } from "../../lib/capacity";
 export type { Segmento } from "../../lib/segmentos";
 
 export interface DiaDeBarra {
   date: string;
   /** `Lun 10`. */
-  etiqueta: string;
+  label: string;
   seconds: number;
   plannedMinutes: number;
-  hechas: number;
-  sinEstimar: number;
-  segmentos: Segmento[];
+  done: number;
+  unestimated: number;
+  segments: Segmento[];
 }
 
 /** Las 7 barras del gráfico diario, con sus segmentos por channel. */
-export function barrasPorDia(rollup: WeeklyRollup, cats: Map<number, Category>): DiaDeBarra[] {
-  return rollup.dias.map((d) => ({
+export function barsByDay(rollup: WeeklyRollup, cats: Map<number, Category>): DiaDeBarra[] {
+  return rollup.days.map((d) => ({
     date: d.date,
-    etiqueta: shortWeekday(d.date),
+    label: shortWeekday(d.date),
     seconds: d.seconds,
     plannedMinutes: d.plannedMinutes,
-    hechas: d.hechas,
-    sinEstimar: d.sinEstimar,
-    segmentos: agrupar(
-      rollup.celdas.filter((c) => c.date === d.date),
+    done: d.done,
+    unestimated: d.unestimated,
+    segments: groupBy(
+      rollup.cells.filter((c) => c.date === d.date),
       cats,
       false,
     ),
@@ -43,8 +43,8 @@ export function barrasPorDia(rollup: WeeklyRollup, cats: Map<number, Category>):
 }
 
 /** El donut: por **contexto**, que es como se lee una semana de un vistazo. */
-export function porContexto(rollup: WeeklyRollup, cats: Map<number, Category>): Segmento[] {
-  return agrupar(rollup.celdas, cats, true);
+export function byContext(rollup: WeeklyRollup, cats: Map<number, Category>): Segmento[] {
+  return groupBy(rollup.cells, cats, true);
 }
 
 /**
@@ -54,26 +54,26 @@ export function porContexto(rollup: WeeklyRollup, cats: Map<number, Category>): 
  * cada día: una escala por día haría ver igual de alto un martes de 8 horas y un
  * sábado de 20 minutos.
  */
-export function techoEnMinutos(dias: DiaDeBarra[]): number {
+export function ceilingInMinutes(days: DiaDeBarra[]): number {
   const max = Math.max(
     60,
-    ...dias.map((d) => Math.max(Math.round(d.seconds / 60), d.plannedMinutes)),
+    ...days.map((d) => Math.max(Math.round(d.seconds / 60), d.plannedMinutes)),
   );
   return max;
 }
 
 /** Las tareas cerradas, agrupadas por el día en que se cerraron. */
-export function cerradasPorDia(rollup: WeeklyRollup): Map<string, Task[]> {
+export function closedByDay(rollup: WeeklyRollup): Map<string, Task[]> {
   const por = new Map<string, Task[]>();
-  for (const d of rollup.dias) por.set(d.date, []);
-  for (const t of rollup.completadas) {
+  for (const d of rollup.days) por.set(d.date, []);
+  for (const t of rollup.completedTasks) {
     if (!t.completedAt) continue;
     // El día es **local**: cortar el timestamp UTC mandaría al día siguiente
     // todo lo cerrado de tarde.
-    const dia = new Date(t.completedAt);
-    if (Number.isNaN(dia.getTime())) continue;
-    const key = `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, "0")}-${String(
-      dia.getDate(),
+    const day = new Date(t.completedAt);
+    if (Number.isNaN(day.getTime())) continue;
+    const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(
+      day.getDate(),
     ).padStart(2, "0")}`;
     por.get(key)?.push(t);
   }

@@ -9,7 +9,7 @@ import { WeekView } from "./WeekView";
  * contenido del rail — eso vive en `railLayout.test.ts` y `CalendarRail.test.tsx`.
  */
 describe("WeekView · agenda superpuesta", () => {
-  const boton = () => screen.getByRole("button", { name: /Agenda/ });
+  const button = () => screen.getByRole("button", { name: /Agenda/ });
 
   it("la tira de la derecha solo trae los paneles que existen", () => {
     // Objetivos y backlog llegan con sus milestones. Un icono que no hace nada
@@ -21,30 +21,30 @@ describe("WeekView · agenda superpuesta", () => {
 
   it("arranca cerrada y se abre con el botón", async () => {
     render(<WeekView />);
-    expect(boton()).toHaveAttribute("aria-pressed", "false");
+    expect(button()).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull();
 
-    await userEvent.click(boton());
+    await userEvent.click(button());
 
-    expect(boton()).toHaveAttribute("aria-pressed", "true");
+    expect(button()).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("complementary", { name: "Agenda del día" })).toBeInTheDocument();
   });
 
   it("el mismo botón la cierra, y también el aspa del panel", async () => {
     render(<WeekView />);
 
-    await userEvent.click(boton());
-    await userEvent.click(boton());
+    await userEvent.click(button());
+    await userEvent.click(button());
     expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull();
 
-    await userEvent.click(boton());
+    await userEvent.click(button());
     await userEvent.click(screen.getByRole("button", { name: "Cerrar la agenda" }));
     expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull();
   });
 
   it("Escape la cierra", async () => {
     render(<WeekView />);
-    await userEvent.click(boton());
+    await userEvent.click(button());
 
     await userEvent.keyboard("{Escape}");
 
@@ -55,7 +55,7 @@ describe("WeekView · agenda superpuesta", () => {
     // Montada fija en Today no hace falta —la fecha está en la cabecera—, pero
     // un panel sobre siete columnas sí tiene que nombrar su día.
     render(<WeekView />);
-    await userEvent.click(boton());
+    await userEvent.click(button());
 
     const panel = screen.getByRole("complementary", { name: "Agenda del día" });
     expect(panel.querySelector(".rail__head-dia")?.textContent).toMatch(/\S/);

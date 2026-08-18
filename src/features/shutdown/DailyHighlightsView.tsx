@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronDown, Clock, Lock, PenLine, PieChart, Timer } from "lucide-react";
 import { api } from "../../lib/ipc";
-import type { Category, DiaDeBitacora, Task } from "../../lib/types";
+import type { Category, LogDay, Task } from "../../lib/types";
 import { dateLabel, isToday, weekdayLabel } from "../../lib/date";
 import { formatMinutes } from "../../lib/capacity";
-import { agrupar } from "../../lib/segmentos";
+import { groupBy } from "../../lib/segmentos";
 import { useAppStore } from "../../lib/store";
 import { useToday } from "../../lib/day";
 import { useTimer } from "../timer/useTimer";
 import { Donut } from "../../components/Donut";
 import { TaskModal } from "../tasks/TaskModal";
-import { destacadas, diasVisibles, segundosDelTramo, trabajadoConEnCurso } from "./bitacora";
+import { highlights, visibleDays, segmentSeconds, workedWithRunning } from "./dailyLog";
 import "./shutdown.css";
 
 /** Cuántos días se piden de una. Alcanza para un mes de bitácora. */
@@ -42,29 +42,29 @@ function reloj(seconds: number): string {
  * detalle que se consulta, no algo que se mire siempre.
  */
 export function DailyHighlightsView() {
-  const [dias, setDias] = useState<DiaDeBitacora[] | null>(null);
+  const [days, setDias] = useState<LogDay[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [abierta, setAbierta] = useState<Task | null>(null);
   /** Qué días tienen el donut desplegado. Plegado por defecto. */
   const [analytics, setAnalytics] = useState<Set<string>>(new Set());
   const dataVersion = useAppStore((s) => s.dataVersion);
   // Una sesión abierta cruza la medianoche sin enterarse.
-  const hoy = useToday();
+  const today = useToday();
   // Lo de la corrida en curso todavía no está en la base: lo tiene el taxímetro.
   const { runTotal } = useTimer();
 
   const load = useCallback(async () => {
-    const [b, cats] = await Promise.all([api.bitacora(hoy, VENTANA), api.listCategories()]);
+    const [b, cats] = await Promise.all([api.dailyLog(today, VENTANA), api.listCategories()]);
     setDias(b);
     setCategories(cats);
-  }, [hoy]);
+  }, [today]);
 
   useEffect(() => {
     load();
   }, [load, dataVersion]);
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-  const visibles = useMemo(() => (dias ? diasVisibles(dias, hoy) : []), [dias, hoy]);
+  const visibles = useMemo(() => (days ? visibleDays(days, today) : []), [days, today]);
 
   const alternar = (date: string) =>
     setAnalytics((previo) => {
@@ -74,7 +74,7 @@ export function DailyHighlightsView() {
       return proximo;
     });
 
-  if (!dias) return <p className="review__vacio">Cargando la bitácora…</p>;
+  if (!days) return <p className="review__vacio">Cargando la bitácora…</p>;
 
   return (
     <div className="bitacora">
@@ -91,10 +91,10 @@ export function DailyHighlightsView() {
           // desde la medianoche local (I3), así que en cualquier otro día no
           // significa nada. Y un timer abierto desde las 23:50 de ayer marca la
           // fila de ayer como corriendo, que es justo el caso que sumaría mal.
-          const enCurso = d.date === hoy ? runTotal : 0;
-          const trabajado = trabajadoConEnCurso(d, enCurso);
-          const { mostradas, otras } = destacadas(d);
-          const canales = agrupar(d.celdas, catMap, false);
+          const enCurso = d.date === today ? runTotal : 0;
+          const worked = workedWithRunning(d, enCurso);
+          const { shown, others } = highlights(d);
+          const channels = groupBy(d.cells, catMap, false);
           const verDonut = analytics.has(d.date);
 
           return (
@@ -124,13 +124,13 @@ export function DailyHighlightsView() {
 
                   {d.note && <p className="dia__nota">{d.note}</p>}
 
-                  {mostradas.length === 0 ? (
+                  {shown.length === 0 ? (
                     <p className="review__vacio">
                       {isToday(d.date) ? "Todavía no cerraste nada hoy." : "Nada cerrado ese día."}
                     </p>
                   ) : (
                     <ul className="hitos">
-                      {mostradas.map(({ task, note }) => {
+                      {shown.map(({ task, note }) => {
                         const ch =
                           task.categoryId != null ? catMap.get(task.categoryId) : undefined;
                         return (
@@ -155,8 +155,8 @@ export function DailyHighlightsView() {
                   )}
 
                   {/* Lo que no incluiste no se esconde: se dice cuánto fue. */}
-                  {otras.length > 0 && (
-                    <p className="dia__otras">y {otras.length} más, sin resumen</p>
+                  {others.length > 0 && (
+                    <p className="dia__otras">y {others.length} más, sin resumen</p>
                   )}
                 </div>
 
@@ -164,7 +164,7 @@ export function DailyHighlightsView() {
                   <div className="dia__contadores">
                     <span>
                       <em>Trabajado</em>
-                      <b>{reloj(trabajado)}</b>
+                      <b>{reloj(worked)}</b>
                     </span>
                     <span>
                       <em>Planificado</em>
@@ -185,7 +185,7 @@ export function DailyHighlightsView() {
                             <span className="dia__tlTitle">{t.title}</span>
                             <span className="dia__tlDur">
                               {t.running && <Timer size={9} aria-hidden />}
-                              {reloj(segundosDelTramo(t, enCurso))}
+                              {reloj(segmentSeconds(t, enCurso))}
                             </span>
                           </li>
                         ))}
@@ -193,7 +193,7 @@ export function DailyHighlightsView() {
                     )}
                   </div>
 
-                  {canales.length > 0 && (
+                  {channels.length > 0 && (
                     <div className="dia__analytics">
                       <button
                         className="dia__rotulo dia__toggle"
@@ -209,12 +209,12 @@ export function DailyHighlightsView() {
                       </button>
                       {verDonut && (
                         <div className="dia__donut">
-                          <Donut segmentos={canales} total={d.workedSeconds} />
+                          <Donut segments={channels} total={d.workedSeconds} />
                           <ul className="leyenda">
-                            {canales.map((c) => (
+                            {channels.map((c) => (
                               <li key={c.key}>
                                 <span className="leyenda__punto" style={{ background: c.color }} />
-                                <span className="leyenda__nombre">{c.nombre}</span>
+                                <span className="leyenda__nombre">{c.name}</span>
                               </li>
                             ))}
                           </ul>

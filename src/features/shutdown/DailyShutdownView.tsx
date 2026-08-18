@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Clock, Lock, Moon, PieChart, Plus, Timer, Unlock, X } from "lucide-react";
 import { api } from "../../lib/ipc";
-import type { DiaDeBitacora } from "../../lib/types";
+import type { LogDay } from "../../lib/types";
 import { dateLabel, weekdayLabel } from "../../lib/date";
 import { formatMinutes } from "../../lib/capacity";
-import { agrupar } from "../../lib/segmentos";
+import { groupBy } from "../../lib/segmentos";
 import { useToday } from "../../lib/day";
 import { useAppStore } from "../../lib/store";
 import { useBoard } from "../tasks/useBoard";
@@ -13,9 +13,9 @@ import { useTimer } from "../timer/useTimer";
 import { Donut } from "../../components/Donut";
 import { TaskCardStatic } from "../week/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
-import { celebrar } from "../../lib/confetti";
+import { celebrate } from "../../lib/confetti";
 import { MoodPicker } from "./MoodPicker";
-import { destacadas, segundosDelTramo, trabajadoConEnCurso } from "./bitacora";
+import { highlights, segmentSeconds, workedWithRunning } from "./dailyLog";
 import "./shutdown.css";
 
 /** `5400` → `'1:30'`. Mismo formato de contador que las cards del tablero. */
@@ -38,13 +38,13 @@ function reloj(seconds: number): string {
  * no la baja.
  */
 export function DailyShutdownView() {
-  const hoy = useToday();
+  const today = useToday();
   const navigate = useNavigate();
-  const board = useBoard(hoy, hoy);
+  const board = useBoard(today, today);
   const bumpData = useAppStore((s) => s.bumpData);
   const { runTotal } = useTimer();
 
-  const [dia, setDia] = useState<DiaDeBitacora | null>(null);
+  const [day, setDia] = useState<LogDay | null>(null);
   const [nota, setNota] = useState("");
   const [notasTarea, setNotasTarea] = useState<Record<number, string>>({});
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -61,109 +61,109 @@ export function DailyShutdownView() {
   const sucios = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
-    const [d] = await api.bitacora(hoy, 1);
+    const [d] = await api.dailyLog(today, 1);
     if (!d) return;
     setDia(d);
     if (!sucios.current.has("dia")) setNota(d.note ?? "");
     setNotasTarea((previas) => {
       const delServidor: Record<number, string> = Object.fromEntries(
-        d.hechas.filter((h) => h.note != null).map(({ task, note }) => [task.id, note ?? ""]),
+        d.done.filter((h) => h.note != null).map(({ task, note }) => [task.id, note ?? ""]),
       );
       for (const id of Object.keys(previas)) {
         if (sucios.current.has(`t:${id}`)) delServidor[Number(id)] = previas[Number(id)];
       }
       return delServidor;
     });
-  }, [hoy]);
+  }, [today]);
 
   useEffect(() => {
     load();
   }, [load, dataVersion]);
 
   const catMap = board.categoryMap;
-  const pendientes = useMemo(
-    () => board.tasks.filter((t) => t.status === "TODO" && t.scheduledDate === hoy),
-    [board.tasks, hoy],
+  const pending = useMemo(
+    () => board.tasks.filter((t) => t.status === "TODO" && t.scheduledDate === today),
+    [board.tasks, today],
   );
   // `destacadas` devuelve **todas** en `mostradas` cuando no hay ninguna incluida,
   // para que la bitácora no se vea vacía. Acá hace falta lo contrario: si todavía
   // no subiste nada, los highlights están vacíos y todo va a "otras actividades".
-  const hayIncluidas = dia?.hechas.some((h) => h.note != null) ?? false;
-  const { mostradas, otras } = useMemo(
-    () => (dia ? destacadas(dia) : { mostradas: [], otras: [] }),
-    [dia],
+  const hayIncluidas = day?.done.some((h) => h.note != null) ?? false;
+  const { shown, others } = useMemo(
+    () => (day ? highlights(day) : { shown: [], others: [] }),
+    [day],
   );
-  const incluidas = hayIncluidas ? mostradas : [];
-  const sinIncluir = hayIncluidas ? otras : (dia?.hechas ?? []);
-  const canales = useMemo(() => (dia ? agrupar(dia.celdas, catMap, false) : []), [dia, catMap]);
+  const incluidas = hayIncluidas ? shown : [];
+  const sinIncluir = hayIncluidas ? others : (day?.done ?? []);
+  const channels = useMemo(() => (day ? groupBy(day.cells, catMap, false) : []), [day, catMap]);
 
   const guardarNota = async () => {
     sucios.current.delete("dia");
-    if ((dia?.note ?? "") === nota.trim()) return;
-    await api.setDayNote(hoy, nota);
+    if ((day?.note ?? "") === nota.trim()) return;
+    await api.setDayNote(today, nota);
     bumpData();
   };
 
   const guardarNotaTarea = async (taskId: number) => {
     sucios.current.delete(`t:${taskId}`);
-    const previo = dia?.hechas.find((h) => h.task.id === taskId)?.note ?? "";
+    const previo = day?.done.find((h) => h.task.id === taskId)?.note ?? "";
     const actual = notasTarea[taskId] ?? "";
     if (previo === actual.trim()) return;
-    await api.setDayTaskNote(hoy, taskId, actual);
+    await api.setDayTaskNote(today, taskId, actual);
     bumpData();
   };
 
   const guardarMood = async (m: string | null) => {
-    await api.setDayMood(hoy, m);
+    await api.setDayMood(today, m);
     bumpData();
   };
 
   const incluir = async (taskId: number) => {
-    await api.incluirEnBitacora(hoy, taskId);
+    await api.includeInLog(today, taskId);
     bumpData();
   };
 
-  const quitar = async (taskId: number) => {
-    await api.quitarDeBitacora(hoy, taskId);
+  const remove = async (taskId: number) => {
+    await api.removeFromLog(today, taskId);
     bumpData();
   };
 
-  const cerrar = async () => {
+  const close = async () => {
     // La nota primero: cerrar sin guardarla perdería lo último que se escribió
     // si el foco todavía estaba en el campo.
-    await api.setDayNote(hoy, nota);
-    await api.cerrarDia(hoy);
+    await api.setDayNote(today, nota);
+    await api.closeDay(today);
     bumpData();
-    celebrar();
+    celebrate();
     navigate("/daily-highlights");
   };
 
   const reabrir = async () => {
-    await api.reabrirDia(hoy);
+    await api.reopenDay(today);
     bumpData();
   };
 
-  const cerrado = dia?.closedAt != null;
-  const trabajado = dia ? trabajadoConEnCurso(dia, runTotal) : 0;
+  const isClosed = day?.closedAt != null;
+  const worked = day ? workedWithRunning(day, runTotal) : 0;
   const selectedTask = board.tasks.find((t) => t.id === selectedId) ?? null;
 
   return (
     <div className="shutdown">
       {/* Los chips a la derecha: son la ficha del día, no su encabezado. */}
       <header className="shutdown__head">
-        {dia && (
+        {day && (
           <div className="review__cifras shutdown__chips">
             <span className="chip-cifra">
               <span className="chip-cifra__punto" style={{ background: "var(--sage-ink)" }} />
-              <strong>{reloj(trabajado)}</strong> trabajado
+              <strong>{reloj(worked)}</strong> worked
             </span>
             <span className="chip-cifra">
               <span className="chip-cifra__punto" style={{ background: "var(--faint)" }} />
-              <strong>{formatMinutes(dia.plannedMinutes)}</strong> planificado
+              <strong>{formatMinutes(day.plannedMinutes)}</strong> planned
             </span>
             <span className="chip-cifra">
               <span className="chip-cifra__punto" style={{ background: "var(--mint-ink)" }} />
-              <strong>{dia.hechas.length}</strong> cerradas
+              <strong>{day.done.length}</strong> cerradas
             </span>
           </div>
         )}
@@ -174,9 +174,9 @@ export function DailyShutdownView() {
           {/* El día es el título, y el resumen se escribe acá mismo. */}
           <div className="entrada__cabecera">
             <h1 className="entrada__dia">
-              {weekdayLabel(hoy)}
-              <span className="entrada__fecha">{dateLabel(hoy)}</span>
-              <MoodPicker valor={dia?.mood ?? null} onElegir={guardarMood} />
+              {weekdayLabel(today)}
+              <span className="entrada__fecha">{dateLabel(today)}</span>
+              <MoodPicker value={day?.mood ?? null} onElegir={guardarMood} />
             </h1>
             <textarea
               className="entrada__resumen"
@@ -225,7 +225,7 @@ export function DailyShutdownView() {
                             className="btn-icon"
                             title="Sacar de los highlights"
                             aria-label={`Sacar ${task.title} de los highlights`}
-                            onClick={() => quitar(task.id)}
+                            onClick={() => remove(task.id)}
                           >
                             <X size={13} aria-hidden />
                           </button>
@@ -256,7 +256,7 @@ export function DailyShutdownView() {
             <p className="entrada__lema">Lo demás que cerraste hoy. Sube lo que quieras.</p>
             {sinIncluir.length === 0 ? (
               <p className="review__vacio">
-                {dia?.hechas.length ? "Ya subiste todo." : "Todavía no cerraste nada hoy."}
+                {day?.done.length ? "Ya subiste todo." : "Todavía no cerraste nada hoy."}
               </p>
             ) : (
               <ul className="hitos">
@@ -295,11 +295,11 @@ export function DailyShutdownView() {
             <p className="entrada__lema">
               Se replanifica en el daily planning; acá solo se mira.
             </p>
-            {pendientes.length === 0 ? (
+            {pending.length === 0 ? (
               <p className="review__vacio">No quedó nada abierto. Buen día.</p>
             ) : (
               <div className="shutdown__pendientes">
-                {pendientes.map((t) => (
+                {pending.map((t) => (
                   <div key={t.id} className="repaso__row">
                     <TaskCardStatic
                       task={t}
@@ -316,7 +316,7 @@ export function DailyShutdownView() {
           </section>
 
           <div className="shutdown__pie">
-            {cerrado ? (
+            {isClosed ? (
               <>
                 <span className="shutdown__sello">
                   <Lock size={13} aria-hidden /> Cerraste este día
@@ -330,7 +330,7 @@ export function DailyShutdownView() {
                 <span className="shutdown__hint">
                   Si no lo cierras, el día queda como borrador en la bitácora.
                 </span>
-                <button className="btn-primary" onClick={cerrar}>
+                <button className="btn-primary" onClick={close}>
                   <Moon size={14} aria-hidden /> Cerrar el día
                 </button>
               </>
@@ -339,22 +339,22 @@ export function DailyShutdownView() {
         </div>
 
         {/* La ficha del día, igual que en la bitácora. */}
-        {dia && (
+        {day && (
           <aside className="dia__der">
             <div className="dia__tl">
               <span className="dia__rotulo">
                 <Clock size={10} aria-hidden /> Timeline
               </span>
-              {dia.timeline.length === 0 ? (
+              {day.timeline.length === 0 ? (
                 <p className="review__vacio">Sin tiempo trackeado.</p>
               ) : (
                 <ul>
-                  {dia.timeline.map((t) => (
+                  {day.timeline.map((t) => (
                     <li key={t.taskId} className={t.running ? "is-running" : ""}>
                       <span className="dia__tlTitle">{t.title}</span>
                       <span className="dia__tlDur">
                         {t.running && <Timer size={9} aria-hidden />}
-                        {reloj(segundosDelTramo(t, runTotal))}
+                        {reloj(segmentSeconds(t, runTotal))}
                       </span>
                     </li>
                   ))}
@@ -365,18 +365,18 @@ export function DailyShutdownView() {
             {/* Acá el donut va **siempre abierto**, al revés que en la bitácora:
                 el shutdown es el momento de mirar cómo se repartió el día, y la
                 bitácora es un archivo que se hojea. */}
-            {canales.length > 0 && (
+            {channels.length > 0 && (
               <div className="dia__analytics">
                 <span className="dia__rotulo">
                   <PieChart size={10} aria-hidden /> Channels
                 </span>
                 <div className="dia__donut">
-                  <Donut segmentos={canales} total={dia.workedSeconds} />
+                  <Donut segments={channels} total={day.workedSeconds} />
                   <ul className="leyenda">
-                    {canales.map((c) => (
+                    {channels.map((c) => (
                       <li key={c.key}>
                         <span className="leyenda__punto" style={{ background: c.color }} />
-                        <span className="leyenda__nombre">{c.nombre}</span>
+                        <span className="leyenda__nombre">{c.name}</span>
                       </li>
                     ))}
                   </ul>

@@ -44,7 +44,7 @@ Las excepciones son deliberadas y son pocas:
 - **Los títulos de vista que espejan una entrada del sidebar** (`Placeholder`,
   el `<h1>` de Backlog y de Weekly planning). Si el sidebar dice "Weekly
   planning" y la página dice "Planificación semanal", se lee roto.
-- **Los formatos numéricos** (`hms`, `formatMinutes`, `duracionCorta`) no tienen
+- **Los formatos numéricos** (`hms`, `formatMinutes`, `shortDuration`) no tienen
   idioma; no los toques.
 - **El menú nativo de macOS** sigue en inglés porque lo genera
   `Menu::default` de Tauri: traducir solo nuestro ítem de Quit lo dejaría peor
@@ -212,7 +212,7 @@ misma familia de vistas y duplicarlas las habría separado con el primer retoque
 una de esas clases, abrí las tres vistas.
 
 El formato de duraciones vive en **`src/lib/capacity.ts`** (`formatMinutes` para
-las cards, `horas`/`horasDeMinutos` para las cifras de cabecera).
+las cards, `horas`/`hoursFromMinutes` para las cifras de cabecera).
 `weeklyReview.ts` las re-exporta por comodidad, pero la casa es `capacity.ts`.
 
 ## Paleta y tema
@@ -303,3 +303,10 @@ Vitest + RTL. Los tests existentes se apoyan en `aria-label` y roles, no en
 clases CSS. Mantén los `aria-label` de los controles (`"Completar tarea"`,
 `"Pausar"`, `"Cambiar channel"`…): son el punto de agarre de los tests y además
 lo correcto para accesibilidad.
+
+## Idioma: código en inglés, texto en español
+
+Convención del proyecto (CLAUDE.md). Identificadores —variables, funciones,
+tipos, campos, archivos, comandos IPC— en **inglés**. Comentarios, texto de la
+app, descripciones de tests y documentación en **español**. El nombre de un
+`#[test]` de Rust es su descripción, así que va en español.

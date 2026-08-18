@@ -3,10 +3,10 @@
 //! Tres capas, y la separación es deliberada:
 //!
 //! - `fetch`  — descarga. Lo único que toca la red.
-//! - `ics`    — interpreta el texto a `EventoIcs`. Puro: sin red ni base, así
+//! - `ics`    — interpreta el texto a `IcsEvent`. Puro: sin red ni base, así
 //!              que todo lo raro de un calendario real (zonas, series,
 //!              cancelados) se prueba con fixtures.
-//! - `repo::import_eventos` — escribe. Puro sobre `&Connection`.
+//! - `repo::import_events` — escribe. Puro sobre `&Connection`.
 //!
 //! El pegamento vive en `commands::sync_feed`, que no decide nada: descarga,
 //! parsea, importa y sella el resultado.
@@ -21,7 +21,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::db::Db;
 use crate::models::CalendarFeed;
-use crate::repo::{self, EventoImportable};
+use crate::repo::{self, ImportableEvent};
 
 /// Cada cuánto despierta el poller a preguntar si algún feed ya toca.
 ///
@@ -35,33 +35,33 @@ const PULSO: Duration = Duration::from_secs(60);
 /// Es el único lugar donde se juntan las tres capas, y no decide nada: baja,
 /// interpreta, importa y sella. Cualquier regla que aparezca acá está en la capa
 /// equivocada.
-pub async fn sincronizar_feed(app: &AppHandle, id: i64) -> Result<usize, String> {
-    let feed = leer_feed(app, id)?.ok_or_else(|| "ese feed ya no existe".to_string())?;
-    sincronizar(app, &feed).await
+pub async fn sync_one_feed(app: &AppHandle, id: i64) -> Result<usize, String> {
+    let feed = read_feed(app, id)?.ok_or_else(|| "ese feed ya no existe".to_string())?;
+    sync_feeds(app, &feed).await
 }
 
-async fn sincronizar(app: &AppHandle, feed: &CalendarFeed) -> Result<usize, String> {
-    let resultado = intentar(app, feed).await;
+async fn sync_feeds(app: &AppHandle, feed: &CalendarFeed) -> Result<usize, String> {
+    let result = try_sync(app, feed).await;
 
     // El sello va pase lo que pase: `last_synced_at` es "cuándo lo intenté",
     // que es lo que necesita el poller para no reintentar en bucle contra un
     // feed caído, y `last_error` es lo que distingue el resultado.
-    let error = resultado.as_ref().err().map(String::as_str);
-    if let Err(e) = sellar(app, feed.id, error) {
+    let error = result.as_ref().err().map(String::as_str);
+    if let Err(e) = stamp_sync(app, feed.id, error) {
         eprintln!("[sunrise] calendario: no pude sellar el feed {}: {e}", feed.name);
     }
 
-    if let Err(e) = &resultado {
+    if let Err(e) = &result {
         // Nunca en silencio. Un fallo de sync que no deja rastro es exactamente
         // la forma del bug del permiso de `cursorPosition`: una promesa
         // rechazada que nadie ve. El nombre y no la URL: la URL es la credencial.
         eprintln!("[sunrise] calendario: falló la sync de «{}»: {e}", feed.name);
     }
-    resultado
+    result
 }
 
-async fn intentar(app: &AppHandle, feed: &CalendarFeed) -> Result<usize, String> {
-    let texto = fetch::descargar(&feed.ics_url).await?;
+async fn try_sync(app: &AppHandle, feed: &CalendarFeed) -> Result<usize, String> {
+    let text = fetch::download(&feed.ics_url).await?;
 
     // Con el toggle apagado el feed se baja igual (así el error de una URL
     // revocada se ve) pero no se escribe nada. Es lo que va a alimentar el rail
@@ -70,59 +70,59 @@ async fn intentar(app: &AppHandle, feed: &CalendarFeed) -> Result<usize, String>
         return Ok(0);
     }
 
-    let (desde, hasta) = ics::ventana(ics::hoy_local());
-    let eventos = ics::parse_eventos(&texto, desde, hasta)?;
-    let importables: Vec<EventoImportable> = eventos
+    let (from_date, to_date) = ics::window(ics::today_local());
+    let events = ics::parse_events(&text, from_date, to_date)?;
+    let importable: Vec<ImportableEvent> = events
         .into_iter()
-        .map(|e| EventoImportable {
+        .map(|e| ImportableEvent {
             uid: e.uid,
-            titulo: e.titulo,
-            fecha: e.fecha,
-            hora: e.hora,
-            inicio: e.inicio,
-            fin: e.fin,
-            minutos: e.minutos,
+            title: e.title,
+            date: e.date,
+            hour: e.hour,
+            start: e.start,
+            end: e.end,
+            minutes: e.minutes,
             link: e.link,
-            descripcion: e.descripcion,
-            participantes: e.participantes,
+            description: e.description,
+            attendees: e.attendees,
         })
         .collect();
 
     let db = app.state::<Db>();
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let vistos = repo::import_eventos(&conn, feed.id, &importables, feed.default_category_id)
+    let seen = repo::import_events(&conn, feed.id, &importable, feed.default_category_id)
         .map_err(|e| e.to_string())?;
 
     // Lo que dejó de venir en el feed. Va después del import y con los UIDs que
     // este acaba de ver, para que un evento movido dentro de la ventana no
     // parezca borrado.
-    let hoy = ics::hoy_local().format("%Y-%m-%d").to_string();
-    let (borradas, retiradas) =
-        repo::reconciliar_feed(&conn, feed.id, &vistos, &hoy).map_err(|e| e.to_string())?;
-    if borradas > 0 || retiradas > 0 {
+    let today = ics::today_local().format("%Y-%m-%d").to_string();
+    let (deleted, withdrawn) =
+        repo::reconcile_feed(&conn, feed.id, &seen, &today).map_err(|e| e.to_string())?;
+    if deleted > 0 || withdrawn > 0 {
         eprintln!(
-            "[sunrise] calendario «{}»: {borradas} borradas, {retiradas} retiradas del feed \
+            "[sunrise] calendario «{}»: {deleted} borradas, {withdrawn} retiradas del feed \
              (liberadas si se trabajaron, ORPHANED si no)",
             feed.name
         );
     }
 
-    Ok(vistos.len())
+    Ok(seen.len())
 }
 
-fn leer_feed(app: &AppHandle, id: i64) -> Result<Option<CalendarFeed>, String> {
+fn read_feed(app: &AppHandle, id: i64) -> Result<Option<CalendarFeed>, String> {
     let db = app.state::<Db>();
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     repo::get_calendar_feed(&conn, id).map_err(|e| e.to_string())
 }
 
-fn listar_feeds(app: &AppHandle) -> Result<Vec<CalendarFeed>, String> {
+fn list_feeds(app: &AppHandle) -> Result<Vec<CalendarFeed>, String> {
     let db = app.state::<Db>();
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     repo::list_calendar_feeds(&conn).map_err(|e| e.to_string())
 }
 
-fn sellar(app: &AppHandle, id: i64, error: Option<&str>) -> Result<(), String> {
+fn stamp_sync(app: &AppHandle, id: i64, error: Option<&str>) -> Result<(), String> {
     let db = app.state::<Db>();
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     repo::stamp_feed_sync(&conn, id, error).map_err(|e| e.to_string())
@@ -133,15 +133,15 @@ fn sellar(app: &AppHandle, id: i64, error: Option<&str>) -> Result<(), String> {
 /// Función aparte y pura para poder razonarla: sin `last_synced_at` toca
 /// siempre (nunca se sincronizó), y una marca ilegible cuenta como "nunca" en
 /// vez de dejar el feed congelado para siempre.
-pub fn le_toca(feed: &CalendarFeed, ahora: DateTime<Utc>) -> bool {
-    let Some(marca) = feed.last_synced_at.as_deref() else {
+pub fn is_due(feed: &CalendarFeed, now: DateTime<Utc>) -> bool {
+    let Some(stamp) = feed.last_synced_at.as_deref() else {
         return true;
     };
-    let Ok(ultima) = DateTime::parse_from_rfc3339(marca) else {
+    let Ok(last) = DateTime::parse_from_rfc3339(stamp) else {
         return true;
     };
-    let transcurridos = ahora.signed_duration_since(ultima.with_timezone(&Utc));
-    transcurridos.num_minutes() >= feed.poll_minutes
+    let elapsed = now.signed_duration_since(last.with_timezone(&Utc));
+    elapsed.num_minutes() >= feed.poll_minutes
 }
 
 /// Sincroniza los feeds a los que ya les toca. Devuelve cuántos se
@@ -149,8 +149,8 @@ pub fn le_toca(feed: &CalendarFeed, ahora: DateTime<Utc>) -> bool {
 ///
 /// Con `forzar` va contra todos sin mirar el reloj, que es lo que hace el botón
 /// "Sincronizar ahora".
-pub async fn sincronizar_pendientes(app: &AppHandle, forzar: bool) -> usize {
-    let feeds = match listar_feeds(app) {
+pub async fn sync_pending(app: &AppHandle, force: bool) -> usize {
+    let feeds = match list_feeds(app) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("[sunrise] calendario: no pude leer los feeds: {e}");
@@ -158,15 +158,15 @@ pub async fn sincronizar_pendientes(app: &AppHandle, forzar: bool) -> usize {
         }
     };
 
-    let ahora = Utc::now();
+    let now = Utc::now();
     let mut ok = 0;
     for feed in feeds {
-        if !forzar && !le_toca(&feed, ahora) {
+        if !force && !is_due(&feed, now) {
             continue;
         }
         // En serie y no en paralelo: comparten una sola `Connection` bajo
         // `Mutex`, así que el paralelismo solo movería la espera de lugar.
-        if sincronizar(app, &feed).await.is_ok() {
+        if sync_feeds(app, &feed).await.is_ok() {
             ok += 1;
         }
     }
@@ -180,10 +180,10 @@ pub async fn sincronizar_pendientes(app: &AppHandle, forzar: bool) -> usize {
 /// ventanas de una, y cada una invalida lo suyo con `markDataStale()`. Hacerlo
 /// con el canal de `localStorage` obligaría a que alguna ventana escriba, que es
 /// justo el ping-pong que `useDataSync` vino a evitar.
-pub fn arrancar_poller(app: AppHandle) {
+pub fn start_poller(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
-            let n = sincronizar_pendientes(&app, false).await;
+            let n = sync_pending(&app, false).await;
             if n > 0 {
                 let _ = tauri::Emitter::emit(&app, crate::CALENDAR_SYNCED, ());
             }
@@ -215,14 +215,14 @@ mod tests {
 
     #[test]
     fn un_feed_recien_creado_toca_de_inmediato() {
-        assert!(le_toca(&feed(None, 15), t("2026-08-13T10:00:00Z")));
+        assert!(is_due(&feed(None, 15), t("2026-08-13T10:00:00Z")));
     }
 
     #[test]
     fn respeta_el_intervalo_del_feed() {
         let f = feed(Some("2026-08-13T10:00:00Z"), 15);
-        assert!(!le_toca(&f, t("2026-08-13T10:14:00Z")));
-        assert!(le_toca(&f, t("2026-08-13T10:15:00Z")));
+        assert!(!is_due(&f, t("2026-08-13T10:14:00Z")));
+        assert!(is_due(&f, t("2026-08-13T10:15:00Z")));
     }
 
     #[test]
@@ -230,7 +230,7 @@ mod tests {
         // Si la marca no se entiende, lo seguro es reintentar: dar por hecho
         // que ya se sincronizó dejaría el feed muerto hasta que alguien edite
         // la base a mano.
-        assert!(le_toca(&feed(Some("ayer por la tarde"), 15), t("2026-08-13T10:00:00Z")));
+        assert!(is_due(&feed(Some("ayer por la tarde"), 15), t("2026-08-13T10:00:00Z")));
     }
 
     #[test]
@@ -238,6 +238,6 @@ mod tests {
         // Cambio de hora o ajuste de NTP: la resta da negativo y no debe contar
         // como "ya pasó el intervalo".
         let f = feed(Some("2026-08-13T10:00:00Z"), 15);
-        assert!(!le_toca(&f, t("2026-08-13T09:50:00Z")));
+        assert!(!is_due(&f, t("2026-08-13T09:50:00Z")));
     }
 }

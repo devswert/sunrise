@@ -166,7 +166,7 @@ primeros no se disparan nunca. Y compara **fechas de reloj**, jamás tiempo
 transcurrido: macOS agrupa y suspende los temporizadores al dormir, así que el
 intervalo puede disparar tarde, una vez o ninguna.
 
-Si agregas una vista anclada a una fecha, mira `anclaTrasCambioDeDia` en
+Si agregas una vista anclada a una fecha, mira `anchorAfterDayChange` en
 `src/features/week/anchor.ts` antes de hacerla "seguir al día": no hay que
 mover la vista si el usuario navegó a otro rango a propósito.
 
@@ -181,7 +181,7 @@ otra ventana.
 
 El efecto de `useBoard` depende de `[reload, dataVersion]`, así que **todo lo que
 pongas ahí corre con cada cambio de datos**, no una vez al montar. La limpieza
-diaria cayó en esa trampa: `api.degradarPendientes()` es una mutación y se
+diaria cayó en esa trampa: `api.demotePending()` es una mutación y se
 ejecutaba en cada invalidación. Hoy pasa por `degradarUnaVez(today)`, que la
 corre una vez por día y por ventana y deduplica las llamadas concurrentes de dos
 vistas montadas a la vez.

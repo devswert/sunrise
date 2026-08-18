@@ -1,7 +1,7 @@
 //! Lectura de un feed ICS a eventos listos para importar.
 //!
 //! **Capa pura**: entra un `&str` con el contenido del `.ics` y sale un
-//! `Vec<EventoIcs>`. No toca la red ni la base. Es a propósito: la descarga vive
+//! `Vec<IcsEvent>`. No toca la red ni la base. Es a propósito: la descarga vive
 //! en `calendar::fetch` y la escritura en `repo`, así que todo lo que puede
 //! salir mal al interpretar un calendario real se prueba con fixtures y sin
 //! levantar nada.
@@ -9,7 +9,7 @@
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone};
 use icalendar::{Calendar, Component, DatePerhapsTime, EventStatus};
 
-use crate::models::Participante;
+use crate::models::Attendee;
 
 /// Cuántas ocurrencias se aceptan por serie antes de cortar. Una regla mal
 /// formada (`FREQ=SECONDLY` sin `UNTIL`) es infinita, y `rrule` corta en el
@@ -18,7 +18,7 @@ const MAX_OCURRENCIAS: u16 = 512;
 
 /// Un evento, ya resuelto a un instante concreto y a hora local.
 #[derive(Debug, Clone, PartialEq)]
-pub struct EventoIcs {
+pub struct IcsEvent {
     /// Clave estable **dentro del feed**, la que va a `tasks.calendar_uid`.
     ///
     /// Para un evento suelto es el `UID` tal cual. Para una instancia de una
@@ -26,25 +26,25 @@ pub struct EventoIcs {
     /// **uno solo para todas sus repeticiones**: usarlo pelado colapsaría el
     /// standup de todo el mes en una fila, por el `UNIQUE(feed_id, calendar_uid)`.
     pub uid: String,
-    pub titulo: String,
-    /// Fecha **local** `YYYY-MM-DD`. Ver `a_local`.
-    pub fecha: String,
+    pub title: String,
+    /// Fecha **local** `YYYY-MM-DD`. Ver `to_local`.
+    pub date: String,
     /// `HH:MM` local. `None` en los eventos de día completo.
-    pub hora: Option<String>,
+    pub hour: Option<String>,
     /// Inicio y fin en ISO (UTC). `None` en los de día completo: no tienen
     /// reloj, y darles uno inventado los haría contar horas que nadie trabajó.
-    pub inicio: Option<String>,
-    pub fin: Option<String>,
+    pub start: Option<String>,
+    pub end: Option<String>,
     /// Duración en minutos, para `estimated_minutes`. `None` si no se puede
     /// saber (día completo, o un evento sin `DTEND` ni `DURATION`).
-    pub minutos: Option<i64>,
-    /// Link para entrar a la videollamada, si el evento trae uno. Ver `link_de`.
+    pub minutes: Option<i64>,
+    /// Link para entrar a la videollamada, si el evento trae uno. Ver `link_of`.
     pub link: Option<String>,
     /// Descripción del evento, si la trae.
-    pub descripcion: Option<String>,
+    pub description: Option<String>,
     /// Organizador e invitados. Vacío si el evento no los declara — que es lo
     /// que pasa con un calendario compartido "ocultando los detalles".
-    pub participantes: Vec<Participante>,
+    pub attendees: Vec<Attendee>,
 }
 
 /// Interpreta un feed y devuelve las ocurrencias que caen en `[desde, hasta]`
@@ -52,11 +52,11 @@ pub struct EventoIcs {
 ///
 /// La ventana existe porque un calendario de trabajo tiene series sin fin: sin
 /// acotar, "importar el calendario" es "importar hasta el año 2400".
-pub fn parse_eventos(
+pub fn parse_events(
     ics: &str,
-    desde: NaiveDate,
-    hasta: NaiveDate,
-) -> std::result::Result<Vec<EventoIcs>, String> {
+    from_date: NaiveDate,
+    to_date: NaiveDate,
+) -> std::result::Result<Vec<IcsEvent>, String> {
     let cal: Calendar = ics.parse().map_err(|e: String| e)?;
     let mut out = Vec::new();
 
@@ -69,65 +69,65 @@ pub fn parse_eventos(
         let Some(uid) = ev.get_uid() else {
             continue; // sin UID no hay forma de reconocerlo en la próxima sync
         };
-        let titulo = match ev.get_summary().map(str::trim) {
+        let title = match ev.get_summary().map(str::trim) {
             Some(t) if !t.is_empty() => t.to_string(),
             _ => "(sin título)".to_string(),
         };
 
-        let dia_completo = matches!(ev.get_start(), Some(DatePerhapsTime::Date(_)));
-        let duracion = duracion_de(&ev);
-        let link = link_de(&ev);
-        let descripcion = ev
+        let all_day = matches!(ev.get_start(), Some(DatePerhapsTime::Date(_)));
+        let duration = duration_of(&ev);
+        let link = link_of(&ev);
+        let description = ev
             .get_description()
             .map(str::trim)
             .filter(|d| !d.is_empty())
             .map(str::to_string);
-        let participantes = participantes_de(&ev);
+        let attendees = attendees_of(&ev);
 
         // Una instancia editada de una serie viene como un VEVENT aparte con el
         // mismo UID y un `RECURRENCE-ID` que dice a qué repetición reemplaza.
         // Su clave tiene que ser la de esa repetición, o quedarían las dos.
-        let sobrescribe = ev
+        let overrides = ev
             .property_value("RECURRENCE-ID")
-            .and_then(|v| instante_de_valor(v, ev.property_value("DTSTART")));
+            .and_then(|v| instant_of_value(v, ev.property_value("DTSTART")));
 
-        let es_serie = ev.property_value("RRULE").is_some();
+        let is_series = ev.property_value("RRULE").is_some();
 
-        for inicio_local in ocurrencias(&ev, desde, hasta) {
-            let clave = match (&sobrescribe, es_serie) {
-                (Some(instante), _) => format!("{uid}#{}", sello(*instante)),
-                (None, true) => format!("{uid}#{}", sello(inicio_local)),
+        for local_start in occurrences(&ev, from_date, to_date) {
+            let key = match (&overrides, is_series) {
+                (Some(instant), _) => format!("{uid}#{}", stamp(*instant)),
+                (None, true) => format!("{uid}#{}", stamp(local_start)),
                 (None, false) => uid.to_string(),
             };
 
-            let fin_local = duracion.map(|d| inicio_local + d);
-            out.push(EventoIcs {
-                uid: clave,
-                titulo: titulo.clone(),
-                fecha: inicio_local.format("%Y-%m-%d").to_string(),
-                hora: if dia_completo {
+            let local_end = duration.map(|d| local_start + d);
+            out.push(IcsEvent {
+                uid: key,
+                title: title.clone(),
+                date: local_start.format("%Y-%m-%d").to_string(),
+                hour: if all_day {
                     None
                 } else {
-                    Some(inicio_local.format("%H:%M").to_string())
+                    Some(local_start.format("%H:%M").to_string())
                 },
-                inicio: if dia_completo {
+                start: if all_day {
                     None
                 } else {
-                    Some(inicio_local.to_utc().to_rfc3339())
+                    Some(local_start.to_utc().to_rfc3339())
                 },
-                fin: if dia_completo {
+                end: if all_day {
                     None
                 } else {
-                    fin_local.map(|f| f.to_utc().to_rfc3339())
+                    local_end.map(|f| f.to_utc().to_rfc3339())
                 },
-                minutos: if dia_completo {
+                minutes: if all_day {
                     None
                 } else {
-                    duracion.map(|d| d.num_minutes()).filter(|m| *m > 0)
+                    duration.map(|d| d.num_minutes()).filter(|m| *m > 0)
                 },
                 link: link.clone(),
-                descripcion: descripcion.clone(),
-                participantes: participantes.clone(),
+                description: description.clone(),
+                attendees: attendees.clone(),
             });
         }
     }
@@ -140,16 +140,16 @@ pub fn parse_eventos(
 /// Sirve igual para un evento suelto que para una serie: `get_recurrence()`
 /// devuelve un `RRuleSet` que, sin `RRULE`, rinde solo su `DTSTART`. Así no hay
 /// dos caminos que puedan divergir.
-fn ocurrencias(
+fn occurrences(
     ev: &icalendar::CalendarEvent<'_>,
-    desde: NaiveDate,
-    hasta: NaiveDate,
+    from_date: NaiveDate,
+    to_date: NaiveDate,
 ) -> Vec<DateTime<Local>> {
     let Ok(set) = ev.get_recurrence() else {
         // Regla que `rrule` rechaza: mejor importar el `DTSTART` solo que perder
         // el evento entero en silencio.
-        return match ev.get_start().and_then(a_local) {
-            Some(dt) if en_ventana(dt, desde, hasta) => vec![dt],
+        return match ev.get_start().and_then(to_local) {
+            Some(dt) if in_window(dt, from_date, to_date) => vec![dt],
             _ => vec![],
         };
     };
@@ -157,15 +157,15 @@ fn ocurrencias(
     // El borde va en instantes y no en fechas: `after`/`before` comparan
     // momentos, así que el día `hasta` se incluye entero tomando su medianoche
     // siguiente.
-    let ini = medianoche_local(desde);
-    let fin = medianoche_local(hasta + Duration::days(1));
-    let (Some(ini), Some(fin)) = (ini, fin) else {
+    let start = local_midnight(from_date);
+    let end = local_midnight(to_date + Duration::days(1));
+    let (Some(start), Some(end)) = (start, end) else {
         return vec![];
     };
 
     // `rrule` itera en su propio `Tz`; `LOCAL` es su envoltorio de `chrono::Local`.
-    set.after(ini.with_timezone(&icalendar::Tz::LOCAL))
-        .before(fin.with_timezone(&icalendar::Tz::LOCAL))
+    set.after(start.with_timezone(&icalendar::Tz::LOCAL))
+        .before(end.with_timezone(&icalendar::Tz::LOCAL))
         .all(MAX_OCURRENCIAS)
         .dates
         .into_iter()
@@ -183,34 +183,34 @@ fn ocurrencias(
 /// Un calendario compartido **ocultando los detalles** no trae ninguna de las
 /// dos, así que esto queda vacío. No es un error: la información no está en el
 /// feed.
-fn participantes_de(ev: &icalendar::CalendarEvent<'_>) -> Vec<Participante> {
-    let mut out: Vec<Participante> = Vec::new();
+fn attendees_of(ev: &icalendar::CalendarEvent<'_>) -> Vec<Attendee> {
+    let mut out: Vec<Attendee> = Vec::new();
 
-    if let Some(org) = ev.property_value("ORGANIZER") {
-        let email = correo(org);
-        out.push(Participante {
-            nombre: ev
+    if let Some(organizer) = ev.property_value("ORGANIZER") {
+        let email = email(organizer);
+        out.push(Attendee {
+            name: ev
                 .properties()
                 .get("ORGANIZER")
                 .and_then(|p| p.params().get("CN"))
-                .map(|v| limpiar_cn(v.value())),
+                .map(|v| clean_cn(v.value())),
             email: email.clone(),
-            estado: None,
-            organizador: true,
+            status: None,
+            is_organizer: true,
         });
     }
 
     for a in ev.get_attendees() {
-        let email = correo(&a.cal_address);
+        let email = email(&a.cal_address);
         // Si el organizador también está invitado, no se lista dos veces.
         if email.is_some() && out.iter().any(|p| p.email == email) {
             continue;
         }
-        out.push(Participante {
-            nombre: a.cn.as_deref().map(limpiar_cn),
+        out.push(Attendee {
+            name: a.cn.as_deref().map(clean_cn),
             email,
-            estado: a.part_stat.map(|s| format!("{s:?}").to_uppercase()),
-            organizador: false,
+            status: a.part_stat.map(|s| format!("{s:?}").to_uppercase()),
+            is_organizer: false,
         });
     }
 
@@ -218,19 +218,19 @@ fn participantes_de(ev: &icalendar::CalendarEvent<'_>) -> Vec<Participante> {
 }
 
 /// `mailto:x@y.com` → `x@y.com`. Devuelve `None` si no parece un correo.
-fn correo(cal_address: &str) -> Option<String> {
+fn email(cal_address: &str) -> Option<String> {
     let v = cal_address.trim();
-    let sin_esquema = v.strip_prefix("mailto:").or_else(|| v.strip_prefix("MAILTO:")).unwrap_or(v);
-    let limpio = sin_esquema.trim();
-    if limpio.contains('@') {
-        Some(limpio.to_string())
+    let schemeless = v.strip_prefix("mailto:").or_else(|| v.strip_prefix("MAILTO:")).unwrap_or(v);
+    let clean = schemeless.trim();
+    if clean.contains('@') {
+        Some(clean.to_string())
     } else {
         None
     }
 }
 
 /// Saca las comillas con que algunos servidores envuelven el `CN`.
-fn limpiar_cn(cn: &str) -> String {
+fn clean_cn(cn: &str) -> String {
     cn.trim().trim_matches('"').trim().to_string()
 }
 
@@ -261,46 +261,46 @@ const HOSTS_DE_LLAMADA: &[&str] = &[
 /// 2. `CONFERENCE` — el estándar (RFC 7986); lo emiten algunos servidores.
 /// 3. `LOCATION`, si es una URL — Zoom y Teams suelen dejarlo ahí.
 /// 4. La primera URL de la `DESCRIPTION` cuyo host esté en `HOSTS_DE_LLAMADA`.
-fn link_de(ev: &icalendar::CalendarEvent<'_>) -> Option<String> {
+fn link_of(ev: &icalendar::CalendarEvent<'_>) -> Option<String> {
     for prop in ["X-GOOGLE-CONFERENCE", "CONFERENCE"] {
         if let Some(v) = ev.property_value(prop).map(str::trim) {
-            if es_url(v) {
+            if is_url(v) {
                 return Some(v.to_string());
             }
         }
     }
     if let Some(loc) = ev.property_value("LOCATION").map(str::trim) {
-        if es_url(loc) {
+        if is_url(loc) {
             return Some(loc.to_string());
         }
     }
-    ev.get_description().and_then(url_de_llamada)
+    ev.get_description().and_then(call_url)
 }
 
-fn es_url(v: &str) -> bool {
+fn is_url(v: &str) -> bool {
     v.starts_with("http://") || v.starts_with("https://")
 }
 
 /// Primera URL del texto que apunte a un servicio de videollamada conocido.
-fn url_de_llamada(texto: &str) -> Option<String> {
-    texto
+fn call_url(text: &str) -> Option<String> {
+    text
         .split(|c: char| c.is_whitespace() || c == '<' || c == '>' || c == '"')
-        .map(recortar_puntuacion)
-        .find(|t| es_url(t) && HOSTS_DE_LLAMADA.iter().any(|h| t.contains(h)))
+        .map(trim_punctuation)
+        .find(|t| is_url(t) && HOSTS_DE_LLAMADA.iter().any(|h| t.contains(h)))
         .map(str::to_string)
 }
 
 /// Saca la puntuación que queda pegada cuando el link va dentro de una frase
 /// ("...entra a https://meet.google.com/abc-defg-hij.").
-fn recortar_puntuacion(t: &str) -> &str {
+fn trim_punctuation(t: &str) -> &str {
     t.trim_end_matches(|c| matches!(c, '.' | ',' | ')' | ';' | ':' | ']' | '\''))
 }
 
 /// Cuánto dura el evento, mirando `DTEND` (o `DURATION` si es lo que trae).
-fn duracion_de(ev: &icalendar::CalendarEvent<'_>) -> Option<Duration> {
-    let inicio = ev.get_start().and_then(a_local)?;
-    if let Some(fin) = ev.get_end().and_then(a_local) {
-        let d = fin - inicio;
+fn duration_of(ev: &icalendar::CalendarEvent<'_>) -> Option<Duration> {
+    let start = ev.get_start().and_then(to_local)?;
+    if let Some(end) = ev.get_end().and_then(to_local) {
+        let d = end - start;
         return if d > Duration::zero() { Some(d) } else { None };
     }
     None
@@ -313,47 +313,47 @@ fn duracion_de(ev: &icalendar::CalendarEvent<'_>) -> Option<Duration> {
 /// y cortar el string por los primeros 10 caracteres lo mandaría al 10 pero con
 /// hora equivocada — o al día siguiente para un evento de la tarde. Este
 /// proyecto ya pagó dos veces por esa confusión.
-fn a_local(d: DatePerhapsTime) -> Option<DateTime<Local>> {
+fn to_local(d: DatePerhapsTime) -> Option<DateTime<Local>> {
     match d {
         DatePerhapsTime::DateTime(dt) => match dt {
             icalendar::CalendarDateTime::Utc(utc) => Some(utc.with_timezone(&Local)),
-            icalendar::CalendarDateTime::Floating(naive) => local_desde_naive(naive),
+            icalendar::CalendarDateTime::Floating(naive) => local_from_naive(naive),
             icalendar::CalendarDateTime::WithTimezone { date_time, tzid } => {
                 let tz: chrono_tz::Tz = tzid.parse().ok()?;
                 // `.single()` falla en el salto de horario de verano; ahí se
                 // toma la primera lectura válida en vez de descartar el evento.
-                let zonificado = tz
+                let zoned = tz
                     .from_local_datetime(&date_time)
                     .single()
                     .or_else(|| tz.from_local_datetime(&date_time).earliest())?;
-                Some(zonificado.with_timezone(&Local))
+                Some(zoned.with_timezone(&Local))
             }
         },
         // Día completo: se ancla a la medianoche local para poder ubicarlo en un
-        // día del tablero. La hora no se usa (ver `dia_completo`).
-        DatePerhapsTime::Date(fecha) => medianoche_local(fecha),
+        // día del tablero. La hora no se usa (ver `all_day`).
+        DatePerhapsTime::Date(date) => local_midnight(date),
     }
 }
 
-fn local_desde_naive(naive: NaiveDateTime) -> Option<DateTime<Local>> {
+fn local_from_naive(naive: NaiveDateTime) -> Option<DateTime<Local>> {
     Local
         .from_local_datetime(&naive)
         .single()
         .or_else(|| Local.from_local_datetime(&naive).earliest())
 }
 
-fn medianoche_local(fecha: NaiveDate) -> Option<DateTime<Local>> {
-    local_desde_naive(fecha.and_hms_opt(0, 0, 0)?)
+fn local_midnight(date: NaiveDate) -> Option<DateTime<Local>> {
+    local_from_naive(date.and_hms_opt(0, 0, 0)?)
 }
 
-fn en_ventana(dt: DateTime<Local>, desde: NaiveDate, hasta: NaiveDate) -> bool {
+fn in_window(dt: DateTime<Local>, from_date: NaiveDate, to_date: NaiveDate) -> bool {
     let d = dt.date_naive();
-    d >= desde && d <= hasta
+    d >= from_date && d <= to_date
 }
 
 /// Sello del instante para la clave de una instancia: `20260810T093000`.
 /// En hora local, que es la misma referencia que usa `fecha`.
-fn sello(dt: DateTime<Local>) -> String {
+fn stamp(dt: DateTime<Local>) -> String {
     dt.format("%Y%m%dT%H%M%S").to_string()
 }
 
@@ -363,15 +363,15 @@ fn sello(dt: DateTime<Local>) -> String {
 /// prueban los tres formatos de ICS. El `DTSTART` se pasa solo para heredar su
 /// zona cuando el `RECURRENCE-ID` viene sin `Z`: en la práctica los dos usan la
 /// misma, y sin eso una instancia editada no calzaría con la generada.
-fn instante_de_valor(valor: &str, _dtstart: Option<&str>) -> Option<DateTime<Local>> {
-    if let Ok(utc) = DateTime::parse_from_str(valor, "%Y%m%dT%H%M%SZ") {
+fn instant_of_value(value: &str, _dtstart: Option<&str>) -> Option<DateTime<Local>> {
+    if let Ok(utc) = DateTime::parse_from_str(value, "%Y%m%dT%H%M%SZ") {
         return Some(utc.with_timezone(&Local));
     }
-    if let Ok(naive) = NaiveDateTime::parse_from_str(valor, "%Y%m%dT%H%M%S") {
-        return local_desde_naive(naive);
+    if let Ok(naive) = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S") {
+        return local_from_naive(naive);
     }
-    if let Ok(fecha) = NaiveDate::parse_from_str(valor, "%Y%m%d") {
-        return medianoche_local(fecha);
+    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y%m%d") {
+        return local_midnight(date);
     }
     None
 }
@@ -389,17 +389,17 @@ pub const DIAS_ATRAS: i64 = 0;
 pub const DIAS_ADELANTE: i64 = 21;
 
 /// La ventana de importación alrededor de una fecha local.
-pub fn ventana(hoy: NaiveDate) -> (NaiveDate, NaiveDate) {
+pub fn window(today: NaiveDate) -> (NaiveDate, NaiveDate) {
     (
-        hoy - Duration::days(DIAS_ATRAS),
-        hoy + Duration::days(DIAS_ADELANTE),
+        today - Duration::days(DIAS_ATRAS),
+        today + Duration::days(DIAS_ADELANTE),
     )
 }
 
 /// Hoy en hora local. Vive acá para que el resto del módulo no necesite `Local`.
-pub fn hoy_local() -> NaiveDate {
-    let ahora = Local::now();
-    NaiveDate::from_ymd_opt(ahora.year(), ahora.month(), ahora.day()).expect("fecha de hoy válida")
+pub fn today_local() -> NaiveDate {
+    let now = Local::now();
+    NaiveDate::from_ymd_opt(now.year(), now.month(), now.day()).expect("fecha de hoy válida")
 }
 
 #[cfg(test)]
@@ -407,10 +407,10 @@ mod tests {
     use super::*;
 
     /// Envuelve VEVENTs en un VCALENDAR mínimo.
-    fn cal(cuerpo: &str) -> String {
+    fn cal(body: &str) -> String {
         format!(
             "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//test//EN\r\n{}\r\nEND:VCALENDAR\r\n",
-            cuerpo.replace('\n', "\r\n")
+            body.replace('\n', "\r\n")
         )
     }
 
@@ -419,8 +419,8 @@ mod tests {
     }
 
     /// Ventana amplia, para los tests que no prueban el recorte.
-    fn todo(ics: &str) -> Vec<EventoIcs> {
-        parse_eventos(ics, d("2026-01-01"), d("2026-12-31")).unwrap()
+    fn todo(ics: &str) -> Vec<IcsEvent> {
+        parse_events(ics, d("2026-01-01"), d("2026-12-31")).unwrap()
     }
 
     #[test]
@@ -434,15 +434,15 @@ mod tests {
         let evs = todo(&ics);
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].uid, "uno@test");
-        assert_eq!(evs[0].titulo, "Daily");
+        assert_eq!(evs[0].title, "Daily");
         // La fecha depende del TZ de la máquina; lo invariante es que coincida
         // con la conversión local del instante, no con el día UTC.
-        let esperado = DateTime::parse_from_rfc3339("2026-08-10T23:00:00Z")
+        let expected = DateTime::parse_from_rfc3339("2026-08-10T23:00:00Z")
             .unwrap()
             .with_timezone(&Local);
-        assert_eq!(evs[0].fecha, esperado.format("%Y-%m-%d").to_string());
-        assert_eq!(evs[0].hora, Some(esperado.format("%H:%M").to_string()));
-        assert_eq!(evs[0].minutos, Some(30));
+        assert_eq!(evs[0].date, expected.format("%Y-%m-%d").to_string());
+        assert_eq!(evs[0].hour, Some(expected.format("%H:%M").to_string()));
+        assert_eq!(evs[0].minutes, Some(30));
     }
 
     #[test]
@@ -454,13 +454,13 @@ mod tests {
         );
         let evs = todo(&ics);
         assert_eq!(evs.len(), 1);
-        let esperado = chrono_tz::America::Santiago
+        let expected = chrono_tz::America::Santiago
             .with_ymd_and_hms(2026, 8, 10, 9, 0, 0)
             .unwrap()
             .with_timezone(&Local);
-        assert_eq!(evs[0].fecha, esperado.format("%Y-%m-%d").to_string());
-        assert_eq!(evs[0].hora, Some(esperado.format("%H:%M").to_string()));
-        assert_eq!(evs[0].minutos, Some(60));
+        assert_eq!(evs[0].date, expected.format("%Y-%m-%d").to_string());
+        assert_eq!(evs[0].hour, Some(expected.format("%H:%M").to_string()));
+        assert_eq!(evs[0].minutes, Some(60));
     }
 
     #[test]
@@ -472,11 +472,11 @@ mod tests {
         );
         let evs = todo(&ics);
         assert_eq!(evs.len(), 1);
-        assert_eq!(evs[0].fecha, "2026-08-10");
-        assert_eq!(evs[0].hora, None);
-        assert_eq!(evs[0].inicio, None);
-        assert_eq!(evs[0].fin, None);
-        assert_eq!(evs[0].minutos, None);
+        assert_eq!(evs[0].date, "2026-08-10");
+        assert_eq!(evs[0].hour, None);
+        assert_eq!(evs[0].start, None);
+        assert_eq!(evs[0].end, None);
+        assert_eq!(evs[0].minutes, None);
     }
 
     #[test]
@@ -498,10 +498,10 @@ mod tests {
         );
         let evs = todo(&ics);
         assert_eq!(evs.len(), 4);
-        let claves: std::collections::HashSet<_> = evs.iter().map(|e| &e.uid).collect();
-        assert_eq!(claves.len(), 4, "cada instancia necesita su propia clave");
+        let keys: std::collections::HashSet<_> = evs.iter().map(|e| &e.uid).collect();
+        assert_eq!(keys.len(), 4, "cada instancia necesita su propia clave");
         assert!(evs.iter().all(|e| e.uid.starts_with("serie@test#")));
-        assert!(evs.iter().all(|e| e.minutos == Some(15)));
+        assert!(evs.iter().all(|e| e.minutes == Some(15)));
     }
 
     #[test]
@@ -511,10 +511,10 @@ mod tests {
             "BEGIN:VEVENT\nUID:infinita@test\nSUMMARY:Semanal\nDTSTART;TZID=America/Santiago:20260810T090000\nDTEND;TZID=America/Santiago:20260810T093000\nRRULE:FREQ=WEEKLY\nEND:VEVENT",
         );
         // Tres semanas exactas desde el primer lunes.
-        let evs = parse_eventos(&ics, d("2026-08-10"), d("2026-08-30")).unwrap();
+        let evs = parse_events(&ics, d("2026-08-10"), d("2026-08-30")).unwrap();
         assert_eq!(evs.len(), 3);
-        assert!(evs.iter().all(|e| e.fecha.as_str() >= "2026-08-10"));
-        assert!(evs.iter().all(|e| e.fecha.as_str() <= "2026-08-30"));
+        assert!(evs.iter().all(|e| e.date.as_str() >= "2026-08-10"));
+        assert!(evs.iter().all(|e| e.date.as_str() <= "2026-08-30"));
     }
 
     #[test]
@@ -525,7 +525,7 @@ mod tests {
         let evs = todo(&ics);
         assert_eq!(evs.len(), 2);
         assert!(
-            !evs.iter().any(|e| e.fecha == "2026-08-17"),
+            !evs.iter().any(|e| e.date == "2026-08-17"),
             "la fecha excluida no debería importarse"
         );
     }
@@ -539,20 +539,20 @@ mod tests {
             "BEGIN:VEVENT\nUID:serie@test\nSUMMARY:Standup\nDTSTART;TZID=America/Santiago:20260810T090000\nDTEND;TZID=America/Santiago:20260810T091500\nRRULE:FREQ=WEEKLY;COUNT=2\nEND:VEVENT\nBEGIN:VEVENT\nUID:serie@test\nRECURRENCE-ID;TZID=America/Santiago:20260817T090000\nSUMMARY:Standup (movido)\nDTSTART;TZID=America/Santiago:20260817T110000\nDTEND;TZID=America/Santiago:20260817T111500\nEND:VEVENT",
         );
         let evs = todo(&ics);
-        let generada = sello(
+        let generated = stamp(
             chrono_tz::America::Santiago
                 .with_ymd_and_hms(2026, 8, 17, 9, 0, 0)
                 .unwrap()
                 .with_timezone(&Local),
         );
-        let clave = format!("serie@test#{generada}");
-        let mismas: Vec<_> = evs.iter().filter(|e| e.uid == clave).collect();
+        let key = format!("serie@test#{generated}");
+        let same: Vec<_> = evs.iter().filter(|e| e.uid == key).collect();
         assert_eq!(
-            mismas.len(),
+            same.len(),
             2,
             "la instancia editada y la generada comparten clave, así el upsert deja una"
         );
-        assert!(mismas.iter().any(|e| e.titulo == "Standup (movido)"));
+        assert!(same.iter().any(|e| e.title == "Standup (movido)"));
     }
 
     #[test]
@@ -638,17 +638,17 @@ mod tests {
         let ics = cal(
             "BEGIN:VEVENT\nUID:gente@test\nSUMMARY:Revisión\nDTSTART:20260810T120000Z\nORGANIZER;CN=Ana Pérez:mailto:ana@acme.cl\nATTENDEE;CN=Beto Soto;PARTSTAT=ACCEPTED:mailto:beto@acme.cl\nATTENDEE;CN=Carla Díaz;PARTSTAT=DECLINED:mailto:carla@acme.cl\nEND:VEVENT",
         );
-        let ps = &todo(&ics)[0].participantes;
+        let ps = &todo(&ics)[0].attendees;
         assert_eq!(ps.len(), 3);
         // El organizador va primero: es lo que uno busca al abrir una reunión
         // que no reconoce.
-        assert!(ps[0].organizador);
-        assert_eq!(ps[0].nombre.as_deref(), Some("Ana Pérez"));
+        assert!(ps[0].is_organizer);
+        assert_eq!(ps[0].name.as_deref(), Some("Ana Pérez"));
         assert_eq!(ps[0].email.as_deref(), Some("ana@acme.cl"));
         assert_eq!(ps[1].email.as_deref(), Some("beto@acme.cl"));
-        assert_eq!(ps[1].estado.as_deref(), Some("ACCEPTED"));
-        assert_eq!(ps[2].estado.as_deref(), Some("DECLINED"));
-        assert!(!ps[1].organizador);
+        assert_eq!(ps[1].status.as_deref(), Some("ACCEPTED"));
+        assert_eq!(ps[2].status.as_deref(), Some("DECLINED"));
+        assert!(!ps[1].is_organizer);
     }
 
     #[test]
@@ -658,9 +658,9 @@ mod tests {
         let ics = cal(
             "BEGIN:VEVENT\nUID:dup@test\nSUMMARY:Sync\nDTSTART:20260810T120000Z\nORGANIZER;CN=Ana:mailto:ana@acme.cl\nATTENDEE;CN=Ana;PARTSTAT=ACCEPTED:mailto:ana@acme.cl\nEND:VEVENT",
         );
-        let ps = &todo(&ics)[0].participantes;
+        let ps = &todo(&ics)[0].attendees;
         assert_eq!(ps.len(), 1);
-        assert!(ps[0].organizador);
+        assert!(ps[0].is_organizer);
     }
 
     #[test]
@@ -669,7 +669,7 @@ mod tests {
             "BEGIN:VEVENT\nUID:desc2@test\nSUMMARY:Kickoff\nDTSTART:20260810T120000Z\nDESCRIPTION:Revisar el alcance del proyecto\nEND:VEVENT",
         );
         assert_eq!(
-            todo(&ics)[0].descripcion.as_deref(),
+            todo(&ics)[0].description.as_deref(),
             Some("Revisar el alcance del proyecto")
         );
     }
@@ -684,12 +684,12 @@ mod tests {
             "BEGIN:VEVENT\nUID:oculto@test\nSUMMARY:busy\nDTSTART:20260810T120000Z\nDTEND:20260810T130000Z\nEND:VEVENT",
         );
         let ev = &todo(&ics)[0];
-        assert_eq!(ev.titulo, "busy");
-        assert_eq!(ev.descripcion, None);
-        assert!(ev.participantes.is_empty());
+        assert_eq!(ev.title, "busy");
+        assert_eq!(ev.description, None);
+        assert!(ev.attendees.is_empty());
         assert_eq!(ev.link, None);
         // Lo único que sí llega es cuándo y cuánto dura.
-        assert_eq!(ev.minutos, Some(60));
+        assert_eq!(ev.minutes, Some(60));
     }
 
     #[test]
@@ -705,7 +705,7 @@ mod tests {
         let ics = cal("BEGIN:VEVENT\nUID:vacio@test\nDTSTART:20260810T120000Z\nEND:VEVENT");
         let evs = todo(&ics);
         assert_eq!(evs.len(), 1);
-        assert_eq!(evs[0].titulo, "(sin título)");
+        assert_eq!(evs[0].title, "(sin título)");
     }
 
     #[test]
@@ -713,21 +713,21 @@ mod tests {
         let ics = cal("BEGIN:VEVENT\nUID:sinfin@test\nSUMMARY:Sin fin\nDTSTART:20260810T120000Z\nEND:VEVENT");
         let evs = todo(&ics);
         assert_eq!(evs.len(), 1);
-        assert_eq!(evs[0].minutos, None);
-        assert_eq!(evs[0].fin, None);
+        assert_eq!(evs[0].minutes, None);
+        assert_eq!(evs[0].end, None);
     }
 
     #[test]
     fn la_ventana_arranca_hoy_y_llega_a_tres_semanas() {
         // Nada del pasado: una reunión de la semana pasada que nunca se trackeó
         // no aporta nada y solo ensucia el tablero.
-        let (desde, hasta) = ventana(d("2026-08-13"));
-        assert_eq!(desde, d("2026-08-13"));
-        assert_eq!(hasta, d("2026-09-03"));
+        let (from_date, to_date) = window(d("2026-08-13"));
+        assert_eq!(from_date, d("2026-08-13"));
+        assert_eq!(to_date, d("2026-09-03"));
     }
 
     #[test]
     fn un_ics_que_no_se_entiende_devuelve_error_y_no_panic() {
-        assert!(parse_eventos("esto no es un calendario", d("2026-01-01"), d("2026-12-31")).is_err());
+        assert!(parse_events("esto no es un calendario", d("2026-01-01"), d("2026-12-31")).is_err());
     }
 }

@@ -12,7 +12,7 @@ import { parseISODate } from "../../lib/date";
  *    el domingo—. Mover el ancla ahí daría las mismas siete fechas, pero con un
  *    objeto `Date` nuevo: `weekDates` y la recarga del board correrían de gusto.
  */
-export function anclaTrasCambioDeDia(
+export function anchorAfterDayChange(
   fechasVisibles: string[],
   hoyPrevio: string,
   hoyNuevo: string,

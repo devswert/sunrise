@@ -4,10 +4,10 @@ import { useCalendarSync } from "./calendarSync";
 
 const feeds: CalendarFeed[] = [];
 /** Resuelve cuando el test lo diga, para poder mirar el estado "en curso". */
-let liberar: (() => void) | null = null;
+let release: (() => void) | null = null;
 const syncCalendarFeeds = vi.fn(
   () => new Promise<number>((res) => {
-    liberar = () => res(1);
+    release = () => res(1);
   }),
 );
 
@@ -36,7 +36,7 @@ function feed(id: number, lastSyncedAt: string | null): CalendarFeed {
 describe("useCalendarSync", () => {
   beforeEach(() => {
     feeds.length = 0;
-    liberar = null;
+    release = null;
     syncCalendarFeeds.mockClear();
     useCalendarSync.setState({ sincronizando: false, ultimaSync: null, feeds: 0 });
   });
@@ -46,7 +46,7 @@ describe("useCalendarSync", () => {
     // mostrar el más viejo diría que está más desactualizado de lo que está.
     feeds.push(feed(1, "2026-08-10T10:00:00Z"), feed(2, "2026-08-13T09:00:00Z"));
 
-    await useCalendarSync.getState().refrescar();
+    await useCalendarSync.getState().refresh();
 
     expect(useCalendarSync.getState().ultimaSync).toBe("2026-08-13T09:00:00Z");
     expect(useCalendarSync.getState().feeds).toBe(2);
@@ -54,7 +54,7 @@ describe("useCalendarSync", () => {
 
   it("un feed que nunca se sincronizó no cuenta como antigüedad", async () => {
     feeds.push(feed(1, null));
-    await useCalendarSync.getState().refrescar();
+    await useCalendarSync.getState().refresh();
     expect(useCalendarSync.getState().ultimaSync).toBeNull();
   });
 
@@ -62,14 +62,14 @@ describe("useCalendarSync", () => {
     // Es la garantía que sostiene los dos botones: si el de Configs está
     // corriendo, el de la semana no puede empezar otra pasada encima.
     feeds.push(feed(1, null));
-    const primera = useCalendarSync.getState().sincronizar();
+    const primera = useCalendarSync.getState().sync();
 
     expect(useCalendarSync.getState().sincronizando).toBe(true);
-    await useCalendarSync.getState().sincronizar(); // debería ser un no-op
+    await useCalendarSync.getState().sync(); // debería ser un no-op
 
     expect(syncCalendarFeeds).toHaveBeenCalledTimes(1);
 
-    liberar?.();
+    release?.();
     await primera;
     expect(useCalendarSync.getState().sincronizando).toBe(false);
   });
@@ -81,7 +81,7 @@ describe("useCalendarSync", () => {
     syncCalendarFeeds.mockImplementationOnce(() => Promise.reject(new Error("sin red")));
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await useCalendarSync.getState().sincronizar();
+    await useCalendarSync.getState().sync();
 
     expect(useCalendarSync.getState().sincronizando).toBe(false);
   });

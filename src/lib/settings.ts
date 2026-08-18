@@ -77,7 +77,7 @@ export function capacityWarnRatio(values: SettingsMap): number {
 }
 
 /** `"HH:mm"`, o el default. Cubre clave ausente, vacía o con basura. */
-function hora(values: SettingsMap, key: string, fallback: string): string {
+function hour(values: SettingsMap, key: string, fallback: string): string {
   const raw = values[key]?.trim();
   if (!raw) return fallback;
   const m = /^(\d{1,2}):(\d{2})$/.exec(raw);
@@ -93,8 +93,8 @@ function hora(values: SettingsMap, key: string, fallback: string): string {
  * nada — una reunión a las 7:30 estira la grilla (ver `railLayout.ts`).
  */
 export function workHours(values: SettingsMap): { start: string; end: string } {
-  const start = hora(values, SettingKey.WORK_START, SETTING_DEFAULTS.workStart);
-  const end = hora(values, SettingKey.WORK_END, SETTING_DEFAULTS.workEnd);
+  const start = hour(values, SettingKey.WORK_START, SETTING_DEFAULTS.workStart);
+  const end = hour(values, SettingKey.WORK_END, SETTING_DEFAULTS.workEnd);
   if (end <= start) return { start: SETTING_DEFAULTS.workStart, end: SETTING_DEFAULTS.workEnd };
   return { start, end };
 }
@@ -107,7 +107,7 @@ export function workHours(values: SettingsMap): { start: string; end: string } {
  * fecha, no un historial: la pregunta es "¿ya planifiqué hoy?", y llevar el
  * registro de qué días planificaste es materia de la review, no de un ajuste.
  */
-export function yaPlanificado(values: SettingsMap, date: string): boolean {
+export function alreadyPlanned(values: SettingsMap, date: string): boolean {
   return values[SettingKey.PLANNED_ON]?.trim() === date;
 }
 
@@ -116,11 +116,11 @@ export interface AjustesDeRespaldo {
   /** Carpeta destino, o `""` si no hay: **carpeta vacía = respaldo apagado**. */
   dir: string;
   /** `HH:mm` local a la que corre el respaldo automático. */
-  hora: string;
+  hour: string;
   /** Cuántos respaldos se conservan. Nunca menor que 1. */
-  conservar: number;
+  keep: number;
   /** Si hay carpeta configurada, y por lo tanto respaldo automático. */
-  activo: boolean;
+  active: boolean;
 }
 
 /**
@@ -133,14 +133,14 @@ export interface AjustesDeRespaldo {
  */
 export function backupSettings(values: SettingsMap): AjustesDeRespaldo {
   const dir = values[SettingKey.BACKUP_DIR]?.trim() ?? "";
-  const conservar = Math.floor(
+  const keep = Math.floor(
     num(values, SettingKey.BACKUP_KEEP, SETTING_DEFAULTS.backupKeep),
   );
   return {
     dir,
-    hora: hora(values, SettingKey.BACKUP_TIME, SETTING_DEFAULTS.backupTime),
-    conservar: conservar >= 1 ? conservar : SETTING_DEFAULTS.backupKeep,
-    activo: dir !== "",
+    hour: hour(values, SettingKey.BACKUP_TIME, SETTING_DEFAULTS.backupTime),
+    keep: keep >= 1 ? keep : SETTING_DEFAULTS.backupKeep,
+    active: dir !== "",
   };
 }
 

@@ -15,8 +15,8 @@ const TIMEOUT: Duration = Duration::from_secs(20);
 /// El error es un `String` legible y **nunca incluye la URL**: la de un
 /// calendario privado es una credencial (el "secret address" de Google), y un
 /// mensaje de error termina en logs y en pantalla.
-pub async fn descargar(url: &str) -> Result<String, String> {
-    let cliente = reqwest::Client::builder()
+pub async fn download(url: &str) -> Result<String, String> {
+    let client = reqwest::Client::builder()
         .timeout(TIMEOUT)
         // Algunos proveedores responden distinto (o con 403) a un cliente sin
         // identificar.
@@ -31,11 +31,11 @@ pub async fn descargar(url: &str) -> Result<String, String> {
         .build()
         .map_err(|e| format!("no pude preparar el cliente HTTP: {e}"))?;
 
-    let resp = cliente
+    let resp = client
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("no pude conectar: {}", causa(&e)))?;
+        .map_err(|e| format!("no pude conectar: {}", cause(&e)))?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -53,7 +53,7 @@ pub async fn descargar(url: &str) -> Result<String, String> {
 }
 
 /// Mensaje de `reqwest` sin la URL, que `Display` incluye por defecto.
-fn causa(e: &reqwest::Error) -> String {
+fn cause(e: &reqwest::Error) -> String {
     if e.is_timeout() {
         return format!("se pasó de {}s", TIMEOUT.as_secs());
     }

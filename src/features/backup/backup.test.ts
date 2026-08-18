@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SettingKey, backupSettings } from "../../lib/settings";
-import { fechaLegible, formatoBytes, hhmm, momentoLegible, tocaRespaldar } from "./respaldo";
+import { readableDate, formatBytes, hhmm, readableMoment, shouldBackup } from "./backup";
 
 const HOY = "2026-08-17";
 
@@ -13,21 +13,21 @@ const encendido = (extra: Record<string, string> = {}) => ({
 
 describe("tocaRespaldar", () => {
   it("no respalda si no hay carpeta: es el estado de fábrica, no un error", () => {
-    expect(tocaRespaldar({ nowHhmm: "23:00", values: {}, hoy: HOY, esDev: false })).toBe(false);
+    expect(shouldBackup({ nowHhmm: "23:00", values: {}, today: HOY, isDev: false })).toBe(false);
     // Una carpeta con solo espacios es lo mismo que ninguna.
     expect(
-      tocaRespaldar({ nowHhmm: "23:00", values: { [SettingKey.BACKUP_DIR]: "   " }, hoy: HOY, esDev: false }),
+      shouldBackup({ nowHhmm: "23:00", values: { [SettingKey.BACKUP_DIR]: "   " }, today: HOY, isDev: false }),
     ).toBe(false);
   });
 
   it("espera la hora configurada", () => {
-    expect(tocaRespaldar({ nowHhmm: "19:59", values: encendido(), hoy: HOY, esDev: false })).toBe(false);
-    expect(tocaRespaldar({ nowHhmm: "20:00", values: encendido(), hoy: HOY, esDev: false })).toBe(true);
+    expect(shouldBackup({ nowHhmm: "19:59", values: encendido(), today: HOY, isDev: false })).toBe(false);
+    expect(shouldBackup({ nowHhmm: "20:00", values: encendido(), today: HOY, isDev: false })).toBe(true);
   });
 
   it("una vez al día: con la fecha de hoy ya marcada, no vuelve", () => {
     const values = encendido({ [SettingKey.BACKUP_RAN_ON]: HOY });
-    expect(tocaRespaldar({ nowHhmm: "21:00", values, hoy: HOY, esDev: false })).toBe(false);
+    expect(shouldBackup({ nowHhmm: "21:00", values, today: HOY, isDev: false })).toBe(false);
   });
 
   /**
@@ -38,12 +38,12 @@ describe("tocaRespaldar", () => {
    * borra los respaldos de verdad** para conservar los de prueba.
    */
   it("en dev no respalda, aunque esté todo configurado y pasada la hora", () => {
-    expect(tocaRespaldar({ nowHhmm: "23:00", values: encendido(), hoy: HOY, esDev: true })).toBe(
+    expect(shouldBackup({ nowHhmm: "23:00", values: encendido(), today: HOY, isDev: true })).toBe(
       false,
     );
     // Y el mismo caso en producción sí, para que quede claro que es el perfil y no
     // otra cosa lo que lo apagó.
-    expect(tocaRespaldar({ nowHhmm: "23:00", values: encendido(), hoy: HOY, esDev: false })).toBe(
+    expect(shouldBackup({ nowHhmm: "23:00", values: encendido(), today: HOY, isDev: false })).toBe(
       true,
     );
   });
@@ -54,43 +54,43 @@ describe("tocaRespaldar", () => {
    */
   it("con la marca de ayer sí respalda hoy", () => {
     const values = encendido({ [SettingKey.BACKUP_RAN_ON]: "2026-08-16" });
-    expect(tocaRespaldar({ nowHhmm: "20:00", values, hoy: HOY, esDev: false })).toBe(true);
+    expect(shouldBackup({ nowHhmm: "20:00", values, today: HOY, isDev: false })).toBe(true);
   });
 
   /** Se pone al día: la app cerrada a las 20:00 y abierta a las 23:00 respalda. */
   it("respalda al abrir la app si la hora ya pasó", () => {
-    expect(tocaRespaldar({ nowHhmm: "23:47", values: encendido(), hoy: HOY, esDev: false })).toBe(true);
+    expect(shouldBackup({ nowHhmm: "23:47", values: encendido(), today: HOY, isDev: false })).toBe(true);
   });
 
   it("una hora con basura cae al default de las 20:00, no se apaga", () => {
     const values = encendido({ [SettingKey.BACKUP_TIME]: "las ocho" });
-    expect(tocaRespaldar({ nowHhmm: "19:00", values, hoy: HOY, esDev: false })).toBe(false);
-    expect(tocaRespaldar({ nowHhmm: "20:01", values, hoy: HOY, esDev: false })).toBe(true);
+    expect(shouldBackup({ nowHhmm: "19:00", values, today: HOY, isDev: false })).toBe(false);
+    expect(shouldBackup({ nowHhmm: "20:01", values, today: HOY, isDev: false })).toBe(true);
   });
 });
 
 describe("backupSettings", () => {
   it("un `conservar` de 0 o negativo no puede significar 'borra todo'", () => {
     for (const raw of ["0", "-3", "no", ""]) {
-      expect(backupSettings(encendido({ [SettingKey.BACKUP_KEEP]: raw })).conservar).toBe(2);
+      expect(backupSettings(encendido({ [SettingKey.BACKUP_KEEP]: raw })).keep).toBe(2);
     }
   });
 
   it("redondea hacia abajo un decimal", () => {
-    expect(backupSettings(encendido({ [SettingKey.BACKUP_KEEP]: "7.9" })).conservar).toBe(7);
+    expect(backupSettings(encendido({ [SettingKey.BACKUP_KEEP]: "7.9" })).keep).toBe(7);
   });
 });
 
 describe("formatoBytes", () => {
   it("cambia de unidad donde se nota la diferencia", () => {
-    expect(formatoBytes(512)).toBe("512 B");
-    expect(formatoBytes(920 * 1024)).toBe("920 KB");
-    expect(formatoBytes(1.42 * 1024 * 1024)).toBe("1.4 MB");
+    expect(formatBytes(512)).toBe("512 B");
+    expect(formatBytes(920 * 1024)).toBe("920 KB");
+    expect(formatBytes(1.42 * 1024 * 1024)).toBe("1.4 MB");
   });
 
   it("no inventa un número con basura", () => {
-    expect(formatoBytes(NaN)).toBe("—");
-    expect(formatoBytes(-1)).toBe("—");
+    expect(formatBytes(NaN)).toBe("—");
+    expect(formatBytes(-1)).toBe("—");
   });
 });
 
@@ -101,18 +101,18 @@ describe("fechaLegible", () => {
    * respaldo de las 20:03 se mostraría a las 16:03.
    */
   it("muestra la hora tal como está escrita, sin convertir zonas", () => {
-    expect(fechaLegible("2026-08-17T20:03:15")).toBe("17 ago, 20:03");
-    expect(fechaLegible("2026-01-05T08:00:00")).toBe("5 ene, 08:00");
+    expect(readableDate("2026-08-17T20:03:15")).toBe("17 ago, 20:03");
+    expect(readableDate("2026-01-05T08:00:00")).toBe("5 ene, 08:00");
   });
 
   it("una fecha que no entiende se muestra tal cual, no vacía", () => {
-    expect(fechaLegible("cualquier cosa")).toBe("cualquier cosa");
+    expect(readableDate("cualquier cosa")).toBe("cualquier cosa");
   });
 });
 
 describe("momentoLegible", () => {
   /**
-   * Al revés que `fechaLegible`: estas cadenas **declaran su zona** (el
+   * Al revés que `readableDate`: estas cadenas **declaran su zona** (el
    * `created_at` del manifest trae offset, los `started_at` traen `Z`), así que
    * convertirlas a hora local es lo correcto.
    */
@@ -120,11 +120,11 @@ describe("momentoLegible", () => {
     // Se construye desde un `Date` para no depender de la zona de quien corre
     // los tests: lo que se verifica es el formato y el round-trip.
     const d = new Date(2026, 7, 17, 20, 3, 15);
-    expect(momentoLegible(d.toISOString())).toBe("17 ago 2026, 20:03");
+    expect(readableMoment(d.toISOString())).toBe("17 ago 2026, 20:03");
   });
 
   it("una marca ilegible se muestra tal cual", () => {
-    expect(momentoLegible("nunca")).toBe("nunca");
+    expect(readableMoment("nunca")).toBe("nunca");
   });
 });
 

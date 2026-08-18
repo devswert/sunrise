@@ -11,8 +11,8 @@ use rusqlite::Connection;
 ///
 /// No lo uses directo para abrir nada: usa [`archivo`]. Está público porque es
 /// también el nombre con el que la base viaja dentro de un `.zip` de respaldo, y
-/// eso **no** depende del perfil (ver `backup::DB_EN_ZIP`).
-pub const ARCHIVO: &str = "sunrise.sqlite";
+/// eso **no** depende del perfil (ver `backup::DB_IN_ZIP`).
+pub const PROD_FILE: &str = "sunrise.sqlite";
 
 /// Nombre del archivo de la base según el perfil de compilación.
 ///
@@ -30,11 +30,11 @@ pub const ARCHIVO: &str = "sunrise.sqlite";
 /// `debug_assertions` es la condición porque es exactamente la que separa
 /// `tauri dev` de `tauri build`. Un `tauri build --debug` también cae en dev, y
 /// está bien: es un artefacto de desarrollo.
-pub fn archivo() -> &'static str {
+pub fn file_name() -> &'static str {
     if cfg!(debug_assertions) {
         "sunrise-dev.sqlite"
     } else {
-        ARCHIVO
+        PROD_FILE
     }
 }
 
@@ -42,7 +42,7 @@ pub fn archivo() -> &'static str {
 ///
 /// **La conexión se puede reemplazar en caliente**: restaurar un respaldo pisa
 /// el archivo, así que saca la conexión de acá, la cierra, copia y vuelve a
-/// abrir (ver `commands::restaurar_backup`). Es la razón por la que el `Mutex`
+/// abrir (ver `commands::restore_backup`). Es la razón por la que el `Mutex`
 /// envuelve la `Connection` y no solo la protege: quien tenga el lock es dueño
 /// de la conexión y puede cambiarla.
 pub struct Db(pub Mutex<Connection>);
@@ -83,16 +83,16 @@ mod tests {
     /// tests corren con `debug_assertions`, o sea en el lado "dev".
     #[test]
     fn dev_y_produccion_usan_archivos_distintos() {
-        assert_eq!(archivo(), "sunrise-dev.sqlite");
+        assert_eq!(file_name(), "sunrise-dev.sqlite");
         assert_ne!(
-            archivo(),
-            ARCHIVO,
+            file_name(),
+            PROD_FILE,
             "si los dos perfiles abren el mismo archivo, probar un cambio escribe \
              en la base de verdad"
         );
         // Los dos tienen que seguir siendo SQLite en la misma carpeta: la
         // restauración borra los sidecar `-wal`/`-shm` a partir de este nombre.
-        assert!(archivo().ends_with(".sqlite"));
+        assert!(file_name().ends_with(".sqlite"));
     }
 
     #[test]
@@ -136,7 +136,7 @@ mod tests {
         )
         .unwrap();
 
-        let estado = |id: i64| -> (String, Option<i64>) {
+        let status = |id: i64| -> (String, Option<i64>) {
             conn.query_row(
                 "SELECT source_state, feed_id FROM tasks WHERE id = ?1",
                 [id],
@@ -144,10 +144,10 @@ mod tests {
             )
             .unwrap()
         };
-        assert_eq!(estado(901), ("ACTIVE".into(), None), "completada: liberada");
-        assert_eq!(estado(902), ("ACTIVE".into(), None), "trabajada: liberada");
+        assert_eq!(status(901), ("ACTIVE".into(), None), "completada: liberada");
+        assert_eq!(status(902), ("ACTIVE".into(), None), "trabajada: liberada");
         // La que nunca se tocó se queda escondida: nunca fue tuya.
-        assert_eq!(estado(903).0, "ORPHANED");
+        assert_eq!(status(903).0, "ORPHANED");
     }
 
     #[test]

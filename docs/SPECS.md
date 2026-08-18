@@ -157,7 +157,7 @@ Objetivo/ritual semanal, agrupado por `iso_week` en formato `2026-W32`
 
 ### 4.2 Degradación diaria al backlog
 
-`degradar_pendientes(today)` manda al backlog lo que quedó pendiente en días
+`demote_pending(today)` manda al backlog lo que quedó pendiente en días
 **anteriores al último con actividad**, en `position = 0`. Devuelve cuántas
 movió. Lo dispara `useBoard` vía `degradarUnaVez()`, **una vez por día y por
 ventana**: es una mutación, así que no puede colgar del ciclo de recarga. La
@@ -176,7 +176,7 @@ Las dos reglas que la definen:
   del ritual (§4.14), con sus botones de traer a hoy o mandar al backlog. Es "el
   último con tareas" y no "ayer" porque un lunes ayer es domingo y está vacío: lo
   que hay que repasar es el viernes. El front usa el mismo criterio
-  (`ultimoDiaConTareas`), y **los dos tienen que coincidir**: si divergen, el
+  (`lastDayWithTasks`), y **los dos tienen que coincidir**: si divergen, el
   ritual repasaría un día del que ya se llevaron tareas.
 - **Lo anterior baja al backlog en primera posición.** Volver de vacaciones deja
   lo viejo ordenado en un solo lugar en vez de desperdigado por días muertos, y
@@ -190,7 +190,7 @@ siempre, y el único camino para rescatarla es el paso 1 del ritual.
 
 **No hace falta un evento nuevo**: bajar algo al backlog ya registra `MOVED` con
 `to_date` nulo, tanto si lo hace la degradación como si lo mandas tú. Eso es
-justamente lo que lee `rescatadas_del_backlog` para el grupo **"venían de un
+justamente lo que lee `rescued_from_backlog` para el grupo **"venían de un
 día"**, que sale arriba de la columna de backlog (§4.14) y como línea de origen
 en la vista Backlog. `CARRIED_OVER` sigue existiendo en `TaskEventType` por las
 tareas que ya lo tienen en su historial, pero **nadie lo escribe más**.
@@ -239,7 +239,7 @@ siguiente corrida.
   el número, como si se hubiera perdido el tiempo anterior. El "solo hoy" vive
   únicamente en el taxímetro, que es el contador de la sesión. Mismo criterio en
   la tarjeta de la semana y en Focus.
-- **Tiempo por día** en el detalle (`tiempoPorDia` en
+- **Tiempo por día** en el detalle (`timeByDay` en
   `src/features/tasks/timeByDay.ts`): una fila por fecha con lo trabajado. El
   dato estaba en `time_entries` desde M2 y ninguna vista lo leía, así que una
   tarea arrastrada tres días mostraba un total sin decir cómo se repartía. Es
@@ -368,7 +368,7 @@ Los ajustes viven en la tabla `settings` (TEXT/TEXT) y se leen vía
 `src/lib/settings.ts`: `useSettingsStore` los carga desde `Shell` y los relee con
 cada invalidación, así un cambio en una ventana llega a la otra.
 **Toda lectura pasa por un parser con fallback** (`dailyCapacityMinutes`,
-`capacityWarnRatio`, `workHours`, `yaPlanificado`): la clave puede faltar, venir vacía o traer basura editada a
+`capacityWarnRatio`, `workHours`, `alreadyPlanned`): la clave puede faltar, venir vacía o traer basura editada a
 mano, y un `NaN` suelto dejaría el semáforo en OK para siempre sin error visible,
 porque toda comparación con `NaN` es false.
 
@@ -452,8 +452,8 @@ la parte difícil:
 | Capa | Qué hace | Pureza |
 |---|---|---|
 | `fetch` | descarga el `.ics` con `reqwest` | lo único que toca la red |
-| `ics` | interpreta el texto a `EventoIcs` | puro: se prueba con fixtures |
-| `repo::import_eventos` | escribe las tareas | puro sobre `&Connection` |
+| `ics` | interpreta el texto a `IcsEvent` | puro: se prueba con fixtures |
+| `repo::import_events` | escribe las tareas | puro sobre `&Connection` |
 
 `commands::sync_calendar_feed` es el pegamento y **no decide nada**: baja,
 interpreta, importa y sella. Si aparece una regla ahí, está en la capa
@@ -474,11 +474,11 @@ feature:
   el `UNIQUE(feed_id, calendar_uid)` usarlo pelado colapsaría el mes en una fila.
   Una instancia editada llega como un VEVENT aparte con `RECURRENCE-ID`: su clave
   es la de la repetición que reemplaza, así el upsert deja una sola.
-- **Todo se convierte a hora local** (`ics::a_local`), y las tres formas de ICS
+- **Todo se convierte a hora local** (`ics::to_local`), y las tres formas de ICS
   —UTC con `Z`, con `TZID`, y flotante— tienen que aterrizar en la misma regla.
   Cortar el timestamp por los primeros 10 caracteres da el día UTC: un evento de
   la tarde se iría al día siguiente. Es el mismo error que ya se pagó en
-  `completeAndAdvance` y en `tiempoPorDia`.
+  `completeAndAdvance` y en `timeByDay`.
 - **Día completo = sin reloj**: sin `scheduled_time`, sin `event_start`/`_end` y
   sin `estimated_minutes`. Un feriado no son 24 horas trabajadas, y con la regla
   3 del rollup semanal lo serían.
@@ -506,7 +506,7 @@ mismo camino, porque tenían el mismo problema en silencio.
 
 **El canal por defecto del feed** (`default_category_id`) se le pone a cada
 reunión que entra, y además **a las que ya estaban importadas sin canal**
-(`aplicar_canal_por_defecto`, que corre al guardar el feed). Sin esa segunda
+(`apply_default_channel`, que corre al guardar el feed). Sin esa segunda
 parte, elegir el canal solo valía para lo que entrara después y había que
 etiquetar a mano lo ya importado, que es justo el trabajo que el default viene a
 evitar. **Solo toca las que tienen `category_id IS NULL`**: una reunión que
@@ -541,7 +541,7 @@ manda en las dos propiedades).
   que uno lo necesita antes de una reunión: hora ("4:00 PM - 4:30 PM"), link para
   entrar con el código de sala, participantes, y descripción. Las notas propias
   van después de una línea divisoria. **Focus muestra exactamente lo mismo**
-  (`EventoDelCalendario`), con las notas y el canal editables: es la pantalla en
+  (`CalendarEventCard`), con las notas y el canal editables: es la pantalla en
   la que estás cuando empieza la reunión, y tener que abrir otra para saber por
   dónde entrar no tiene sentido. Lo que Focus **no** tiene es eliminar — un botón
   de borrar al lado del play es un accidente esperando.
@@ -615,7 +615,7 @@ vuelta por `localStorage` sería el ping-pong que §5.3 vino a evitar.
 a ser tareas normales. Con cascada se irían reuniones ya completadas y con tiempo
 trackeado encima.
 
-**Lo que desaparece del feed** lo resuelve `reconciliar_feed`, que corre después
+**Lo que desaparece del feed** lo resuelve `reconcile_feed`, que corre después
 de cada import con los UIDs que este acaba de ver. La regla es **asimétrica a
 propósito, porque borrar es barato de equivocarse y caro de deshacer**. Se borra
 solo lo intacto y por venir:
@@ -682,7 +682,7 @@ con sus milestones (M3.5 y el panel de backlog).
 
 Daily planning (M3.4) lo usa con las mismas props.
 
-El cálculo está separado del render en `railLayout.ts` (`armarRail`), puro y
+El cálculo está separado del render en `railLayout.ts` (`buildRail`), puro y
 testeado: entra la lista de tareas del día y salen bloques en minutos.
 
 **Tres clases de bloque**, y el orden en que se colocan importa porque cada una
@@ -721,7 +721,7 @@ ocupa espacio para la siguiente:
   rail responde "qué me queda" y también "qué llevo hecho". *Limitación
   conocida*: una tarea completada **sin** tiempo trackeado y sin hora no aparece
   — no hay ningún dato que diga cuándo ocurrió, y ubicarla sería inventarlo.
-- El dato viene de **`repo::trabajo_del_dia`** (una fila por tarea con el primer
+- El dato viene de **`repo::day_work`** (una fila por tarea con el primer
   inicio del día y los segundos cerrados) más los segundos de la corrida abierta,
   que el front toma del taxímetro porque todavía no están escritos.
 - **La grilla es siempre el día completo (24 h).** La jornada solo pone **dos
@@ -733,8 +733,8 @@ ocupa espacio para la siguiente:
   `event_start`/`event_end`.** No es un atajo: el importador guarda esos dos en
   RFC 3339 **UTC**, así que cortarles caracteres para sacar la hora movería una
   reunión de la tarde de bloque. Es el mismo error que ya se pagó en
-  `completeAndAdvance` y en `tiempoPorDia`. `scheduled_time` viene de
-  `inicio_local` y `estimated_minutes` es la duración: los dos campos locales
+  `completeAndAdvance` y en `timeByDay`. `scheduled_time` viene de
+  `local_start` y `estimated_minutes` es la duración: los dos campos locales
   alcanzan y no queda conversión que hacer.
 - **Día completo ⇒ franja arriba de la grilla, no un bloque.** Un feriado no
   tiene dónde caer en la escala de horas (§4.12, "día completo = sin reloj").
@@ -794,7 +794,7 @@ ocupa espacio para la siguiente:
   mismo día no puedan divergir.
 - La línea de "ahora" solo se dibuja en el día de hoy, y relee el reloj en vez de
   acumular: macOS agrupa los temporizadores al suspender (mismo criterio que
-  `revisarCambioDeDia`, §5.3.1).
+  `checkDayChange`, §5.3.1).
 
 ### 4.14 Planificación diaria (`DailyPlanningView`)
 
@@ -857,13 +857,13 @@ cual quedó. Quien planifica decide si la tarea va a hoy, al backlog o se queda.
 - **`date: null` es un destino válido, no "no hay destino".** La vista semana
   puede tratarlo como cancelación porque ahí ninguna columna es el backlog; en el
   ritual eso descartaría el drop.
-- **El repaso mide lo trabajado con `trabajo_del_dia`, no con `actual_seconds`**:
+- **El repaso mide lo trabajado con `day_work`, no con `actual_seconds`**:
   ese campo es el total de la tarea, y una arrastrada de tres días lo trae todo
   junto — el repaso pregunta por **ese** día (misma Regla 2 de M3.5).
 - **El paso 1 repasa el último día con tareas, no "ayer" a secas.** Un lunes,
   ayer es domingo y está vacío, mientras que lo que hay que cerrar es el viernes.
   Se lee una ventana de 7 días hacia atrás y se elige la fecha más reciente con
-  algo (`ultimoDiaConTareas`) — **el mismo día que preserva §4.2**.
+  algo (`lastDayWithTasks`) — **el mismo día que preserva §4.2**.
 - **Es el único camino para rescatar una reunión.** La degradación no toca las de
   calendario, así que una reunión sin cerrar se queda en su día para siempre y
   ninguna vista de hoy la vuelve a mostrar; el botón "A hoy" del paso 1 es la
@@ -936,7 +936,7 @@ Las tres reglas que lo definen:
   `ORPHANED` existen justamente para el historial y la review; filtrarlas
   borraría horas reales de semanas pasadas.
 
-Las tres viven en **`trabajo_por_dia`**, el núcleo compartido con la bitácora
+Las tres viven en **`work_by_day`**, el núcleo compartido con la bitácora
 (§4.16): la semana lo agrupa en celdas día × categoría, la bitácora en timelines.
 
 **Lo planificado sí sale de `scheduled_date`, y esa asimetría es correcta**:
@@ -1082,18 +1082,18 @@ Las reglas que lo sostienen:
 - **Escribir no es cerrar.** El autosave (al salir del campo, como todo el resto
   de la app) usa `set_day_note`, que **no toca `closed_at`**. Si teclear diera el
   día por terminado, no habría forma de dejar una nota a medias y volver.
-- **`closed_at` no se vuelve a sellar.** `cerrar_dia` es idempotente y conserva la
-  hora original: "a qué hora cerré" es el dato interesante. Hay `reabrir_dia` para
+- **`closed_at` no se vuelve a sellar.** `close_day` es idempotente y conserva la
+  hora original: "a qué hora cerré" es el dato interesante. Hay `reopen_day` para
   volver a borrador sin perder las notas.
 - **La nota de una tarea es del día, no de la tarea.** `day_task_notes` tiene la
   fecha en la clave porque una tarea se puede trabajar varios días y cada uno
   merece su línea. **No es `tasks.notes`**, que son las notas con las que
   trabajás.
-- **Incluir y escribir son gestos distintos.** `incluir_en_bitacora` crea la fila
+- **Incluir y escribir son gestos distintos.** `include_in_log` crea la fila
   con el resumen vacío; `set_day_task_note` solo escribe. **Vaciar el texto no
   baja la tarea**: la fila es lo que significa "incluida", y confundir las dos
   cosas hacía desaparecer una tarea al borrar una palabra. Sacarla es explícito
-  (`quitar_de_bitacora`). Por eso `note` distingue **tres** estados: `null` = no
+  (`remove_from_log`). Por eso `note` distingue **tres** estados: `null` = no
   incluida, `""` = incluida sin resumen, texto = incluida y escrita.
 - **La nota del día en blanco sí se borra** (`set_day_note`), porque ahí no hay
   nada que "incluir": o hay texto o no hay.
@@ -1103,7 +1103,7 @@ Las reglas que lo sostienen:
   (§4.2). Tildarla sí se puede, desde la card.
 - **El timeline muestra la corrida en curso** aunque todavía no haya sumado
   segundos: es justamente la tarea que estás haciendo. Los segundos se los pone
-  el front desde el taxímetro (`trabajadoConEnCurso`), igual que el rail — en la
+  el front desde el taxímetro (`workedWithRunning`), igual que el rail — en la
   base no están hasta que pares. **Solo se le suman a hoy**: `runTotal` se mide
   desde la medianoche local (I3), así que en otro día no significa nada, y un
   timer abierto desde las 23:50 de ayer marca la fila de ayer como corriendo.
@@ -1123,17 +1123,17 @@ minuto no cambia nada y deja la app pidiendo lo mismo toda la tarde.
 
 > **Este camino no se puede verificar fuera de Tauri**, como ⌘Q (§4.10): en el
 > browser y en jsdom no hay notificaciones nativas. Lo que sí está cubierto es la
-> decisión (`tocaAvisarCierre`). Y adentro de Tauri **hay que esperar a que pase
+> decisión (`shouldRemindShutdown`). Y adentro de Tauri **hay que esperar a que pase
 > `work_end`**, así que probar un cambio acá es incómodo a propósito hasta que
 > llegue Mej.16 (un botón "Probar" en Configs y el estado del permiso a la vista).
 
-**El rollup lo comparte con la weekly review.** `trabajo_por_dia` es el único
+**El rollup lo comparte con la weekly review.** `work_by_day` es el único
 lugar donde viven la atribución por día local, la Regla 2, la Regla 3, el
 no-filtrar `ORPHANED` y el piso en 0 por tarea; la semana lo agrupa en celdas
 día × categoría y la bitácora en timelines. Tener dos consultas garantizaba que
 se separaran.
 
-Las cuentas de presentación están en `bitacora.ts` (puro y testeado).
+Las cuentas de presentación están en `dailyLog.ts` (puro y testeado).
 
 ### 4.17 Respaldo y restauración (`BackupCard`)
 
@@ -1167,7 +1167,7 @@ que dos del mismo minuto no se pisen. Su orden alfabético es el cronológico, y
 ahí sale también la fecha que muestra la lista: la del sistema de archivos cambia
 con cualquier copia o sincronización.
 
-**Respaldar y podar son un solo paso** (`crear_y_podar`), y por eso da lo mismo si
+**Respaldar y podar son un solo paso** (`create_and_prune`), y por eso da lo mismo si
 el respaldo lo pidió el reloj o el botón: siete clicks seguidos dejan `conservar`
 archivos, no siete. Estaba bien desde el principio, pero era una propiedad del
 comando y no del módulo; ahora no hay forma de respaldar sin podar, y hay un test
@@ -1185,7 +1185,7 @@ que lo fija.
 **El automático corre a `backup_time`, una vez al día, con la app abierta.**
 `useBackupRuntime` es gemelo de `useShutdownReminder` y va montado en `Shell` por
 la misma razón que I6: en las dos ventanas serían dos zips por día, o dos
-`VACUUM INTO` peleándose el `Mutex`. La decisión vive en `tocaRespaldar` (puro y
+`VACUUM INTO` peleándose el `Mutex`. La decisión vive en `shouldBackup` (puro y
 testeado). La marca es la fecha `backup_ran_on`, y el efecto es que **se pone al
 día**: si la app estaba cerrada a las 20:00 y se abre a las 23:00, respalda ahí; si
 se abre al otro día, la fecha ya no es hoy y también respalda. Lo único que no
@@ -1193,7 +1193,7 @@ cubre es un día en que la app no se abrió nunca.
 
 **Carpeta vacía = respaldo apagado.** Es el estado de fábrica: los ajustes de
 respaldo no los siembra ninguna migración, como `planned_on`. Y **la carpeta se
-valida al guardarla** con una prueba de escritura real (`probar_backup_dir`), no a
+valida al guardarla** con una prueba de escritura real (`test_backup_dir`), no a
 la hora del respaldo: un volumen de solo lectura o un Drive sin sesión es
 perfectamente legible, y un ajuste que se acepta y falla nueve horas después no da
 forma de saber qué se escribió mal (mismo criterio que §4.13 con la jornada).
@@ -1230,12 +1230,12 @@ venir de otra versión explica por qué hubo migración. Un respaldo sin manifes
 dice en vez de mostrar la fecha del archivo como si fuera la del snapshot.
 
 > Ojo con los dos formateadores de fecha, que hacen lo contrario a propósito:
-> `fechaLegible` **no** convierte zonas (su entrada sale del nombre del archivo y
-> no la declara), y `momentoLegible` **sí** (el `created_at` del manifest trae
+> `readableDate` **no** convierte zonas (su entrada sale del nombre del archivo y
+> no la declara), y `readableMoment` **sí** (el `created_at` del manifest trae
 > offset y los `started_at` traen `Z`). Usar el primero para lo segundo mostraría
 > un respaldo de las 20:03 a las 16:03.
 
-El orden de `restaurar_backup` está puesto para que **ningún fallo deje la app sin
+El orden de `restore_backup` está puesto para que **ningún fallo deje la app sin
 base**, y es lo único que importa de ese comando:
 
 1. Se toma el lock del `Mutex` y no se suelta: nadie más escribe mientras corre.
@@ -1395,7 +1395,7 @@ que no publicar, porque alguien lo instala.
 `pnpm tauri dev` y el `.dmg` instalado **pueden estar abiertos a la vez y no
 comparten datos**. La base se separa por nombre de archivo dentro del mismo
 directorio: `sunrise-dev.sqlite` en debug, `sunrise.sqlite` en release
-(`db::archivo()`).
+(`db::file_name()`).
 
 **Por qué existe.** El identifier es el mismo en los dos perfiles, así que
 `app_data_dir()` resuelve al mismo lugar. Antes de esto, abrir `pnpm tauri dev` para
@@ -1413,12 +1413,12 @@ estaba pasando.
 **El puente entre las dos bases es el respaldo.** Respaldas en producción y
 restauras ese zip en dev, y trabajas contra datos reales sin tocarlos. Funciona
 porque **el nombre de la base dentro del zip no depende del perfil**: siempre es
-`sunrise.sqlite` (`backup::DB_EN_ZIP`). Hay un test que lo fija — si el zip llevara
+`sunrise.sqlite` (`backup::DB_IN_ZIP`). Hay un test que lo fija — si el zip llevara
 el nombre del perfil, un respaldo tomado en dev no se podría restaurar en
 producción, y el puente no existiría.
 
 > **I** — **El respaldo automático no corre en dev**, y el corte vive en
-> `tocaRespaldar` con los otros tres. Las bases están separadas, pero `backup_dir`
+> `shouldBackup` con los otros tres. Las bases están separadas, pero `backup_dir`
 > es una ruta en el disco: si restauras un zip de producción en dev —o sea, si usas
 > el puente— dev hereda la carpeta, empieza a escribir zips de prueba ahí y **la
 > retención borra los respaldos de verdad** para conservar los de prueba. El botón
@@ -1445,7 +1445,7 @@ taxímetro recuerda no se filtra apuntando a un id que en la otra base no existe
 **En pantalla se ve cuál es cuál.** El sidebar muestra un distintivo `dev` al lado
 de la marca, con el archivo de base en su `title`. No es decoración: dos ventanas
 idénticas con datos distintos son indistinguibles, y el error natural es editar en
-la equivocada. Sale de `usePerfil()` (`src/lib/perfil.ts`), que pregunta **una vez
+la equivocada. Sale de `useProfile()` (`src/lib/profile.ts`), que pregunta **una vez
 por sesión** y cachea la promesa —es un dato del binario, no puede cambiar— y
 devuelve `null` mientras no llega. Ese `null` significa "todavía no sé", **no** "es
 producción": asumir producción por un instante alcanza para que el respaldo
@@ -1494,12 +1494,12 @@ esté vacía.
 > indistinguible de estar al día. El test `la_config_del_updater_esta_completa`
 > cubre las tres primeras; la cuarta solo se ve en el primer tag.
 
-**Todo el updater vive en Rust**, en `commands.rs`: `buscar_actualizacion` (que
-devuelve `Option<Actualizacion>`, donde `None` es "estás al día") e
-`instalar_actualizacion` (que descarga, instala y llama a `app.restart()`, así que
+**Todo el updater vive en Rust**, en `commands.rs`: `check_for_update` (que
+devuelve `Option<AppUpdate>`, donde `None` es "estás al día") e
+`install_update` (que descarga, instala y llama a `app.restart()`, así que
 no retorna). El plugin también tiene API de JavaScript, y no se usa: obligaría a
 un paquete npm más y a abrirle permisos en `capabilities/default.json`, y dejaría a
-`ipc.ts` de ser la única puerta a la app. `instalar_actualizacion` vuelve a
+`ipc.ts` de ser la única puerta a la app. `install_update` vuelve a
 preguntar en vez de guardarse el `Update` de la búsqueda anterior — mantenerlo vivo
 entre dos comandos obliga a un `State` con media operación de red adentro, y el
 costo real es una petición HTTP.
@@ -1601,7 +1601,7 @@ cuando se ejecute; con lógica de "pasaron N ms" habría que adivinar cuánto
 durmió la máquina.
 
 **`WeekView` necesita más que invalidar**: hay que mover su `anchor`, y solo si
-corresponde. `anclaTrasCambioDeDia` (en `src/features/week/anchor.ts`) devuelve
+corresponde. `anchorAfterDayChange` (en `src/features/week/anchor.ts`) devuelve
 `null` —dejar quieta la vista— en dos casos: si la semana visible no contenía el
 día anterior (el usuario navegó a otra semana a propósito y saltarle la vista
 bajo el cursor sería peor), y si el día nuevo ya cae en la semana visible
@@ -1690,7 +1690,7 @@ En `useFloatingWindow.ts`, ya pagadas:
      la noche muestra 15 horas a las 9 de la mañana, y el contador dejaría de
      ser "lo de hoy" justo cuando más se nota.
   3. **`stop_timer` parte la corrida por día local** cuando cruza una
-     medianoche (`tramos_por_dia_local`). El tiempo se atribuye por
+     medianoche (`segments_by_local_day`). El tiempo se atribuye por
      `started_at`, así que una sola fila de 15h le acreditaría todo al día en
      que empezó y cero al siguiente. Esto no es solo del taxímetro: el rollup
      diario de M3 (§3.5, regla 2) agrupa por día leyendo esta tabla, y con filas
@@ -1714,7 +1714,7 @@ En `useFloatingWindow.ts`, ya pagadas:
   doble con desfase de ms y queda "vibrado".
 - **I7. Los listados filtran `source_state = 'ACTIVE'`.** Las `ORPHANED` existen
   solo para el historial y la review. **La única excepción es el tiempo del
-  rollup compartido** (`trabajo_por_dia`, §4.15 y §4.16), que las cuenta a
+  rollup compartido** (`work_by_day`, §4.15 y §4.16), que las cuenta a
   propósito: son historial, y filtrarlas borraría horas reales de semanas pasadas.
 - **I8. Enums en MAYÚSCULAS**, espejados `migrations.rs` ↔ `enums.ts`.
 - **I9. Las migraciones aplicadas son inmutables**: se agrega una versión nueva.
@@ -1816,7 +1816,7 @@ En `useFloatingWindow.ts`, ya pagadas:
   diciendo algo distinto del link que lleva a ella. La única entrada del sidebar
   traducida es **Settings → Configs**, y el `<h1>` de la vista dice lo mismo que
   el link del sidebar. Los formatos numéricos (`hms`,
-  `formatMinutes`, `duracionCorta`) no tienen idioma. El menú nativo de macOS
+  `formatMinutes`, `shortDuration`) no tienen idioma. El menú nativo de macOS
   queda en inglés: lo genera `Menu::default` de Tauri, y traducir solo nuestro
   ítem de Quit dejaría el submenú a medias.
 - **Las fechas se formatean con los helpers de `src/lib/date.ts`**, que ya
@@ -1912,15 +1912,15 @@ pnpm test:all    # ambos
   depende del orden dos veces y está anotado: los ajustes del mock son de módulo,
   y la degradación corre **una sola vez por archivo** —aislar un caso con `-t` lo
   puede dejar pasar en falso. Más seis en `repo.rs` para
-  `degradar_pendientes` y `rescatadas_del_backlog`: preserva el último día y baja
+  `demote_pending` y `rescued_from_backlog`: preserva el último día y baja
   lo anterior, lo rescatado queda arriba del backlog, no toca calendario ni
   completadas, sin días anteriores no hace nada, distingue lo que venía de un día
   de lo que nació en el backlog —incluidos los envíos a mano—, y
-  `ultimo_dia_con_tareas` ignora hoy y el futuro.
+  `last_day_with_tasks` ignora hoy y el futuro.
 - **Agenda de la semana**: `src/features/week/WeekView.test.tsx` (la tira solo
   trae los paneles que existen, arranca cerrada, la abre y la cierra el mismo
   icono, el aspa, Escape, y nombra el día que muestra).
-- **`trabajo_del_dia`**: cuatro tests en `repo.rs` (una fila por tarea con su
+- **`day_work`**: cuatro tests en `repo.rs` (una fila por tarea con su
   primer inicio, el día acotado en hora **local** —las 22:00 en Chile ya son el
   día siguiente en UTC—, la corrida en curso marcada sin segundos, y una fecha
   ilegible que devuelve vacío en vez de todo).
@@ -1949,10 +1949,10 @@ pnpm test:all    # ambos
   **incluir y quitar son gestos aparte de escribir**, el día trae sus celdas por
   categoría, el mood se guarda y se borra, el timeline muestra la corrida en curso
   aunque no haya sumado, va en el orden en que se tomó el trabajo, y una fecha
-  ilegible da vacío), más `bitacora.test.ts` (día vacío, los vacíos se saltan pero
+  ilegible da vacío), más `dailyLog.test.ts` (día vacío, los vacíos se saltan pero
   hoy no, **incluidas son las que tienen fila aunque el resumen esté vacío**,
   borrador vs cerrado, la suma de la corrida en curso, y las tres condiciones de
-  `tocaAvisarCierre`) y `DailyShutdownView.test.tsx` (arranca sin cerrar, incluir
+  `shouldRemindShutdown`) y `DailyShutdownView.test.tsx` (arranca sin cerrar, incluir
   sube y abre el resumen, **vaciar el resumen no la baja pero sacarla sí**, el
   mood es un toggle, una pendiente se manda al backlog, recargar no pisa el texto
   a medio escribir, cerrar sella + confeti + navega, un día cerrado ofrece
@@ -1966,7 +1966,7 @@ pnpm test:all    # ambos
   base / con una base ajena / de una versión más nueva se rechazan, la copia de
   seguridad sobrevive a la retención, **siete respaldos seguidos dejan los que se
   conservan**, una carpeta que no existe no es error) más
-  `respaldo.test.ts` (las cuatro condiciones de `tocaRespaldar` —incluida la
+  `backup.test.ts` (las cuatro condiciones de `shouldBackup` —incluida la
   puesta al día al abrir la app—, el `conservar` que no puede ser 0, y **los dos
   formateadores de fecha: uno convierte zona y el otro no**) y
   `BackupCard.test.tsx` (sin carpeta está apagado, la ruta se valida **al
@@ -1990,11 +1990,11 @@ pnpm test:all    # ambos
   es el que importa: protege la decisión de §4.18, no el botón. Si alguien mueve el
   ajuste a la tabla "por consistencia", empieza a viajar dentro de los respaldos.
   **El registro real en el sistema no está cubierto**: necesita Tauri.
-- **Dev y producción conviviendo** (§4.20): `db::archivo()` no puede devolver lo
-  mismo que `ARCHIVO` —si los dos perfiles abren el mismo archivo, probar un cambio
-  escribe en la base de verdad—, `DB_EN_ZIP` **sí** tiene que ser el nombre de
-  producción para que el respaldo cruce entre las dos, y `tocaRespaldar` con
-  `esDev: true` no respalda ni con todo configurado y pasada la hora. Los tres
+- **Dev y producción conviviendo** (§4.20): `db::file_name()` no puede devolver lo
+  mismo que `PROD_FILE` —si los dos perfiles abren el mismo archivo, probar un cambio
+  escribe en la base de verdad—, `DB_IN_ZIP` **sí** tiene que ser el nombre de
+  producción para que el respaldo cruce entre las dos, y `shouldBackup` con
+  `isDev: true` no respalda ni con todo configurado y pasada la hora. Los tres
   protegen decisiones, no código: cada uno se pone rojo si alguien "simplifica" la
   separación en la dirección obvia. Y en `Sidebar.test.tsx`, que el distintivo
   `dev` esté y diga qué base usa: es **toda** la protección del lado del usuario, y

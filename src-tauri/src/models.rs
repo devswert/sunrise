@@ -67,10 +67,10 @@ pub struct TimeEntry {
 /// lo mandaste tú.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Rescate {
+pub struct Rescue {
     pub task_id: i64,
     /// El día del que salió.
-    pub desde: String,
+    pub from_date: String,
 }
 
 /// Lo que una tarea trabajó en un día: cuándo empezó y cuánto sumó.
@@ -80,7 +80,7 @@ pub struct Rescate {
 /// porque la atribución por día es local (Regla 2) y ya está resuelta acá.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TrabajoDelDia {
+pub struct DayWork {
     pub task_id: i64,
     /// El primer `started_at` del día, en RFC 3339 (UTC).
     pub started_at: String,
@@ -100,7 +100,7 @@ pub struct TrabajoDelDia {
 /// escrita en SQL.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RollupCelda {
+pub struct RollupCell {
     pub date: String,
     pub category_id: Option<i64>,
     /// Categoría raíz (`parent_id ?? id`). `None` si la tarea no tiene channel.
@@ -111,7 +111,7 @@ pub struct RollupCelda {
 /// Los totales de un día de la semana.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RollupDia {
+pub struct RollupDay {
     pub date: String,
     /// Trabajado, atribuido por `time_entries.started_at` (Regla 2).
     pub seconds: i64,
@@ -119,9 +119,9 @@ pub struct RollupDia {
     /// deliberada: ver SPECS §4.15.
     pub planned_minutes: i64,
     /// Cuántas se completaron ese día (por `completed_at` local).
-    pub hechas: i64,
+    pub done: i64,
     /// Tareas del día sin estimación: se avisan, no se rellenan con un número.
-    pub sin_estimar: i64,
+    pub unestimated: i64,
 }
 
 /// El rollup de una semana, listo para graficar.
@@ -131,19 +131,19 @@ pub struct WeeklyRollup {
     /// Lunes de la semana ISO, `YYYY-MM-DD`.
     pub week_start: String,
     /// Siempre 7 filas, lunes→domingo, incluso las vacías.
-    pub dias: Vec<RollupDia>,
-    pub celdas: Vec<RollupCelda>,
+    pub days: Vec<RollupDay>,
+    pub cells: Vec<RollupCell>,
     /// Las tareas cerradas en la semana, en orden de cierre.
-    pub completadas: Vec<Task>,
+    pub completed_tasks: Vec<Task>,
     pub total_seconds: i64,
     pub planned_minutes: i64,
-    pub sin_estimar: i64,
+    pub unestimated: i64,
 }
 
 /// Un tramo del timeline de un día: en qué se trabajó, cuánto y desde cuándo.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TramoDelDia {
+pub struct DaySegment {
     pub task_id: i64,
     pub title: String,
     pub seconds: i64,
@@ -160,7 +160,7 @@ pub struct TramoDelDia {
 /// sin resumen", que es justo el que deja el campo abierto para escribir.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HechaDelDia {
+pub struct DoneTask {
     pub task: Task,
     pub note: Option<String>,
 }
@@ -168,7 +168,7 @@ pub struct HechaDelDia {
 /// Un día de la bitácora. **Se arma solo**, con o sin shutdown.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DiaDeBitacora {
+pub struct LogDay {
     pub date: String,
     /// El cierre "con mis palabras". `None` si nunca se escribió.
     pub note: Option<String>,
@@ -178,12 +178,12 @@ pub struct DiaDeBitacora {
     pub mood: Option<String>,
     pub worked_seconds: i64,
     pub planned_minutes: i64,
-    pub sin_estimar: i64,
-    pub hechas: Vec<HechaDelDia>,
-    pub timeline: Vec<TramoDelDia>,
+    pub unestimated: i64,
+    pub done: Vec<DoneTask>,
+    pub timeline: Vec<DaySegment>,
     /// Lo trabajado del día por categoría, para el donut. Misma forma que las
     /// celdas de la weekly review, porque sale del mismo núcleo.
-    pub celdas: Vec<RollupCelda>,
+    pub cells: Vec<RollupCell>,
 }
 
 impl TimeEntry {
@@ -268,7 +268,7 @@ pub struct Task {
     /// `notes`, que son del usuario.
     pub event_description: Option<String>,
     /// Invitados a la reunión. Vacío si el evento no los trae.
-    pub attendees: Vec<Participante>,
+    pub attendees: Vec<Attendee>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -344,16 +344,16 @@ impl CalendarFeed {
 /// Solo lectura: sale del feed y no se edita desde la app.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Participante {
+pub struct Attendee {
     /// Nombre visible, si el evento lo trae (`CN`).
-    pub nombre: Option<String>,
+    pub name: Option<String>,
     /// Correo, ya sin el `mailto:`.
     pub email: Option<String>,
     /// `PARTSTAT` en MAYÚSCULAS: `ACCEPTED`, `DECLINED`, `TENTATIVE`,
     /// `NEEDS-ACTION`. `None` si el evento no lo declara.
-    pub estado: Option<String>,
+    pub status: Option<String>,
     /// Si es quien organiza (viene de `ORGANIZER`, no de `ATTENDEE`).
-    pub organizador: bool,
+    pub is_organizer: bool,
 }
 
 /// Un archivo de respaldo en la carpeta configurada.
@@ -365,7 +365,7 @@ pub struct Participante {
 /// hicieron.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchivoDeBackup {
+pub struct BackupFile {
     /// `sunrise-20260817-200315.zip`.
     pub name: String,
     /// Ruta absoluta, para poder restaurarlo sin volver a abrir el selector.
@@ -384,30 +384,30 @@ pub struct ArchivoDeBackup {
 /// para decidir algo.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Restauracion {
+pub struct RestoreResult {
     /// El zip que se restauró.
-    pub desde: String,
+    pub from_date: String,
     /// Dónde quedó la copia de seguridad de la base que se pisó. Es el deshacer.
-    pub copia_de_seguridad: String,
+    pub backup_copy: String,
     /// Momento exacto del snapshot, del manifest, **con offset de zona**. Es más
     /// preciso que la fecha del nombre del archivo, que no la guarda. `None` en un
     /// respaldo sin manifest.
-    pub creado_en: Option<String>,
+    pub created_at: Option<String>,
     /// Versión de la app que escribió el respaldo, si el manifest la trae.
-    pub version_del_respaldo: Option<String>,
+    pub backup_version: Option<String>,
     /// La de esta app. La vista solo la muestra **cuando difiere**: decir
     /// "0.1.0 → 0.1.0" es ruido; decir que el respaldo venía de otra versión
     /// explica por qué hubo migración.
-    pub version_actual: String,
+    pub current_version: String,
     /// Cuántas tareas quedaron vivas. Es la comprobación de que se restauró lo
     /// que se quería.
-    pub tareas: i64,
+    pub tasks: i64,
     /// Lo último que se trabajó según la base restaurada (RFC3339 en UTC), o
     /// `None` si no hay tiempo registrado.
-    pub ultima_actividad: Option<String>,
+    pub last_activity: Option<String>,
 }
 
-/// Perfil de compilación de la ventana que pregunta, con el archivo de base que
+/// Profile de compilación de la ventana que pregunta, con el archivo de base que
 /// está usando.
 ///
 /// Existe porque `pnpm tauri dev` y el `.dmg` instalado comparten el directorio de
@@ -415,27 +415,27 @@ pub struct Restauracion {
 /// distinguen y no hay forma de saber cuál está tocando tus datos de verdad.
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Perfil {
+pub struct Profile {
     /// `true` en `pnpm tauri dev` (y en un `tauri build --debug`).
     pub dev: bool,
     /// Nombre del archivo SQLite en uso, para poder mostrarlo tal cual.
-    pub base: String,
+    pub db_file: String,
 }
 
 /// Una versión nueva publicada, tal como la anuncia el `latest.json` del Release.
 ///
-/// Es `Option<Actualizacion>` en el comando: `None` significa "estás al día", que
+/// Es `Option<AppUpdate>` en el comando: `None` significa "estás al día", que
 /// es el caso normal y no es un error.
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Actualizacion {
+pub struct AppUpdate {
     /// La versión que hay disponible (`0.2.0`), no la instalada.
     pub version: String,
     /// La instalada, para poder mostrar las dos juntas sin que el front tenga que
     /// pedirla aparte y arriesgarse a mezclar una vieja con la nueva.
-    pub version_actual: String,
+    pub current_version: String,
     /// El cuerpo del Release, si lo trae. Es markdown escrito por quien publicó.
-    pub notas: Option<String>,
+    pub notes: Option<String>,
     /// Fecha de publicación en el formato que venga del `latest.json`, o `None`.
-    pub fecha: Option<String>,
+    pub date: Option<String>,
 }

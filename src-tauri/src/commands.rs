@@ -5,8 +5,8 @@ use tauri::{Emitter, Manager, State};
 use crate::backup;
 use crate::db::Db;
 use crate::models::{
-    ActiveTimer, Actualizacion, ArchivoDeBackup, CalendarFeed, Category, DiaDeBitacora, Objective,
-    Perfil, Rescate, Restauracion, Task, TaskEvent, TimeEntry, TrabajoDelDia, WeeklyRollup,
+    ActiveTimer, AppUpdate, BackupFile, CalendarFeed, Category, LogDay, Objective,
+    Profile, Rescue, RestoreResult, Task, TaskEvent, TimeEntry, DayWork, WeeklyRollup,
 };
 use crate::repo::{self, NewTask, TaskPatch};
 
@@ -61,9 +61,9 @@ pub fn move_task(
 }
 
 #[tauri::command]
-pub fn degradar_pendientes(db: State<'_, Db>, today: String) -> Result<u32, String> {
+pub fn demote_pending(db: State<'_, Db>, today: String) -> Result<u32, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::degradar_pendientes(&conn, &today).map_err(e)
+    repo::demote_pending(&conn, &today).map_err(e)
 }
 
 #[tauri::command]
@@ -122,15 +122,15 @@ pub fn list_time_entries(db: State<'_, Db>, task_id: i64) -> Result<Vec<TimeEntr
 }
 
 #[tauri::command]
-pub fn rescatadas_del_backlog(db: State<'_, Db>) -> Result<Vec<Rescate>, String> {
+pub fn rescued_from_backlog(db: State<'_, Db>) -> Result<Vec<Rescue>, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::rescatadas_del_backlog(&conn).map_err(e)
+    repo::rescued_from_backlog(&conn).map_err(e)
 }
 
 #[tauri::command]
-pub fn trabajo_del_dia(db: State<'_, Db>, date: String) -> Result<Vec<TrabajoDelDia>, String> {
+pub fn day_work(db: State<'_, Db>, date: String) -> Result<Vec<DayWork>, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::trabajo_del_dia(&conn, &date).map_err(e)
+    repo::day_work(&conn, &date).map_err(e)
 }
 
 #[tauri::command]
@@ -140,9 +140,9 @@ pub fn weekly_rollup(db: State<'_, Db>, week_start: String) -> Result<WeeklyRoll
 }
 
 #[tauri::command]
-pub fn bitacora(db: State<'_, Db>, hasta: String, dias: i64) -> Result<Vec<DiaDeBitacora>, String> {
+pub fn daily_log(db: State<'_, Db>, to_date: String, days: i64) -> Result<Vec<LogDay>, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::bitacora(&conn, &hasta, dias).map_err(e)
+    repo::daily_log(&conn, &to_date, days).map_err(e)
 }
 
 #[tauri::command]
@@ -169,27 +169,27 @@ pub fn set_day_mood(db: State<'_, Db>, date: String, mood: Option<String>) -> Re
 }
 
 #[tauri::command]
-pub fn incluir_en_bitacora(db: State<'_, Db>, date: String, task_id: i64) -> Result<(), String> {
+pub fn include_in_log(db: State<'_, Db>, date: String, task_id: i64) -> Result<(), String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::incluir_en_bitacora(&conn, &date, task_id).map_err(e)
+    repo::include_in_log(&conn, &date, task_id).map_err(e)
 }
 
 #[tauri::command]
-pub fn quitar_de_bitacora(db: State<'_, Db>, date: String, task_id: i64) -> Result<(), String> {
+pub fn remove_from_log(db: State<'_, Db>, date: String, task_id: i64) -> Result<(), String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::quitar_de_bitacora(&conn, &date, task_id).map_err(e)
+    repo::remove_from_log(&conn, &date, task_id).map_err(e)
 }
 
 #[tauri::command]
-pub fn cerrar_dia(db: State<'_, Db>, date: String) -> Result<String, String> {
+pub fn close_day(db: State<'_, Db>, date: String) -> Result<String, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::cerrar_dia(&conn, &date).map_err(e)
+    repo::close_day(&conn, &date).map_err(e)
 }
 
 #[tauri::command]
-pub fn reabrir_dia(db: State<'_, Db>, date: String) -> Result<(), String> {
+pub fn reopen_day(db: State<'_, Db>, date: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::reabrir_dia(&conn, &date).map_err(e)
+    repo::reopen_day(&conn, &date).map_err(e)
 }
 
 #[tauri::command]
@@ -465,7 +465,7 @@ pub fn delete_calendar_feed(db: State<'_, Db>, id: i64) -> Result<(), String> {
 /// guarda en `last_error` para que la UI lo muestre y además vuelve como `Err`.
 #[tauri::command]
 pub async fn sync_calendar_feed(app: tauri::AppHandle, id: i64) -> Result<usize, String> {
-    let n = crate::calendar::sincronizar_feed(&app, id).await?;
+    let n = crate::calendar::sync_one_feed(&app, id).await?;
     let _ = app.emit(crate::CALENDAR_SYNCED, ());
     Ok(n)
 }
@@ -473,8 +473,8 @@ pub async fn sync_calendar_feed(app: tauri::AppHandle, id: i64) -> Result<usize,
 /// Sincroniza todos los feeds que ya toca. La usa el poller y el botón de
 /// "sincronizar ahora".
 #[tauri::command]
-pub async fn sync_calendar_feeds(app: tauri::AppHandle, forzar: bool) -> Result<usize, String> {
-    Ok(crate::calendar::sincronizar_pendientes(&app, forzar).await)
+pub async fn sync_calendar_feeds(app: tauri::AppHandle, force: bool) -> Result<usize, String> {
+    Ok(crate::calendar::sync_pending(&app, force).await)
 }
 
 // --- ciclo de vida ---
@@ -520,15 +520,15 @@ pub fn app_version() -> String {
 /// dev y producción se ven idénticas y usan datos distintos (ver `db::archivo`).
 /// Sin esto, dos ventanas abiertas son indistinguibles.
 #[tauri::command]
-pub fn perfil() -> Perfil {
-    Perfil {
+pub fn profile() -> Profile {
+    Profile {
         dev: cfg!(debug_assertions),
-        base: crate::db::archivo().to_string(),
+        db_file: crate::db::file_name().to_string(),
     }
 }
 
 /// La carpeta de respaldos configurada, o un error explicando que no hay.
-fn dir_de_respaldos(conn: &rusqlite::Connection) -> Result<std::path::PathBuf, String> {
+fn backup_dir_setting(conn: &rusqlite::Connection) -> Result<std::path::PathBuf, String> {
     let dir = repo::get_setting(conn, BACKUP_DIR)
         .map_err(e)?
         .ok_or("no hay carpeta de respaldos configurada (Configs → Respaldo)")?;
@@ -536,7 +536,7 @@ fn dir_de_respaldos(conn: &rusqlite::Connection) -> Result<std::path::PathBuf, S
 }
 
 /// Cuántos respaldos conservar, según el ajuste.
-fn cuantos_conservar(conn: &rusqlite::Connection) -> Result<usize, String> {
+fn how_many_to_keep(conn: &rusqlite::Connection) -> Result<usize, String> {
     Ok(repo::get_setting(conn, BACKUP_KEEP)
         .map_err(e)?
         .and_then(|v| v.trim().parse::<usize>().ok())
@@ -546,32 +546,32 @@ fn cuantos_conservar(conn: &rusqlite::Connection) -> Result<usize, String> {
 /// Escribe un respaldo nuevo y poda los que sobran.
 ///
 /// Es el mismo camino para el respaldo automático y para el botón: la poda vive
-/// dentro de `crear_y_podar`, así que no hay forma de respaldar sin podar.
+/// dentro de `create_and_prune`, así que no hay forma de respaldar sin podar.
 #[tauri::command]
-pub fn crear_backup(db: State<'_, Db>) -> Result<ArchivoDeBackup, String> {
+pub fn create_backup(db: State<'_, Db>) -> Result<BackupFile, String> {
     let conn = db.0.lock().map_err(e)?;
-    let dir = dir_de_respaldos(&conn)?;
-    let conservar = cuantos_conservar(&conn)?;
-    backup::crear_y_podar(&conn, &dir, conservar, chrono::Local::now()).map_err(e)
+    let dir = backup_dir_setting(&conn)?;
+    let keep = how_many_to_keep(&conn)?;
+    backup::create_and_prune(&conn, &dir, keep, chrono::Local::now()).map_err(e)
 }
 
 /// Prueba que la carpeta elegida sirva, antes de guardarla como ajuste.
 #[tauri::command]
-pub fn probar_backup_dir(dir: String) -> Result<(), String> {
+pub fn test_backup_dir(dir: String) -> Result<(), String> {
     if dir.trim().is_empty() {
         return Err("elige una carpeta".into());
     }
-    backup::probar_carpeta(std::path::Path::new(dir.trim())).map_err(e)
+    backup::test_folder(std::path::Path::new(dir.trim())).map_err(e)
 }
 
 /// Los respaldos que hay hoy en la carpeta, del más nuevo al más viejo.
 #[tauri::command]
-pub fn list_backups(db: State<'_, Db>) -> Result<Vec<ArchivoDeBackup>, String> {
+pub fn list_backups(db: State<'_, Db>) -> Result<Vec<BackupFile>, String> {
     let conn = db.0.lock().map_err(e)?;
     let Some(dir) = repo::get_setting(&conn, BACKUP_DIR).map_err(e)? else {
         return Ok(vec![]);
     };
-    backup::listar(std::path::Path::new(&dir)).map_err(e)
+    backup::list(std::path::Path::new(&dir)).map_err(e)
 }
 
 /// Reemplaza la base viva por la que trae un `.zip`.
@@ -589,21 +589,21 @@ pub fn list_backups(db: State<'_, Db>) -> Result<Vec<ArchivoDeBackup>, String> {
 /// Si el paso 4 falla igual, se intenta volver a la copia de seguridad, y el
 /// error nombra el archivo para poder recuperarla a mano.
 #[tauri::command]
-pub fn restaurar_backup(
+pub fn restore_backup(
     app: tauri::AppHandle,
     db: State<'_, Db>,
     zip_path: String,
-) -> Result<Restauracion, String> {
+) -> Result<RestoreResult, String> {
     let mut guard = db.0.lock().map_err(e)?;
-    let db_path = app.path().app_data_dir().map_err(e)?.join(crate::db::archivo());
+    let db_path = app.path().app_data_dir().map_err(e)?.join(crate::db::file_name());
     let zip = std::path::Path::new(&zip_path);
-    let ahora = chrono::Local::now();
+    let now = chrono::Local::now();
 
     // Los ajustes de respaldo describen **esta máquina**, no los datos: sin
     // esto, restaurar un zip hecho antes de configurar la carpeta dejaría
     // `backup_dir` vacío y el respaldo automático se apagaría solo. Es
     // exactamente el fallo silencioso que `backup_last_error` existe para evitar.
-    let de_esta_maquina: Vec<(String, String)> = [BACKUP_DIR, BACKUP_TIME, BACKUP_KEEP]
+    let of_this_machine: Vec<(String, String)> = [BACKUP_DIR, BACKUP_TIME, BACKUP_KEEP]
         .iter()
         .filter_map(|k| {
             repo::get_setting(&guard, k)
@@ -613,86 +613,86 @@ pub fn restaurar_backup(
         })
         .collect();
 
-    let schema_soportado: i64 = guard
+    let supported_schema: i64 = guard
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
         .map_err(e)?;
 
     // Se lee antes de tocar nada: después del reemplazo el zip sigue ahí, pero
     // esto es información del respaldo y no del resultado, y así el error de un
     // manifest ilegible no aparece a mitad de la operación.
-    let manifest = backup::leer_manifest(zip);
+    let manifest = backup::read_manifest(zip);
 
     // (2) Todo lo fallible que dependa del zip, antes de tocar la base viva.
-    let preparada = tempfile::Builder::new()
+    let prepared = tempfile::Builder::new()
         .prefix("sunrise-restaurar-")
         .suffix(".sqlite")
         .tempfile()
         .map_err(e)?
         .into_temp_path();
-    std::fs::remove_file(&preparada).map_err(e)?;
-    backup::preparar_restauracion(zip, &preparada, schema_soportado).map_err(e)?;
+    std::fs::remove_file(&prepared).map_err(e)?;
+    backup::prepare_restore(zip, &prepared, supported_schema).map_err(e)?;
 
     // (3) La red de seguridad. Va en la carpeta de respaldos si hay una, y si no
     // en el directorio de datos de la app: nunca en ninguna parte.
-    let dir_copia = dir_de_respaldos(&guard)
+    let copy_dir = backup_dir_setting(&guard)
         .unwrap_or_else(|_| db_path.parent().map(|p| p.to_path_buf()).unwrap_or_default());
-    let copia = backup::snapshot_de_seguridad(&guard, &dir_copia, ahora).map_err(e)?;
+    let copy = backup::safety_snapshot(&guard, &copy_dir, now).map_err(e)?;
 
     // (4) Punto de no retorno.
-    let vieja = std::mem::replace(
+    let old = std::mem::replace(
         &mut *guard,
         rusqlite::Connection::open_in_memory().map_err(e)?,
     );
-    vieja.close().map_err(|(_, err)| e(err))?;
+    old.close().map_err(|(_, err)| e(err))?;
 
-    let reemplazo = (|| -> anyhow::Result<rusqlite::Connection> {
-        std::fs::copy(&preparada, &db_path)?;
+    let replacement = (|| -> anyhow::Result<rusqlite::Connection> {
+        std::fs::copy(&prepared, &db_path)?;
         // El WAL y el shm que quedaron son de la base anterior: abrir con ellos
         // ahí sería pedirle a SQLite que recupere cambios de otra base.
-        for sufijo in ["-wal", "-shm"] {
-            let sidecar = db_path.with_file_name(format!("{}{sufijo}", crate::db::archivo()));
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = db_path.with_file_name(format!("{}{suffix}", crate::db::file_name()));
             if sidecar.exists() {
                 std::fs::remove_file(&sidecar)?;
             }
         }
         let conn = crate::db::open(&db_path)?;
         crate::db::migrate(&conn)?;
-        for (clave, valor) in &de_esta_maquina {
-            repo::set_setting(&conn, clave, valor)?;
+        for (key, value) in &of_this_machine {
+            repo::set_setting(&conn, key, value)?;
         }
         Ok(conn)
     })();
 
-    match reemplazo {
+    match replacement {
         Ok(conn) => {
             // Se cuenta **sobre la base ya restaurada**: es lo que le permite al
             // usuario darse cuenta de que abrió el zip equivocado. Si la consulta
             // falla no se aborta nada —la restauración ya ocurrió—, solo se
             // informa menos.
-            let tareas = conn
+            let tasks = conn
                 .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
                 .unwrap_or(0);
-            let ultima_actividad = conn
+            let last_activity = conn
                 .query_row("SELECT MAX(started_at) FROM time_entries", [], |r| r.get(0))
                 .unwrap_or(None);
             *guard = conn;
-            Ok(Restauracion {
-                desde: zip_path,
-                copia_de_seguridad: copia.to_string_lossy().to_string(),
-                creado_en: manifest.created_at,
-                version_del_respaldo: manifest.version,
-                version_actual: backup::APP_VERSION.to_string(),
-                tareas,
-                ultima_actividad,
+            Ok(RestoreResult {
+                from_date: zip_path,
+                backup_copy: copy.to_string_lossy().to_string(),
+                created_at: manifest.created_at,
+                backup_version: manifest.version,
+                current_version: backup::APP_VERSION.to_string(),
+                tasks,
+                last_activity,
             })
         }
         Err(err) => {
             // Último intento: volver a dejar la base como estaba.
-            let vuelta = (|| -> anyhow::Result<rusqlite::Connection> {
-                std::fs::copy(&copia, &db_path)?;
+            let rollback = (|| -> anyhow::Result<rusqlite::Connection> {
+                std::fs::copy(&copy, &db_path)?;
                 Ok(crate::db::open(&db_path)?)
             })();
-            match vuelta {
+            match rollback {
                 Ok(conn) => {
                     let _ = crate::db::migrate(&conn);
                     *guard = conn;
@@ -704,7 +704,7 @@ pub fn restaurar_backup(
                 Err(err2) => Err(format!(
                     "no se pudo restaurar el respaldo ({err}) y tampoco volver atrás ({err2}). \
                      Tu base de antes está intacta en {}: cópiala sobre {} con la app cerrada.",
-                    copia.display(),
+                    copy.display(),
                     db_path.display()
                 )),
             }
@@ -766,28 +766,28 @@ pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
 /// existe. Quien la llame tiene que tratar ese caso como información, no como algo
 /// roto: es exactamente lo que pasa trabajando sin conexión.
 #[tauri::command]
-pub async fn buscar_actualizacion(app: tauri::AppHandle) -> Result<Option<Actualizacion>, String> {
+pub async fn check_for_update(app: tauri::AppHandle) -> Result<Option<AppUpdate>, String> {
     use tauri_plugin_updater::UpdaterExt;
     let update = app.updater().map_err(e)?.check().await.map_err(e)?;
-    Ok(update.map(|u| Actualizacion {
+    Ok(update.map(|u| AppUpdate {
         version: u.version.clone(),
-        version_actual: u.current_version.clone(),
-        notas: u.body.clone(),
+        current_version: u.current_version.clone(),
+        notes: u.body.clone(),
         // Solo el día: la hora exacta de publicación no le sirve a nadie, y el
         // `Display` de `OffsetDateTime` trae el offset a cuestas.
-        fecha: u.date.map(|d| d.date().to_string()),
+        date: u.date.map(|d| d.date().to_string()),
     }))
 }
 
 /// Descarga e instala la versión nueva, y **reinicia la app**.
 ///
-/// Vuelve a preguntar en vez de guardarse el `Update` de `buscar_actualizacion`:
+/// Vuelve a preguntar en vez de guardarse el `Update` de `check_for_update`:
 /// mantenerlo vivo entre dos comandos obliga a un `State` con la mitad de una
 /// operación de red adentro, y el costo real es una petición HTTP más.
 ///
 /// Si no devuelve nunca es porque salió bien: `restart()` no retorna.
 #[tauri::command]
-pub async fn instalar_actualizacion(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_updater::UpdaterExt;
     let update = app.updater().map_err(e)?.check().await.map_err(e)?;
     let Some(update) = update else {

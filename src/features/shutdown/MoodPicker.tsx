@@ -18,7 +18,7 @@ const CARAS = [
 
 interface Props {
   /** El emoji actual, o `null` si el día no tiene ninguno. */
-  valor: string | null;
+  value: string | null;
   /** `null` para borrarlo. */
   onElegir: (mood: string | null) => void;
 }
@@ -31,7 +31,7 @@ interface Props {
  * un toggle, no un formulario— y hay un "Quitar" explícito para cuando no se
  * recuerde cuál estaba puesto.
  */
-export function MoodPicker({ valor, onElegir }: Props) {
+export function MoodPicker({ value, onElegir }: Props) {
   const [abierto, setAbierto] = useState(false);
   const botonRef = useRef<HTMLButtonElement>(null);
 
@@ -44,12 +44,12 @@ export function MoodPicker({ valor, onElegir }: Props) {
     <>
       <button
         ref={botonRef}
-        className={`mood${valor ? " tiene-valor" : ""}`}
-        aria-label={valor ? "Cambiar el ánimo del día" : "Elegir el ánimo del día"}
+        className={`mood${value ? " tiene-valor" : ""}`}
+        aria-label={value ? "Cambiar el ánimo del día" : "Elegir el ánimo del día"}
         aria-expanded={abierto}
         onClick={() => setAbierto((v) => !v)}
       >
-        {valor ?? <SmilePlus size={15} aria-hidden />}
+        {value ?? <SmilePlus size={15} aria-hidden />}
       </button>
 
       {abierto && (
@@ -59,15 +59,15 @@ export function MoodPicker({ valor, onElegir }: Props) {
               {CARAS.map((m) => (
                 <button
                   key={m}
-                  className={valor === m ? "is-elegido" : undefined}
+                  className={value === m ? "is-elegido" : undefined}
                   aria-label={`Ánimo ${m}`}
-                  onClick={() => elegir(valor === m ? null : m)}
+                  onClick={() => elegir(value === m ? null : m)}
                 >
                   {m}
                 </button>
               ))}
             </div>
-            {valor && (
+            {value && (
               <button className="mood-picker__quitar" onClick={() => elegir(null)}>
                 Quitar
               </button>

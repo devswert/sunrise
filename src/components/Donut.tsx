@@ -1,8 +1,8 @@
 import type { Segmento } from "../lib/segmentos";
-import { horas } from "../lib/capacity";
+import { hours } from "../lib/capacity";
 
 interface Props {
-  segmentos: Segmento[];
+  segments: Segmento[];
   total: number;
 }
 
@@ -19,18 +19,18 @@ const CIRCUNFERENCIA = 2 * Math.PI * RADIO;
  * solo. Como atributo `stroke="var(--mint)"` no funcionaría: los atributos de
  * presentación de SVG no resuelven variables.
  */
-export function Donut({ segmentos, total }: Props) {
+export function Donut({ segments, total }: Props) {
   if (total <= 0) return null;
 
-  let acumulado = 0;
+  let accumulated = 0;
   return (
     <svg className="donut" viewBox="0 0 100 100" role="img" aria-label="Tiempo por contexto">
-      {segmentos.map((s) => {
+      {segments.map((s) => {
         const fraccion = s.seconds / total;
         const largo = fraccion * CIRCUNFERENCIA;
         // El -90° del `transform` pone el inicio arriba en vez de a las 3.
-        const offset = -acumulado * CIRCUNFERENCIA;
-        acumulado += fraccion;
+        const offset = -accumulated * CIRCUNFERENCIA;
+        accumulated += fraccion;
         return (
           <circle
             key={s.key}
@@ -42,12 +42,12 @@ export function Donut({ segmentos, total }: Props) {
             strokeDasharray={`${largo} ${CIRCUNFERENCIA - largo}`}
             strokeDashoffset={offset}
           >
-            <title>{`${s.nombre}: ${horas(s.seconds)}`}</title>
+            <title>{`${s.name}: ${hours(s.seconds)}`}</title>
           </circle>
         );
       })}
       <text className="donut__centro" x="50" y="52" textAnchor="middle">
-        {horas(total)}
+        {hours(total)}
       </text>
     </svg>
   );

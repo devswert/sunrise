@@ -51,7 +51,7 @@ export function BacklogView() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [selected, setSelected] = useState<Task | null>(null);
-  const [rescatadas, setRescatadas] = useState<Map<number, string>>(new Map());
+  const [rescued, setRescued] = useState<Map<number, string>>(new Map());
   const openCompose = useAppStore((s) => s.openCompose);
   const bumpData = useAppStore((s) => s.bumpData);
   const dataVersion = useAppStore((s) => s.dataVersion);
@@ -61,12 +61,12 @@ export function BacklogView() {
       api.listBacklog(),
       api.listCategories(),
       api.listObjectives(isoWeekId(new Date())),
-      api.rescatadasDelBacklog(),
+      api.rescuedFromBacklog(),
     ]);
     setTasks(bl);
     setCategories(cats);
     setObjectives(objs);
-    setRescatadas(new Map(rescates.map((r) => [r.taskId, r.desde])));
+    setRescued(new Map(rescates.map((r) => [r.taskId, r.from])));
   }, []);
 
   useEffect(() => {
@@ -128,8 +128,8 @@ export function BacklogView() {
                   {/* De dónde vino, si vino de un día. Acá no se agrupa aparte
                    * —el backlog se agrupa por contexto— pero saber que esto se
                    * cayó de un día cambia cómo lo lees. */}
-                  {rescatadas.has(t.id) && (
-                    <span className="col-desde">desde el {shortDate(rescatadas.get(t.id)!)}</span>
+                  {rescued.has(t.id) && (
+                    <span className="col-desde">desde el {shortDate(rescued.get(t.id)!)}</span>
                   )}
                 </div>
               ))}

@@ -5,14 +5,14 @@
  * atribución local ya resuelta—, así que acá solo queda decidir qué se muestra y
  * cuándo toca avisar.
  */
-import type { DiaDeBitacora, HechaDelDia } from "../../lib/types";
+import type { LogDay, DoneTask } from "../../lib/types";
 import { SettingKey, type SettingsMap } from "../../lib/settings";
 
 /** Un día sin nada: ni trabajo, ni tareas cerradas, ni nota, ni cierre. */
-export function estaVacio(d: DiaDeBitacora): boolean {
+export function isEmpty(d: LogDay): boolean {
   return (
     d.workedSeconds === 0 &&
-    d.hechas.length === 0 &&
+    d.done.length === 0 &&
     d.timeline.length === 0 &&
     d.note == null &&
     d.closedAt == null
@@ -26,8 +26,8 @@ export function estaVacio(d: DiaDeBitacora): boolean {
  * **hoy nunca se salta**: es el día que se está por cerrar, y esconderlo dejaría
  * la bitácora sin la entrada que se viene a escribir.
  */
-export function diasVisibles(dias: DiaDeBitacora[], hoy: string): DiaDeBitacora[] {
-  return dias.filter((d) => d.date === hoy || !estaVacio(d));
+export function visibleDays(days: LogDay[], today: string): LogDay[] {
+  return days.filter((d) => d.date === today || !isEmpty(d));
 }
 
 /**
@@ -47,14 +47,14 @@ export function diasVisibles(dias: DiaDeBitacora[], hoy: string): DiaDeBitacora[
  * tareas cerradas en silencio haría leer el día como más chico de lo que fue — y
  * el día completo sigue estando a la derecha, en el timeline.
  */
-export function destacadas(d: DiaDeBitacora): { mostradas: HechaDelDia[]; otras: HechaDelDia[] } {
-  const incluidas = d.hechas.filter((h) => h.note != null);
-  if (incluidas.length === 0) return { mostradas: d.hechas, otras: [] };
-  return { mostradas: incluidas, otras: d.hechas.filter((h) => h.note == null) };
+export function highlights(d: LogDay): { shown: DoneTask[]; others: DoneTask[] } {
+  const incluidas = d.done.filter((h) => h.note != null);
+  if (incluidas.length === 0) return { shown: d.done, others: [] };
+  return { shown: incluidas, others: d.done.filter((h) => h.note == null) };
 }
 
 /** Estado de un día para el rótulo: lo cerraste vos, o quedó como borrador. */
-export function estadoDelDia(d: DiaDeBitacora): "CERRADO" | "BORRADOR" {
+export function dayStatus(d: LogDay): "CERRADO" | "BORRADOR" {
   return d.closedAt != null ? "CERRADO" : "BORRADOR";
 }
 
@@ -65,13 +65,13 @@ export function estadoDelDia(d: DiaDeBitacora): "CERRADO" | "BORRADOR" {
  * taxímetro. Es la misma cuenta que hace el rail, y sin ella la tarea que estás
  * trabajando ahora mismo aparece en 0 y el total del día va corto.
  */
-export function trabajadoConEnCurso(d: DiaDeBitacora, segundosEnCurso: number): number {
+export function workedWithRunning(d: LogDay, segundosEnCurso: number): number {
   const hayCorrida = d.timeline.some((t) => t.running);
   return d.workedSeconds + (hayCorrida ? Math.max(0, segundosEnCurso) : 0);
 }
 
 /** Igual que la anterior, pero para un tramo del timeline. */
-export function segundosDelTramo(
+export function segmentSeconds(
   tramo: { seconds: number; running: boolean },
   segundosEnCurso: number,
 ): number {
@@ -90,16 +90,16 @@ export function segundosDelTramo(
  *   volver a avisar al día siguiente.
  * - **El día no está cerrado.** Si ya lo cerraste, el aviso llega tarde y de más.
  */
-export function tocaAvisarCierre(opciones: {
+export function shouldRemindShutdown(options: {
   nowHhmm: string;
   workEnd: string;
   values: SettingsMap;
-  hoy: string;
-  yaCerrado: boolean;
+  today: string;
+  alreadyClosed: boolean;
 }): boolean {
-  const { nowHhmm, workEnd, values, hoy, yaCerrado } = opciones;
-  if (yaCerrado) return false;
-  if (values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === hoy) return false;
+  const { nowHhmm, workEnd, values, today, alreadyClosed } = options;
+  if (alreadyClosed) return false;
+  if (values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === today) return false;
   // Comparación de strings `HH:mm`, que es lexicográfica y por eso funciona.
   return nowHhmm >= workEnd;
 }

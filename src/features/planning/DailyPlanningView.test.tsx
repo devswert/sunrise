@@ -9,10 +9,10 @@ import { SettingKey, useSettingsStore } from "../../lib/settings";
 
 // El canvas de jsdom no implementa `getContext`: la llamada real reventaría en
 // cuanto un test aprete el botón del final. Por eso vive en su propio módulo.
-const celebrar = vi.fn();
-vi.mock("../../lib/confetti", () => ({ celebrar: () => celebrar() }));
+const celebrate = vi.fn();
+vi.mock("../../lib/confetti", () => ({ celebrate: () => celebrate() }));
 
-function montar() {
+function mount() {
   return render(
     <MemoryRouter initialEntries={["/daily-planning"]}>
       <Routes>
@@ -31,7 +31,7 @@ function hace(n: number): string {
   return toISODate(d);
 }
 
-const irAHoy = () => userEvent.click(screen.getByRole("button", { name: /Qué hay para hoy/ }));
+const goToToday = () => userEvent.click(screen.getByRole("button", { name: /Qué hay para hoy/ }));
 
 /**
  * OJO con el orden de los casos, dos veces:
@@ -46,12 +46,12 @@ const irAHoy = () => userEvent.click(screen.getByRole("button", { name: /Qué ha
  */
 describe("DailyPlanningView", () => {
   beforeEach(() => {
-    celebrar.mockClear();
+    celebrate.mockClear();
     useSettingsStore.setState({ values: {}, loaded: true });
   });
 
   it("arranca en el repaso del día anterior", async () => {
-    montar();
+    mount();
     await waitFor(() =>
       expect(screen.getByText(/No hay días anteriores con tareas/)).toBeInTheDocument(),
     );
@@ -63,14 +63,14 @@ describe("DailyPlanningView", () => {
     await api.createTask({ title: "Quedó abierta", scheduledDate: hace(3) });
     const hecha = await api.createTask({ title: "Se cerró", scheduledDate: hace(3) });
     await api.setTaskStatus(hecha.id, "DONE");
-    montar();
+    mount();
 
-    const cifras = await waitFor(() => {
+    const figures = await waitFor(() => {
       const el = document.querySelector(".repaso__cifras");
       expect(el).not.toBeNull();
       return el!;
     });
-    expect(cifras.textContent).toMatch(/1\/2\s*cerradas/);
+    expect(figures.textContent).toMatch(/1\/2\s*cerradas/);
     expect(screen.getByText("Quedó abierta")).toBeInTheDocument();
   });
 
@@ -78,11 +78,11 @@ describe("DailyPlanningView", () => {
     // Las de calendario se quedan en su día para siempre: `carry_over` solo
     // mueve las MANUAL. Sin este botón no había forma de rescatarlas.
     await api.createTask({ title: "Reunión del sábado", scheduledDate: hace(1) });
-    montar();
+    mount();
 
     await userEvent.click(await screen.findByRole("button", { name: /Traer Reunión del sábado/ }));
 
-    await irAHoy();
+    await goToToday();
     // En la columna del día, no en el rail (que también la dibuja).
     const columna = document.querySelector<HTMLElement>(".daily-plan__col")!;
     await waitFor(() =>
@@ -94,7 +94,7 @@ describe("DailyPlanningView", () => {
     // `useBoard` solo carga hoy: buscar ahí la tarea del paso 1 dejaba el click
     // sin efecto, que es peor que no ser clickeable.
     await api.createTask({ title: "Vengo de antes", scheduledDate: hace(2) });
-    montar();
+    mount();
 
     await userEvent.click(await screen.findByText("Vengo de antes"));
 
@@ -108,9 +108,9 @@ describe("DailyPlanningView", () => {
     await api.createTask({ title: "Ancla de ayer", scheduledDate: hace(1) });
     // Explícito y no vía `useBoard`: su guarda corre una sola vez por archivo y
     // para este caso ya se gastó en un test anterior.
-    await api.degradarPendientes(todayISO());
-    montar();
-    await irAHoy();
+    await api.demotePending(todayISO());
+    mount();
+    await goToToday();
 
     const cols = document.querySelectorAll<HTMLElement>(".daily-plan__col");
     await waitFor(() =>
@@ -121,19 +121,19 @@ describe("DailyPlanningView", () => {
 
   it("el peso del día se ve en los dos pasos, no en una card aparte", async () => {
     // La semilla del mock deja tareas de hoy: el medidor tiene que contarlas.
-    montar();
+    mount();
     await waitFor(() => expect(document.querySelector(".cap-line")).not.toBeNull());
     expect(screen.getByText(/sin comprometer|lleno|pasaste|vac/i)).toBeInTheDocument();
 
-    await irAHoy();
+    await goToToday();
     expect(document.querySelector(".cap-line")).not.toBeNull();
   });
 
   it("el backlog es una columna del paso 2, para arrastrar en los dos sentidos", async () => {
     // Sacar del día es soltar acá: por eso ya no hay botones que hagan lo mismo.
     await api.createTask({ title: "Algún día" });
-    montar();
-    await irAHoy();
+    mount();
+    await goToToday();
 
     expect(await screen.findByText("Backlog")).toBeInTheDocument();
     const col = document.querySelectorAll(".daily-plan__col");
@@ -144,8 +144,8 @@ describe("DailyPlanningView", () => {
   it("no guarda nada al entrar: el ritual no es un formulario", async () => {
     // Todo lo que se toca acá ya persiste solo. Si montar la vista escribiera
     // `planned_on`, el sello del final dejaría de significar algo.
-    montar();
-    await irAHoy();
+    mount();
+    await goToToday();
     await waitFor(() => expect(document.querySelector(".cap-line")).not.toBeNull());
 
     const pares = await api.listSettings();
@@ -156,10 +156,10 @@ describe("DailyPlanningView", () => {
     // El sello en la cabecera se leía como decoración. El ritual está para
     // hacerse una vez y volver a entrar suele ser sin querer.
     useSettingsStore.setState({ values: { planned_on: todayISO() }, loaded: true });
-    montar();
+    mount();
 
-    const aviso = await screen.findByRole("alertdialog", { name: "Ya planificaste hoy" });
-    await userEvent.click(within(aviso).getByRole("button", { name: /Revisar igual/ }));
+    const notice = await screen.findByRole("alertdialog", { name: "Ya planificaste hoy" });
+    await userEvent.click(within(notice).getByRole("button", { name: /Revisar igual/ }));
 
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(screen.queryByText("La semana")).toBeNull();
@@ -167,28 +167,28 @@ describe("DailyPlanningView", () => {
 
   it("desde el aviso se puede salir a la semana", async () => {
     useSettingsStore.setState({ values: { planned_on: todayISO() }, loaded: true });
-    montar();
+    mount();
 
-    const aviso = await screen.findByRole("alertdialog");
-    await userEvent.click(within(aviso).getByRole("button", { name: /Ir a la semana/ }));
+    const notice = await screen.findByRole("alertdialog");
+    await userEvent.click(within(notice).getByRole("button", { name: /Ir a la semana/ }));
 
     expect(await screen.findByText("La semana")).toBeInTheDocument();
   });
 
   it("un día sin planificar no avisa nada", async () => {
-    montar();
+    mount();
     await waitFor(() => expect(document.querySelector(".cap-line")).not.toBeNull());
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("terminar el ritual marca el día, tira confeti y vuelve a la semana", async () => {
-    montar();
-    await irAHoy();
+    mount();
+    await goToToday();
 
     await userEvent.click(await screen.findByRole("button", { name: "Empezar el día" }));
 
     expect(await screen.findByText("La semana")).toBeInTheDocument();
-    expect(celebrar).toHaveBeenCalledTimes(1);
+    expect(celebrate).toHaveBeenCalledTimes(1);
     const pares = await api.listSettings();
     expect(pares.find(([k]) => k === SettingKey.PLANNED_ON)?.[1]).toBe(todayISO());
   });

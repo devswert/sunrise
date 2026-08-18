@@ -53,7 +53,7 @@ pub fn run() {
             // Base de datos en el directorio de datos de la app.
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let db_path = dir.join(db::archivo());
+            let db_path = dir.join(db::file_name());
 
             let conn = db::open(&db_path)?;
             db::migrate(&conn)?;
@@ -77,16 +77,16 @@ pub fn run() {
                     // equivocado en silencio.
                     let items = app_menu.items()?;
                     match items.last() {
-                        Some(MenuItemKind::Predefined(quit_por_defecto)) => {
-                            app_menu.remove(quit_por_defecto)?;
-                            let propio = MenuItem::with_id(
+                        Some(MenuItemKind::Predefined(default_quit)) => {
+                            app_menu.remove(default_quit)?;
+                            let own = MenuItem::with_id(
                                 app.handle(),
                                 QUIT_MENU_ID,
                                 format!("Quit {}", app.package_info().name),
                                 true,
                                 Some("CmdOrCtrl+Q"),
                             )?;
-                            app_menu.append(&propio)?;
+                            app_menu.append(&own)?;
                             app.set_menu(menu)?;
                         }
                         _ => eprintln!(
@@ -98,7 +98,7 @@ pub fn run() {
             }
 
             // Poller de calendario. Va después de la DB porque la necesita.
-            calendar::arrancar_poller(app.handle().clone());
+            calendar::start_poller(app.handle().clone());
 
             Ok(())
         })
@@ -115,27 +115,27 @@ pub fn run() {
             commands::delete_task,
             commands::set_task_status,
             commands::move_task,
-            commands::degradar_pendientes,
+            commands::demote_pending,
             commands::list_tasks_for_range,
             commands::list_tasks_for_date,
             commands::list_backlog,
             commands::list_task_events,
-            commands::rescatadas_del_backlog,
+            commands::rescued_from_backlog,
             // timer
             commands::start_timer,
             commands::stop_timer,
             commands::get_active_timer,
             commands::list_time_entries,
-            commands::trabajo_del_dia,
+            commands::day_work,
             commands::weekly_rollup,
-            commands::bitacora,
+            commands::daily_log,
             commands::set_day_note,
             commands::set_day_task_note,
             commands::set_day_mood,
-            commands::incluir_en_bitacora,
-            commands::quitar_de_bitacora,
-            commands::cerrar_dia,
-            commands::reabrir_dia,
+            commands::include_in_log,
+            commands::remove_from_log,
+            commands::close_day,
+            commands::reopen_day,
             commands::focus_queue,
             commands::play_bell,
             commands::bell_dir,
@@ -157,15 +157,15 @@ pub fn run() {
             commands::set_setting,
             commands::autostart_enabled,
             commands::set_autostart,
-            commands::buscar_actualizacion,
-            commands::instalar_actualizacion,
+            commands::check_for_update,
+            commands::install_update,
             // respaldos
             commands::app_version,
-            commands::perfil,
-            commands::crear_backup,
-            commands::probar_backup_dir,
+            commands::profile,
+            commands::create_backup,
+            commands::test_backup_dir,
             commands::list_backups,
-            commands::restaurar_backup,
+            commands::restore_backup,
             // calendario
             commands::list_calendar_feeds,
             commands::create_calendar_feed,

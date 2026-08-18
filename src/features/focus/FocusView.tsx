@@ -8,7 +8,7 @@ import type { Task } from "../../lib/types";
 import { todayISO } from "../../lib/date";
 import { formatMinutes } from "../../lib/capacity";
 import { useTimer, hms } from "../timer/useTimer";
-import { EventoDelCalendario } from "../calendar/EventoDelCalendario";
+import { CalendarEventCard } from "../calendar/EventoDelCalendario";
 import { NotesEditor } from "../tasks/NotesEditor";
 import { useAutosave } from "../tasks/useAutosave";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
@@ -148,7 +148,7 @@ export function FocusView() {
   // tarjeta y el modal. "Solo hoy" queda en el taxímetro.
   const elapsed = current.actualSeconds + (running ? timer.runTotal : 0);
   const planned = current.estimatedMinutes;
-  const canal =
+  const channel =
     current.categoryId != null ? categories.find((c) => c.id === current.categoryId) : null;
 
   return (
@@ -170,11 +170,11 @@ export function FocusView() {
             * de borrar al lado del play es un accidente esperando. */}
           <div className="chip-wrap" ref={canalRef}>
             <button
-              className={`chip${canal ? " is-set" : ""}`}
+              className={`chip${channel ? " is-set" : ""}`}
               aria-label="Cambiar canal"
               onClick={() => setPicker((p) => (p === "canal" ? null : "canal"))}
             >
-              {canal ? `#${canal.name}` : <Hash size={13} />}
+              {channel ? `#${channel.name}` : <Hash size={13} />}
             </button>
             {picker === "canal" && (
               <Popover anchorRef={canalRef} onClose={() => setPicker(null)}>
@@ -272,7 +272,7 @@ export function FocusView() {
           * participantes y descripción. Es la vista en la que estás cuando
           * empieza la reunión, así que tener que abrir otra pantalla para saber
           * por dónde entrar no tiene sentido. */}
-        <EventoDelCalendario task={current} />
+        <CalendarEventCard task={current} />
 
         <div className="focus__notas">
           <NotesEditor

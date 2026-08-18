@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { api, isTauri } from "../../lib/ipc";
 import { useToday } from "../../lib/day";
 import { SettingKey, useSettingsStore, workHours } from "../../lib/settings";
-import { tocaAvisarCierre } from "./bitacora";
+import { shouldRemindShutdown } from "./dailyLog";
 
 /** Cada cuánto se mira el reloj. El aviso es de una vez al día, no al segundo. */
 const INTERVALO_MS = 60_000;
@@ -34,34 +34,34 @@ function ahoraHhmm(): string {
  *
  * **Este camino no se puede verificar fuera de Tauri**: en el browser y en jsdom
  * no hay notificaciones nativas. Lo que sí está testeado es la decisión
- * (`tocaAvisarCierre`).
+ * (`shouldRemindShutdown`).
  */
 export function useShutdownReminder() {
   const values = useSettingsStore((s) => s.values);
   const loaded = useSettingsStore((s) => s.loaded);
   const setSetting = useSettingsStore((s) => s.set);
-  const hoy = useToday();
+  const today = useToday();
 
   useEffect(() => {
     if (!loaded || !isTauri()) return;
 
-    let vivo = true;
-    const mirar = async () => {
+    let alive = true;
+    const look = async () => {
       const { end } = workHours(values);
       const ahora = ahoraHhmm();
       // Los dos cortes baratos, antes de tocar la base.
-      if (values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === hoy) return;
+      if (values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === today) return;
       if (ahora < end) return;
 
-      const [dia] = await api.bitacora(hoy, 1);
-      if (!vivo) return;
+      const [day] = await api.dailyLog(today, 1);
+      if (!alive) return;
       if (
-        !tocaAvisarCierre({
+        !shouldRemindShutdown({
           nowHhmm: ahora,
           workEnd: end,
           values,
-          hoy,
-          yaCerrado: dia?.closedAt != null,
+          today,
+          alreadyClosed: day?.closedAt != null,
         })
       ) {
         return;
@@ -74,7 +74,7 @@ export function useShutdownReminder() {
           if (permiso !== "granted") {
             // Se marca igual: sin permiso, reintentar cada minuto no cambia
             // nada y deja la app pidiendo lo mismo toda la tarde.
-            await setSetting(SettingKey.SHUTDOWN_NOTIFIED_ON, hoy);
+            await setSetting(SettingKey.SHUTDOWN_NOTIFIED_ON, today);
             return;
           }
         }
@@ -82,7 +82,7 @@ export function useShutdownReminder() {
           title: "Hora de cerrar el día",
           body: "Pasa por el shutdown si quieres dejarlo escrito. Si no, queda como borrador.",
         });
-        await setSetting(SettingKey.SHUTDOWN_NOTIFIED_ON, hoy);
+        await setSetting(SettingKey.SHUTDOWN_NOTIFIED_ON, today);
       } catch (err) {
         // Que falle la notificación no puede tumbar la app. Y no se marca la
         // fecha: si fue algo pasajero, el próximo tick lo vuelve a intentar.
@@ -90,11 +90,11 @@ export function useShutdownReminder() {
       }
     };
 
-    void mirar();
-    const id = setInterval(mirar, INTERVALO_MS);
+    void look();
+    const id = setInterval(look, INTERVALO_MS);
     return () => {
-      vivo = false;
+      alive = false;
       clearInterval(id);
     };
-  }, [loaded, values, hoy, setSetting]);
+  }, [loaded, values, today, setSetting]);
 }

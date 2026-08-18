@@ -136,7 +136,7 @@ export function WeeklyPlanningView() {
                     className="btn-ghost"
                     onClick={() => openCompose({ objectiveId: o.id, date: todayISO() })}
                   >
-                    <Plus size={13} /> Nueva tarea
+                    <Plus size={13} /> Nueva task
                   </button>
                   {unassigned.length > 0 && (
                     <select

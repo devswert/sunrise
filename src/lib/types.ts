@@ -43,7 +43,7 @@ export interface Task {
   /** Descripción del evento, separada de `notes` (que son del usuario). */
   eventDescription: string | null;
   /** Organizador e invitados. Vacío si el feed no los trae. */
-  attendees: Participante[];
+  attendees: Attendee[];
   createdAt: string;
   updatedAt: string;
 }
@@ -58,22 +58,22 @@ export interface TaskEvent {
 }
 
 /**
- * Una tarea del backlog que **venía de un día**. Espejo de `models::Rescate`.
+ * Una tarea del backlog que **venía de un día**. Espejo de `models::Rescue`.
  * Sale del historial, así que cubre tanto la degradación diaria como los envíos
  * a mano: las dos cosas son "esto venía de un día".
  */
-export interface Rescate {
+export interface Rescue {
   taskId: number;
   /** El día del que salió. */
-  desde: string;
+  from: string;
 }
 
 /**
  * Lo que una tarea trabajó en un día: cuándo empezó y cuánto sumó.
- * Espejo de `models::TrabajoDelDia`. Es lo que deja al rail dibujar lo que pasó
+ * Espejo de `models::DayWork`. Es lo que deja al rail dibujar lo que pasó
  * de verdad en vez de lo estimado por el calendario.
  */
-export interface TrabajoDelDia {
+export interface DayWork {
   taskId: number;
   /** Primer `startedAt` del día, RFC 3339 en UTC. */
   startedAt: string;
@@ -92,31 +92,31 @@ export interface TimeEntry {
 }
 
 /**
- * Cuánto se trabajó un día en una categoría. Espejo de `models::RollupCelda`.
+ * Cuánto se trabajó un día en una categoría. Espejo de `models::RollupCell`.
  * Trae el contexto ya resuelto (`parentId ?? id`) para que el donut no tenga que
  * cruzar el árbol de categorías en cada render.
  */
-export interface RollupCelda {
+export interface RollupCell {
   date: string;
   categoryId: number | null;
   contextId: number | null;
   seconds: number;
 }
 
-/** Los totales de un día. Espejo de `models::RollupDia`. */
-export interface RollupDia {
+/** Los totales de un día. Espejo de `models::RollupDay`. */
+export interface RollupDay {
   date: string;
   /** Trabajado, atribuido por `startedAt` (Regla 2). */
   seconds: number;
   /** Planificado, por `scheduledDate`. La asimetría es deliberada (SPECS §4.15). */
   plannedMinutes: number;
-  hechas: number;
+  done: number;
   /** Tareas del día sin estimar: se avisan, no se rellenan con un número. */
-  sinEstimar: number;
+  unestimated: number;
 }
 
-/** Un tramo del timeline de un día. Espejo de `models::TramoDelDia`. */
-export interface TramoDelDia {
+/** Un tramo del timeline de un día. Espejo de `models::DaySegment`. */
+export interface DaySegment {
   taskId: number;
   title: string;
   seconds: number;
@@ -130,13 +130,13 @@ export interface TramoDelDia {
  * `note` distingue **tres** cosas: `null` = no la incluiste en la bitácora;
  * `""` = incluida y sin resumen todavía; texto = incluida y con tus palabras.
  */
-export interface HechaDelDia {
+export interface DoneTask {
   task: Task;
   note: string | null;
 }
 
-/** Un día de la bitácora. Espejo de `models::DiaDeBitacora`. */
-export interface DiaDeBitacora {
+/** Un día de la bitácora. Espejo de `models::LogDay`. */
+export interface LogDay {
   date: string;
   /** El cierre "con mis palabras". */
   note: string | null;
@@ -146,23 +146,23 @@ export interface DiaDeBitacora {
   mood: string | null;
   workedSeconds: number;
   plannedMinutes: number;
-  sinEstimar: number;
-  hechas: HechaDelDia[];
-  timeline: TramoDelDia[];
+  unestimated: number;
+  done: DoneTask[];
+  timeline: DaySegment[];
   /** Lo trabajado por categoría, para el donut del día. */
-  celdas: RollupCelda[];
+  cells: RollupCell[];
 }
 
 /** El rollup de una semana. Espejo de `models::WeeklyRollup`. */
 export interface WeeklyRollup {
   weekStart: string;
   /** Siempre 7, lunes→domingo. */
-  dias: RollupDia[];
-  celdas: RollupCelda[];
-  completadas: Task[];
+  days: RollupDay[];
+  cells: RollupCell[];
+  completedTasks: Task[];
   totalSeconds: number;
   plannedMinutes: number;
-  sinEstimar: number;
+  unestimated: number;
 }
 
 export interface CalendarFeed {
@@ -215,22 +215,22 @@ export interface TaskPatch {
 }
 
 /** Un invitado a una reunión importada del calendario. Solo lectura. */
-export interface Participante {
-  nombre: string | null;
+export interface Attendee {
+  name: string | null;
   email: string | null;
   /** `ACCEPTED` · `DECLINED` · `TENTATIVE` · `NEEDS-ACTION`, o `null`. */
-  estado: string | null;
-  organizador: boolean;
+  status: string | null;
+  isOrganizer: boolean;
 }
 
 /**
  * Un archivo de respaldo en la carpeta configurada (espeja
- * `models::ArchivoDeBackup`).
+ * `models::BackupFile`).
  *
  * `createdAt` sale del **nombre** del archivo, no de su metadata: copiar o
  * sincronizar un respaldo le cambia la fecha al archivo pero no al nombre.
  */
-export interface ArchivoDeBackup {
+export interface BackupFile {
   /** `sunrise-20260817-200315.zip`. */
   name: string;
   path: string;
@@ -240,53 +240,53 @@ export interface ArchivoDeBackup {
 }
 
 /**
- * Resultado de restaurar un respaldo (espeja `models::Restauracion`).
+ * Resultado de restaurar un respaldo (espeja `models::RestoreResult`).
  *
  * Trae lo justo para cerrar una acción irreversible: qué momento quedó vivo, con
  * qué datos, y cómo deshacerlo.
  */
-export interface Restauracion {
-  desde: string;
+export interface RestoreResult {
+  from: string;
   /** Dónde quedó la copia de la base que se pisó. Es el deshacer. */
-  copiaDeSeguridad: string;
+  backupCopy: string;
   /** Momento del snapshot según el manifest, **con offset de zona**. */
-  creadoEn: string | null;
+  createdAt: string | null;
   /** Versión de la app que escribió el respaldo, si el manifest la trae. */
-  versionDelRespaldo: string | null;
+  backupVersion: string | null;
   /** La de esta app. Solo se muestra cuando difiere de la del respaldo. */
-  versionActual: string;
+  currentVersion: string;
   /** Tareas vivas en la base restaurada. */
-  tareas: number;
+  tasks: number;
   /** Lo último trabajado según la base restaurada (RFC3339 en UTC). */
-  ultimaActividad: string | null;
+  lastActivity: string | null;
 }
 
 /**
- * Perfil de compilación de esta ventana. Espejo de `models::Perfil`.
+ * Profile de compilación de esta ventana. Espejo de `models::Profile`.
  *
  * Dev y producción comparten el directorio de datos y se separan por el nombre del
  * archivo SQLite, así que las dos pueden estar abiertas a la vez con datos
  * distintos y el mismo aspecto. Ver `lib/perfil.ts` y SPECS §4.20.
  */
-export interface Perfil {
+export interface Profile {
   /** `true` en `pnpm tauri dev` (y en un `tauri build --debug`). */
   dev: boolean;
   /** Nombre del archivo SQLite en uso. */
-  base: string;
+  dbFile: string;
 }
 
 /**
- * Una versión nueva disponible. Espejo de `models::Actualizacion`.
+ * Una versión nueva disponible. Espejo de `models::AppUpdate`.
  *
  * `null` en vez de esta interfaz significa "estás al día", que es el caso normal.
  */
-export interface Actualizacion {
+export interface AppUpdate {
   /** La versión publicada (`0.2.0`). */
   version: string;
   /** La que está corriendo ahora, para poder mostrar las dos juntas. */
-  versionActual: string;
+  currentVersion: string;
   /** Cuerpo del Release. Es markdown escrito a mano por quien publicó. */
-  notas: string | null;
+  notes: string | null;
   /** Día de publicación (`2026-08-17`), o `null` si el `latest.json` no lo trae. */
-  fecha: string | null;
+  date: string | null;
 }

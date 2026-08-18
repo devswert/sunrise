@@ -4,25 +4,25 @@
  */
 import type {
   ActiveTimer,
-  Rescate,
+  Rescue,
   CalendarFeed,
   Category,
   Objective,
   Task,
   TaskEvent,
   TimeEntry,
-  TrabajoDelDia,
+  DayWork,
   WeeklyRollup,
-  DiaDeBitacora,
-  TramoDelDia,
-  RollupCelda,
-  RollupDia,
+  LogDay,
+  DaySegment,
+  RollupCell,
+  RollupDay,
   NewTaskInput,
   TaskPatch,
-  ArchivoDeBackup,
-  Restauracion,
-  Perfil,
-  Actualizacion,
+  BackupFile,
+  RestoreResult,
+  Profile,
+  AppUpdate,
 } from "./types";
 import { toISODate, todayISO, weekDates } from "./date";
 
@@ -70,10 +70,10 @@ let autostart = false;
  *
  * El mock no toca el disco: fuera de Tauri no hay `VACUUM INTO` ni carpeta que
  * escribir. Lo que sí replica es el contrato que la vista consume —que
- * `crearBackup` falle sin carpeta configurada, que el nuevo aparezca primero en
+ * `createBackup` falle sin carpeta configurada, que el nuevo aparezca primero en
  * la lista, y que la retención recorte— porque eso es lo que los tests miran.
  */
-const backups: ArchivoDeBackup[] = [];
+const backups: BackupFile[] = [];
 
 const tasks: Task[] = [];
 const feeds: CalendarFeed[] = [];
@@ -126,24 +126,24 @@ function secondsToday(taskId: number): number {
 }
 
 /**
- * Parte un intervalo en tramos por día local. Espeja `tramos_por_dia_local` de
+ * Parte un intervalo en tramos por día local. Espeja `segments_by_local_day` de
  * `repo.rs`: el tiempo se atribuye por `startedAt`, así que una fila que cruza
  * la medianoche le acreditaría todo al primer día.
  */
-function tramosPorDiaLocal(inicio: Date, fin: Date): Array<[Date, Date]> {
-  if (fin <= inicio) return [[inicio, fin]];
-  const tramos: Array<[Date, Date]> = [];
-  let cursor = inicio;
+function tramosPorDiaLocal(start: Date, end: Date): Array<[Date, Date]> {
+  if (end <= start) return [[start, end]];
+  const segments: Array<[Date, Date]> = [];
+  let cursor = start;
   for (let i = 0; i < 400; i++) {
     const corte = new Date(cursor);
     corte.setHours(0, 0, 0, 0);
     corte.setDate(corte.getDate() + 1);
-    if (corte >= fin) break;
-    tramos.push([cursor, corte]);
+    if (corte >= end) break;
+    segments.push([cursor, corte]);
     cursor = corte;
   }
-  tramos.push([cursor, fin]);
-  return tramos;
+  segments.push([cursor, end]);
+  return segments;
 }
 
 function nextPosition(date: string | null): number {
@@ -188,19 +188,19 @@ function logEvent(
   // Un día anterior con algo cerrado: sin esto el repaso del ritual (§4.14) no
   // se puede ver en el browser, porque el carry-over se lleva a hoy todo lo
   // manual sin terminar y la fecha queda vacía.
-  const ayer = wk[1] ?? today;
-  const cerrada = blankTask(
-    { title: "Ajustar dashboards", scheduledDate: ayer, estimatedMinutes: 60, categoryId: 3 },
-    nextPosition(ayer),
+  const yesterday = wk[1] ?? today;
+  const closed = blankTask(
+    { title: "Ajustar dashboards", scheduledDate: yesterday, estimatedMinutes: 60, categoryId: 3 },
+    nextPosition(yesterday),
   );
-  cerrada.status = "DONE";
-  cerrada.completedAt = nowISO();
-  tasks.push(cerrada);
+  closed.status = "DONE";
+  closed.completedAt = nowISO();
+  tasks.push(closed);
   entries.push({
     id: nextId(),
-    taskId: cerrada.id,
-    startedAt: `${ayer}T13:00:00.000Z`,
-    endedAt: `${ayer}T13:50:00.000Z`,
+    taskId: closed.id,
+    startedAt: `${yesterday}T13:00:00.000Z`,
+    endedAt: `${yesterday}T13:50:00.000Z`,
     seconds: 3000,
   });
 
@@ -216,8 +216,8 @@ function logEvent(
       meetingUrl: "https://meet.google.com/abc-defg-hij",
       eventDescription: "Revisamos el tablero<br><ul><li>Bloqueos</li><li>Riesgos</li></ul>",
       attendees: [
-        { nombre: "Tere", email: "tere@example.com", estado: "ACCEPTED", organizador: true },
-        { nombre: null, email: "gabo@example.com", estado: "TENTATIVE", organizador: false },
+        { name: "Tere", email: "tere@example.com", status: "ACCEPTED", isOrganizer: true },
+        { name: null, email: "gabo@example.com", status: "TENTATIVE", isOrganizer: false },
       ],
     },
     { title: "1:1 con Gabo", scheduledTime: "10:30", estimatedMinutes: 30, categoryId: 7 },
@@ -327,18 +327,18 @@ export const mock = {
   },
 
   /**
-   * Espeja `repo::degradar_pendientes`: preserva el último día con tareas —el
+   * Espeja `repo::demote_pending`: preserva el último día con tareas —el
    * que repasa el ritual— y baja al backlog, en primera posición, lo pendiente
    * de días anteriores.
    */
-  degradarPendientes: async (today: string): Promise<number> => {
-    const diaVivo = tasks
+  demotePending: async (today: string): Promise<number> => {
+    const liveDay = tasks
       .filter((t) => t.sourceState === "ACTIVE" && t.scheduledDate && t.scheduledDate < today)
       .reduce<string | null>(
         (m, t) => (m == null || t.scheduledDate! > m ? t.scheduledDate! : m),
         null,
       );
-    if (diaVivo == null) return 0;
+    if (liveDay == null) return 0;
 
     const viejas = tasks
       .filter(
@@ -347,7 +347,7 @@ export const mock = {
           t.status === "TODO" &&
           t.sourceState === "ACTIVE" &&
           t.scheduledDate !== null &&
-          t.scheduledDate < diaVivo,
+          t.scheduledDate < liveDay,
       )
       .sort((a, b) =>
         a.scheduledDate! < b.scheduledDate! ? 1 : a.scheduledDate! > b.scheduledDate! ? -1 : 0,
@@ -366,18 +366,18 @@ export const mock = {
   },
 
   /**
-   * Espeja `repo::rescatadas_del_backlog`: lo que está en el backlog y **venía
+   * Espeja `repo::rescued_from_backlog`: lo que está en el backlog y **venía
    * de un día**, según el historial. Cubre por igual lo que bajó la degradación
    * y lo que mandaste a mano.
    */
-  rescatadasDelBacklog: async (): Promise<Rescate[]> => {
-    const out: Rescate[] = [];
+  rescuedFromBacklog: async (): Promise<Rescue[]> => {
+    const out: Rescue[] = [];
     for (const t of tasks) {
       if (t.sourceState !== "ACTIVE" || t.status !== "TODO" || t.scheduledDate !== null) continue;
-      const ultimo = [...events]
+      const last = [...events]
         .reverse()
         .find((e) => e.taskId === t.id && e.type === "MOVED" && e.toDate === null);
-      if (ultimo?.fromDate) out.push({ taskId: t.id, desde: ultimo.fromDate });
+      if (last?.fromDate) out.push({ taskId: t.id, from: last.fromDate });
     }
     return out;
   },
@@ -448,24 +448,24 @@ export const mock = {
     // guarda partida por día, para que el tiempo quede acreditado al día en que
     // se trabajó. El último tramo absorbe el resto, así la suma de las filas da
     // exactamente `seconds`.
-    const tramos = tramosPorDiaLocal(new Date(open.startedAt), new Date(ended));
-    if (tramos.length > 1) {
+    const segments = tramosPorDiaLocal(new Date(open.startedAt), new Date(ended));
+    if (segments.length > 1) {
       let repartido = 0;
-      tramos.forEach(([ini, fin], i) => {
-        const ultimo = i === tramos.length - 1;
-        const secs = ultimo
+      segments.forEach(([ini, end], i) => {
+        const last = i === segments.length - 1;
+        const secs = last
           ? seconds - repartido
-          : Math.max(0, Math.round((fin.getTime() - ini.getTime()) / 1000));
+          : Math.max(0, Math.round((end.getTime() - ini.getTime()) / 1000));
         repartido += secs;
         if (i === 0) {
-          open.endedAt = fin.toISOString();
+          open.endedAt = end.toISOString();
           open.seconds = secs;
         } else {
           entries.push({
             id: nextId(),
             taskId: open.taskId,
             startedAt: ini.toISOString(),
-            endedAt: fin.toISOString(),
+            endedAt: end.toISOString(),
             seconds: secs,
           });
         }
@@ -484,17 +484,17 @@ export const mock = {
     entries.filter((e) => e.taskId === taskId),
 
   /**
-   * Espeja `repo::trabajo_del_dia`: una fila por tarea, con el primer inicio del
+   * Espeja `repo::day_work`: una fila por tarea, con el primer inicio del
    * día y los segundos cerrados. El día se acota por la fecha **local** de
    * `startedAt` —igual que en Rust—, no cortando el timestamp.
    */
-  trabajoDelDia: async (date: string): Promise<TrabajoDelDia[]> => {
-    const porTarea = new Map<number, TrabajoDelDia>();
+  dayWork: async (date: string): Promise<DayWork[]> => {
+    const porTarea = new Map<number, DayWork>();
     for (const e of entries) {
-      const inicio = new Date(e.startedAt);
-      if (Number.isNaN(inicio.getTime()) || toISODate(inicio) !== date) continue;
+      const start = new Date(e.startedAt);
+      if (Number.isNaN(start.getTime()) || toISODate(start) !== date) continue;
       const previo = porTarea.get(e.taskId);
-      const fila: TrabajoDelDia = previo ?? {
+      const fila: DayWork = previo ?? {
         taskId: e.taskId,
         startedAt: e.startedAt,
         seconds: 0,
@@ -521,7 +521,7 @@ export const mock = {
   weeklyRollup: async (weekStart: string): Promise<WeeklyRollup> => {
     // Los 7 días **desde `weekStart`**, literal: `weekDates` los encajaría al
     // lunes ISO y el mock devolvería otra semana que Rust, que lo toma tal cual.
-    const dias = Array.from({ length: 7 }, (_, i) => {
+    const days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(`${weekStart}T00:00:00`);
       d.setDate(d.getDate() + i);
       return toISODate(d);
@@ -529,7 +529,7 @@ export const mock = {
     const indice = (iso: string | null | undefined): number => {
       if (!iso) return -1;
       const d = new Date(iso);
-      return Number.isNaN(d.getTime()) ? -1 : dias.indexOf(toISODate(d));
+      return Number.isNaN(d.getTime()) ? -1 : days.indexOf(toISODate(d));
     };
     const ctxDe = (categoryId: number | null): number | null => {
       if (categoryId == null) return null;
@@ -558,66 +558,66 @@ export const mock = {
       if (!t.eventStart || !t.eventEnd) continue;
       if (entries.some((e) => e.taskId === t.id)) continue;
       const ini = new Date(t.eventStart).getTime();
-      const fin = new Date(t.eventEnd).getTime();
-      if (Number.isNaN(ini) || Number.isNaN(fin) || ini > now) continue;
+      const end = new Date(t.eventEnd).getTime();
+      if (Number.isNaN(ini) || Number.isNaN(end) || ini > now) continue;
       const i = indice(t.eventStart);
       if (i < 0) continue;
-      suma(i, t.id, Math.max(0, Math.round((fin - ini) / 1000)));
+      suma(i, t.id, Math.max(0, Math.round((end - ini) / 1000)));
     }
 
-    const acumulado = new Map<string, RollupCelda>();
+    const accumulated = new Map<string, RollupCell>();
     for (const [k, secs] of porTarea) {
       const [i, taskId] = k.split(":").map(Number);
       const categoryId = tasks.find((t) => t.id === taskId)?.categoryId ?? null;
-      const clave = `${i}:${categoryId}`;
-      const celda = acumulado.get(clave) ?? {
-        date: dias[i],
+      const key = `${i}:${categoryId}`;
+      const celda = accumulated.get(key) ?? {
+        date: days[i],
         categoryId,
         contextId: ctxDe(categoryId),
         seconds: 0,
       };
       celda.seconds += Math.max(0, secs);
-      acumulado.set(clave, celda);
+      accumulated.set(key, celda);
     }
-    const celdas = [...acumulado.values()]
+    const cells = [...accumulated.values()]
       .filter((c) => c.seconds > 0)
       .sort((a, b) => a.date.localeCompare(b.date) || (a.categoryId ?? 0) - (b.categoryId ?? 0));
 
-    const completadas = tasks
+    const completedTasks = tasks
       .filter((t) => t.status === "DONE" && indice(t.completedAt) >= 0)
       .sort((a, b) => (a.completedAt ?? "").localeCompare(b.completedAt ?? ""));
 
-    const filas: RollupDia[] = dias.map((date, i) => {
+    const rows: RollupDay[] = days.map((date, i) => {
       const delDia = tasks.filter((t) => t.sourceState === "ACTIVE" && t.scheduledDate === date);
       let plannedMinutes = 0;
-      let sinEstimar = 0;
+      let unestimated = 0;
       for (const t of delDia) {
         // Una reunión sin estimar dura lo que dura; una manual se avisa.
-        const minutos =
+        const minutes =
           t.estimatedMinutes ??
           (t.source === "CALENDAR" && t.eventStart && t.eventEnd
             ? Math.max(0, Math.round((+new Date(t.eventEnd) - +new Date(t.eventStart)) / 60000))
             : null);
-        if (minutos == null) sinEstimar += 1;
-        else plannedMinutes += minutos;
+        if (minutes == null) unestimated += 1;
+        else plannedMinutes += minutes;
       }
       return {
         date,
-        seconds: celdas.filter((c) => c.date === date).reduce((a, c) => a + c.seconds, 0),
+        seconds: cells.filter((c) => c.date === date).reduce((a, c) => a + c.seconds, 0),
         plannedMinutes,
-        hechas: completadas.filter((t) => indice(t.completedAt) === i).length,
-        sinEstimar,
+        done: completedTasks.filter((t) => indice(t.completedAt) === i).length,
+        unestimated,
       };
     });
 
     return {
       weekStart,
-      dias: filas,
-      celdas,
-      completadas,
-      totalSeconds: filas.reduce((a, d) => a + d.seconds, 0),
-      plannedMinutes: filas.reduce((a, d) => a + d.plannedMinutes, 0),
-      sinEstimar: filas.reduce((a, d) => a + d.sinEstimar, 0),
+      days: rows,
+      cells,
+      completedTasks,
+      totalSeconds: rows.reduce((a, d) => a + d.seconds, 0),
+      plannedMinutes: rows.reduce((a, d) => a + d.plannedMinutes, 0),
+      unestimated: rows.reduce((a, d) => a + d.unestimated, 0),
     };
   },
 
@@ -625,12 +625,12 @@ export const mock = {
    * Espeja `repo::bitacora`. Se arma sola: sale del trabajo y de lo cerrado, no
    * de haber pasado por el shutdown.
    */
-  bitacora: async (hasta: string, dias: number): Promise<DiaDeBitacora[]> => {
-    const n = Math.min(90, Math.max(1, Math.round(dias)));
-    const fin = new Date(`${hasta}T00:00:00`);
-    if (Number.isNaN(fin.getTime())) return [];
+  dailyLog: async (to: string, days: number): Promise<LogDay[]> => {
+    const n = Math.min(90, Math.max(1, Math.round(days)));
+    const end = new Date(`${to}T00:00:00`);
+    if (Number.isNaN(end.getTime())) return [];
     const fechas = Array.from({ length: n }, (_, i) => {
-      const d = new Date(fin);
+      const d = new Date(end);
       d.setDate(d.getDate() - (n - 1 - i));
       return toISODate(d);
     });
@@ -641,7 +641,7 @@ export const mock = {
     };
 
     // (fecha, tarea) → tramo. Igual que en Rust: el piso en 0 va acá.
-    const acc = new Map<string, TramoDelDia & { date: string; inicio: string }>();
+    const acc = new Map<string, DaySegment & { date: string; start: string }>();
     for (const e of entries) {
       const date = diaDe(e.startedAt);
       if (date == null || !fechas.includes(date)) continue;
@@ -650,13 +650,13 @@ export const mock = {
       const k = `${date}:${e.taskId}`;
       const previo = acc.get(k) ?? {
         date,
-        inicio: e.startedAt,
+        start: e.startedAt,
         taskId: e.taskId,
         title: t.title,
         seconds: 0,
         running: false,
       };
-      if (e.startedAt < previo.inicio) previo.inicio = e.startedAt;
+      if (e.startedAt < previo.start) previo.start = e.startedAt;
       if (e.endedAt === null) previo.running = true;
       else previo.seconds += e.seconds;
       acc.set(k, previo);
@@ -675,7 +675,7 @@ export const mock = {
       if (date == null || !fechas.includes(date)) continue;
       acc.set(`${date}:${t.id}`, {
         date,
-        inicio: t.eventStart,
+        start: t.eventStart,
         taskId: t.id,
         title: t.title,
         seconds: Math.max(0, Math.round((fin2 - ini) / 1000)),
@@ -683,28 +683,28 @@ export const mock = {
       });
     }
 
-    const out: DiaDeBitacora[] = fechas.map((date) => {
-      const tramos = [...acc.values()]
+    const out: LogDay[] = fechas.map((date) => {
+      const segments = [...acc.values()]
         .filter((x) => x.date === date)
-        .sort((a, b) => a.inicio.localeCompare(b.inicio) || a.taskId - b.taskId);
+        .sort((a, b) => a.start.localeCompare(b.start) || a.taskId - b.taskId);
       const delDia = tasks.filter((t) => t.sourceState === "ACTIVE" && t.scheduledDate === date);
       let plannedMinutes = 0;
-      let sinEstimar = 0;
+      let unestimated = 0;
       for (const t of delDia) {
-        const minutos =
+        const minutes =
           t.estimatedMinutes ??
           (t.source === "CALENDAR" && t.eventStart && t.eventEnd
             ? Math.max(0, Math.round((+new Date(t.eventEnd) - +new Date(t.eventStart)) / 60000))
             : null);
-        if (minutos == null) sinEstimar += 1;
-        else plannedMinutes += minutos;
+        if (minutes == null) unestimated += 1;
+        else plannedMinutes += minutes;
       }
-      const entrada = dayEntries.get(date);
-      const celdas = new Map<number | null, RollupCelda>();
-      for (const x of tramos) {
+      const entry = dayEntries.get(date);
+      const cells = new Map<number | null, RollupCell>();
+      for (const x of segments) {
         const t = tasks.find((y) => y.id === x.taskId);
         const categoryId = t?.categoryId ?? null;
-        const c = celdas.get(categoryId) ?? {
+        const c = cells.get(categoryId) ?? {
           date,
           categoryId,
           contextId: (() => {
@@ -715,20 +715,20 @@ export const mock = {
           seconds: 0,
         };
         c.seconds += Math.max(0, x.seconds);
-        celdas.set(categoryId, c);
+        cells.set(categoryId, c);
       }
       return {
         date,
-        note: entrada?.note ?? null,
-        closedAt: entrada?.closedAt ?? null,
-        mood: entrada?.mood ?? null,
-        celdas: [...celdas.values()]
+        note: entry?.note ?? null,
+        closedAt: entry?.closedAt ?? null,
+        mood: entry?.mood ?? null,
+        cells: [...cells.values()]
           .filter((c) => c.seconds > 0)
           .sort((a, b) => (a.categoryId ?? 0) - (b.categoryId ?? 0)),
-        workedSeconds: tramos.reduce((a, x) => a + Math.max(0, x.seconds), 0),
+        workedSeconds: segments.reduce((a, x) => a + Math.max(0, x.seconds), 0),
         plannedMinutes,
-        sinEstimar,
-        hechas: tasks
+        unestimated,
+        done: tasks
           .filter((t) => t.status === "DONE" && diaDe(t.completedAt) === date)
           .sort((a, b) => (a.completedAt ?? "").localeCompare(b.completedAt ?? ""))
           .map((task) => {
@@ -737,7 +737,7 @@ export const mock = {
             // resumen", y con `??` se confundiría con "no incluida".
             return { task, note: dayTaskNotes.has(k) ? dayTaskNotes.get(k)! : null };
           }),
-        timeline: tramos
+        timeline: segments
           .filter((x) => x.seconds > 0 || x.running)
           .map(({ taskId, title, seconds, running }) => ({
             taskId,
@@ -768,16 +768,16 @@ export const mock = {
     dayTaskNotes.set(`${date}:${taskId}`, note.trim());
   },
 
-  incluirEnBitacora: async (date: string, taskId: number): Promise<void> => {
+  includeInLog: async (date: string, taskId: number): Promise<void> => {
     const k = `${date}:${taskId}`;
     if (!dayTaskNotes.has(k)) dayTaskNotes.set(k, "");
   },
 
-  quitarDeBitacora: async (date: string, taskId: number): Promise<void> => {
+  removeFromLog: async (date: string, taskId: number): Promise<void> => {
     dayTaskNotes.delete(`${date}:${taskId}`);
   },
 
-  cerrarDia: async (date: string): Promise<string> => {
+  closeDay: async (date: string): Promise<string> => {
     const previo = dayEntries.get(date) ?? ENTRADA_VACIA;
     // No vuelve a sellar: "a qué hora cerré" es el dato interesante.
     const closedAt = previo.closedAt ?? nowISO();
@@ -785,7 +785,7 @@ export const mock = {
     return closedAt;
   },
 
-  reabrirDia: async (date: string): Promise<void> => {
+  reopenDay: async (date: string): Promise<void> => {
     const previo = dayEntries.get(date);
     if (previo) dayEntries.set(date, { ...previo, closedAt: null });
   },
@@ -898,7 +898,7 @@ export const mock = {
    * tests, que es lo correcto —no hay disco que escribir— y de paso deja el
    * distintivo "dev" visible en el sidebar del preview.
    */
-  perfil: async (): Promise<Perfil> => ({ dev: true, base: "sunrise-dev.sqlite" }),
+  profile: async (): Promise<Profile> => ({ dev: true, dbFile: "sunrise-dev.sqlite" }),
 
   /**
    * Fuera de Tauri **nunca hay actualización**, y eso no es una simplificación:
@@ -906,13 +906,13 @@ export const mock = {
    * ninguno. Devolver `null` deja a la vista en su estado "estás al día", que es
    * justamente lo que corresponde mostrar ahí.
    */
-  buscarActualizacion: async (): Promise<Actualizacion | null> => null,
+  checkForUpdate: async (): Promise<AppUpdate | null> => null,
 
-  instalarActualizacion: async (): Promise<void> => {
+  installUpdate: async (): Promise<void> => {
     throw new Error("no hay nada que instalar fuera de la app de escritorio");
   },
 
-  crearBackup: async (): Promise<ArchivoDeBackup> => {
+  createBackup: async (): Promise<BackupFile> => {
     const dir = settings.get("backup_dir")?.trim();
     if (!dir) throw new Error("no hay carpeta de respaldos configurada (Configs → Respaldo)");
 
@@ -923,7 +923,7 @@ export const mock = {
     )}${p(d.getMinutes())}${p(d.getSeconds())}`;
     const name = `sunrise-${stamp}.zip`;
 
-    const hecho: ArchivoDeBackup = {
+    const hecho: BackupFile = {
       name,
       path: `${dir}/${name}`,
       bytes: 64 * 1024,
@@ -932,9 +932,9 @@ export const mock = {
     // Al principio: la lista va del más nuevo al más viejo, como en Rust.
     backups.unshift(hecho);
 
-    // Misma retención que `crear_backup` en Rust, y con el mismo default.
-    const conservar = Number(settings.get("backup_keep") ?? 2);
-    if (Number.isFinite(conservar) && conservar > 0) backups.splice(conservar);
+    // Misma retención que `create_backup` en Rust, y con el mismo default.
+    const keep = Number(settings.get("backup_keep") ?? 2);
+    if (Number.isFinite(keep) && keep > 0) backups.splice(keep);
     return { ...hecho };
   },
 
@@ -944,15 +944,15 @@ export const mock = {
    * resolvería contra el directorio de trabajo del proceso, que no es un lugar
    * donde nadie quiera sus respaldos.
    */
-  probarBackupDir: async (dir: string): Promise<void> => {
+  testBackupDir: async (dir: string): Promise<void> => {
     if (!dir.trim()) throw new Error("elige una carpeta");
     if (!dir.trim().startsWith("/")) throw new Error("la ruta tiene que ser absoluta");
   },
 
-  listBackups: async (): Promise<ArchivoDeBackup[]> =>
+  listBackups: async (): Promise<BackupFile[]> =>
     settings.get("backup_dir")?.trim() ? backups.map((b) => ({ ...b })) : [],
 
-  restaurarBackup: async (zipPath: string): Promise<Restauracion> => {
+  restoreBackup: async (zipPath: string): Promise<RestoreResult> => {
     const del = backups.find((b) => b.path === zipPath);
     if (!del) {
       throw new Error("el .zip no trae ninguna base de datos (.sqlite) adentro");
@@ -965,13 +965,13 @@ export const mock = {
       null,
     );
     return {
-      desde: zipPath,
-      copiaDeSeguridad: `${del.path.replace(/[^/]+$/, "")}antes-de-restaurar-mock.sqlite`,
-      creadoEn: del.createdAt,
-      versionDelRespaldo: "dev",
-      versionActual: "dev",
-      tareas: tasks.length,
-      ultimaActividad: ultima,
+      from: zipPath,
+      backupCopy: `${del.path.replace(/[^/]+$/, "")}antes-de-restaurar-mock.sqlite`,
+      createdAt: del.createdAt,
+      backupVersion: "dev",
+      currentVersion: "dev",
+      tasks: tasks.length,
+      lastActivity: ultima,
     };
   },
 
@@ -1019,7 +1019,7 @@ export const mock = {
     f.defaultCategoryId = defaultCategoryId;
     f.importAsTasks = importAsTasks;
     f.pollMinutes = Math.max(2, pollMinutes);
-    // Espeja `aplicar_canal_por_defecto` de `repo.rs`: le pone el canal a las
+    // Espeja `apply_default_channel` de `repo.rs`: le pone el canal a las
     // reuniones del feed que todavía no tienen uno, sin pisar las que se
     // etiquetaron a mano.
     if (defaultCategoryId != null) {

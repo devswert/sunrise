@@ -3,7 +3,7 @@ import { SettingKey, backupSettings, type SettingsMap } from "../../lib/settings
 /**
  * Si corresponde hacer el respaldo automático ahora.
  *
- * Es la misma forma que `tocaAvisarCierre` (M3.6) y por la misma razón: la
+ * Es la misma forma que `shouldRemindShutdown` (M3.6) y por la misma razón: la
  * decisión es pura y se prueba sola, y el hook solo la consulta.
  *
  * Cuatro cortes, en orden de qué tan barato es descartarlos:
@@ -27,18 +27,18 @@ import { SettingKey, backupSettings, type SettingsMap } from "../../lib/settings
  * se abre al otro día, la fecha guardada ya no es hoy y también se hace. Lo único
  * que no cubre es un día en que la app no se abrió nunca — ver SPECS §4.17.
  */
-export function tocaRespaldar(opciones: {
+export function shouldBackup(options: {
   nowHhmm: string;
   values: SettingsMap;
-  hoy: string;
-  esDev: boolean;
+  today: string;
+  isDev: boolean;
 }): boolean {
-  const { nowHhmm, values, hoy, esDev } = opciones;
-  if (esDev) return false;
-  const { activo, hora } = backupSettings(values);
-  if (!activo) return false;
-  if (values[SettingKey.BACKUP_RAN_ON]?.trim() === hoy) return false;
-  return nowHhmm >= hora;
+  const { nowHhmm, values, today, isDev } = options;
+  if (isDev) return false;
+  const { active, hour } = backupSettings(values);
+  if (!active) return false;
+  if (values[SettingKey.BACKUP_RAN_ON]?.trim() === today) return false;
+  return nowHhmm >= hour;
 }
 
 /** `HH:mm` de un `Date`, en hora local. */
@@ -51,7 +51,7 @@ export function hhmm(d: Date): string {
  * "1.4 MB" y "1.42 MB" no le dice nada a nadie, pero la que hay entre "900 KB" y
  * "1.4 MB" sí — es cómo se nota que la base creció.
  */
-export function formatoBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
@@ -69,7 +69,7 @@ export function formatoBytes(bytes: number): string {
  */
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-export function fechaLegible(iso: string): string {
+export function readableDate(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso);
   if (!m) return iso;
   const mes = MESES[Number(m[2]) - 1] ?? m[2];
@@ -77,16 +77,16 @@ export function fechaLegible(iso: string): string {
 }
 
 /**
- * Igual que `fechaLegible` pero para las marcas **con zona**: el `created_at` del
+ * Igual que `readableDate` pero para las marcas **con zona**: el `created_at` del
  * manifest (`to_rfc3339`, con offset) y los `started_at` de `time_entries` (UTC
  * con `Z`).
  *
  * Acá sí se usa `Date`, y justamente porque esas cadenas declaran su zona:
  * convertirlas a la hora local del usuario es lo correcto, no un bug como sería
- * en `fechaLegible`. Incluye el año: la gracia de este dato es enterarse de que
+ * en `readableDate`. Incluye el año: la gracia de este dato es enterarse de que
  * el respaldo era más viejo de lo que se creía.
  */
-export function momentoLegible(iso: string): string {
+export function readableMoment(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const p = (n: number) => String(n).padStart(2, "0");

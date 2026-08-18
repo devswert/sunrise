@@ -23,7 +23,7 @@ export function NotesEditor({
   placeholder?: string;
 }) {
   const [editando, setEditando] = useState(false);
-  const [texto, setTexto] = useState(value);
+  const [text, setTexto] = useState(value);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   // La tarea llega fresca desde el board; mientras no se esté editando, refleja
@@ -41,7 +41,7 @@ export function NotesEditor({
       <textarea
         ref={ref}
         className="tmodal__notes-input"
-        value={texto}
+        value={text}
         placeholder={`${placeholder} (soporta markdown)`}
         onChange={(e) => {
           setTexto(e.target.value);
@@ -49,7 +49,7 @@ export function NotesEditor({
         }}
         onBlur={() => {
           setEditando(false);
-          onBlurSave(texto);
+          onBlurSave(text);
         }}
       />
     );
@@ -66,8 +66,8 @@ export function NotesEditor({
         if (e.key === "Enter") setEditando(true);
       }}
     >
-      {texto.trim() ? (
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{texto}</ReactMarkdown>
+      {text.trim() ? (
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       ) : (
         <span className="tmodal__notes-placeholder">{placeholder}</span>
       )}

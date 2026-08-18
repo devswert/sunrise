@@ -60,7 +60,7 @@ export function parseDuration(input: string): number | null {
 }
 
 /** `27000` → `'7h 30m'`. Se redondea al minuto: el segundo no aporta acá. */
-export function horas(seconds: number): string {
+export function hours(seconds: number): string {
   const min = Math.round(Math.max(0, seconds) / 60);
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -70,6 +70,6 @@ export function horas(seconds: number): string {
 }
 
 /** `90` (minutos) → `'1h 30m'`. */
-export function horasDeMinutos(minutes: number): string {
-  return horas(Math.max(0, minutes) * 60);
+export function hoursFromMinutes(minutes: number): string {
+  return hours(Math.max(0, minutes) * 60);
 }

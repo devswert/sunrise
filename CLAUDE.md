@@ -48,6 +48,33 @@ en el manifest de cada respaldo.
   muestra qué se tocó; el commit lo autoriza el dev cada vez. Autorizar un
   commit no autoriza el siguiente: si terminas otra tanda de trabajo en el mismo
   turno, vuelve a preguntar. Vale igual para `git push`, ramas y `git reset`.
+- **El código en inglés, el texto en español.** No es gusto: mezclar los dos
+  idiomas en la misma línea obliga a traducir mentalmente en cada lectura, y el
+  daño es visual antes que técnico. La línea es exacta:
+
+  | En inglés | En español |
+  |---|---|
+  | variables, funciones, tipos, campos, parámetros | comentarios y doc comments |
+  | nombres de archivo y de módulo | todo el texto que ve el usuario |
+  | comandos IPC, claves de `settings`, valores de enum | descripciones de tests (`it("…")` y los `fn` de `#[test]`) |
+  | tablas y columnas de la DB | esta documentación y los mensajes de commit |
+
+  Dos precisiones que ya se discutieron: **el nombre de un test de Rust es su
+  descripción**, no un identificador que alguien llame, así que se queda en
+  español igual que el `it("…")` de Vitest. Y **los términos del sidebar**
+  (`Weekly review`, `Focus`, `Backlog`, `Daily rituals`) se quedan en inglés: son
+  los nombres propios de las vistas, no texto traducible.
+
+  **Las clases CSS quedan fuera**, y no por descuido: son strings a los dos lados
+  y no las revisa ningún compilador, así que un renombre ahí se paga con estilos
+  que desaparecen en silencio. Las que están en español (`.rail__bloque-parte`,
+  `.set-input--hora`) se quedan como están; una clase nueva puede nacer en inglés.
+
+  Al renombrar, ojo con los tres lugares donde una palabra en español **no** es
+  prosa y hay que cambiarla: las interpolaciones (`format!("{x}")`, `${x}`), los
+  nombres de método escritos como string (`vi.spyOn(api, "x")`) y los alias de
+  SQL. Y con los dos donde parece código y **no** lo es: el texto JSX y los
+  literales de expresión regular de los tests.
 - **Enums en MAYÚSCULAS** en la DB y en TS, espejados entre
   `src-tauri/src/db/migrations.rs` y `src/lib/enums.ts`.
 - **Tests obligatorios por milestone.** Cada milestone entrega con sus tests en

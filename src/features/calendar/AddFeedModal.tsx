@@ -26,12 +26,12 @@ export interface DatosFeed {
  * existe.
  */
 export function AddFeedModal({
-  categorias,
-  onGuardar,
+  categories,
+  onSave,
   onClose,
 }: {
-  categorias: SearchOption[];
-  onGuardar: (d: DatosFeed) => Promise<void>;
+  categories: SearchOption[];
+  onSave: (d: DatosFeed) => Promise<void>;
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
@@ -64,13 +64,13 @@ export function AddFeedModal({
   }, [abierto, onClose]);
 
   const urlValida = icsUrl.trim().length > 0;
-  const categoria = categorias.find((o) => o.value === String(categoryId));
+  const category = categories.find((o) => o.value === String(categoryId));
 
-  async function guardar() {
+  async function save() {
     if (!urlValida || guardando) return;
     setGuardando(true);
     try {
-      await onGuardar({
+      await onSave({
         name: name.trim() || "Calendario",
         icsUrl: icsUrl.trim(),
         defaultCategoryId: categoryId,
@@ -135,7 +135,7 @@ export function AddFeedModal({
               autoCorrect="off"
               onChange={(e) => setIcsUrl(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") void guardar();
+                if (e.key === "Enter") void save();
               }}
             />
             <span className="set-note">
@@ -149,16 +149,16 @@ export function AddFeedModal({
               <span className="feedfield__label">Canal por defecto</span>
               <div className="chip-wrap" ref={catRef}>
                 <button
-                  className={`chip${categoria ? " is-set" : ""}`}
+                  className={`chip${category ? " is-set" : ""}`}
                   aria-label="Canal por defecto del calendario"
                   onClick={() => setAbierto((v) => !v)}
                 >
-                  {categoria ? categoria.label : "sin canal"}
+                  {category ? category.label : "sin canal"}
                 </button>
                 {abierto && (
                   <Popover anchorRef={catRef} onClose={() => setAbierto(false)}>
                     <SearchSelect
-                      options={categorias}
+                      options={categories}
                       value={categoryId != null ? String(categoryId) : null}
                       placeholder="Buscar canal…"
                       clearLabel="Sin canal"
@@ -206,7 +206,7 @@ export function AddFeedModal({
             <button
               className="btn-primary"
               disabled={!urlValida || guardando}
-              onClick={() => void guardar()}
+              onClick={() => void save()}
             >
               <Plus size={14} aria-hidden /> {guardando ? "Agregando…" : "Agregar"}
             </button>

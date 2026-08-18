@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { api } from "../../lib/ipc";
-import type { Actualizacion, Category } from "../../lib/types";
+import type { AppUpdate, Category } from "../../lib/types";
 import { formatMinutes, parseDuration } from "../../lib/capacity";
 import { Popover } from "../../components/Popover";
 import { Switch } from "../../components/Switch";
 import { FeedsCard } from "../calendar/FeedsCard";
 import { BackupCard } from "../backup/BackupCard";
-import { TABS, type TabId, iconoDeSeccion } from "./secciones";
+import { TABS, type TabId, sectionIcon } from "./secciones";
 import {
   SettingKey,
   useCapacitySettings,
   useSettingsStore,
   useWorkHours,
 } from "../../lib/settings";
-import { minutosDeHora } from "../calendar/railLayout";
+import { minutesFromTime } from "../calendar/railLayout";
 import {
   SHORTCUT_ACTIONS,
   type ShortcutId,
@@ -39,7 +39,7 @@ function Card({
   hint: string;
   children: React.ReactNode;
 }) {
-  const Icono = iconoDeSeccion(id);
+  const Icono = sectionIcon(id);
   return (
     <section className="set-card" id={`set-${id}`} data-section={id}>
       <header className="set-card__head">
@@ -170,28 +170,28 @@ function GeneralCard() {
  * prenderlo solo se ve como si la app hubiera cambiado el ajuste al entrar.
  */
 function InicioAutomatico() {
-  const [activo, setActivo] = useState<boolean | null>(null);
+  const [active, setActive] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let vivo = true;
+    let alive = true;
     api
       .autostartEnabled()
-      .then((v) => vivo && setActivo(v))
-      .catch((err) => vivo && setError(String(err)));
+      .then((v) => alive && setActive(v))
+      .catch((err) => alive && setError(String(err)));
     return () => {
-      vivo = false;
+      alive = false;
     };
   }, []);
 
   async function cambiar(quiere: boolean) {
     // Optimista, y se revierte si falla: el switch tiene que responder al dedo.
-    setActivo(quiere);
+    setActive(quiere);
     setError(null);
     try {
       await api.setAutostart(quiere);
     } catch (err) {
-      setActivo(!quiere);
+      setActive(!quiere);
       setError(String(err));
     }
   }
@@ -205,8 +205,8 @@ function InicioAutomatico() {
         <Switch
           id="autostart"
           label="Abrir sunrise al iniciar sesión"
-          checked={activo === true}
-          disabled={activo === null}
+          checked={active === true}
+          disabled={active === null}
           onChange={(v) => void cambiar(v)}
         />
       </div>
@@ -224,13 +224,13 @@ function InicioAutomatico() {
  * porque "no pude preguntar" y "estás al día" se ven parecidos y significan lo
  * contrario: uno dice que no hay nada nuevo, el otro que no se sabe.
  */
-type EstadoUpd =
-  | { tipo: "quieto" }
-  | { tipo: "buscando" }
-  | { tipo: "al-dia" }
-  | { tipo: "hay"; upd: Actualizacion }
-  | { tipo: "instalando" }
-  | { tipo: "sin-respuesta"; detalle: string };
+type UpdateState =
+  | { kind: "quieto" }
+  | { kind: "buscando" }
+  | { kind: "al-dia" }
+  | { kind: "hay"; upd: AppUpdate }
+  | { kind: "instalando" }
+  | { kind: "sin-respuesta"; detalle: string };
 
 /**
  * Actualizaciones: se buscan **cuando las pides**, nunca solas.
@@ -246,39 +246,39 @@ type EstadoUpd =
  * normal, no una avería.
  */
 function Actualizaciones() {
-  const [estado, setEstado] = useState<EstadoUpd>({ tipo: "quieto" });
+  const [status, setStatus] = useState<UpdateState>({ kind: "quieto" });
   const [version, setVersion] = useState("");
 
   useEffect(() => {
-    let vivo = true;
-    void api.appVersion().then((v) => vivo && setVersion(v));
+    let alive = true;
+    void api.appVersion().then((v) => alive && setVersion(v));
     return () => {
-      vivo = false;
+      alive = false;
     };
   }, []);
 
   async function buscar() {
-    setEstado({ tipo: "buscando" });
+    setStatus({ kind: "buscando" });
     try {
-      const upd = await api.buscarActualizacion();
-      setEstado(upd ? { tipo: "hay", upd } : { tipo: "al-dia" });
+      const upd = await api.checkForUpdate();
+      setStatus(upd ? { kind: "hay", upd } : { kind: "al-dia" });
     } catch (err) {
-      setEstado({ tipo: "sin-respuesta", detalle: String(err) });
+      setStatus({ kind: "sin-respuesta", detalle: String(err) });
     }
   }
 
   async function instalar() {
-    setEstado({ tipo: "instalando" });
+    setStatus({ kind: "instalando" });
     try {
       // Si sale bien no vuelve: la app se reinicia sola en la versión nueva.
-      await api.instalarActualizacion();
+      await api.installUpdate();
     } catch (err) {
-      setEstado({ tipo: "sin-respuesta", detalle: String(err) });
+      setStatus({ kind: "sin-respuesta", detalle: String(err) });
     }
   }
 
-  const ocupado = estado.tipo === "buscando" || estado.tipo === "instalando";
-  const hay = estado.tipo === "hay" ? estado.upd : null;
+  const busy = status.kind === "buscando" || status.kind === "instalando";
+  const hay = status.kind === "hay" ? status.upd : null;
 
   return (
     <div className="set-field">
@@ -291,28 +291,28 @@ function Actualizaciones() {
               <span className="resp-btn__texto">Instalar {hay.version} y reiniciar</span>
             </button>
           )}
-          <button type="button" className="resp-btn" onClick={() => void buscar()} disabled={ocupado}>
-            <RotateCcw size={13} aria-hidden className={ocupado ? "is-spinning" : undefined} />
+          <button type="button" className="resp-btn" onClick={() => void buscar()} disabled={busy}>
+            <RotateCcw size={13} aria-hidden className={busy ? "is-spinning" : undefined} />
             <span className="resp-btn__texto">
-              {estado.tipo === "buscando" ? "Buscando…" : "Buscar"}
+              {status.kind === "buscando" ? "Buscando…" : "Buscar"}
             </span>
           </button>
         </div>
       </div>
       <span className="set-note">
-        {estado.tipo === "instalando"
+        {status.kind === "instalando"
           ? "Descargando la versión nueva. La app se va a reiniciar sola al terminar."
-          : estado.tipo === "hay"
-            ? `Hay una versión nueva: ${hay!.version}${hay!.fecha ? `, publicada el ${hay!.fecha}` : ""}. Tienes la ${hay!.versionActual}.`
-            : estado.tipo === "al-dia"
+          : status.kind === "hay"
+            ? `Hay una versión nueva: ${hay!.version}${hay!.date ? `, publicada el ${hay!.date}` : ""}. Tienes la ${hay!.currentVersion}.`
+            : status.kind === "al-dia"
               ? `Estás en la última versión${version ? ` (${version})` : ""}.`
-              : estado.tipo === "sin-respuesta"
-                ? `No se pudo preguntar por versiones nuevas; puede ser que estés sin conexión. ${estado.detalle}`
+              : status.kind === "sin-respuesta"
+                ? `No se pudo preguntar por versiones nuevas; puede ser que estés sin conexión. ${status.detalle}`
                 : `Estás usando la versión ${version || "…"}. Se busca solo cuando lo pides.`}
       </span>
       {/* Las notas del Release en crudo: es markdown escrito a mano y puede venir
         * largo, así que va en un bloque aparte y no en la bajada. */}
-      {hay?.notas && <p className="upd-notas">{hay.notas}</p>}
+      {hay?.notes && <p className="upd-notas">{hay.notes}</p>}
     </div>
   );
 }
@@ -326,7 +326,7 @@ function Actualizaciones() {
  * el campo se traga un `25:00` y el rail no cambia, nada explica por qué.
  */
 function JornadaFields() {
-  const jornada = useWorkHours();
+  const workday = useWorkHours();
   const setSetting = useSettingsStore((s) => s.set);
   const [draft, setDraft] = useState<{ start?: string; end?: string }>({});
   const [error, setError] = useState<null | "start" | "end">(null);
@@ -334,13 +334,13 @@ function JornadaFields() {
   async function commit(cual: "start" | "end") {
     const raw = draft[cual];
     if (raw == null) return;
-    const min = minutosDeHora(raw);
+    const min = minutesFromTime(raw);
     if (min == null) {
       setError(cual);
       return;
     }
     // El otro extremo puede venir a medio editar; se compara contra lo guardado.
-    const otro = cual === "start" ? jornada.end : jornada.start;
+    const otro = cual === "start" ? workday.end : workday.start;
     const invertido = cual === "start" ? raw >= otro : raw <= otro;
     if (invertido) {
       setError(cual);
@@ -351,7 +351,7 @@ function JornadaFields() {
     await setSetting(cual === "start" ? SettingKey.WORK_START : SettingKey.WORK_END, raw);
   }
 
-  const campo = (cual: "start" | "end", label: string, id: string) => (
+  const field = (cual: "start" | "end", label: string, id: string) => (
     <div className="set-field set-field--inline">
       <label className="set-field__label" htmlFor={id}>
         {label}
@@ -361,7 +361,7 @@ function JornadaFields() {
         className={`set-input set-input--hora${error === cual ? " is-invalid" : ""}`}
         aria-label={label}
         placeholder="09:00"
-        value={draft[cual] ?? jornada[cual]}
+        value={draft[cual] ?? workday[cual]}
         onChange={(e) => {
           setDraft((d) => ({ ...d, [cual]: e.target.value }));
           setError(null);
@@ -382,8 +382,8 @@ function JornadaFields() {
     <div className="set-field">
       <span className="set-field__label">Jornada</span>
       <div className="set-jornada">
-        {campo("start", "Inicio", "work-start")}
-        {campo("end", "Fin", "work-end")}
+        {field("start", "Inicio", "work-start")}
+        {field("end", "Fin", "work-end")}
       </div>
       <span className={`set-note${error ? " is-error" : ""}`}>
         {error === "start"
@@ -692,7 +692,7 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
  * simplemente no hace nada, sin error—, y la animación es parte de lo pedido.
  * Con `prefers-reduced-motion` se salta el salto animado.
  */
-function animarScrollHasta(target: HTMLElement, duracion = 320) {
+function animarScrollHasta(target: HTMLElement, duration = 320) {
   const cont = scrollParent(target);
   if (!cont) {
     target.scrollIntoView({ block: "start" });
@@ -700,13 +700,13 @@ function animarScrollHasta(target: HTMLElement, duracion = 320) {
   }
 
   const margen = 16;
-  const desde = cont.scrollTop;
+  const from = cont.scrollTop;
   const delta = target.getBoundingClientRect().top - cont.getBoundingClientRect().top - margen;
-  const hasta = Math.max(0, Math.min(desde + delta, cont.scrollHeight - cont.clientHeight));
-  if (Math.abs(hasta - desde) < 1) return;
+  const to = Math.max(0, Math.min(from + delta, cont.scrollHeight - cont.clientHeight));
+  if (Math.abs(to - from) < 1) return;
 
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-    cont.scrollTop = hasta;
+    cont.scrollTop = to;
     return;
   }
 
@@ -714,8 +714,8 @@ function animarScrollHasta(target: HTMLElement, duracion = 320) {
   const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
   const paso = (ahora: number) => {
-    const t = Math.min(1, (ahora - t0) / duracion);
-    cont.scrollTop = desde + (hasta - desde) * easeInOut(t);
+    const t = Math.min(1, (ahora - t0) / duration);
+    cont.scrollTop = from + (to - from) * easeInOut(t);
     if (t < 1) requestAnimationFrame(paso);
   };
   requestAnimationFrame(paso);

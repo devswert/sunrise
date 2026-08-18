@@ -60,8 +60,8 @@ red** sin dejar de ser testeable:
 | Capa | Qué | Pureza |
 |---|---|---|
 | `calendar::fetch` | descarga el `.ics` | lo único con red |
-| `calendar::ics` | texto → `EventoIcs` | puro, se prueba con fixtures |
-| `repo::import_eventos` | escribe las tareas | puro sobre `&Connection` |
+| `calendar::ics` | texto → `IcsEvent` | puro, se prueba con fixtures |
+| `repo::import_events` | escribe las tareas | puro sobre `&Connection` |
 
 El comando (`sync_calendar_feed`) solo las encadena. Si te encuentras
 decidiendo algo ahí —qué evento entra, cómo se calcula una fecha— va en `ics`;
@@ -73,7 +73,7 @@ Dos cosas que se rompen fácil al tocar esto:
   `actual_seconds`, ni `position`, ni `category_id`. El poller vuelve a pasar
   cada 15 minutos, así que un `INSERT OR REPLACE` tira el trabajo hecho sobre una
   reunión tres veces por hora.
-- **`import_eventos` devuelve los UIDs que vio.** No es decoración: es lo que el
+- **`import_events` devuelve los UIDs que vio.** No es decoración: es lo que el
   reconciler (M3.2) necesita para saber qué dejó de venir en el feed.
 
 ## Enums: SIEMPRE EN MAYÚSCULAS
@@ -124,7 +124,7 @@ las tareas `>= position` del día destino; `next_position` calcula el final.
 
 **Historial.** `move_task` registra `MOVED`, o `START_DATE_SET` si la tarea venía
 del backlog. Un `MOVED` con `to_date` nulo es "se fue al backlog", y de ahí sale
-el grupo "venían de un día" (`rescatadas_del_backlog`): no hizo falta ni columna
+el grupo "venían de un día" (`rescued_from_backlog`): no hizo falta ni columna
 ni evento propio. `create_task` registra `CREATED` y además `START_DATE_SET` si nace
 agendada. Si agregas otra forma de cambiar la fecha, registra su evento o el
 historial del modal queda con agujeros.
@@ -148,23 +148,23 @@ se usa como `var(--${color})`. Si agregas un color, tiene que existir en
 - **La bitácora no depende de estas tablas.** Se arma del trabajo y de lo
   cerrado; acá solo viven la nota y el sello. Un día sin fila **igual aparece**,
   como borrador. Si algún listado exigiera la fila, la bitácora arrancaría vacía.
-- **`closed_at` NULL ⇒ borrador**, y `cerrar_dia` **no lo re-sella**: conserva la
+- **`closed_at` NULL ⇒ borrador**, y `close_day` **no lo re-sella**: conserva la
   hora original con un `COALESCE`. Escribir la nota (`set_day_note`) no lo toca:
   escribir no es cerrar.
 - La nota de una tarea lleva **la fecha en la clave**: la misma tarea puede tener
   una reflexión distinta cada día. No es `tasks.notes`.
 - **`day_task_notes.note` distingue tres cosas, como `TaskPatch`**: sin fila = no
   incluida en la bitácora; fila con `''` = incluida y sin resumen; fila con texto =
-  incluida y escrita. Por eso **incluir** (`incluir_en_bitacora`) y **escribir**
+  incluida y escrita. Por eso **incluir** (`include_in_log`) y **escribir**
   (`set_day_task_note`) son funciones distintas, y vaciar el texto **no** borra la
-  fila: sacarla es `quitar_de_bitacora`. Si aplanas eso a dos estados, la tarea
+  fila: sacarla es `remove_from_log`. Si aplanas eso a dos estados, la tarea
   desaparece de los highlights al borrar una palabra.
 - `mood` es columna de `day_entries` (migración **8**, no un cambio a la 7: las
   aplicadas son inmutables). Guarda el emoji tal cual.
 
 ## La conexión se puede reemplazar en caliente (M4.1)
 
-Restaurar un respaldo **pisa el archivo de la base**, así que `restaurar_backup`
+Restaurar un respaldo **pisa el archivo de la base**, así que `restore_backup`
 saca la `Connection` del `Mutex<Connection>`, la cierra, copia encima y mete una
 nueva. Consecuencias para cualquier cosa que escribas cerca:
 
@@ -175,7 +175,7 @@ nueva. Consecuencias para cualquier cosa que escribas cerca:
 - **`repo.rs` puede seguir siendo puro porque no guarda estado.** Es justo lo que
   hace que alcance con cambiar la conexión en vez de reiniciar la app (reiniciar
   dispararía el diálogo de salida de §4.10).
-- **El archivo se resuelve con `db::archivo()`**, nunca con `db::ARCHIVO` ni con
+- **El archivo se resuelve con `db::file_name()`**, nunca con `db::PROD_FILE` ni con
   `"sunrise.sqlite"` escrito a mano. Dev y producción usan archivos distintos en el
   mismo directorio (`sunrise-dev.sqlite` vs `sunrise.sqlite`, SPECS §4.20), así que
   una ruta armada con la constante abre la base del **otro** perfil. La restauración
@@ -231,3 +231,10 @@ Si necesitas configuración nueva, agrégala acá. **No recrees `src/lib/config.
 —existía para constantes sin fuente de datos y se fue vaciando hasta borrarse—:
 una constante hardcodeada en el front es una decisión que el usuario no puede
 cambiar, y la tabla `settings` es justamente el lugar donde sí puede.
+
+## Idioma: código en inglés, texto en español
+
+Convención del proyecto (CLAUDE.md). Identificadores —variables, funciones,
+tipos, campos, archivos, comandos IPC— en **inglés**. Comentarios, texto de la
+app, descripciones de tests y documentación en **español**. El nombre de un
+`#[test]` de Rust es su descripción, así que va en español.

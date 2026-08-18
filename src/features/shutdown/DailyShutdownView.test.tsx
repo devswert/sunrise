@@ -9,12 +9,12 @@ import { todayISO } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
 
 // El canvas de jsdom no implementa `getContext`.
-const celebrar = vi.fn();
-vi.mock("../../lib/confetti", () => ({ celebrar: () => celebrar() }));
+const celebrate = vi.fn();
+vi.mock("../../lib/confetti", () => ({ celebrate: () => celebrate() }));
 
-function montar(ruta = "/daily-shutdown") {
+function mount(path = "/daily-shutdown") {
   return render(
-    <MemoryRouter initialEntries={[ruta]}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/daily-shutdown" element={<DailyShutdownView />} />
         <Route path="/daily-highlights" element={<DailyHighlightsView />} />
@@ -24,9 +24,9 @@ function montar(ruta = "/daily-shutdown") {
 }
 
 /** Una tarea cerrada hoy. */
-async function cerradaHoy(titulo: string) {
+async function cerradaHoy(title: string) {
   const t = await api.createTask({
-    title: titulo,
+    title: title,
     scheduledDate: todayISO(),
     estimatedMinutes: 30,
   });
@@ -41,7 +41,7 @@ async function cerradaHoy(titulo: string) {
  */
 describe("DailyShutdownView", () => {
   it("el día arranca sin cerrar, y cerrar no es obligatorio", async () => {
-    montar();
+    mount();
 
     expect(await screen.findByRole("button", { name: /Cerrar el día/ })).toBeInTheDocument();
     expect(screen.getByText(/queda como borrador/i)).toBeInTheDocument();
@@ -51,7 +51,7 @@ describe("DailyShutdownView", () => {
     // Incluir y escribir son gestos distintos: primero se sube, después se
     // escribe. Antes de subirla no hay dónde escribir.
     const t = await cerradaHoy("revisar el rollup");
-    montar();
+    mount();
 
     expect(await screen.findByText("Otras actividades")).toBeInTheDocument();
     expect(screen.queryByLabelText(`Resumen de ${t.title}`)).toBeNull();
@@ -61,30 +61,30 @@ describe("DailyShutdownView", () => {
     const fila = screen.getByText(t.title).closest("li")!;
     await userEvent.click(within(fila).getByRole("button", { name: /Incluir/ }));
 
-    const campo = await screen.findByLabelText(`Resumen de ${t.title}`);
-    await userEvent.click(campo);
+    const field = await screen.findByLabelText(`Resumen de ${t.title}`);
+    await userEvent.click(field);
     await userEvent.paste("costó más de lo que parecía");
     await userEvent.tab();
 
     await waitFor(async () => {
-      const [dia] = await api.bitacora(todayISO(), 1);
-      expect(dia.hechas.find((h) => h.task.id === t.id)?.note).toBe("costó más de lo que parecía");
+      const [day] = await api.dailyLog(todayISO(), 1);
+      expect(day.done.find((h) => h.task.id === t.id)?.note).toBe("costó más de lo que parecía");
     });
   });
 
   it("vaciar el resumen no la baja de highlights; sacarla es aparte", async () => {
-    const [previo] = await api.bitacora(todayISO(), 1);
-    const subida = previo.hechas.find((h) => h.note != null)!;
-    montar();
+    const [previo] = await api.dailyLog(todayISO(), 1);
+    const subida = previo.done.find((h) => h.note != null)!;
+    mount();
 
-    const campo = await screen.findByLabelText(`Resumen de ${subida.task.title}`);
-    await userEvent.clear(campo);
+    const field = await screen.findByLabelText(`Resumen de ${subida.task.title}`);
+    await userEvent.clear(field);
     await userEvent.tab();
 
     // Sigue arriba, con el resumen vacío.
     await waitFor(async () => {
-      const [d] = await api.bitacora(todayISO(), 1);
-      expect(d.hechas.find((h) => h.task.id === subida.task.id)?.note).toBe("");
+      const [d] = await api.dailyLog(todayISO(), 1);
+      expect(d.done.find((h) => h.task.id === subida.task.id)?.note).toBe("");
     });
 
     await userEvent.click(
@@ -92,19 +92,19 @@ describe("DailyShutdownView", () => {
     );
 
     await waitFor(async () => {
-      const [d] = await api.bitacora(todayISO(), 1);
-      expect(d.hechas.find((h) => h.task.id === subida.task.id)?.note).toBeNull();
+      const [d] = await api.dailyLog(todayISO(), 1);
+      expect(d.done.find((h) => h.task.id === subida.task.id)?.note).toBeNull();
     });
   });
 
   it("el ánimo se elige de la grilla, y volver a elegirlo lo borra", async () => {
-    montar();
+    mount();
 
     await userEvent.click(await screen.findByRole("button", { name: /Elegir el ánimo/ }));
     await userEvent.click(screen.getByRole("button", { name: "Ánimo 🙂" }));
 
     await waitFor(async () => {
-      const [d] = await api.bitacora(todayISO(), 1);
+      const [d] = await api.dailyLog(todayISO(), 1);
       expect(d.mood).toBe("🙂");
     });
 
@@ -113,7 +113,7 @@ describe("DailyShutdownView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Ánimo 🙂" }));
 
     await waitFor(async () => {
-      const [d] = await api.bitacora(todayISO(), 1);
+      const [d] = await api.dailyLog(todayISO(), 1);
       expect(d.mood).toBeNull();
     });
   });
@@ -122,7 +122,7 @@ describe("DailyShutdownView", () => {
     // Mover una tarea es del daily planning: dos lugares para lo mismo obligan a
     // mantener la misma regla en dos sitios.
     await api.createTask({ title: "no alcancé", scheduledDate: todayISO() });
-    montar();
+    mount();
 
     expect(await screen.findByText("no alcancé")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Mandar no alcancé/ })).toBeNull();
@@ -135,10 +135,10 @@ describe("DailyShutdownView", () => {
     // lo que estabas escribiendo. Se invalida a mano y no con un click para que
     // el caso no dependa de qué botón dispara la recarga: lo que se prueba es la
     // recarga, no el botón.
-    montar();
+    mount();
 
-    const campo = await screen.findByLabelText("Cómo estuvo el día");
-    await userEvent.click(campo);
+    const field = await screen.findByLabelText("Cómo estuvo el día");
+    await userEvent.click(field);
     await userEvent.paste("a medio escribir");
     await act(async () => {
       useAppStore.getState().bumpData();
@@ -150,26 +150,26 @@ describe("DailyShutdownView", () => {
   });
 
   it("cerrar el día lo sella, tira confeti y lleva a la bitácora", async () => {
-    montar();
+    mount();
 
-    const campo = await screen.findByLabelText("Cómo estuvo el día");
-    await userEvent.click(campo);
+    const field = await screen.findByLabelText("Cómo estuvo el día");
+    await userEvent.click(field);
     // El caso anterior dejó texto guardado (su click en el botón hizo blur, y el
     // blur guarda): sin limpiar, esto se concatena.
-    await userEvent.clear(campo);
+    await userEvent.clear(field);
     await userEvent.paste("día largo pero salió");
     await userEvent.click(screen.getByRole("button", { name: /Cerrar el día/ }));
 
     await waitFor(() => expect(screen.getByText("Daily highlights")).toBeInTheDocument());
-    expect(celebrar).toHaveBeenCalled();
-    const [dia] = await api.bitacora(todayISO(), 1);
-    expect(dia.closedAt).not.toBeNull();
-    expect(dia.note).toBe("día largo pero salió");
+    expect(celebrate).toHaveBeenCalled();
+    const [day] = await api.dailyLog(todayISO(), 1);
+    expect(day.closedAt).not.toBeNull();
+    expect(day.note).toBe("día largo pero salió");
   });
 
   it("un día ya cerrado ofrece reabrirlo en vez de volver a cerrarlo", async () => {
     // Lo cerró el caso anterior; el estado del mock es de módulo.
-    montar();
+    mount();
 
     expect(await screen.findByText(/Cerraste este día/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Cerrar el día/ })).toBeNull();
@@ -188,11 +188,11 @@ describe("DailyHighlightsView", () => {
     await api.setActualSeconds(t.id, 1800);
     // Incluida, porque subir es lo que la vuelve un highlight (ver el caso
     // siguiente). Sin eso quedaría contada en "y N más".
-    await api.incluirEnBitacora(todayISO(), t.id);
+    await api.includeInLog(todayISO(), t.id);
 
-    montar("/daily-highlights");
+    mount("/daily-highlights");
 
-    const hoy = await waitFor(() => {
+    const today = await waitFor(() => {
       const el = document.querySelector<HTMLElement>(".dia");
       expect(el).not.toBeNull();
       return el!;
@@ -201,10 +201,10 @@ describe("DailyHighlightsView", () => {
     // timeline a la derecha. Son dos preguntas distintas sobre la misma tarea.
     await waitFor(() =>
       expect(
-        within(hoy.querySelector<HTMLElement>(".dia__izq")!).getByText("algo con tiempo"),
+        within(today.querySelector<HTMLElement>(".dia__izq")!).getByText("algo con tiempo"),
       ).toBeInTheDocument(),
     );
-    const tl = hoy.querySelector<HTMLElement>(".dia__tl")!;
+    const tl = today.querySelector<HTMLElement>(".dia__tl")!;
     expect(within(tl).getByText("algo con tiempo")).toBeInTheDocument();
     expect(within(tl).getByText("0:30")).toBeInTheDocument();
   });
@@ -214,7 +214,7 @@ describe("DailyHighlightsView", () => {
     // una línea. Lo que queda afuera **se dice**, no se esconde.
     await cerradaHoy("ésta no la sube");
 
-    montar("/daily-highlights");
+    mount("/daily-highlights");
 
     const izq = await waitFor(() => {
       const el = document.querySelector<HTMLElement>(".dia__izq");
@@ -227,7 +227,7 @@ describe("DailyHighlightsView", () => {
   });
 
   it("el donut de channels arranca plegado", async () => {
-    montar("/daily-highlights");
+    mount("/daily-highlights");
 
     const toggle = await screen.findByRole("button", { name: /Channels/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -239,7 +239,7 @@ describe("DailyHighlightsView", () => {
   });
 
   it("hacer click en un hito abre el detalle de la tarea", async () => {
-    montar("/daily-highlights");
+    mount("/daily-highlights");
 
     await userEvent.click(await screen.findByRole("button", { name: /algo con tiempo/ }));
 

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, X } from "lucide-react";
-import type { Category, Task, TrabajoDelDia } from "../../lib/types";
+import type { Category, Task, DayWork } from "../../lib/types";
 import { weekdayLabel } from "../../lib/date";
-import { armarRail, etiquetaHora, type BloqueRail } from "./railLayout";
+import { buildRail, hourLabel, type BloqueRail } from "./railLayout";
 
 /** Alto de una hora de grilla, en px. La geometría se calcula en minutos. */
 const PX_POR_MINUTO = 1;
@@ -23,8 +23,8 @@ interface Props {
   workStart: string;
   workEnd: string;
   onOpen?: (task: Task) => void;
-  /** Lo trabajado ese día, por tarea (`repo::trabajo_del_dia`). */
-  trabajo?: TrabajoDelDia[];
+  /** Lo trabajado ese día, por tarea (`repo::day_work`). */
+  work?: DayWork[];
   /** Segundos de la corrida en curso, para que su bloque crezca en vivo. */
   segundosEnCurso?: number;
   /** Modificador de la vista que lo monta (p. ej. `rail--overlay`). */
@@ -57,7 +57,7 @@ export function CalendarRail({
   workStart,
   workEnd,
   onOpen,
-  trabajo,
+  work,
   segundosEnCurso = 0,
   className,
   onClose,
@@ -66,9 +66,9 @@ export function CalendarRail({
   const esHoy = date === today;
   // En el día de hoy la proyección arranca en "ahora": lo que queda por delante
   // no empieza a las 9 de la mañana si ya son las 2 de la tarde.
-  const rail = armarRail(tasks, workStart, workEnd, {
+  const rail = buildRail(tasks, workStart, workEnd, {
     ahoraMin: esHoy ? ahora : null,
-    trabajo,
+    work,
     segundosEnCurso,
   });
   const porId = new Map(tasks.map((t) => [t.id, t]));
@@ -76,8 +76,8 @@ export function CalendarRail({
   const alto = (rail.hastaMin - rail.desdeMin) * PX_POR_MINUTO;
   const y = (min: number) => (min - rail.desdeMin) * PX_POR_MINUTO;
 
-  const horas: number[] = [];
-  for (let m = rail.desdeMin; m <= rail.hastaMin; m += 60) horas.push(m);
+  const hours: number[] = [];
+  for (let m = rail.desdeMin; m <= rail.hastaMin; m += 60) hours.push(m);
 
   // La grilla es de 24 h, así que al montar hay que llevarla a la jornada: si
   // no, el rail abre siempre en la medianoche y hay que bajar a mano.
@@ -119,7 +119,7 @@ export function CalendarRail({
         )}
       </div>
 
-      {rail.bloques.length === 0 && rail.todoElDia.length === 0 && (
+      {rail.blocks.length === 0 && rail.todoElDia.length === 0 && (
         <p className="rail__vacio">El día está en blanco.</p>
       )}
 
@@ -141,9 +141,9 @@ export function CalendarRail({
 
       <div className="rail__scroll" ref={scrollRef}>
         <div className="rail__grid" style={{ height: `${alto}px` }}>
-          {horas.map((m) => (
+          {hours.map((m) => (
             <div key={m} className="rail__hora" style={{ top: `${y(m)}px` }}>
-              <span className="rail__hora-label">{etiquetaHora(m)}</span>
+              <span className="rail__hora-label">{hourLabel(m)}</span>
               <span className="rail__hora-linea" />
             </div>
           ))}
@@ -153,38 +153,38 @@ export function CalendarRail({
            * así que el canal de las etiquetas de hora le es invisible y los
            * bloques se les montaban encima. La pista lo deja fuera. */}
           <div className="rail__pista">
-            {rail.bloques.map((b) => {
+            {rail.blocks.map((b) => {
               const t = porId.get(b.taskId);
               if (!t) return null;
               return (
                 <button
                   // Compuesta: una tarea partida deja varios bloques, y con la
                   // sola `taskId` React descartaría todos menos el primero.
-                  key={`${b.taskId}#${b.parte}`}
+                  key={`${b.taskId}#${b.part}`}
                   type="button"
                   className={
                     "rail__bloque" +
                     (t.status === "DONE" ? " is-done" : "") +
-                    (b.tipo === "PROYECTADO" ? " is-proyectado" : "") +
-                    (b.tipo === "REAL" ? " is-real" : "") +
-                    ((b.finMin - b.inicioMin) * PX_POR_MINUTO < ALTO_COMPACTO ? " is-corto" : "")
+                    (b.kind === "PROYECTADO" ? " is-proyectado" : "") +
+                    (b.kind === "REAL" ? " is-real" : "") +
+                    ((b.endMin - b.startMin) * PX_POR_MINUTO < ALTO_COMPACTO ? " is-corto" : "")
                   }
                   style={{ ...geometria(b, y), ...colorDe(t, categoryMap) }}
                   onClick={() => onOpen?.(t)}
                   title={
-                    `${etiquetaHora(b.inicioMin)} – ${etiquetaHora(b.finMin)} · ${t.title}` +
-                    (b.partes > 1 ? ` (tramo ${b.parte} de ${b.partes})` : "") +
-                    (b.tipo === "PROYECTADO" ? " · proyectado" : "") +
-                    (b.tipo === "REAL" ? " · trabajado" : "")
+                    `${hourLabel(b.startMin)} – ${hourLabel(b.endMin)} · ${t.title}` +
+                    (b.parts > 1 ? ` (tramo ${b.part} de ${b.parts})` : "") +
+                    (b.kind === "PROYECTADO" ? " · proyectado" : "") +
+                    (b.kind === "REAL" ? " · trabajado" : "")
                   }
                 >
                   <span className="rail__bloque-hora">
-                    {etiquetaHora(b.inicioMin)}
+                    {hourLabel(b.startMin)}
                     {/* Sin esto, una tarea partida deja dos bloques idénticos a
                      * distinta hora y no hay cómo saber que son la misma. */}
-                    {b.partes > 1 && (
+                    {b.parts > 1 && (
                       <span className="rail__bloque-parte">
-                        {b.parte}/{b.partes}
+                        {b.part}/{b.parts}
                       </span>
                     )}
                   </span>
@@ -224,14 +224,14 @@ export function CalendarRail({
  * para que el rail siga funcionando a cualquier ancho de ventana.
  */
 function geometria(b: BloqueRail, y: (min: number) => number): React.CSSProperties {
-  const ancho = 100 / b.carriles;
+  const ancho = 100 / b.lanes;
   return {
-    top: `${y(b.inicioMin)}px`,
+    top: `${y(b.startMin)}px`,
     // Altura mínima: una tarea de 10 minutos igual tiene que poder leerse y
     // clickearse. El solapamiento se calcula con los minutos reales, así que
     // esto es solo visual — y por eso el mínimo es bajo: cuanto más alto, más
     // se montan dos bloques cortos y consecutivos.
-    height: `${Math.max((b.finMin - b.inicioMin) * PX_POR_MINUTO, ALTO_MINIMO)}px`,
+    height: `${Math.max((b.endMin - b.startMin) * PX_POR_MINUTO, ALTO_MINIMO)}px`,
     left: `calc(${b.carril * ancho}% + ${b.carril === 0 ? 0 : 2}px)`,
     width: `calc(${ancho}% - 2px)`,
   };
@@ -259,7 +259,7 @@ function colorDe(t: Task, categoryMap: Map<number, Category>): React.CSSProperti
  * Se recalcula leyendo el reloj y no sumando: macOS agrupa los temporizadores
  * al suspender, así que el intervalo puede disparar tarde o no disparar; leer la
  * hora da el valor correcto se ejecute cuando se ejecute. Mismo criterio que
- * `revisarCambioDeDia` en `lib/day.ts`.
+ * `checkDayChange` en `lib/day.ts`.
  */
 function useMinutoActual(): number {
   const [min, setMin] = useState(minutoDelReloj);

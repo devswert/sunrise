@@ -14,7 +14,7 @@ import confetti from "canvas-confetti";
  *    llenaría la salida de advertencias) si la llamada estuviera inline en el
  *    componente.
  */
-export function celebrar(): void {
+export function celebrate(): void {
   confetti({
     particleCount: 120,
     spread: 70,

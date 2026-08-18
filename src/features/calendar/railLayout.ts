@@ -1,4 +1,4 @@
-import type { Task, TrabajoDelDia } from "../../lib/types";
+import type { Task, DayWork } from "../../lib/types";
 
 /**
  * Cálculo del rail de calendario: dónde va cada bloque en la grilla de horas.
@@ -11,8 +11,8 @@ import type { Task, TrabajoDelDia } from "../../lib/types";
  * el importador guarda esos dos en RFC 3339 **UTC** (`ics.rs`), así que cortarles
  * los caracteres para sacar la hora pondría una reunión de la tarde en el bloque
  * equivocado. Es el mismo error que ya se pagó dos veces (`completeAndAdvance` y
- * `tiempoPorDia`) y que SPECS §4.12 nombra explícitamente. `scheduled_time` sale
- * de `inicio_local` y `estimated_minutes` es la duración del evento, así que los
+ * `timeByDay`) y que SPECS §4.12 nombra explícitamente. `scheduled_time` sale
+ * de `local_start` y `estimated_minutes` es la duración del evento, así que los
  * dos campos locales alcanzan y no hay conversión que hacer.
  */
 
@@ -50,19 +50,19 @@ export type TipoBloque = "REAL" | "FIJO" | "PROYECTADO";
 export interface BloqueRail {
   taskId: number;
   /** Minutos desde medianoche. */
-  inicioMin: number;
-  finMin: number;
+  startMin: number;
+  endMin: number;
   /** Columna dentro de su grupo de solapados, y cuántas hay en total. */
   carril: number;
-  carriles: number;
-  tipo: TipoBloque;
+  lanes: number;
+  kind: TipoBloque;
   /**
    * Qué tramo de su tarea es este bloque, y en cuántos quedó partida. `1 de 1`
    * es el caso normal. Una tarea partida deja dos bloques con el mismo título a
    * distinta hora, así que sin esto el rail se vuelve ilegible.
    */
-  parte: number;
-  partes: number;
+  part: number;
+  parts: number;
 }
 
 export interface Rail {
@@ -75,7 +75,7 @@ export interface Rail {
    */
   jornadaDesdeMin: number;
   jornadaHastaMin: number;
-  bloques: BloqueRail[];
+  blocks: BloqueRail[];
   /**
    * Eventos de día completo: van en una franja arriba de la grilla y no dentro.
    * Un feriado no ocupa 24 horas del día (SPECS §4.12, "día completo = sin
@@ -92,8 +92,8 @@ export interface OpcionesRail {
    * leyendo el reloj**, para que el módulo siga siendo puro.
    */
   ahoraMin?: number | null;
-  /** Una fila por tarea con tiempo trackeado ese día (`repo::trabajo_del_dia`). */
-  trabajo?: TrabajoDelDia[];
+  /** Una fila por tarea con tiempo trackeado ese día (`repo::day_work`). */
+  work?: DayWork[];
   /**
    * Segundos de la corrida abierta, que todavía no están en `trabajo.seconds`.
    * Sin esto la tarea que estás trabajando ahora mismo saldría de alto cero.
@@ -102,7 +102,7 @@ export interface OpcionesRail {
 }
 
 /** `"09:30"` → 570. `null` si no es una hora válida. */
-export function minutosDeHora(hhmm: string | null | undefined): number | null {
+export function minutesFromTime(hhmm: string | null | undefined): number | null {
   if (!hhmm) return null;
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
   if (!m) return null;
@@ -113,7 +113,7 @@ export function minutosDeHora(hhmm: string | null | undefined): number | null {
 }
 
 /** 570 → `"9:30 AM"`, el mismo formato que el detalle del evento. */
-export function etiquetaHora(min: number): string {
+export function hourLabel(min: number): string {
   const h24 = Math.floor(min / 60) % 24;
   const m = min % 60;
   const sufijo = h24 < 12 ? "AM" : "PM";
@@ -122,7 +122,7 @@ export function etiquetaHora(min: number): string {
 }
 
 /** Minutos desde la medianoche **local** de un timestamp RFC 3339 en UTC. */
-export function minutosLocales(iso: string): number | null {
+export function localMinutes(iso: string): number | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return d.getHours() * 60 + d.getMinutes();
@@ -152,62 +152,62 @@ export function minutosLocales(iso: string): number | null {
  * La grilla es **siempre el día completo**. La jornada solo aporta dos líneas y
  * el punto donde arranca la proyección: marca que el tiempo se acaba, no bloquea.
  */
-export function armarRail(
+export function buildRail(
   tasks: Task[],
   workStart: string,
   workEnd: string,
-  opciones: OpcionesRail = {},
+  options: OpcionesRail = {},
 ): Rail {
-  const { ahoraMin = null, trabajo = [], segundosEnCurso = 0 } = opciones;
+  const { ahoraMin = null, work = [], segundosEnCurso = 0 } = options;
 
-  const trabajoPorTarea = new Map(trabajo.map((w) => [w.taskId, w]));
+  const trabajoPorTarea = new Map(work.map((w) => [w.taskId, w]));
   const todoElDia: Task[] = [];
   const reales: Tramo[] = [];
   const fijas: Tramo[] = [];
-  const pendientes: Pendiente[] = [];
+  const pending: Pendiente[] = [];
 
   for (const t of tasks) {
-    const trabajados = minutosTrabajados(trabajoPorTarea.get(t.id), segundosEnCurso);
+    const worked = workedMinutes(trabajoPorTarea.get(t.id), segundosEnCurso);
 
-    if (trabajados > 0) {
-      const inicio = minutosLocales(trabajoPorTarea.get(t.id)!.startedAt);
-      if (inicio != null) {
+    if (worked > 0) {
+      const start = localMinutes(trabajoPorTarea.get(t.id)!.startedAt);
+      if (start != null) {
         reales.push({
           taskId: t.id,
-          inicioMin: inicio,
-          finMin: Math.min(inicio + trabajados, MINUTOS_DEL_DIA),
+          startMin: start,
+          endMin: Math.min(start + worked, MINUTOS_DEL_DIA),
         });
         // **Lo trabajado no agota la tarea.** Si el estimado es mayor que lo que
         // llevas, lo que falta se sigue proyectando como cualquier otra cosa
         // pendiente —y se parte alrededor de lo que venga—: si no, una tarea de
         // 45 minutos con 19 hechos desaparecía del resto del día en cuanto le
         // dabas play, que es justo cuando más importa saber si alcanza.
-        const restante = restantePorHacer(t, trabajados);
-        if (restante > 0) pendientes.push({ task: t, minutos: restante });
+        const restante = restantePorHacer(t, worked);
+        if (restante > 0) pending.push({ task: t, minutes: restante });
         continue;
       }
     }
 
-    const inicio = minutosDeHora(t.scheduledTime);
-    if (inicio == null) {
+    const start = minutesFromTime(t.scheduledTime);
+    if (start == null) {
       // Un evento importado sin hora es de día completo (§4.12): no tiene dónde
       // caer en la escala de horas. Una tarea a mano sin hora sí se proyecta —
       // salvo que esté completada, que se filtra en `proyectar`.
       if (t.source === "CALENDAR") todoElDia.push(t);
-      else pendientes.push({ task: t, minutos: duracionDe(t) });
+      else pending.push({ task: t, minutes: duracionDe(t) });
       continue;
     }
     // Una reunión que cruza la medianoche se corta acá: el día siguiente es
     // otra columna, y estirar la grilla a más de 24 h la haría ilegible.
     fijas.push({
       taskId: t.id,
-      inicioMin: inicio,
-      finMin: Math.min(inicio + duracionDe(t), MINUTOS_DEL_DIA),
+      startMin: start,
+      endMin: Math.min(start + duracionDe(t), MINUTOS_DEL_DIA),
     });
   }
 
-  let jornadaDesde = minutosDeHora(workStart);
-  let jornadaHasta = minutosDeHora(workEnd);
+  let jornadaDesde = minutesFromTime(workStart);
+  let jornadaHasta = minutesFromTime(workEnd);
   if (jornadaDesde == null || jornadaHasta == null || jornadaHasta <= jornadaDesde) {
     jornadaDesde = 9 * 60;
     jornadaHasta = 18 * 60;
@@ -219,9 +219,9 @@ export function armarRail(
   const tipoPorTarea = new Map<number, TipoBloque>(
     conHora.map((c) => [c.taskId, reales.includes(c) ? "REAL" : "FIJO"]),
   );
-  const bloques = repartirCarriles(conHora).map((b) => ({
+  const blocks = repartirCarriles(conHora).map((b) => ({
     ...b,
-    tipo: tipoPorTarea.get(b.taskId) ?? "FIJO",
+    kind: tipoPorTarea.get(b.taskId) ?? "FIJO",
   }));
 
   // Lo ya trabajado también ocupa: sin esto una proyección se dibujaría encima
@@ -230,31 +230,31 @@ export function armarRail(
   // hacia atrás de lo que ya hiciste. Sin esto, el resto de una tarea empezada a
   // las 14:20 se dibujaba a las 9:00, antes del rato que efectivamente le
   // dedicaste.
-  const finDeLoTrabajado = reales.reduce((m, r) => Math.max(m, r.finMin), 0);
+  const finDeLoTrabajado = reales.reduce((m, r) => Math.max(m, r.endMin), 0);
   const arranque = Math.max(jornadaDesde, ahoraMin ?? 0, finDeLoTrabajado);
-  bloques.push(...proyectar(pendientes, conHora, arranque));
+  blocks.push(...proyectar(pending, conHora, arranque));
 
   return {
     desdeMin: 0,
     hastaMin: MINUTOS_DEL_DIA,
     jornadaDesdeMin: jornadaDesde,
     jornadaHastaMin: jornadaHasta,
-    bloques,
+    blocks,
     todoElDia,
   };
 }
 
 interface Tramo {
   taskId: number;
-  inicioMin: number;
-  finMin: number;
+  startMin: number;
+  endMin: number;
 }
 
 /** Algo por hacer y cuánto ocupa. La duración la decide quien lo arma: para una
  * tarea sin empezar es su estimado; para una empezada, lo que le falta. */
 interface Pendiente {
   task: Task;
-  minutos: number;
+  minutes: number;
 }
 
 /**
@@ -264,17 +264,17 @@ interface Pendiente {
  * reunión dura más o menos de lo que decía el calendario, y el rail tiene que
  * mostrar lo segundo. La hora de inicio, igual: manda cuándo le diste play.
  */
-function minutosTrabajados(w: TrabajoDelDia | undefined, segundosEnCurso: number): number {
+function workedMinutes(w: DayWork | undefined, segundosEnCurso: number): number {
   if (!w) return 0;
   const segundos = w.seconds + (w.running ? segundosEnCurso : 0);
-  const minutos = Math.round(segundos / 60);
+  const minutes = Math.round(segundos / 60);
   // Con el taxímetro corriendo el bloque aparece de inmediato, aunque lleve
   // segundos: en cuanto le das play, el lugar de esa tarea en el día es la hora
   // real y no la que se había proyectado. Esperar al primer minuto la dejaría
   // saltando de un lado a otro de la grilla.
-  if (w.running) return Math.max(1, minutos);
+  if (w.running) return Math.max(1, minutes);
   // Un ajuste manual a cero deja una fila sin tiempo: no hay nada que dibujar.
-  return Math.max(0, minutos);
+  return Math.max(0, minutes);
 }
 
 /**
@@ -285,10 +285,10 @@ function minutosTrabajados(w: TrabajoDelDia | undefined, segundosEnCurso: number
  * peor que no decir nada. Y una completada no debe nada, por mucho que el
  * estimado fuera mayor: la terminaste.
  */
-function restantePorHacer(t: Task, trabajados: number): number {
+function restantePorHacer(t: Task, worked: number): number {
   if (t.status === "DONE") return 0;
   if (t.estimatedMinutes == null || t.estimatedMinutes <= 0) return 0;
-  return Math.max(0, t.estimatedMinutes - trabajados);
+  return Math.max(0, t.estimatedMinutes - worked);
 }
 
 /** Cuánto dura una tarea en el rail. Sin estimado, la duración por defecto. */
@@ -317,39 +317,39 @@ function duracionDe(t: Task): number {
  * es siempre 0 — de ahí que no pase por `repartirCarriles`.
  */
 function proyectar(
-  tareas: Pendiente[],
-  fijas: { inicioMin: number; finMin: number }[],
+  tasks: Pendiente[],
+  fijas: { startMin: number; endMin: number }[],
   desdeMin: number,
 ): BloqueRail[] {
-  const pendientes = tareas
+  const pending = tasks
     .filter((p) => p.task.status !== "DONE")
     .sort((a, b) => a.task.position - b.task.position || a.task.id - b.task.id);
-  if (pendientes.length === 0) return [];
+  if (pending.length === 0) return [];
 
-  const ocupado = fusionar(fijas);
+  const busy = fusionar(fijas);
   const out: BloqueRail[] = [];
   let cursor = desdeMin;
 
-  for (const { task: t, minutos } of pendientes) {
-    const tramos = partir(minutos, cursor, ocupado);
+  for (const { task: t, minutes } of pending) {
+    const segments = partir(minutes, cursor, busy);
     // Si no cabe entera antes de medianoche se descarta **completa**, no a
     // medias: dejar solo el primer tramo se leería como un error de ubicación y
     // no como "ya no te queda día". Y lo que sigue tampoco va a caber.
-    if (tramos == null) break;
+    if (segments == null) break;
 
-    tramos.forEach((tramo, i) => {
+    segments.forEach((tramo, i) => {
       out.push({
         taskId: t.id,
-        inicioMin: tramo.inicioMin,
-        finMin: tramo.finMin,
+        startMin: tramo.startMin,
+        endMin: tramo.endMin,
         carril: 0,
-        carriles: 1,
-        tipo: "PROYECTADO",
-        parte: i + 1,
-        partes: tramos.length,
+        lanes: 1,
+        kind: "PROYECTADO",
+        part: i + 1,
+        parts: segments.length,
       });
     });
-    cursor = tramos[tramos.length - 1].finMin;
+    cursor = segments[segments.length - 1].endMin;
   }
   return out;
 }
@@ -363,18 +363,18 @@ function proyectar(
  */
 function partir(
   dura: number,
-  desde: number,
-  ocupado: { inicioMin: number; finMin: number }[],
-): { inicioMin: number; finMin: number }[] | null {
-  const tramos: { inicioMin: number; finMin: number }[] = [];
+  from: number,
+  busy: { startMin: number; endMin: number }[],
+): { startMin: number; endMin: number }[] | null {
+  const segments: { startMin: number; endMin: number }[] = [];
   let restante = dura;
-  let cursor = desde;
+  let cursor = from;
 
   while (restante > 0) {
-    cursor = siguienteLibre(cursor, ocupado);
+    cursor = siguienteLibre(cursor, busy);
     if (cursor >= MINUTOS_DEL_DIA) return null;
 
-    const finDelHueco = Math.min(proximoOcupado(cursor, ocupado), MINUTOS_DEL_DIA);
+    const finDelHueco = Math.min(proximoOcupado(cursor, busy), MINUTOS_DEL_DIA);
     const hueco = finDelHueco - cursor;
     const toma = Math.min(restante, hueco);
 
@@ -386,23 +386,23 @@ function partir(
       continue;
     }
 
-    tramos.push({ inicioMin: cursor, finMin: cursor + toma });
+    segments.push({ startMin: cursor, endMin: cursor + toma });
     restante -= toma;
     cursor += toma;
   }
-  return tramos;
+  return segments;
 }
 
 /** Une los intervalos que se tocan o se pisan, en orden. */
 function fusionar(
-  intervalos: { inicioMin: number; finMin: number }[],
-): { inicioMin: number; finMin: number }[] {
-  const orden = [...intervalos].sort((a, b) => a.inicioMin - b.inicioMin);
-  const out: { inicioMin: number; finMin: number }[] = [];
+  intervalos: { startMin: number; endMin: number }[],
+): { startMin: number; endMin: number }[] {
+  const orden = [...intervalos].sort((a, b) => a.startMin - b.startMin);
+  const out: { startMin: number; endMin: number }[] = [];
   for (const i of orden) {
-    const ultimo = out[out.length - 1];
-    if (ultimo && i.inicioMin <= ultimo.finMin) {
-      ultimo.finMin = Math.max(ultimo.finMin, i.finMin);
+    const last = out[out.length - 1];
+    if (last && i.startMin <= last.endMin) {
+      last.endMin = Math.max(last.endMin, i.endMin);
     } else {
       out.push({ ...i });
     }
@@ -411,20 +411,20 @@ function fusionar(
 }
 
 /** El primer instante `>= desde` que no cae dentro de algo ocupado. */
-function siguienteLibre(desde: number, ocupado: { inicioMin: number; finMin: number }[]): number {
-  let cursor = desde;
+function siguienteLibre(from: number, busy: { startMin: number; endMin: number }[]): number {
+  let cursor = from;
   // Los intervalos vienen fusionados y ordenados, así que uno solo puede
   // empujar al siguiente y el recorrido termina.
-  for (const o of ocupado) {
-    if (cursor >= o.inicioMin && cursor < o.finMin) cursor = o.finMin;
+  for (const o of busy) {
+    if (cursor >= o.startMin && cursor < o.endMin) cursor = o.endMin;
   }
   return cursor;
 }
 
 /** Dónde empieza lo próximo ocupado después de `desde`, o el fin del día. */
-function proximoOcupado(desde: number, ocupado: { inicioMin: number; finMin: number }[]): number {
-  for (const o of ocupado) {
-    if (o.inicioMin > desde) return o.inicioMin;
+function proximoOcupado(from: number, busy: { startMin: number; endMin: number }[]): number {
+  for (const o of busy) {
+    if (o.startMin > from) return o.startMin;
   }
   return MINUTOS_DEL_DIA;
 }
@@ -438,10 +438,10 @@ function proximoOcupado(desde: number, ocupado: { inicioMin: number; finMin: num
  * ancho. Contar el máximo del día dejaría dos tercios de la tarde en blanco.
  */
 function repartirCarriles(
-  crudos: { taskId: number; inicioMin: number; finMin: number }[],
+  crudos: { taskId: number; startMin: number; endMin: number }[],
 ): BloqueRail[] {
   const orden = [...crudos].sort(
-    (a, b) => a.inicioMin - b.inicioMin || b.finMin - a.finMin || a.taskId - b.taskId,
+    (a, b) => a.startMin - b.startMin || b.endMin - a.endMin || a.taskId - b.taskId,
   );
 
   const salida: BloqueRail[] = [];
@@ -450,7 +450,7 @@ function repartirCarriles(
   let finPorCarril: number[] = [];
 
   const cerrarGrupo = () => {
-    for (const b of grupo) b.carriles = finPorCarril.length;
+    for (const b of grupo) b.lanes = finPorCarril.length;
     salida.push(...grupo);
     grupo = [];
     finPorCarril = [];
@@ -459,18 +459,18 @@ function repartirCarriles(
 
   for (const c of orden) {
     // Empieza después de que terminó todo lo anterior ⇒ grupo nuevo.
-    if (grupo.length > 0 && c.inicioMin >= finDelGrupo) cerrarGrupo();
+    if (grupo.length > 0 && c.startMin >= finDelGrupo) cerrarGrupo();
 
-    let carril = finPorCarril.findIndex((fin) => fin <= c.inicioMin);
+    let carril = finPorCarril.findIndex((end) => end <= c.startMin);
     if (carril === -1) {
       carril = finPorCarril.length;
-      finPorCarril.push(c.finMin);
+      finPorCarril.push(c.endMin);
     } else {
-      finPorCarril[carril] = c.finMin;
+      finPorCarril[carril] = c.endMin;
     }
 
-    grupo.push({ ...c, carril, carriles: 1, tipo: "FIJO", parte: 1, partes: 1 });
-    finDelGrupo = Math.max(finDelGrupo, c.finMin);
+    grupo.push({ ...c, carril, lanes: 1, kind: "FIJO", part: 1, parts: 1 });
+    finDelGrupo = Math.max(finDelGrupo, c.endMin);
   }
   if (grupo.length > 0) cerrarGrupo();
 

@@ -25,41 +25,41 @@ describe("SettingsView · jornada", () => {
     await useSettingsStore.getState().set(SettingKey.WORK_END, "18:00");
   });
 
-  const guardada = () => workHours(useSettingsStore.getState().values);
+  const saved = () => workHours(useSettingsStore.getState().values);
 
   it("guarda una jornada válida", async () => {
     render(<SettingsView />);
-    const inicio = await screen.findByLabelText("Inicio");
+    const start = await screen.findByLabelText("Inicio");
 
-    await userEvent.clear(inicio);
-    await userEvent.type(inicio, "08:30");
+    await userEvent.clear(start);
+    await userEvent.type(start, "08:30");
     await userEvent.tab();
 
-    expect(guardada().start).toBe("08:30");
+    expect(saved().start).toBe("08:30");
   });
 
   it("rechaza una hora imposible y lo dice, en vez de guardar en silencio", async () => {
     render(<SettingsView />);
-    const fin = await screen.findByLabelText("Fin");
+    const end = await screen.findByLabelText("Fin");
 
-    await userEvent.clear(fin);
-    await userEvent.type(fin, "25:00");
+    await userEvent.clear(end);
+    await userEvent.type(end, "25:00");
     await userEvent.tab();
 
-    expect(fin).toHaveClass("is-invalid");
-    expect(guardada().end).toBe("18:00");
+    expect(end).toHaveClass("is-invalid");
+    expect(saved().end).toBe("18:00");
   });
 
   it("rechaza un fin anterior al inicio: el rail quedaría de altura cero", async () => {
     render(<SettingsView />);
-    const fin = await screen.findByLabelText("Fin");
+    const end = await screen.findByLabelText("Fin");
 
-    await userEvent.clear(fin);
-    await userEvent.type(fin, "07:00");
+    await userEvent.clear(end);
+    await userEvent.type(end, "07:00");
     await userEvent.tab();
 
-    expect(fin).toHaveClass("is-invalid");
-    expect(guardada().end).toBe("18:00");
+    expect(end).toHaveClass("is-invalid");
+    expect(saved().end).toBe("18:00");
   });
 });
 
@@ -74,7 +74,7 @@ describe("SettingsView · inicio automático", () => {
 
   it("refleja el estado del sistema y lo cambia, sin escribir en settings", async () => {
     await api.setAutostart(false);
-    const antes = claves();
+    const before = claves();
 
     render(<SettingsView />);
     const sw = await screen.findByRole("switch", {
@@ -90,7 +90,7 @@ describe("SettingsView · inicio automático", () => {
     expect(sw).toHaveAttribute("aria-checked", "true");
     expect(await api.autostartEnabled()).toBe(true);
     // Ni una clave nueva en la tabla.
-    expect(claves()).toEqual(antes);
+    expect(claves()).toEqual(before);
 
     // Y el texto de la etiqueta también lo cambia: el switch es un cuadradito de
     // 38px, y en una fila donde la etiqueta está a la otra punta uno le apunta a
@@ -141,7 +141,7 @@ describe("SettingsView · actualizaciones", () => {
   });
 
   it("no busca nada hasta que se lo pides", async () => {
-    const spy = vi.spyOn(api, "buscarActualizacion");
+    const spy = vi.spyOn(api, "checkForUpdate");
     render(<SettingsView />);
     // Con la vista montada y estable: si hubiera un chequeo al arrancar, acá ya
     // habría corrido. No hay, y es a propósito (ver el comentario del componente).
@@ -157,11 +157,11 @@ describe("SettingsView · actualizaciones", () => {
   });
 
   it("ofrece instalar la versión nueva y muestra las notas del Release", async () => {
-    vi.spyOn(api, "buscarActualizacion").mockResolvedValue({
+    vi.spyOn(api, "checkForUpdate").mockResolvedValue({
       version: "0.2.0",
-      versionActual: "0.1.0",
-      notas: "- El rail muestra los feriados",
-      fecha: "2026-09-01",
+      currentVersion: "0.1.0",
+      notes: "- El rail muestra los feriados",
+      date: "2026-09-01",
     });
 
     render(<SettingsView />);
@@ -176,7 +176,7 @@ describe("SettingsView · actualizaciones", () => {
   });
 
   it("un fallo de red no se cuenta como 'estás al día'", async () => {
-    vi.spyOn(api, "buscarActualizacion").mockRejectedValue(new Error("no route to host"));
+    vi.spyOn(api, "checkForUpdate").mockRejectedValue(new Error("no route to host"));
 
     render(<SettingsView />);
     await userEvent.click(await screen.findByRole("button", { name: /Buscar/ }));

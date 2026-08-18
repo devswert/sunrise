@@ -64,10 +64,10 @@ describe("CalendarRail", () => {
       task({ id: 7, title: "Weekly de equipo", scheduledTime: "10:00", estimatedMinutes: 60 }),
     ]);
 
-    const bloque = screen.getByRole("button", { name: /Weekly de equipo/ });
-    expect(bloque).toHaveTextContent("10:00 AM");
+    const block = screen.getByRole("button", { name: /Weekly de equipo/ });
+    expect(block).toHaveTextContent("10:00 AM");
 
-    await userEvent.click(bloque);
+    await userEvent.click(block);
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }));
   });
 
@@ -91,9 +91,9 @@ describe("CalendarRail", () => {
     // proyectado tiene que verse distinto: la hora la puso el rail, no el
     // usuario, y confundirlos sería peor que no mostrarlo.
     renderRail([task({ id: 1, title: "Escribir el informe", estimatedMinutes: 60 })]);
-    const bloque = screen.getByRole("button", { name: /Escribir el informe/ });
-    expect(bloque).toHaveClass("is-proyectado");
-    expect(bloque).toHaveAttribute("title", expect.stringContaining("proyectado"));
+    const block = screen.getByRole("button", { name: /Escribir el informe/ });
+    expect(block).toHaveClass("is-proyectado");
+    expect(block).toHaveAttribute("title", expect.stringContaining("proyectado"));
   });
 
   it("una tarea partida deja los dos tramos, marcados 1/2 y 2/2", () => {
@@ -110,13 +110,13 @@ describe("CalendarRail", () => {
       task({ id: 1, title: "Escribir el informe", position: 0, estimatedMinutes: 60 }),
     ]);
 
-    const tramos = screen.getAllByRole("button", { name: /Escribir el informe/ });
-    expect(tramos).toHaveLength(2);
-    expect(tramos[0]).toHaveTextContent("1/2");
-    expect(tramos[1]).toHaveTextContent("2/2");
+    const segments = screen.getAllByRole("button", { name: /Escribir el informe/ });
+    expect(segments).toHaveLength(2);
+    expect(segments[0]).toHaveTextContent("1/2");
+    expect(segments[1]).toHaveTextContent("2/2");
 
     // Los dos abren la misma tarea.
-    return userEvent.click(tramos[1]).then(() => {
+    return userEvent.click(segments[1]).then(() => {
       expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
     });
   });
@@ -129,9 +129,9 @@ describe("CalendarRail", () => {
   it("la línea de 'ahora' solo se dibuja en el día de hoy", () => {
     const conHora = [task({ id: 1, title: "Daily", scheduledTime: "09:30", estimatedMinutes: 15 })];
 
-    const hoy = render(<Rail tasks={conHora} date={DIA} today={DIA} />);
-    expect(hoy.container.querySelector(".rail__ahora")).not.toBeNull();
-    hoy.unmount();
+    const today = render(<Rail tasks={conHora} date={DIA} today={DIA} />);
+    expect(today.container.querySelector(".rail__ahora")).not.toBeNull();
+    today.unmount();
 
     // En otro día la línea mentiría: marcaría una hora que no es de ese día.
     const otro = render(<Rail tasks={conHora} date={OTRO_DIA} today={DIA} />);

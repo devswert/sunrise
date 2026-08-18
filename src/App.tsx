@@ -29,7 +29,7 @@ import "./features/tasks/add-task-modal.css";
 import "./components/search-select.css";
 import "./features/focus/focus.css";
 import "./features/calendar/rail.css";
-import "./features/backup/respaldo.css";
+import "./features/backup/backup.css";
 
 /** Efectos que necesitan estar dentro del Router. */
 function Shell({ children }: { children: React.ReactNode }) {

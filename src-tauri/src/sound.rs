@@ -228,10 +228,10 @@ mod tests {
         let peak = |from: usize, to: usize| {
             samples[from..to].iter().fold(0.0f32, |m, s| m.max(s.abs()))
         };
-        let inicio = peak(3_000, 12_000);
-        let tarde = peak(3 * sr, 3 * sr + 10_000);
-        assert!(tarde > 0.0, "a los 3s debe seguir sonando");
-        assert!(tarde < inicio, "debe decaer: {tarde} < {inicio}");
+        let start = peak(3_000, 12_000);
+        let late = peak(3 * sr, 3 * sr + 10_000);
+        assert!(late > 0.0, "a los 3s debe seguir sonando");
+        assert!(late < start, "debe decaer: {late} < {start}");
     }
 
     #[test]

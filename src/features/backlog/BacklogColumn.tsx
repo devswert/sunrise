@@ -9,7 +9,7 @@ import { useAppStore } from "../../lib/store";
 interface Props {
   tasks: Task[];
   /** `taskId` → día del que vino, para el grupo de arriba. */
-  rescatadas?: Map<number, string>;
+  rescued?: Map<number, string>;
   categoryMap: Map<number, Category>;
   categories: Category[];
   onToggle: (task: Task) => void;
@@ -18,8 +18,8 @@ interface Props {
 }
 
 /** Si esa tarea (existe y) viene de un día. Tolera el `tasks[i - 1]` del borde. */
-function vieneDeUnDia(rescatadas: Map<number, string> | undefined, t: Task | undefined): boolean {
-  return t != null && rescatadas != null && rescatadas.has(t.id);
+function vieneDeUnDia(rescued: Map<number, string> | undefined, t: Task | undefined): boolean {
+  return t != null && rescued != null && rescued.has(t.id);
 }
 
 /**
@@ -33,7 +33,7 @@ function vieneDeUnDia(rescatadas: Map<number, string> | undefined, t: Task | und
  */
 export function BacklogColumn({
   tasks,
-  rescatadas,
+  rescued,
   categoryMap,
   categories,
   onToggle,
@@ -79,12 +79,12 @@ export function BacklogColumn({
                * `SortableContext` en dos rompería el arrastre entre grupos, y
                * mandar algo al backlog lo pone en primera posición, así que los
                * rescates ya vienen juntos al principio. */}
-              {vieneDeUnDia(rescatadas, t) && !vieneDeUnDia(rescatadas, tasks[i - 1]) && (
+              {vieneDeUnDia(rescued, t) && !vieneDeUnDia(rescued, tasks[i - 1]) && (
                 <div className="col-grupo">
                   <CalendarClock size={12} aria-hidden /> Venían de un día
                 </div>
               )}
-              {!vieneDeUnDia(rescatadas, t) && vieneDeUnDia(rescatadas, tasks[i - 1]) && (
+              {!vieneDeUnDia(rescued, t) && vieneDeUnDia(rescued, tasks[i - 1]) && (
                 <div className="col-grupo">Guardadas</div>
               )}
               <TaskCard
@@ -95,8 +95,8 @@ export function BacklogColumn({
                 onOpen={onOpen}
                 onPatch={onPatch}
               />
-              {vieneDeUnDia(rescatadas, t) && (
-                <span className="col-desde">desde el {shortDate(rescatadas!.get(t.id)!)}</span>
+              {vieneDeUnDia(rescued, t) && (
+                <span className="col-desde">desde el {shortDate(rescued!.get(t.id)!)}</span>
               )}
             </div>
           ))}

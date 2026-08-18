@@ -5,9 +5,9 @@ import { MemoryRouter } from "react-router-dom";
 import { WeeklyReviewView } from "./WeeklyReviewView";
 import { api } from "../../lib/ipc";
 import { isoWeekId, shortWeekday, todayISO, weekDates } from "../../lib/date";
-import { horas } from "./weeklyReview";
+import { hours } from "./weeklyReview";
 
-function montar() {
+function mount() {
   return render(
     <MemoryRouter>
       <WeeklyReviewView />
@@ -15,11 +15,11 @@ function montar() {
   );
 }
 
-const hoy = () => todayISO();
+const today = () => todayISO();
 
 /** Deja `seconds` trabajados hoy en una tarea nueva y la devuelve. */
-async function trabajada(titulo: string, seconds: number) {
-  const t = await api.createTask({ title: titulo, scheduledDate: hoy(), estimatedMinutes: 60 });
+async function worked(title: string, seconds: number) {
+  const t = await api.createTask({ title: title, scheduledDate: today(), estimatedMinutes: 60 });
   await api.setActualSeconds(t.id, seconds);
   return t;
 }
@@ -31,25 +31,25 @@ async function trabajada(titulo: string, seconds: number) {
  */
 describe("WeeklyReviewView", () => {
   it("muestra las horas trabajadas y lo cerrado de la semana", async () => {
-    const t = await trabajada("análisis", 5400);
+    const t = await worked("análisis", 5400);
     await api.setTaskStatus(t.id, "DONE");
     // El mock arranca sembrado, así que el total se compara contra el rollup,
     // no contra un número fijo.
-    const esperado = horas((await api.weeklyRollup(weekDates(new Date())[0])).totalSeconds);
+    const expected = hours((await api.weeklyRollup(weekDates(new Date())[0])).totalSeconds);
 
-    montar();
+    mount();
 
     const chip = await screen.findByText(/trabajado/);
-    expect(within(chip).getByText(esperado)).toBeInTheDocument();
+    expect(within(chip).getByText(expected)).toBeInTheDocument();
     // Y aparece en la columna del día en que se cerró.
-    const dias = document.querySelectorAll<HTMLElement>(".review__dia");
-    const columna = [...dias].find((d) => d.textContent?.includes(shortWeekday(hoy())))!;
+    const days = document.querySelectorAll<HTMLElement>(".review__dia");
+    const columna = [...days].find((d) => d.textContent?.includes(shortWeekday(today())))!;
     await waitFor(() => expect(within(columna).getByText("análisis")).toBeInTheDocument());
   });
 
   it("sin objetivos la caja igual está, y lo dice", async () => {
     // Esconder el panel haría pasar por olvido lo que es un dato de la semana.
-    montar();
+    mount();
 
     const vacio = await screen.findByText("Semana sin objetivos");
     expect(vacio.closest(".review__graficos")).not.toBeNull();
@@ -60,10 +60,10 @@ describe("WeeklyReviewView", () => {
     // "lo que se cerró".
     await api.createObjective(isoWeekId(new Date()), "Cerrar el rollup");
 
-    montar();
+    mount();
 
-    const objetivo = await screen.findByText("Cerrar el rollup");
-    expect(objetivo.closest(".review__graficos")).not.toBeNull();
+    const objective = await screen.findByText("Cerrar el rollup");
+    expect(objective.closest(".review__graficos")).not.toBeNull();
     // Y su avance sale arriba, con el resto de las cifras.
     expect(
       within(document.querySelector<HTMLElement>(".review__cifras")!).getByText(/objetivos/),
@@ -73,9 +73,9 @@ describe("WeeklyReviewView", () => {
   it("destildar desde el modal no lo hace desaparecer", async () => {
     // La vista solo lista lo cerrado: si el modal saliera de esa lista, se
     // cerraría solo a media edición. Mismo bicho que en el ritual de M3.4.
-    const t = await trabajada("me arrepentí", 600);
+    const t = await worked("me arrepentí", 600);
     await api.setTaskStatus(t.id, "DONE");
-    montar();
+    mount();
 
     await userEvent.click(await screen.findByText("me arrepentí"));
     const modal = await screen.findByLabelText("Detalle de tarea");
@@ -90,26 +90,26 @@ describe("WeeklyReviewView", () => {
   it("una tarea sin cerrar suma horas pero no cuenta como cerrada", async () => {
     // Trabajado y cerrado son dos preguntas distintas: la vista no puede
     // mezclarlas en una sola cifra.
-    const antes = (await api.weeklyRollup(weekDates(new Date())[0])).completadas.length;
-    await trabajada("en curso", 1800);
+    const before = (await api.weeklyRollup(weekDates(new Date())[0])).completedTasks.length;
+    await worked("en curso", 1800);
 
-    montar();
+    mount();
 
     const chip = await screen.findByText(/cerradas/);
-    expect(within(chip).getByText(String(antes))).toBeInTheDocument();
+    expect(within(chip).getByText(String(before))).toBeInTheDocument();
   });
 
   it("avisa cuando hay tareas sin estimar en vez de inventarles minutos", async () => {
-    await api.createTask({ title: "sin estimar", scheduledDate: hoy() });
+    await api.createTask({ title: "sin estimar", scheduledDate: today() });
 
-    montar();
+    mount();
 
     expect(await screen.findByText(/sin estimar: lo\s+planificado/i)).toBeInTheDocument();
   });
 
   it("se puede mirar otra semana, y ahí no hay nada de ésta", async () => {
-    await trabajada("de esta semana", 3600);
-    montar();
+    await worked("de esta semana", 3600);
+    mount();
     await screen.findByText(/trabajado/);
 
     await userEvent.click(screen.getByRole("button", { name: "Semana anterior" }));

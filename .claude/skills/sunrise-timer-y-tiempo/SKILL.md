@@ -51,7 +51,7 @@ mostró `-14:-17:-39`:
    (`runSeconds` en `timerStore.ts`). Un timer olvidado toda la noche mostraba
    las 15 horas a las 9 de la mañana.
 3. **`stop_timer` parte la corrida por día local** si cruza una medianoche
-   (`tramos_por_dia_local`, espejado en `mockDb`). Como el tiempo se atribuye por
+   (`segments_by_local_day`, espejado en `mockDb`). Como el tiempo se atribuye por
    `started_at`, una fila de 15h le acredita todo al día en que empezó. Esto le
    importa igual al rollup diario de M3, que agrupa por día leyendo la tabla: se
    arregla en la escritura, una vez, no en cada consulta. El último tramo absorbe
@@ -83,7 +83,7 @@ el número. Si necesitas lo corrido de la entrada abierta, hay dos helpers a
 propósito en `timerStore.ts`: `runSeconds` (recortado a la medianoche, para
 "hoy") y `runTotalSeconds` (completo, para el total).
 
-**Para ver el reparto por día** existe `tiempoPorDia` (`features/tasks/timeByDay.ts`),
+**Para ver el reparto por día** existe `timeByDay` (`features/tasks/timeByDay.ts`),
 que agrupa `time_entries` por la fecha **local** de `startedAt`. Si vas a agrupar
 tiempo por fecha en otra parte, úsala o cópiale el criterio: cortar el timestamp
 con `slice(0, 10)` da el día UTC, y en Chile eso corre al día siguiente todo lo
@@ -146,9 +146,9 @@ del usuario no le corresponde decidirla a SQLite.
 
 Al completar en Focus, la tarea se manda **al final del día** y la cola avanza.
 
-## Reglas del rollup (`repo::trabajo_por_dia`, M3.5/M3.6 — hecho)
+## Reglas del rollup (`repo::work_by_day`, M3.5/M3.6 — hecho)
 
-**Todas viven en `trabajo_por_dia`**, que comparten `weekly_rollup` (lo agrupa en
+**Todas viven en `work_by_day`**, que comparten `weekly_rollup` (lo agrupa en
 celdas día × categoría) y `bitacora` (lo agrupa en timelines). Si necesitás el
 trabajo de un rango, usá esa función: escribir una segunda consulta es cómo estas
 reglas se separan. El front solo dibuja. Si vas a tocarlo, estas cuatro reglas son las que se rompen sin que nada
@@ -168,11 +168,11 @@ falle:
 - **El día es local.** Nunca `date(started_at)` ni `substr(started_at,1,10)`: los
   timestamps son UTC y en Chile todo lo trabajado después de las 20:00 se iría al
   día siguiente. Se comparan los bordes de cada día local en UTC
-  (`dias_locales`), como ya hacía `trabajo_del_dia`.
+  (`local_days`), como ya hacía `day_work`.
 
 Y una que solo importa para el día de **hoy**: una tarea con el timer corriendo
 suma **0** en la base hasta que pares, así que el front le agrega lo del
-taxímetro (`trabajadoConEnCurso`, `segundosDelTramo`), igual que el rail. Sin eso,
+taxímetro (`workedWithRunning`, `segmentSeconds`), igual que el rail. Sin eso,
 la tarea que estás haciendo ahora aparece en cero.
 
 Y un detalle que parece cosmético: **el piso en 0 va por tarea y por día**

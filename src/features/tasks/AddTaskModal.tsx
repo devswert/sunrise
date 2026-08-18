@@ -222,7 +222,7 @@ export function AddTaskModal() {
         <div className="compose__foot">
           <span className="compose__hint">⌘↵ para crear</span>
           <button className="btn-primary" onClick={create} disabled={!title.trim()}>
-            <Plus size={14} aria-hidden /> Crear tarea
+            <Plus size={14} aria-hidden /> Crear task
           </button>
         </div>
       </div>

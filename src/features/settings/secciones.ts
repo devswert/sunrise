@@ -37,6 +37,6 @@ export const TABS = [
 export type TabId = (typeof TABS)[number]["id"];
 
 /** El icono de una sección, para las cards que viven en otros módulos. */
-export function iconoDeSeccion(id: TabId): LucideIcon {
+export function sectionIcon(id: TabId): LucideIcon {
   return TABS.find((t) => t.id === id)!.icon;
 }

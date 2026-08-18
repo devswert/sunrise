@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { Participante } from "../../lib/types";
-import { Participantes } from "./Participantes";
+import type { Attendee } from "../../lib/types";
+import { AttendeeList } from "./Participantes";
 
-function p(over: Partial<Participante> = {}): Participante {
-  return { nombre: null, email: null, estado: null, organizador: false, ...over };
+function p(over: Partial<Attendee> = {}): Attendee {
+  return { name: null, email: null, status: null, isOrganizer: false, ...over };
 }
 
 describe("Participantes", () => {
@@ -12,16 +12,16 @@ describe("Participantes", () => {
     // Es el caso de un calendario compartido "ocultando los detalles": el feed
     // no trae invitados, y una sección vacía con un título haría parecer que se
     // perdió el dato.
-    const { container } = render(<Participantes gente={[]} />);
+    const { container } = render(<AttendeeList gente={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("marca a quién organiza", () => {
     render(
-      <Participantes
+      <AttendeeList
         gente={[
-          p({ nombre: "Ana Pérez", email: "ana@acme.cl", organizador: true }),
-          p({ nombre: "Beto Soto", email: "beto@acme.cl", estado: "ACCEPTED" }),
+          p({ name: "Ana Pérez", email: "ana@acme.cl", isOrganizer: true }),
+          p({ name: "Beto Soto", email: "beto@acme.cl", status: "ACCEPTED" }),
         ]}
       />,
     );
@@ -34,12 +34,12 @@ describe("Participantes", () => {
     // indistinguibles para quien no ve bien los colores: cada estado lleva su
     // texto accesible.
     render(
-      <Participantes
+      <AttendeeList
         gente={[
-          p({ nombre: "Sí", estado: "ACCEPTED" }),
-          p({ nombre: "No", estado: "DECLINED" }),
-          p({ nombre: "Quizás", estado: "TENTATIVE" }),
-          p({ nombre: "Nada", estado: null }),
+          p({ name: "Sí", status: "ACCEPTED" }),
+          p({ name: "No", status: "DECLINED" }),
+          p({ name: "Quizás", status: "TENTATIVE" }),
+          p({ name: "Nada", status: null }),
         ]}
       />,
     );
@@ -50,7 +50,7 @@ describe("Participantes", () => {
   });
 
   it("sin nombre muestra el correo", () => {
-    render(<Participantes gente={[p({ email: "solo@acme.cl" })]} />);
+    render(<AttendeeList gente={[p({ email: "solo@acme.cl" })]} />);
     expect(screen.getByText("solo@acme.cl")).toBeInTheDocument();
   });
 
@@ -58,7 +58,7 @@ describe("Participantes", () => {
     // La app no tiene fotos, y unas letras en un círculo compiten con el nombre,
     // que es lo que uno viene a leer. El punto de color lleva todo el estado.
     const { container } = render(
-      <Participantes gente={[p({ nombre: "Ana Pérez", estado: "ACCEPTED" })]} />,
+      <AttendeeList gente={[p({ name: "Ana Pérez", status: "ACCEPTED" })]} />,
     );
     expect(container.querySelector("img")).toBeNull();
     expect(screen.queryByText("AP")).toBeNull();

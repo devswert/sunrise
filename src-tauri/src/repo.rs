@@ -6,8 +6,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
 
 use crate::models::{
-    ActiveTimer, CalendarFeed, Category, DiaDeBitacora, HechaDelDia, Objective, Participante,
-    Rescate, RollupCelda, RollupDia, Task, TaskEvent, TimeEntry, TrabajoDelDia, TramoDelDia,
+    ActiveTimer, CalendarFeed, Category, LogDay, DoneTask, Objective, Attendee,
+    Rescue, RollupCell, RollupDay, Task, TaskEvent, TimeEntry, DayWork, DaySegment,
     WeeklyRollup,
 };
 
@@ -118,7 +118,7 @@ pub fn create_task(conn: &Connection, input: NewTask) -> Result<Task> {
         log_event(conn, id, "START_DATE_SET", None, Some(d))?;
     }
 
-    Ok(get_task(conn, id)?.expect("task recién creada"))
+    Ok(get_task(conn, id)?.expect("tarea recién creada"))
 }
 
 pub fn update_task(conn: &Connection, id: i64, patch: TaskPatch) -> Result<Option<Task>> {
@@ -145,7 +145,7 @@ pub fn update_task(conn: &Connection, id: i64, patch: TaskPatch) -> Result<Optio
     }
     // `actual_seconds` NO se escribe aquí: pasa por `set_actual_seconds`, que
     // además registra el ajuste como entrada (ver más abajo).
-    let manual_actual = patch.actual_seconds;
+    let current_manual = patch.actual_seconds;
     conn.execute(
         "UPDATE tasks SET title=?2, notes=?3, category_id=?4, objective_id=?5,
             scheduled_time=?6, estimated_minutes=?7, actual_seconds=?8, updated_at=?9
@@ -162,7 +162,7 @@ pub fn update_task(conn: &Connection, id: i64, patch: TaskPatch) -> Result<Optio
             now(),
         ],
     )?;
-    if let Some(v) = manual_actual {
+    if let Some(v) = current_manual {
         return set_actual_seconds(conn, id, v);
     }
     get_task(conn, id)
@@ -204,7 +204,7 @@ pub fn move_task(
     date: Option<&str>,
     position: i64,
 ) -> Result<Option<Task>> {
-    move_task_como(conn, id, date, position, None)
+    move_task_as(conn, id, date, position, None)
 }
 
 /// Igual que `move_task`, pero deja registrar el evento con otro tipo.
@@ -212,12 +212,12 @@ pub fn move_task(
 /// Existe por el carry-over: mover la tarea es la misma operación, pero en el
 /// historial no puede verse igual que un arrastre hecho a mano. Quien la mueve
 /// no fue el usuario.
-fn move_task_como(
+fn move_task_as(
     conn: &Connection,
     id: i64,
     date: Option<&str>,
     position: i64,
-    tipo_evento: Option<&str>,
+    event_kind: Option<&str>,
 ) -> Result<Option<Task>> {
     let Some(t) = get_task(conn, id)? else {
         return Ok(None);
@@ -225,7 +225,7 @@ fn move_task_como(
     let old = t.scheduled_date.clone();
 
     if old.as_deref() != date {
-        let kind = tipo_evento
+        let kind = event_kind
             .unwrap_or(if old.is_none() { "START_DATE_SET" } else { "MOVED" });
         log_event(conn, id, kind, old.as_deref(), date)?;
     }
@@ -251,19 +251,19 @@ fn move_task_como(
     get_task(conn, id)
 }
 
-/// El último día **anterior a `antes_de`** que todavía tiene tareas.
+/// El último día **anterior a `before`** que todavía tiene tareas.
 ///
 /// Es la frontera del ritual: ese día se preserva tal cual quedó para poder
 /// repasarlo, y todo lo anterior se degrada al backlog. No es "ayer" a secas
 /// porque un lunes ayer es domingo y está vacío: lo que hay que repasar es el
 /// viernes.
-pub fn ultimo_dia_con_tareas(conn: &Connection, antes_de: &str) -> Result<Option<String>> {
+pub fn last_day_with_tasks(conn: &Connection, before: &str) -> Result<Option<String>> {
     conn.query_row(
         "SELECT MAX(scheduled_date) FROM tasks
           WHERE source_state = 'ACTIVE'
             AND scheduled_date IS NOT NULL
             AND scheduled_date < ?1",
-        [antes_de],
+        [before],
         |r| r.get(0),
     )
 }
@@ -285,8 +285,8 @@ pub fn ultimo_dia_con_tareas(conn: &Connection, antes_de: &str) -> Result<Option
 ///
 /// **No toca las de calendario**: una reunión pasada es el registro de algo que
 /// ocurrió ese día, y mandarla al backlog sería mentir sobre cuándo fue.
-pub fn degradar_pendientes(conn: &Connection, today: &str) -> Result<u32> {
-    let Some(dia_vivo) = ultimo_dia_con_tareas(conn, today)? else {
+pub fn demote_pending(conn: &Connection, today: &str) -> Result<u32> {
+    let Some(live_day) = last_day_with_tasks(conn, today)? else {
         return Ok(0);
     };
 
@@ -297,18 +297,18 @@ pub fn degradar_pendientes(conn: &Connection, today: &str) -> Result<u32> {
           ORDER BY scheduled_date DESC, position DESC",
     )?;
     let ids: Vec<i64> = stmt
-        .query_map([&dia_vivo], |r| r.get(0))?
+        .query_map([&live_day], |r| r.get(0))?
         .collect::<Result<Vec<_>>>()?;
 
-    let mut movidas = 0u32;
+    let mut moved = 0u32;
     for id in ids {
         // Todas a la posición 0, de la más nueva a la más vieja: la última en
         // entrar queda arriba, así que arriba del backlog termina lo más
         // antiguo, que es lo que más tiempo lleva esperando.
-        move_task_como(conn, id, None, 0, Some("MOVED"))?;
-        movidas += 1;
+        move_task_as(conn, id, None, 0, Some("MOVED"))?;
+        moved += 1;
     }
-    Ok(movidas)
+    Ok(moved)
 }
 
 /// Qué tareas del backlog **venían de un día**, y de cuál.
@@ -316,7 +316,7 @@ pub fn degradar_pendientes(conn: &Connection, today: &str) -> Result<u32> {
 /// Sale del historial (`MOVED` con `to_date` nulo), que ya se registra tanto
 /// cuando la degradación las baja como cuando las mandas tú: las dos cosas son
 /// "esto venía de un día", así que no hace falta un evento nuevo ni una columna.
-pub fn rescatadas_del_backlog(conn: &Connection) -> Result<Vec<Rescate>> {
+pub fn rescued_from_backlog(conn: &Connection) -> Result<Vec<Rescue>> {
     let mut stmt = conn.prepare(
         "SELECT t.id AS task_id,
                 (SELECT e.from_date FROM task_events e
@@ -329,16 +329,16 @@ pub fn rescatadas_del_backlog(conn: &Connection) -> Result<Vec<Rescate>> {
           ORDER BY t.position, t.id",
     )?;
     let rows = stmt.query_map([], |r| {
-        Ok(Rescate {
+        Ok(Rescue {
             task_id: r.get("task_id")?,
-            desde: r.get::<_, Option<String>>("desde")?.unwrap_or_default(),
+            from_date: r.get::<_, Option<String>>("desde")?.unwrap_or_default(),
         })
     })?;
     // Las que nunca tuvieron día no son rescates: nacieron en el backlog.
     Ok(rows
         .collect::<Result<Vec<_>>>()?
         .into_iter()
-        .filter(|x: &Rescate| !x.desde.is_empty())
+        .filter(|x: &Rescue| !x.from_date.is_empty())
         .collect())
 }
 
@@ -500,40 +500,40 @@ pub fn stop_timer(conn: &Connection) -> Result<Option<(i64, i64)>> {
     // Si la corrida cruzó una medianoche local, se guarda partida por día: la
     // fila abierta se cierra en el primer corte y los tramos siguientes entran
     // como filas nuevas. Así el tiempo queda acreditado al día en que se
-    // trabajó. Ver `tramos_por_dia_local`.
+    // trabajó. Ver `segments_by_local_day`.
     let rfc = |s: &str| {
         chrono::DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))
     };
-    let tramos = match (rfc(&active.started_at), rfc(&ended)) {
-        (Some(a), Some(b)) => tramos_por_dia_local(a, b),
+    let segments = match (rfc(&active.started_at), rfc(&ended)) {
+        (Some(a), Some(b)) => segments_by_local_day(a, b),
         _ => Vec::new(),
     };
 
-    if tramos.len() > 1 {
+    if segments.len() > 1 {
         // El último tramo absorbe el resto para que la suma de las filas dé
         // exactamente lo mismo que `seconds`: truncar cada tramo por separado
         // perdería hasta un segundo por corte, y el total de la tarea dejaría de
         // cuadrar con sus entradas.
-        let mut repartido = 0i64;
-        for (i, (ini, fin)) in tramos.iter().enumerate() {
-            let ultimo = i == tramos.len() - 1;
-            let secs = if ultimo {
-                seconds - repartido
+        let mut spread = 0i64;
+        for (i, (start, end)) in segments.iter().enumerate() {
+            let last = i == segments.len() - 1;
+            let secs = if last {
+                seconds - spread
             } else {
-                (*fin - *ini).num_seconds().max(0)
+                (*end - *start).num_seconds().max(0)
             };
-            repartido += secs;
+            spread += secs;
 
             if i == 0 {
                 conn.execute(
                     "UPDATE time_entries SET ended_at = ?2, seconds = ?3 WHERE id = ?1",
-                    params![active.entry_id, fin.to_rfc3339(), secs],
+                    params![active.entry_id, end.to_rfc3339(), secs],
                 )?;
             } else {
                 conn.execute(
                     "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
                      VALUES (?1, ?2, ?3, ?4)",
-                    params![active.task_id, ini.to_rfc3339(), fin.to_rfc3339(), secs],
+                    params![active.task_id, start.to_rfc3339(), end.to_rfc3339(), secs],
                 )?;
             }
         }
@@ -564,7 +564,7 @@ pub fn stop_timer(conn: &Connection) -> Result<Option<(i64, i64)>> {
 /// leyendo esta tabla. Partir las filas deja correcto cualquier
 /// `GROUP BY date(started_at)`, sin que quien lo escriba tenga que saber nada de
 /// esto.
-fn tramos_por_dia_local(
+fn segments_by_local_day(
     start: chrono::DateTime<Utc>,
     end: chrono::DateTime<Utc>,
 ) -> Vec<(chrono::DateTime<Utc>, chrono::DateTime<Utc>)> {
@@ -572,34 +572,34 @@ fn tramos_por_dia_local(
         return vec![(start, end)];
     }
 
-    let mut tramos = Vec::new();
+    let mut segments = Vec::new();
     let mut cursor = start;
     // Tope de seguridad: un timer olvidado un año no debe colgar el cierre.
     for _ in 0..400 {
-        match siguiente_medianoche_local(cursor) {
-            Some(corte) if corte < end => {
-                tramos.push((cursor, corte));
-                cursor = corte;
+        match next_local_midnight(cursor) {
+            Some(cutoff) if cutoff < end => {
+                segments.push((cursor, cutoff));
+                cursor = cutoff;
             }
             _ => break,
         }
     }
-    tramos.push((cursor, end));
-    tramos
+    segments.push((cursor, end));
+    segments
 }
 
 /// Primera medianoche local **estrictamente posterior** a `t`.
-fn siguiente_medianoche_local(t: chrono::DateTime<Utc>) -> Option<chrono::DateTime<Utc>> {
+fn next_local_midnight(t: chrono::DateTime<Utc>) -> Option<chrono::DateTime<Utc>> {
     let local = t.with_timezone(&chrono::Local);
-    let manana = local.date_naive().succ_opt()?.and_hms_opt(0, 0, 0)?;
+    let tomorrow = local.date_naive().succ_opt()?.and_hms_opt(0, 0, 0)?;
     // `single()` no alcanza: en el salto de horario de verano la medianoche local
     // puede no existir o existir dos veces, y ahí `earliest()` da un corte
     // válido en vez de abandonar el partido.
-    let cortado = chrono::Local
-        .from_local_datetime(&manana)
+    let split = chrono::Local
+        .from_local_datetime(&tomorrow)
         .single()
-        .or_else(|| chrono::Local.from_local_datetime(&manana).earliest())?;
-    Some(cortado.with_timezone(&Utc))
+        .or_else(|| chrono::Local.from_local_datetime(&tomorrow).earliest())?;
+    Some(split.with_timezone(&Utc))
 }
 
 /// Segundos entre dos timestamps RFC3339 (0 si no parsean o el orden es inverso).
@@ -660,13 +660,13 @@ pub fn list_time_entries(conn: &Connection, task_id: i64) -> Result<Vec<TimeEntr
 /// El día se acota en **hora local**, y no cortando el `started_at` por los
 /// primeros 10 caracteres: los timestamps están en UTC, así que en Chile todo lo
 /// trabajado después de las 20:00 se iría al día siguiente. Es la misma trampa
-/// que ya se pagó en `completeAndAdvance` y en `tiempoPorDia`.
+/// que ya se pagó en `completeAndAdvance` y en `timeByDay`.
 ///
 /// Cada entrada cerrada cae entera dentro de un día porque `stop_timer` las
-/// parte en la medianoche local (ver `tramos_por_dia_local`), así que agrupar
+/// parte en la medianoche local (ver `segments_by_local_day`), así que agrupar
 /// por `started_at` alcanza y no hay que volver a partir nada acá.
-pub fn trabajo_del_dia(conn: &Connection, date: &str) -> Result<Vec<TrabajoDelDia>> {
-    let (desde, hasta) = rango_utc_del_dia(date);
+pub fn day_work(conn: &Connection, date: &str) -> Result<Vec<DayWork>> {
+    let (from_date, to_date) = utc_range_of_day(date);
     let mut stmt = conn.prepare(
         "SELECT task_id,
                 MIN(started_at) AS started_at,
@@ -677,8 +677,8 @@ pub fn trabajo_del_dia(conn: &Connection, date: &str) -> Result<Vec<TrabajoDelDi
          GROUP BY task_id
          ORDER BY started_at",
     )?;
-    let rows = stmt.query_map(params![desde, hasta], |r| {
-        Ok(TrabajoDelDia {
+    let rows = stmt.query_map(params![from_date, to_date], |r| {
+        Ok(DayWork {
             task_id: r.get("task_id")?,
             started_at: r.get("started_at")?,
             // Piso en 0 por lo mismo que `seconds_today`: un ajuste manual hacia
@@ -691,16 +691,16 @@ pub fn trabajo_del_dia(conn: &Connection, date: &str) -> Result<Vec<TrabajoDelDi
 }
 
 /// `'2026-08-15'` → el par `[00:00, 24:00)` de ese día **local**, en UTC.
-fn rango_utc_del_dia(date: &str) -> (String, String) {
-    let dia = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d");
-    let medianoche = dia.ok().and_then(|d| {
+fn utc_range_of_day(date: &str) -> (String, String) {
+    let day = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d");
+    let midnight = day.ok().and_then(|d| {
         let naive = d.and_hms_opt(0, 0, 0)?;
         chrono::Local.from_local_datetime(&naive).single()
     });
-    match medianoche {
-        Some(inicio) => (
-            inicio.with_timezone(&Utc).to_rfc3339(),
-            (inicio + chrono::Duration::days(1))
+    match midnight {
+        Some(start) => (
+            start.with_timezone(&Utc).to_rfc3339(),
+            (start + chrono::Duration::days(1))
                 .with_timezone(&Utc)
                 .to_rfc3339(),
         ),
@@ -714,7 +714,7 @@ fn rango_utc_del_dia(date: &str) -> (String, String) {
 // ---------------------------------------------------------------------------
 
 /// RFC 3339 → `DateTime<Utc>`, o `None` si no parsea.
-fn a_utc(s: &str) -> Option<chrono::DateTime<Utc>> {
+fn to_utc(s: &str) -> Option<chrono::DateTime<Utc>> {
     chrono::DateTime::parse_from_rfc3339(s)
         .ok()
         .map(|d| d.with_timezone(&Utc))
@@ -726,17 +726,17 @@ fn a_utc(s: &str) -> Option<chrono::DateTime<Utc>> {
 /// Es el corazón de la Regla 2: `started_at` está en UTC, así que agrupar con
 /// `date(started_at)` o `substr(started_at,1,10)` manda al día siguiente todo lo
 /// trabajado después de las 20:00 en Chile. La misma trampa que ya se pagó en
-/// `trabajo_del_dia`, `completeAndAdvance` y `tiempoPorDia`.
-fn dias_locales(
-    desde: &str,
+/// `day_work`, `completeAndAdvance` y `timeByDay`.
+fn local_days(
+    from_date: &str,
     n: i64,
 ) -> Vec<(String, chrono::DateTime<Utc>, chrono::DateTime<Utc>)> {
-    let Ok(primero) = chrono::NaiveDate::parse_from_str(desde, "%Y-%m-%d") else {
+    let Ok(first) = chrono::NaiveDate::parse_from_str(from_date, "%Y-%m-%d") else {
         return Vec::new();
     };
-    let medianoche = |d: chrono::NaiveDate| -> Option<chrono::DateTime<Utc>> {
+    let midnight = |d: chrono::NaiveDate| -> Option<chrono::DateTime<Utc>> {
         let naive = d.and_hms_opt(0, 0, 0)?;
-        // `single()` no alcanza en el salto de horario: ver `siguiente_medianoche_local`.
+        // `single()` no alcanza en el salto de horario: ver `next_local_midnight`.
         chrono::Local
             .from_local_datetime(&naive)
             .single()
@@ -746,12 +746,12 @@ fn dias_locales(
 
     (0..n)
         .filter_map(|i| {
-            let dia = primero.checked_add_signed(chrono::Duration::days(i))?;
-            let siguiente = dia.succ_opt()?;
+            let day = first.checked_add_signed(chrono::Duration::days(i))?;
+            let next = day.succ_opt()?;
             Some((
-                dia.format("%Y-%m-%d").to_string(),
-                medianoche(dia)?,
-                medianoche(siguiente)?,
+                day.format("%Y-%m-%d").to_string(),
+                midnight(day)?,
+                midnight(next)?,
             ))
         })
         .collect()
@@ -760,8 +760,8 @@ fn dias_locales(
 type Semana = [(String, chrono::DateTime<Utc>, chrono::DateTime<Utc>)];
 
 /// En qué día de la semana cae un instante, o `None` si queda fuera.
-fn indice_del_dia(semana: &Semana, t: chrono::DateTime<Utc>) -> Option<usize> {
-    semana.iter().position(|(_, ini, fin)| t >= *ini && t < *fin)
+fn day_index(week: &Semana, t: chrono::DateTime<Utc>) -> Option<usize> {
+    week.iter().position(|(_, start, end)| t >= *start && t < *end)
 }
 
 /// El rollup de una semana: trabajado por día y categoría, planificado, y lo que
@@ -785,7 +785,7 @@ fn indice_del_dia(semana: &Semana, t: chrono::DateTime<Utc>) -> Option<usize> {
 /// la de horas. Es correcto, no un bug (SPECS §4.15).
 /// Una fila de trabajo: qué tarea, en qué día del rango, cuánto y desde cuándo.
 struct TrabajoFila {
-    dia: usize,
+    day: usize,
     task_id: i64,
     title: String,
     category_id: Option<i64>,
@@ -796,7 +796,7 @@ struct TrabajoFila {
     /// el taxímetro.
     running: bool,
     /// El primer inicio del día, para ordenar el timeline.
-    inicio: String,
+    start: String,
 }
 
 /// El trabajo de un rango de días, bucketeado por día **local** y por tarea.
@@ -813,14 +813,14 @@ struct TrabajoFila {
 /// - **No filtra `source_state`**: las `ORPHANED` son historial (I7).
 /// - **El piso en 0 va por tarea y por día**, porque un ajuste manual hacia
 ///   abajo se guarda como una entrada con delta negativo.
-fn trabajo_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<TrabajoFila>> {
+fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
     use std::collections::HashMap;
 
-    if dias.is_empty() {
+    if days.is_empty() {
         return Ok(Vec::new());
     }
-    let desde = dias[0].1.to_rfc3339();
-    let hasta = dias[dias.len() - 1].2.to_rfc3339();
+    let from_date = days[0].1.to_rfc3339();
+    let to_date = days[days.len() - 1].2.to_rfc3339();
     let mut acc: HashMap<(usize, i64), TrabajoFila> = HashMap::new();
 
     let mut stmt = conn.prepare(
@@ -833,7 +833,7 @@ fn trabajo_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<TrabajoFila>>
            LEFT JOIN categories c ON c.id = t.category_id
           WHERE e.started_at >= ?1 AND e.started_at < ?2",
     )?;
-    let filas = stmt.query_map(params![desde, hasta], |r| {
+    let rows = stmt.query_map(params![from_date, to_date], |r| {
         Ok((
             r.get::<_, i64>("task_id")?,
             r.get::<_, String>("started_at")?,
@@ -844,33 +844,33 @@ fn trabajo_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<TrabajoFila>>
             r.get::<_, Option<i64>>("context_id")?,
         ))
     })?;
-    for fila in filas {
-        let (task_id, started_at, ended_at, seconds, title, category_id, context_id) = fila?;
-        let Some(t) = a_utc(&started_at) else { continue };
-        let Some(i) = indice_del_dia(dias, t) else { continue };
-        let entrada = acc.entry((i, task_id)).or_insert(TrabajoFila {
-            dia: i,
+    for row in rows {
+        let (task_id, started_at, ended_at, seconds, title, category_id, context_id) = row?;
+        let Some(t) = to_utc(&started_at) else { continue };
+        let Some(i) = day_index(days, t) else { continue };
+        let entry = acc.entry((i, task_id)).or_insert(TrabajoFila {
+            day: i,
             task_id,
             title,
             category_id,
             context_id,
             seconds: 0,
             running: false,
-            inicio: started_at.clone(),
+            start: started_at.clone(),
         });
-        if started_at < entrada.inicio {
-            entrada.inicio = started_at;
+        if started_at < entry.start {
+            entry.start = started_at;
         }
         match ended_at {
-            Some(_) => entrada.seconds += seconds,
-            None => entrada.running = true,
+            Some(_) => entry.seconds += seconds,
+            None => entry.running = true,
         }
     }
 
     // Regla 3. Va acá y no en la consulta de arriba porque depende de que la
     // tarea no tenga **ninguna** entrada: basta una para que ese respaldo
     // sobre, o la reunión contaría dos veces.
-    let ahora = Utc::now();
+    let now = Utc::now();
     let mut stmt = conn.prepare(
         "SELECT t.id, t.title AS title, t.event_start, t.event_end,
                 t.category_id AS category_id,
@@ -882,7 +882,7 @@ fn trabajo_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<TrabajoFila>>
             AND t.event_start >= ?1 AND t.event_start < ?2
             AND NOT EXISTS (SELECT 1 FROM time_entries e WHERE e.task_id = t.id)",
     )?;
-    let reuniones = stmt.query_map(params![desde, hasta], |r| {
+    let meetings = stmt.query_map(params![from_date, to_date], |r| {
         Ok((
             r.get::<_, i64>("id")?,
             r.get::<_, String>("title")?,
@@ -892,29 +892,29 @@ fn trabajo_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<TrabajoFila>>
             r.get::<_, Option<i64>>("context_id")?,
         ))
     })?;
-    for fila in reuniones {
-        let (id, title, ini, fin, category_id, context_id) = fila?;
-        let (Some(a), Some(b)) = (a_utc(&ini), a_utc(&fin)) else { continue };
-        if a > ahora {
+    for row in meetings {
+        let (id, title, start, end, category_id, context_id) = row?;
+        let (Some(a), Some(b)) = (to_utc(&start), to_utc(&end)) else { continue };
+        if a > now {
             continue;
         }
-        let Some(i) = indice_del_dia(dias, a) else { continue };
+        let Some(i) = day_index(days, a) else { continue };
         acc.insert(
             (i, id),
             TrabajoFila {
-                dia: i,
+                day: i,
                 task_id: id,
                 title,
                 category_id,
                 context_id,
                 seconds: (b - a).num_seconds().max(0),
                 running: false,
-                inicio: ini,
+                start: start,
             },
         );
     }
 
-    let mut filas: Vec<TrabajoFila> = acc
+    let mut rows: Vec<TrabajoFila> = acc
         .into_values()
         .map(|mut f| {
             f.seconds = f.seconds.max(0);
@@ -923,14 +923,14 @@ fn trabajo_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<TrabajoFila>>
         .collect();
     // Orden estable: el HashMap no lo tiene, y el timeline se lee en el orden en
     // que se tomó el trabajo.
-    filas.sort_by(|x, y| (x.dia, &x.inicio, x.task_id).cmp(&(y.dia, &y.inicio, y.task_id)));
-    Ok(filas)
+    rows.sort_by(|x, y| (x.day, &x.start, x.task_id).cmp(&(y.day, &y.start, y.task_id)));
+    Ok(rows)
 }
 
 /// Lo planificado y lo sin estimar de cada día del rango, por `scheduled_date`.
-fn plan_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<(i64, i64)>> {
-    let mut plan = vec![(0i64, 0i64); dias.len()];
-    if dias.is_empty() {
+fn plan_by_day(conn: &Connection, days: &Semana) -> Result<Vec<(i64, i64)>> {
+    let mut plan = vec![(0i64, 0i64); days.len()];
+    if days.is_empty() {
         return Ok(plan);
     }
     let mut stmt = conn.prepare(
@@ -938,7 +938,7 @@ fn plan_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<(i64, i64)>> {
            FROM tasks
           WHERE source_state = 'ACTIVE' AND scheduled_date >= ?1 AND scheduled_date <= ?2",
     )?;
-    let planes = stmt.query_map(params![dias[0].0, dias[dias.len() - 1].0], |r| {
+    let plans = stmt.query_map(params![days[0].0, days[days.len() - 1].0], |r| {
         Ok((
             r.get::<_, String>("scheduled_date")?,
             r.get::<_, Option<i64>>("estimated_minutes")?,
@@ -947,20 +947,20 @@ fn plan_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<(i64, i64)>> {
             r.get::<_, Option<String>>("event_end")?,
         ))
     })?;
-    for fila in planes {
-        let (date, estimated, source, ini, fin) = fila?;
-        let Some(i) = dias.iter().position(|(d, _, _)| *d == date) else { continue };
+    for row in plans {
+        let (date, estimated, source, start, end) = row?;
+        let Some(i) = days.iter().position(|(d, _, _)| *d == date) else { continue };
         // Una reunión sin estimar dura lo que dura: eso ya está planificado por
         // el calendario. Una tarea manual sin estimar **se cuenta y se avisa**,
         // no se rellena con un número inventado (misma regla que el semáforo).
-        let minutos = estimated.or_else(|| {
+        let minutes = estimated.or_else(|| {
             if source != "CALENDAR" {
                 return None;
             }
-            let (a, b) = (a_utc(ini.as_deref()?)?, a_utc(fin.as_deref()?)?);
+            let (a, b) = (to_utc(start.as_deref()?)?, to_utc(end.as_deref()?)?);
             Some((b - a).num_minutes().max(0))
         });
-        match minutos {
+        match minutes {
             Some(m) => plan[i].0 += m,
             None => plan[i].1 += 1,
         }
@@ -971,7 +971,7 @@ fn plan_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<(i64, i64)>> {
 /// El rollup de una semana: trabajado por día y categoría, planificado, y lo que
 /// se cerró.
 ///
-/// Las reglas del rollup viven en `trabajo_por_dia`, que comparte con la
+/// Las reglas del rollup viven en `work_by_day`, que comparte con la
 /// bitácora. Lo propio de acá es la vuelta a **celdas día × categoría** para los
 /// gráficos.
 ///
@@ -984,33 +984,33 @@ fn plan_por_dia(conn: &Connection, dias: &Semana) -> Result<Vec<(i64, i64)>> {
 pub fn weekly_rollup(conn: &Connection, week_start: &str) -> Result<WeeklyRollup> {
     use std::collections::HashMap;
 
-    let semana = dias_locales(week_start, 7);
-    if semana.is_empty() {
+    let week = local_days(week_start, 7);
+    if week.is_empty() {
         return Ok(WeeklyRollup {
             week_start: week_start.to_string(),
-            dias: Vec::new(),
-            celdas: Vec::new(),
-            completadas: Vec::new(),
+            days: Vec::new(),
+            cells: Vec::new(),
+            completed_tasks: Vec::new(),
             total_seconds: 0,
             planned_minutes: 0,
-            sin_estimar: 0,
+            unestimated: 0,
         });
     }
 
     // (día, categoría) → segundos, con el piso por tarea ya aplicado.
-    let mut acumulado: HashMap<(usize, Option<i64>), (Option<i64>, i64)> = HashMap::new();
-    for f in trabajo_por_dia(conn, &semana)? {
-        let entrada = acumulado
-            .entry((f.dia, f.category_id))
+    let mut accumulated: HashMap<(usize, Option<i64>), (Option<i64>, i64)> = HashMap::new();
+    for f in work_by_day(conn, &week)? {
+        let entry = accumulated
+            .entry((f.day, f.category_id))
             .or_insert((f.context_id, 0));
-        entrada.1 += f.seconds;
+        entry.1 += f.seconds;
     }
 
-    let mut celdas: Vec<RollupCelda> = acumulado
+    let mut cells: Vec<RollupCell> = accumulated
         .into_iter()
         .filter(|(_, (_, seconds))| *seconds > 0)
-        .map(|((i, category_id), (context_id, seconds))| RollupCelda {
-            date: semana[i].0.clone(),
+        .map(|((i, category_id), (context_id, seconds))| RollupCell {
+            date: week[i].0.clone(),
             category_id,
             context_id,
             seconds,
@@ -1018,51 +1018,51 @@ pub fn weekly_rollup(conn: &Connection, week_start: &str) -> Result<WeeklyRollup
         .collect();
     // Orden estable: sin esto las barras apiladas cambian de orden entre
     // recargas.
-    celdas.sort_by(|a, b| {
+    cells.sort_by(|a, b| {
         (&a.date, a.category_id.unwrap_or(0)).cmp(&(&b.date, b.category_id.unwrap_or(0)))
     });
 
-    let plan = plan_por_dia(conn, &semana)?;
-    let completadas = completadas_del_rango(conn, &semana)?;
+    let plan = plan_by_day(conn, &week)?;
+    let completed_tasks = completed_in_range(conn, &week)?;
 
-    let mut hechas = vec![0i64; semana.len()];
-    for t in &completadas {
+    let mut done = vec![0i64; week.len()];
+    for t in &completed_tasks {
         if let Some(i) = t
             .completed_at
             .as_deref()
-            .and_then(a_utc)
-            .and_then(|c| indice_del_dia(&semana, c))
+            .and_then(to_utc)
+            .and_then(|c| day_index(&week, c))
         {
-            hechas[i] += 1;
+            done[i] += 1;
         }
     }
 
-    let dias: Vec<RollupDia> = semana
+    let days: Vec<RollupDay> = week
         .iter()
         .enumerate()
-        .map(|(i, (date, _, _))| RollupDia {
+        .map(|(i, (date, _, _))| RollupDay {
             date: date.clone(),
-            seconds: celdas.iter().filter(|c| c.date == *date).map(|c| c.seconds).sum(),
+            seconds: cells.iter().filter(|c| c.date == *date).map(|c| c.seconds).sum(),
             planned_minutes: plan[i].0,
-            hechas: hechas[i],
-            sin_estimar: plan[i].1,
+            done: done[i],
+            unestimated: plan[i].1,
         })
         .collect();
 
     Ok(WeeklyRollup {
         week_start: week_start.to_string(),
-        total_seconds: dias.iter().map(|d| d.seconds).sum(),
-        planned_minutes: dias.iter().map(|d| d.planned_minutes).sum(),
-        sin_estimar: dias.iter().map(|d| d.sin_estimar).sum(),
-        dias,
-        celdas,
-        completadas,
+        total_seconds: days.iter().map(|d| d.seconds).sum(),
+        planned_minutes: days.iter().map(|d| d.planned_minutes).sum(),
+        unestimated: days.iter().map(|d| d.unestimated).sum(),
+        days,
+        cells,
+        completed_tasks,
     })
 }
 
 /// Lo que se cerró dentro del rango, en orden de cierre.
-fn completadas_del_rango(conn: &Connection, dias: &Semana) -> Result<Vec<Task>> {
-    if dias.is_empty() {
+fn completed_in_range(conn: &Connection, days: &Semana) -> Result<Vec<Task>> {
+    if days.is_empty() {
         return Ok(Vec::new());
     }
     let mut stmt = conn.prepare(&format!(
@@ -1070,10 +1070,10 @@ fn completadas_del_rango(conn: &Connection, dias: &Semana) -> Result<Vec<Task>> 
           WHERE status = 'DONE' AND completed_at >= ?1 AND completed_at < ?2
           ORDER BY completed_at, id"
     ))?;
-    let desde = dias[0].1.to_rfc3339();
-    let hasta = dias[dias.len() - 1].2.to_rfc3339();
-    let filas = stmt.query_map(params![desde, hasta], Task::from_row)?.collect();
-    filas
+    let from_date = days[0].1.to_rfc3339();
+    let to_date = days[days.len() - 1].2.to_rfc3339();
+    let rows = stmt.query_map(params![from_date, to_date], Task::from_row)?.collect();
+    rows
 }
 
 // ---------------------------------------------------------------------------
@@ -1086,41 +1086,41 @@ fn completadas_del_rango(conn: &Connection, dias: &Semana) -> Result<Vec<Task>> 
 /// haber pasado por el shutdown. `day_entries` solo aporta la nota y el cierre,
 /// así que un día sin fila igual aparece —como borrador— y los días anteriores a
 /// que existiera la tabla también.
-pub fn bitacora(conn: &Connection, hasta: &str, dias: i64) -> Result<Vec<DiaDeBitacora>> {
+pub fn daily_log(conn: &Connection, to_date: &str, days: i64) -> Result<Vec<LogDay>> {
     use std::collections::HashMap;
 
-    let dias = dias.clamp(1, 90);
-    let Ok(fin) = chrono::NaiveDate::parse_from_str(hasta, "%Y-%m-%d") else {
+    let days = days.clamp(1, 90);
+    let Ok(end) = chrono::NaiveDate::parse_from_str(to_date, "%Y-%m-%d") else {
         return Ok(Vec::new());
     };
-    let Some(inicio) = fin.checked_sub_signed(chrono::Duration::days(dias - 1)) else {
+    let Some(start) = end.checked_sub_signed(chrono::Duration::days(days - 1)) else {
         return Ok(Vec::new());
     };
-    let rango = dias_locales(&inicio.format("%Y-%m-%d").to_string(), dias);
-    if rango.is_empty() {
+    let range = local_days(&start.format("%Y-%m-%d").to_string(), days);
+    if range.is_empty() {
         return Ok(Vec::new());
     }
-    let (primero, ultimo) = (rango[0].0.clone(), rango[rango.len() - 1].0.clone());
+    let (first, last) = (range[0].0.clone(), range[range.len() - 1].0.clone());
 
     // Un timeline por día, ya en el orden en que se tomó el trabajo.
-    let mut timeline: HashMap<usize, Vec<TramoDelDia>> = HashMap::new();
-    let mut trabajado = vec![0i64; rango.len()];
+    let mut timeline: HashMap<usize, Vec<DaySegment>> = HashMap::new();
+    let mut worked = vec![0i64; range.len()];
     // (día, categoría) → segundos, para el donut. Se agrega por tarea antes de
     // sumar a la categoría por lo mismo que en la review: el piso en 0 va a esa
     // granularidad.
-    let mut por_categoria: HashMap<(usize, Option<i64>), (Option<i64>, i64)> = HashMap::new();
-    for f in trabajo_por_dia(conn, &rango)? {
-        trabajado[f.dia] += f.seconds;
-        let celda = por_categoria
-            .entry((f.dia, f.category_id))
+    let mut by_category: HashMap<(usize, Option<i64>), (Option<i64>, i64)> = HashMap::new();
+    for f in work_by_day(conn, &range)? {
+        worked[f.day] += f.seconds;
+        let cell = by_category
+            .entry((f.day, f.category_id))
             .or_insert((f.context_id, 0));
-        celda.1 += f.seconds;
+        cell.1 += f.seconds;
         // Una corrida abierta todavía no sumó segundos, pero el tramo tiene que
         // estar: es justamente la tarea en la que se está trabajando ahora.
         if f.seconds == 0 && !f.running {
             continue;
         }
-        timeline.entry(f.dia).or_default().push(TramoDelDia {
+        timeline.entry(f.day).or_default().push(DaySegment {
             task_id: f.task_id,
             title: f.title,
             seconds: f.seconds,
@@ -1128,13 +1128,13 @@ pub fn bitacora(conn: &Connection, hasta: &str, dias: i64) -> Result<Vec<DiaDeBi
         });
     }
 
-    let mut celdas: HashMap<usize, Vec<RollupCelda>> = HashMap::new();
-    for ((i, category_id), (context_id, seconds)) in por_categoria {
+    let mut cells: HashMap<usize, Vec<RollupCell>> = HashMap::new();
+    for ((i, category_id), (context_id, seconds)) in by_category {
         if seconds <= 0 {
             continue;
         }
-        celdas.entry(i).or_default().push(RollupCelda {
-            date: rango[i].0.clone(),
+        cells.entry(i).or_default().push(RollupCell {
+            date: range[i].0.clone(),
             category_id,
             context_id,
             seconds,
@@ -1142,33 +1142,33 @@ pub fn bitacora(conn: &Connection, hasta: &str, dias: i64) -> Result<Vec<DiaDeBi
     }
     // Orden estable: el HashMap no lo tiene y el donut cambiaría de orden entre
     // recargas.
-    for lista in celdas.values_mut() {
-        lista.sort_by_key(|c| c.category_id.unwrap_or(0));
+    for list in cells.values_mut() {
+        list.sort_by_key(|c| c.category_id.unwrap_or(0));
     }
 
-    let plan = plan_por_dia(conn, &rango)?;
+    let plan = plan_by_day(conn, &range)?;
 
-    let mut notas: HashMap<(String, i64), String> = HashMap::new();
+    let mut notes: HashMap<(String, i64), String> = HashMap::new();
     let mut stmt = conn.prepare(
         "SELECT date, task_id, note FROM day_task_notes WHERE date >= ?1 AND date <= ?2",
     )?;
-    for fila in stmt.query_map(params![primero, ultimo], |r| {
+    for row in stmt.query_map(params![first, last], |r| {
         Ok((
             r.get::<_, String>("date")?,
             r.get::<_, i64>("task_id")?,
             r.get::<_, String>("note")?,
         ))
     })? {
-        let (date, task_id, note) = fila?;
-        notas.insert((date, task_id), note);
+        let (date, task_id, note) = row?;
+        notes.insert((date, task_id), note);
     }
 
     type Entrada = (Option<String>, Option<String>, Option<String>);
-    let mut entradas: HashMap<String, Entrada> = HashMap::new();
+    let mut entries: HashMap<String, Entrada> = HashMap::new();
     let mut stmt = conn.prepare(
         "SELECT date, note, closed_at, mood FROM day_entries WHERE date >= ?1 AND date <= ?2",
     )?;
-    for fila in stmt.query_map(params![primero, ultimo], |r| {
+    for row in stmt.query_map(params![first, last], |r| {
         Ok((
             r.get::<_, String>("date")?,
             r.get::<_, Option<String>>("note")?,
@@ -1176,42 +1176,42 @@ pub fn bitacora(conn: &Connection, hasta: &str, dias: i64) -> Result<Vec<DiaDeBi
             r.get::<_, Option<String>>("mood")?,
         ))
     })? {
-        let (date, note, closed_at, mood) = fila?;
-        entradas.insert(date, (note, closed_at, mood));
+        let (date, note, closed_at, mood) = row?;
+        entries.insert(date, (note, closed_at, mood));
     }
 
     // Lo cerrado se agrupa por el día en que se cerró, no por `scheduled_date`:
     // la bitácora responde "qué terminé ese día".
-    let mut hechas: HashMap<usize, Vec<HechaDelDia>> = HashMap::new();
-    for t in completadas_del_rango(conn, &rango)? {
+    let mut done: HashMap<usize, Vec<DoneTask>> = HashMap::new();
+    for t in completed_in_range(conn, &range)? {
         let Some(i) = t
             .completed_at
             .as_deref()
-            .and_then(a_utc)
-            .and_then(|c| indice_del_dia(&rango, c))
+            .and_then(to_utc)
+            .and_then(|c| day_index(&range, c))
         else {
             continue;
         };
-        let note = notas.get(&(rango[i].0.clone(), t.id)).cloned();
-        hechas.entry(i).or_default().push(HechaDelDia { task: t, note });
+        let note = notes.get(&(range[i].0.clone(), t.id)).cloned();
+        done.entry(i).or_default().push(DoneTask { task: t, note });
     }
 
-    let mut out: Vec<DiaDeBitacora> = rango
+    let mut out: Vec<LogDay> = range
         .iter()
         .enumerate()
         .map(|(i, (date, _, _))| {
-            let (note, closed_at, mood) = entradas.remove(date).unwrap_or((None, None, None));
-            DiaDeBitacora {
+            let (note, closed_at, mood) = entries.remove(date).unwrap_or((None, None, None));
+            LogDay {
                 date: date.clone(),
                 note,
                 closed_at,
                 mood,
-                worked_seconds: trabajado[i],
+                worked_seconds: worked[i],
                 planned_minutes: plan[i].0,
-                sin_estimar: plan[i].1,
-                hechas: hechas.remove(&i).unwrap_or_default(),
+                unestimated: plan[i].1,
+                done: done.remove(&i).unwrap_or_default(),
                 timeline: timeline.remove(&i).unwrap_or_default(),
-                celdas: celdas.remove(&i).unwrap_or_default(),
+                cells: cells.remove(&i).unwrap_or_default(),
             }
         })
         .collect();
@@ -1225,22 +1225,22 @@ pub fn bitacora(conn: &Connection, hasta: &str, dias: i64) -> Result<Vec<DiaDeBi
 /// El autosave de la vista pasa por acá: escribir no es cerrar. Si fuera lo
 /// mismo, teclear una letra en el shutdown ya daría el día por terminado.
 pub fn set_day_note(conn: &Connection, date: &str, note: Option<&str>) -> Result<()> {
-    let limpia = note.map(str::trim).filter(|s| !s.is_empty());
+    let clean = note.map(str::trim).filter(|s| !s.is_empty());
     conn.execute(
         "INSERT INTO day_entries (date, note) VALUES (?1, ?2)
          ON CONFLICT(date) DO UPDATE SET note = excluded.note",
-        params![date, limpia],
+        params![date, clean],
     )?;
     Ok(())
 }
 
 /// Cómo estuvo el día, en un emoji. `None` lo borra.
 pub fn set_day_mood(conn: &Connection, date: &str, mood: Option<&str>) -> Result<()> {
-    let limpia = mood.map(str::trim).filter(|s| !s.is_empty());
+    let clean = mood.map(str::trim).filter(|s| !s.is_empty());
     conn.execute(
         "INSERT INTO day_entries (date, mood) VALUES (?1, ?2)
          ON CONFLICT(date) DO UPDATE SET mood = excluded.mood",
-        params![date, limpia],
+        params![date, clean],
     )?;
     Ok(())
 }
@@ -1250,7 +1250,7 @@ pub fn set_day_mood(conn: &Connection, date: &str, mood: Option<&str>) -> Result
 /// **Vaciarlo no la quita de la bitácora.** La fila es lo que significa "esta
 /// tarea está incluida", así que borrar el texto deja la tarea incluida y sin
 /// resumen —el estado normal justo después de apretar "Incluir"—. Sacarla es un
-/// gesto aparte (`quitar_de_bitacora`), porque incluir y escribir son dos cosas
+/// gesto aparte (`remove_from_log`), porque incluir y escribir son dos cosas
 /// distintas y confundirlas hacía desaparecer la tarea al borrar una palabra.
 pub fn set_day_task_note(conn: &Connection, date: &str, task_id: i64, note: &str) -> Result<()> {
     conn.execute(
@@ -1264,7 +1264,7 @@ pub fn set_day_task_note(conn: &Connection, date: &str, task_id: i64, note: &str
 /// Sube una tarea a la bitácora del día, sin resumen todavía.
 ///
 /// Idempotente: incluir dos veces no pisa lo que ya habías escrito.
-pub fn incluir_en_bitacora(conn: &Connection, date: &str, task_id: i64) -> Result<()> {
+pub fn include_in_log(conn: &Connection, date: &str, task_id: i64) -> Result<()> {
     conn.execute(
         "INSERT INTO day_task_notes (date, task_id, note) VALUES (?1, ?2, '')
          ON CONFLICT(date, task_id) DO NOTHING",
@@ -1274,7 +1274,7 @@ pub fn incluir_en_bitacora(conn: &Connection, date: &str, task_id: i64) -> Resul
 }
 
 /// La saca de la bitácora del día, resumen incluido.
-pub fn quitar_de_bitacora(conn: &Connection, date: &str, task_id: i64) -> Result<()> {
+pub fn remove_from_log(conn: &Connection, date: &str, task_id: i64) -> Result<()> {
     conn.execute(
         "DELETE FROM day_task_notes WHERE date = ?1 AND task_id = ?2",
         params![date, task_id],
@@ -1286,7 +1286,7 @@ pub fn quitar_de_bitacora(conn: &Connection, date: &str, task_id: i64) -> Result
 ///
 /// Es **idempotente y no vuelve a sellar**: si el día ya estaba cerrado se
 /// conserva la hora original, porque es el dato interesante ("a qué hora cerré").
-pub fn cerrar_dia(conn: &Connection, date: &str) -> Result<String> {
+pub fn close_day(conn: &Connection, date: &str) -> Result<String> {
     conn.execute(
         "INSERT INTO day_entries (date, closed_at) VALUES (?1, ?2)
          ON CONFLICT(date) DO UPDATE SET closed_at = COALESCE(day_entries.closed_at, excluded.closed_at)",
@@ -1300,7 +1300,7 @@ pub fn cerrar_dia(conn: &Connection, date: &str) -> Result<String> {
 }
 
 /// Reabre un día cerrado: vuelve a borrador sin tocar las notas.
-pub fn reabrir_dia(conn: &Connection, date: &str) -> Result<()> {
+pub fn reopen_day(conn: &Connection, date: &str) -> Result<()> {
     conn.execute(
         "UPDATE day_entries SET closed_at = NULL WHERE date = ?1",
         [date],
@@ -1467,12 +1467,12 @@ pub fn list_settings(conn: &Connection) -> Result<Vec<(String, String)>> {
 /// existen hoy, "" y "no configurado" significan lo mismo, y así el consumidor
 /// no tiene que distinguirlos.
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
-    let valor: Option<String> = conn
+    let value: Option<String> = conn
         .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
             r.get(0)
         })
         .optional()?;
-    Ok(valor.filter(|v| !v.trim().is_empty()))
+    Ok(value.filter(|v| !v.trim().is_empty()))
 }
 
 /// Escribe un ajuste (lo crea si no existía).
@@ -1565,7 +1565,7 @@ pub fn update_calendar_feed(
         ],
     )?;
     if let Some(cat) = default_category_id {
-        aplicar_canal_por_defecto(conn, id, cat)?;
+        apply_default_channel(conn, id, cat)?;
     }
     get_calendar_feed(conn, id)
 }
@@ -1582,7 +1582,7 @@ pub fn update_calendar_feed(
 /// que en el upsert de la sincronización.
 ///
 /// Devuelve cuántas cambió.
-pub fn aplicar_canal_por_defecto(
+pub fn apply_default_channel(
     conn: &Connection,
     feed_id: i64,
     category_id: i64,
@@ -1620,7 +1620,7 @@ pub fn stamp_feed_sync(conn: &Connection, id: i64, error: Option<&str>) -> Resul
 /// `None` y no `"[]"`: una lista vacía y "el feed no trae participantes" son lo
 /// mismo para quien lee, y `NULL` deja la columna limpia. Un evento de un
 /// calendario compartido ocultando detalles cae siempre acá.
-fn participantes_json(ps: &[Participante]) -> Option<String> {
+fn attendees_json(ps: &[Attendee]) -> Option<String> {
     if ps.is_empty() {
         return None;
     }
@@ -1665,11 +1665,11 @@ fn participantes_json(ps: &[Participante]) -> Option<String> {
 /// muestres", y esas dos no siempre van juntas.
 ///
 /// Devuelve `(borradas, liberadas_o_huerfanas)`.
-pub fn reconciliar_feed(
+pub fn reconcile_feed(
     conn: &Connection,
     feed_id: i64,
-    vistos: &[String],
-    hoy: &str,
+    seen: &[String],
+    today: &str,
 ) -> Result<(usize, usize)> {
     // Las que están en la base para este feed y no aparecieron en esta pasada.
     let mut stmt = conn.prepare(
@@ -1680,7 +1680,7 @@ pub fn reconciliar_feed(
          FROM tasks t
          WHERE feed_id = ?1 AND calendar_uid IS NOT NULL AND source_state = 'ACTIVE'",
     )?;
-    let filas: Vec<(i64, String, Option<String>, String, i64, i64)> = stmt
+    let rows: Vec<(i64, String, Option<String>, String, i64, i64)> = stmt
         .query_map([feed_id], |r| {
             Ok((
                 r.get(0)?,
@@ -1693,13 +1693,13 @@ pub fn reconciliar_feed(
         })?
         .collect::<Result<Vec<_>>>()?;
 
-    let vistos: std::collections::HashSet<&str> = vistos.iter().map(String::as_str).collect();
-    let mut borradas = 0;
-    let mut huerfanas = 0;
-    let mut liberadas = 0;
+    let seen: std::collections::HashSet<&str> = seen.iter().map(String::as_str).collect();
+    let mut deleted = 0;
+    let mut orphaned = 0;
+    let mut released = 0;
 
-    for (id, uid, fecha, status, entradas, corriendo) in filas {
-        if vistos.contains(uid.as_str()) {
+    for (id, uid, date, status, entries, running) in rows {
+        if seen.contains(uid.as_str()) {
             continue;
         }
         // **Con el taxímetro corriendo no se toca, ni siquiera para marcarla
@@ -1707,56 +1707,56 @@ pub fn reconciliar_feed(
         // listados deja el timer contando sobre una tarea que ya no puedes ver
         // ni detener desde el tablero. Cuando la pauses, la próxima
         // sincronización la resolverá como cualquier otra.
-        if corriendo > 0 {
+        if running > 0 {
             continue;
         }
-        let futura = fecha.as_deref().map(|f| f >= hoy).unwrap_or(false);
-        let trabajada = entradas > 0 || status == "DONE";
-        let intacta = !trabajada;
+        let future = date.as_deref().map(|f| f >= today).unwrap_or(false);
+        let worked = entries > 0 || status == "DONE";
+        let intact = !worked;
 
-        if futura && intacta {
+        if future && intact {
             conn.execute("DELETE FROM tasks WHERE id = ?1", [id])?;
-            borradas += 1;
-        } else if trabajada {
+            deleted += 1;
+        } else if worked {
             // Se suelta del feed y se queda en el tablero: es tuya.
             conn.execute(
                 "UPDATE tasks SET feed_id = NULL, calendar_uid = NULL, updated_at = ?2
                  WHERE id = ?1",
                 params![id, now()],
             )?;
-            liberadas += 1;
+            released += 1;
         } else {
             conn.execute(
                 "UPDATE tasks SET source_state = 'ORPHANED', updated_at = ?2 WHERE id = ?1",
                 params![id, now()],
             )?;
-            huerfanas += 1;
+            orphaned += 1;
         }
     }
 
-    Ok((borradas, huerfanas + liberadas))
+    Ok((deleted, orphaned + released))
 }
 
 /// Un evento ya interpretado, listo para escribirse como tarea.
 ///
-/// Espeja `calendar::ics::EventoIcs`, pero vive acá para que `repo` no dependa
+/// Espeja `calendar::ics::IcsEvent`, pero vive acá para que `repo` no dependa
 /// del crate de ICS: la importación se testea armando estos structs a mano.
 #[derive(Debug, Clone)]
-pub struct EventoImportable {
+pub struct ImportableEvent {
     pub uid: String,
-    pub titulo: String,
-    pub fecha: String,
-    pub hora: Option<String>,
-    pub inicio: Option<String>,
-    pub fin: Option<String>,
-    pub minutos: Option<i64>,
+    pub title: String,
+    pub date: String,
+    pub hour: Option<String>,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub minutes: Option<i64>,
     /// Link de la videollamada. Va en su **propia columna** y no en `notes`
     /// porque las notas son del usuario: la sync las pisaría cada 15 minutos.
     pub link: Option<String>,
     /// Descripción del evento, por la misma razón que `link`.
-    pub descripcion: Option<String>,
+    pub description: Option<String>,
     /// Organizador e invitados. Vacío si el feed no los trae.
-    pub participantes: Vec<Participante>,
+    pub attendees: Vec<Attendee>,
 }
 
 /// Crea o actualiza las tareas de un feed y devuelve **los UIDs que vio**.
@@ -1777,17 +1777,17 @@ pub struct EventoImportable {
 /// - **Sí actualiza** título, fecha, hora, horario del evento y el link de la
 ///   videollamada: es justo lo que cambia cuando alguien mueve o rearma la
 ///   reunión, y de ese lado el dueño del dato es el feed.
-pub fn import_eventos(
+pub fn import_events(
     conn: &Connection,
     feed_id: i64,
-    eventos: &[EventoImportable],
+    events: &[ImportableEvent],
     default_category_id: Option<i64>,
 ) -> Result<Vec<String>> {
     let ts = now();
-    let mut vistos = Vec::with_capacity(eventos.len());
+    let mut seen = Vec::with_capacity(events.len());
 
-    for ev in eventos {
-        let existente: Option<i64> = conn
+    for ev in events {
+        let existing: Option<i64> = conn
             .query_row(
                 "SELECT id FROM tasks WHERE feed_id = ?1 AND calendar_uid = ?2",
                 params![feed_id, ev.uid],
@@ -1795,7 +1795,7 @@ pub fn import_eventos(
             )
             .optional()?;
 
-        match existente {
+        match existing {
             Some(id) => {
                 conn.execute(
                     "UPDATE tasks
@@ -1806,21 +1806,21 @@ pub fn import_eventos(
                      WHERE id = ?1",
                     params![
                         id,
-                        ev.titulo,
-                        ev.fecha,
-                        ev.hora,
-                        ev.inicio,
-                        ev.fin,
-                        ev.minutos,
+                        ev.title,
+                        ev.date,
+                        ev.hour,
+                        ev.start,
+                        ev.end,
+                        ev.minutes,
                         ev.link,
-                        ev.descripcion,
-                        participantes_json(&ev.participantes),
+                        ev.description,
+                        attendees_json(&ev.attendees),
                         ts
                     ],
                 )?;
             }
             None => {
-                let position = next_position(conn, Some(&ev.fecha))?;
+                let position = next_position(conn, Some(&ev.date))?;
                 conn.execute(
                     "INSERT INTO tasks
                         (title, category_id, scheduled_date, scheduled_time, position,
@@ -1830,32 +1830,32 @@ pub fn import_eventos(
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'CALENDAR', 'ACTIVE', ?7, ?8, ?9, ?10, ?11,
                              ?12, ?13, ?14, ?14)",
                     params![
-                        ev.titulo,
+                        ev.title,
                         default_category_id,
-                        ev.fecha,
-                        ev.hora,
+                        ev.date,
+                        ev.hour,
                         position,
-                        ev.minutos,
+                        ev.minutes,
                         feed_id,
                         ev.uid,
-                        ev.inicio,
-                        ev.fin,
+                        ev.start,
+                        ev.end,
                         ev.link,
-                        ev.descripcion,
-                        participantes_json(&ev.participantes),
+                        ev.description,
+                        attendees_json(&ev.attendees),
                         ts
                     ],
                 )?;
                 let id = conn.last_insert_rowid();
                 // Mismo historial que una tarea a mano, para que el modal no
                 // quede en blanco. El sujeto de la línea lo pone el front.
-                log_event(conn, id, "CREATED", None, Some(&ev.fecha))?;
+                log_event(conn, id, "CREATED", None, Some(&ev.date))?;
             }
         }
-        vistos.push(ev.uid.clone());
+        seen.push(ev.uid.clone());
     }
 
-    Ok(vistos)
+    Ok(seen)
 }
 
 // ---------------------------------------------------------------------------
@@ -1926,19 +1926,19 @@ mod tests {
         // El último día con tareas se preserva entero: es el que repasa el
         // ritual, y decidir por el usuario antes de que lo vea era justamente el
         // problema del carry-over.
-        let de_ayer = create_task(&c, new_task("de ayer", Some("2026-08-09"))).unwrap();
-        let vieja = create_task(&c, new_task("de la semana pasada", Some("2026-08-03"))).unwrap();
+        let from_yesterday = create_task(&c, new_task("de ayer", Some("2026-08-09"))).unwrap();
+        let old = create_task(&c, new_task("de la semana pasada", Some("2026-08-03"))).unwrap();
 
-        let movidas = degradar_pendientes(&c, "2026-08-10").unwrap();
-        assert_eq!(movidas, 1);
+        let moved = demote_pending(&c, "2026-08-10").unwrap();
+        assert_eq!(moved, 1);
 
         assert_eq!(
-            get_task(&c, de_ayer.id).unwrap().unwrap().scheduled_date,
+            get_task(&c, from_yesterday.id).unwrap().unwrap().scheduled_date,
             Some("2026-08-09".into()),
             "el último día con tareas no se toca"
         );
         assert_eq!(
-            get_task(&c, vieja.id).unwrap().unwrap().scheduled_date,
+            get_task(&c, old.id).unwrap().unwrap().scheduled_date,
             None,
             "lo anterior baja al backlog"
         );
@@ -1948,23 +1948,23 @@ mod tests {
     fn degradar_deja_lo_rescatado_arriba_del_backlog() {
         let c = conn();
         // Primera prioridad: lo que viene de un día entra en 0 y empuja al resto.
-        let guardada = create_task(&c, new_task("guardada hace tiempo", None)).unwrap();
+        let saved = create_task(&c, new_task("guardada hace tiempo", None)).unwrap();
         create_task(&c, new_task("ancla", Some("2026-08-09"))).unwrap();
-        let caida = create_task(&c, new_task("se cayó el lunes", Some("2026-08-03"))).unwrap();
+        let failure = create_task(&c, new_task("se cayó el lunes", Some("2026-08-03"))).unwrap();
 
-        degradar_pendientes(&c, "2026-08-10").unwrap();
+        demote_pending(&c, "2026-08-10").unwrap();
 
         let backlog = list_backlog(&c).unwrap();
-        let orden: Vec<_> = backlog.iter().map(|t| t.id).collect();
-        assert_eq!(orden, vec![caida.id, guardada.id]);
+        let order: Vec<_> = backlog.iter().map(|t| t.id).collect();
+        assert_eq!(order, vec![failure.id, saved.id]);
     }
 
     #[test]
     fn degradar_no_toca_calendario_ni_completadas() {
         let c = conn();
         create_task(&c, new_task("ancla", Some("2026-08-09"))).unwrap();
-        let hecha = create_task(&c, new_task("hecha", Some("2026-08-03"))).unwrap();
-        set_task_status(&c, hecha.id, "DONE").unwrap();
+        let done = create_task(&c, new_task("hecha", Some("2026-08-03"))).unwrap();
+        set_task_status(&c, done.id, "DONE").unwrap();
         // Una reunión pasada es el registro de algo que ocurrió ese día.
         c.execute(
             "INSERT INTO tasks (id, title, position, status, source, scheduled_date, created_at, updated_at)
@@ -1973,9 +1973,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(degradar_pendientes(&c, "2026-08-10").unwrap(), 0);
+        assert_eq!(demote_pending(&c, "2026-08-10").unwrap(), 0);
         assert_eq!(
-            get_task(&c, hecha.id).unwrap().unwrap().scheduled_date,
+            get_task(&c, done.id).unwrap().unwrap().scheduled_date,
             Some("2026-08-03".into())
         );
         assert_eq!(
@@ -1988,23 +1988,23 @@ mod tests {
     fn degradar_sin_dias_anteriores_no_hace_nada() {
         let c = conn();
         create_task(&c, new_task("de hoy", Some("2026-08-10"))).unwrap();
-        assert_eq!(degradar_pendientes(&c, "2026-08-10").unwrap(), 0);
+        assert_eq!(demote_pending(&c, "2026-08-10").unwrap(), 0);
     }
 
     #[test]
     fn rescatadas_distingue_lo_que_venia_de_un_dia_de_lo_que_naci_ahi() {
         let c = conn();
-        let nacida = create_task(&c, new_task("nació en el backlog", None)).unwrap();
+        let born = create_task(&c, new_task("nació en el backlog", None)).unwrap();
         create_task(&c, new_task("ancla", Some("2026-08-09"))).unwrap();
-        let caida = create_task(&c, new_task("se cayó", Some("2026-08-03"))).unwrap();
+        let failure = create_task(&c, new_task("se cayó", Some("2026-08-03"))).unwrap();
 
-        degradar_pendientes(&c, "2026-08-10").unwrap();
+        demote_pending(&c, "2026-08-10").unwrap();
 
-        let r = rescatadas_del_backlog(&c).unwrap();
+        let r = rescued_from_backlog(&c).unwrap();
         assert_eq!(r.len(), 1);
-        assert_eq!(r[0].task_id, caida.id);
-        assert_eq!(r[0].desde, "2026-08-03");
-        assert!(!r.iter().any(|x| x.task_id == nacida.id));
+        assert_eq!(r[0].task_id, failure.id);
+        assert_eq!(r[0].from_date, "2026-08-03");
+        assert!(!r.iter().any(|x| x.task_id == born.id));
     }
 
     #[test]
@@ -2014,9 +2014,9 @@ mod tests {
         let t = create_task(&c, new_task("la mandé yo", Some("2026-08-09"))).unwrap();
         move_task(&c, t.id, None, 0).unwrap();
 
-        let r = rescatadas_del_backlog(&c).unwrap();
+        let r = rescued_from_backlog(&c).unwrap();
         assert_eq!(r.len(), 1);
-        assert_eq!(r[0].desde, "2026-08-09");
+        assert_eq!(r[0].from_date, "2026-08-09");
     }
 
     #[test]
@@ -2028,7 +2028,7 @@ mod tests {
         create_task(&c, new_task("más vieja", Some("2026-08-03"))).unwrap();
 
         assert_eq!(
-            ultimo_dia_con_tareas(&c, "2026-08-10").unwrap(),
+            last_day_with_tasks(&c, "2026-08-10").unwrap(),
             Some("2026-08-07".into())
         );
     }
@@ -2138,9 +2138,9 @@ mod tests {
             .with_timezone(&Utc);
         let b = a + chrono::Duration::hours(3);
 
-        let tramos = tramos_por_dia_local(a, b);
-        assert_eq!(tramos.len(), 1, "el caso normal no debe tocarse");
-        assert_eq!(tramos[0], (a, b));
+        let segments = segments_by_local_day(a, b);
+        assert_eq!(segments.len(), 1, "el caso normal no debe tocarse");
+        assert_eq!(segments[0], (a, b));
     }
 
     #[test]
@@ -2155,16 +2155,16 @@ mod tests {
             .unwrap()
             .with_timezone(&Utc);
 
-        let tramos = tramos_por_dia_local(a, b);
-        assert_eq!(tramos.len(), 3);
+        let segments = segments_by_local_day(a, b);
+        assert_eq!(segments.len(), 3);
         // Encadenados y sin huecos: el fin de uno es el inicio del siguiente.
-        assert_eq!(tramos[0].0, a);
-        assert_eq!(tramos[0].1, tramos[1].0);
-        assert_eq!(tramos[1].1, tramos[2].0);
-        assert_eq!(tramos[2].1, b);
+        assert_eq!(segments[0].0, a);
+        assert_eq!(segments[0].1, segments[1].0);
+        assert_eq!(segments[1].1, segments[2].0);
+        assert_eq!(segments[2].1, b);
         // Y cada corte cae en una medianoche local.
-        for (_, fin) in &tramos[..2] {
-            let local = fin.with_timezone(&chrono::Local);
+        for (_, end) in &segments[..2] {
+            let local = end.with_timezone(&chrono::Local);
             assert_eq!(
                 (local.hour(), local.minute(), local.second()),
                 (0, 0, 0),
@@ -2185,7 +2185,7 @@ mod tests {
         // cruza el día solo si el test corre antes de las 20:00, así que de
         // noche fallaba sin que nada estuviera roto. Una hora antes de la
         // medianoche de hoy siempre cae ayer.
-        let ayer = (chrono::Local::now()
+        let yesterday = (chrono::Local::now()
             .date_naive()
             .and_hms_opt(0, 0, 0)
             .unwrap()
@@ -2197,7 +2197,7 @@ mod tests {
         c.execute(
             "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
              VALUES (?1, ?2, NULL, 0)",
-            params![t.id, ayer],
+            params![t.id, yesterday],
         )
         .unwrap();
 
@@ -2216,21 +2216,21 @@ mod tests {
     }
 
     /// Inserta una entrada cerrada en una hora **local** concreta del día dado.
-    fn entrada_local(c: &Connection, task_id: i64, dia: &str, hora: u32, min: u32, segs: i64) {
-        let inicio = chrono::NaiveDate::parse_from_str(dia, "%Y-%m-%d")
+    fn local_entry(c: &Connection, task_id: i64, day: &str, hour: u32, min: u32, secs: i64) {
+        let start = chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
             .unwrap()
-            .and_hms_opt(hora, min, 0)
+            .and_hms_opt(hour, min, 0)
             .unwrap();
-        let inicio = chrono::Local.from_local_datetime(&inicio).unwrap();
-        let fin = inicio + chrono::Duration::seconds(segs);
+        let start = chrono::Local.from_local_datetime(&start).unwrap();
+        let end = start + chrono::Duration::seconds(secs);
         c.execute(
             "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
              VALUES (?1, ?2, ?3, ?4)",
             params![
                 task_id,
-                inicio.with_timezone(&Utc).to_rfc3339(),
-                fin.with_timezone(&Utc).to_rfc3339(),
-                segs
+                start.with_timezone(&Utc).to_rfc3339(),
+                end.with_timezone(&Utc).to_rfc3339(),
+                secs
             ],
         )
         .unwrap();
@@ -2242,19 +2242,19 @@ mod tests {
         let t = create_task(&c, new_task("reunión", Some("2026-08-12"))).unwrap();
 
         // Dos ratos el mismo día: 9:00 (15') y 11:00 (18').
-        entrada_local(&c, t.id, "2026-08-12", 9, 0, 900);
-        entrada_local(&c, t.id, "2026-08-12", 11, 0, 1080);
+        local_entry(&c, t.id, "2026-08-12", 9, 0, 900);
+        local_entry(&c, t.id, "2026-08-12", 11, 0, 1080);
 
-        let filas = trabajo_del_dia(&c, "2026-08-12").unwrap();
-        assert_eq!(filas.len(), 1, "una fila por tarea, no por entrada");
-        assert_eq!(filas[0].task_id, t.id);
-        assert_eq!(filas[0].seconds, 900 + 1080);
-        assert!(!filas[0].running);
+        let rows = day_work(&c, "2026-08-12").unwrap();
+        assert_eq!(rows.len(), 1, "una fila por tarea, no por entrada");
+        assert_eq!(rows[0].task_id, t.id);
+        assert_eq!(rows[0].seconds, 900 + 1080);
+        assert!(!rows[0].running);
         // El inicio es el primero del día, no el último.
-        let inicio = chrono::DateTime::parse_from_rfc3339(&filas[0].started_at)
+        let start = chrono::DateTime::parse_from_rfc3339(&rows[0].started_at)
             .unwrap()
             .with_timezone(&chrono::Local);
-        assert_eq!(inicio.hour(), 9);
+        assert_eq!(start.hour(), 9);
     }
 
     #[test]
@@ -2263,11 +2263,11 @@ mod tests {
         // las 22:00 locales de Chile ya son el día siguiente en UTC.
         let c = conn();
         let t = create_task(&c, new_task("nocturna", Some("2026-08-12"))).unwrap();
-        entrada_local(&c, t.id, "2026-08-12", 22, 0, 600);
+        local_entry(&c, t.id, "2026-08-12", 22, 0, 600);
 
-        assert_eq!(trabajo_del_dia(&c, "2026-08-12").unwrap().len(), 1);
+        assert_eq!(day_work(&c, "2026-08-12").unwrap().len(), 1);
         assert!(
-            trabajo_del_dia(&c, "2026-08-13").unwrap().is_empty(),
+            day_work(&c, "2026-08-13").unwrap().is_empty(),
             "no puede acreditarse al día siguiente"
         );
     }
@@ -2275,27 +2275,27 @@ mod tests {
     #[test]
     fn trabajo_del_dia_marca_la_corrida_en_curso_sin_contarle_segundos() {
         // Una entrada abierta trae `seconds = 0`: los que lleva corriendo los
-        // pone el front desde el taxímetro, igual que `tiempoPorDia`.
+        // pone el front desde el taxímetro, igual que `timeByDay`.
         let c = conn();
         let t = create_task(&c, new_task("en curso", None)).unwrap();
         start_timer(&c, t.id).unwrap();
 
-        let hoy = chrono::Local::now().format("%Y-%m-%d").to_string();
-        let filas = trabajo_del_dia(&c, &hoy).unwrap();
-        assert_eq!(filas.len(), 1);
-        assert!(filas[0].running);
-        assert_eq!(filas[0].seconds, 0);
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let rows = day_work(&c, &today).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].running);
+        assert_eq!(rows[0].seconds, 0);
     }
 
     #[test]
     fn trabajo_del_dia_ignora_los_otros_dias_y_la_fecha_ilegible() {
         let c = conn();
         let t = create_task(&c, new_task("ayer", Some("2026-08-11"))).unwrap();
-        entrada_local(&c, t.id, "2026-08-11", 10, 0, 600);
+        local_entry(&c, t.id, "2026-08-11", 10, 0, 600);
 
-        assert!(trabajo_del_dia(&c, "2026-08-12").unwrap().is_empty());
+        assert!(day_work(&c, "2026-08-12").unwrap().is_empty());
         // Una fecha que no se puede interpretar devuelve vacío, no todo.
-        assert!(trabajo_del_dia(&c, "no-es-fecha").unwrap().is_empty());
+        assert!(day_work(&c, "no-es-fecha").unwrap().is_empty());
     }
 
     #[test]
@@ -2361,22 +2361,22 @@ mod tests {
 
         // El de 'a' se cerró automáticamente al iniciar el de 'b'.
         assert_eq!(second.task_id, b.id);
-        let abiertas: i64 = c
+        let open_entries: i64 = c
             .query_row(
                 "SELECT COUNT(*) FROM time_entries WHERE ended_at IS NULL",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(abiertas, 1);
-        let cerradas_de_a: i64 = c
+        assert_eq!(open_entries, 1);
+        let closed_of_a: i64 = c
             .query_row(
                 "SELECT COUNT(*) FROM time_entries WHERE task_id = ?1 AND ended_at IS NOT NULL",
                 [a.id],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(cerradas_de_a, 1);
+        assert_eq!(closed_of_a, 1);
     }
 
     #[test]
@@ -2393,14 +2393,14 @@ mod tests {
             "al completar, el timer debe detenerse"
         );
         // El tramo trabajado quedó registrado (entrada cerrada).
-        let cerradas: i64 = c
+        let closed_entries: i64 = c
             .query_row(
                 "SELECT COUNT(*) FROM time_entries WHERE task_id = ?1 AND ended_at IS NOT NULL",
                 [t.id],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(cerradas, 1);
+        assert_eq!(closed_entries, 1);
     }
 
     #[test]
@@ -2415,9 +2415,9 @@ mod tests {
         // Volver a trabajar en algo es decir que no estaba terminado.
         start_timer(&c, t.id).unwrap();
 
-        let reabierta = get_task(&c, t.id).unwrap().unwrap();
-        assert_eq!(reabierta.status, "TODO");
-        assert!(reabierta.completed_at.is_none());
+        let reopened = get_task(&c, t.id).unwrap().unwrap();
+        assert_eq!(reopened.status, "TODO");
+        assert!(reopened.completed_at.is_none());
         // Y el timer efectivamente quedó corriendo en ella.
         assert_eq!(get_active_timer(&c).unwrap().unwrap().task_id, t.id);
     }
@@ -2431,9 +2431,9 @@ mod tests {
 
         start_timer(&c, t.id).unwrap();
 
-        let cola = focus_queue(&c, "2026-08-11", "10:00").unwrap();
-        assert_eq!(cola.len(), 1);
-        assert_eq!(cola[0].id, t.id);
+        let queue = focus_queue(&c, "2026-08-11", "10:00").unwrap();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].id, t.id);
     }
 
     #[test]
@@ -2443,27 +2443,27 @@ mod tests {
 
         start_timer(&c, t.id).unwrap();
 
-        let despues = get_task(&c, t.id).unwrap().unwrap();
-        assert_eq!(despues.status, "TODO");
-        assert!(despues.completed_at.is_none());
+        let after = get_task(&c, t.id).unwrap().unwrap();
+        assert_eq!(after.status, "TODO");
+        assert!(after.completed_at.is_none());
         // No se le movió la fecha ni la posición por arrancar el timer.
-        assert_eq!(despues.scheduled_date.as_deref(), Some("2026-08-11"));
-        assert_eq!(despues.position, t.position);
+        assert_eq!(after.scheduled_date.as_deref(), Some("2026-08-11"));
+        assert_eq!(after.position, t.position);
     }
 
     #[test]
     fn completar_otra_tarea_no_detiene_el_timer_en_curso() {
         let c = conn();
-        let corriendo = create_task(&c, new_task("corriendo", Some("2026-08-11"))).unwrap();
-        let otra = create_task(&c, new_task("otra", Some("2026-08-11"))).unwrap();
-        start_timer(&c, corriendo.id).unwrap();
+        let running = create_task(&c, new_task("corriendo", Some("2026-08-11"))).unwrap();
+        let other = create_task(&c, new_task("otra", Some("2026-08-11"))).unwrap();
+        start_timer(&c, running.id).unwrap();
 
-        set_task_status(&c, otra.id, "DONE").unwrap();
+        set_task_status(&c, other.id, "DONE").unwrap();
 
         let active = get_active_timer(&c).unwrap();
         assert_eq!(
             active.map(|a| a.task_id),
-            Some(corriendo.id),
+            Some(running.id),
             "completar otra tarea no debe tocar el timer"
         );
     }
@@ -2497,8 +2497,8 @@ mod tests {
         )
         .unwrap();
         // Completada: no debe aparecer
-        let hecha = create_task(&c, new_task("hecha", Some(date))).unwrap();
-        set_task_status(&c, hecha.id, "DONE").unwrap();
+        let done = create_task(&c, new_task("hecha", Some(date))).unwrap();
+        set_task_status(&c, done.id, "DONE").unwrap();
 
         let q = focus_queue(&c, date, "09:30").unwrap();
         let titles: Vec<_> = q.iter().map(|t| t.title.as_str()).collect();
@@ -2556,18 +2556,18 @@ mod tests {
     // Calendar feeds
     // -----------------------------------------------------------------------
 
-    fn evento(uid: &str, titulo: &str, fecha: &str) -> EventoImportable {
-        EventoImportable {
+    fn event(uid: &str, title: &str, date: &str) -> ImportableEvent {
+        ImportableEvent {
             uid: uid.into(),
-            titulo: titulo.into(),
-            fecha: fecha.into(),
-            hora: Some("09:00".into()),
-            inicio: Some("2026-08-10T12:00:00+00:00".into()),
-            fin: Some("2026-08-10T13:00:00+00:00".into()),
-            minutos: Some(60),
+            title: title.into(),
+            date: date.into(),
+            hour: Some("09:00".into()),
+            start: Some("2026-08-10T12:00:00+00:00".into()),
+            end: Some("2026-08-10T13:00:00+00:00".into()),
+            minutes: Some(60),
             link: None,
-            descripcion: None,
-            participantes: Vec::new(),
+            description: None,
+            attendees: Vec::new(),
         }
     }
 
@@ -2598,15 +2598,15 @@ mod tests {
     fn importar_crea_las_tareas_con_la_categoria_del_feed() {
         let c = conn();
         let f = feed(&c);
-        let vistos = import_eventos(
+        let seen = import_events(
             &c,
             f.id,
-            &[evento("a@x", "Daily", "2026-08-10")],
+            &[event("a@x", "Daily", "2026-08-10")],
             Some(7),
         )
         .unwrap();
 
-        assert_eq!(vistos, vec!["a@x".to_string()]);
+        assert_eq!(seen, vec!["a@x".to_string()]);
         let t = &list_tasks_for_date(&c, "2026-08-10").unwrap()[0];
         assert_eq!(t.title, "Daily");
         assert_eq!(t.source, "CALENDAR");
@@ -2624,11 +2624,11 @@ mod tests {
         // upsert, cada sincronización llenaría el día de copias.
         let c = conn();
         let f = feed(&c);
-        import_eventos(&c, f.id, &[evento("a@x", "Daily", "2026-08-10")], None).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], None).unwrap();
 
-        let mut movido = evento("a@x", "Daily (movido)", "2026-08-11");
-        movido.hora = Some("15:30".into());
-        import_eventos(&c, f.id, &[movido], None).unwrap();
+        let mut moved = event("a@x", "Daily (movido)", "2026-08-11");
+        moved.hour = Some("15:30".into());
+        import_events(&c, f.id, &[moved], None).unwrap();
 
         assert!(list_tasks_for_date(&c, "2026-08-10").unwrap().is_empty());
         let del_11 = list_tasks_for_date(&c, "2026-08-11").unwrap();
@@ -2645,7 +2645,7 @@ mod tests {
         // tirar el trabajo a la basura cada 15 minutos.
         let c = conn();
         let f = feed(&c);
-        import_eventos(&c, f.id, &[evento("a@x", "Daily", "2026-08-10")], Some(7)).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], Some(7)).unwrap();
         let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
 
         set_task_status(&c, id, "DONE").unwrap();
@@ -2660,7 +2660,7 @@ mod tests {
         )
         .unwrap();
 
-        import_eventos(&c, f.id, &[evento("a@x", "Daily", "2026-08-10")], Some(7)).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], Some(7)).unwrap();
 
         let t = get_task(&c, id).unwrap().unwrap();
         assert_eq!(t.status, "DONE", "no revive una reunión completada");
@@ -2675,9 +2675,9 @@ mod tests {
         // escribió ahí.
         let c = conn();
         let f = feed(&c);
-        let mut ev = evento("a@x", "Daily", "2026-08-10");
+        let mut ev = event("a@x", "Daily", "2026-08-10");
         ev.link = Some("https://meet.google.com/abc-defg-hij".into());
-        import_eventos(&c, f.id, &[ev.clone()], None).unwrap();
+        import_events(&c, f.id, &[ev.clone()], None).unwrap();
 
         let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
         assert_eq!(
@@ -2686,7 +2686,7 @@ mod tests {
         );
 
         ev.link = Some("https://meet.google.com/nuevo-link-xyz".into());
-        import_eventos(&c, f.id, &[ev], None).unwrap();
+        import_events(&c, f.id, &[ev], None).unwrap();
         assert_eq!(
             get_task(&c, id).unwrap().unwrap().meeting_url.as_deref(),
             Some("https://meet.google.com/nuevo-link-xyz")
@@ -2699,7 +2699,7 @@ mod tests {
         // usuario y ninguna sincronización las pisa.
         let c = conn();
         let f = feed(&c);
-        import_eventos(&c, f.id, &[evento("a@x", "Daily", "2026-08-10")], None).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], None).unwrap();
         let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
 
         update_task(
@@ -2711,7 +2711,7 @@ mod tests {
             },
         )
         .unwrap();
-        import_eventos(&c, f.id, &[evento("a@x", "Daily", "2026-08-10")], None).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], None).unwrap();
 
         assert_eq!(
             get_task(&c, id).unwrap().unwrap().notes.as_deref(),
@@ -2725,17 +2725,17 @@ mod tests {
         // feed. Se devuelven ya, para no cambiarle la firma después.
         let c = conn();
         let f = feed(&c);
-        let vistos = import_eventos(
+        let seen = import_events(
             &c,
             f.id,
             &[
-                evento("a@x", "Uno", "2026-08-10"),
-                evento("b@x", "Dos", "2026-08-11"),
+                event("a@x", "Uno", "2026-08-10"),
+                event("b@x", "Dos", "2026-08-11"),
             ],
             None,
         )
         .unwrap();
-        assert_eq!(vistos, vec!["a@x".to_string(), "b@x".to_string()]);
+        assert_eq!(seen, vec!["a@x".to_string(), "b@x".to_string()]);
     }
 
     #[test]
@@ -2745,8 +2745,8 @@ mod tests {
         let c = conn();
         let a = feed(&c);
         let b = create_calendar_feed(&c, "Personal", "https://otro.ics", None, 15).unwrap();
-        import_eventos(&c, a.id, &[evento("compartido@x", "Reunión", "2026-08-10")], None).unwrap();
-        import_eventos(&c, b.id, &[evento("compartido@x", "Reunión", "2026-08-10")], None).unwrap();
+        import_events(&c, a.id, &[event("compartido@x", "Reunión", "2026-08-10")], None).unwrap();
+        import_events(&c, b.id, &[event("compartido@x", "Reunión", "2026-08-10")], None).unwrap();
         assert_eq!(list_tasks_for_date(&c, "2026-08-10").unwrap().len(), 2);
     }
 
@@ -2757,7 +2757,7 @@ mod tests {
         // importadas sin tag y habría que hacerlo una por una.
         let c = conn();
         let f = feed(&c);
-        import_eventos(&c, f.id, &[evento("a@x", "Daily", "2026-08-10")], None).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], None).unwrap();
         let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
         assert_eq!(get_task(&c, id).unwrap().unwrap().category_id, None);
 
@@ -2772,7 +2772,7 @@ mod tests {
         // manual le gana al default del feed, igual que en el upsert.
         let c = conn();
         let f = feed(&c);
-        import_eventos(&c, f.id, &[evento("a@x", "Daily", "2026-08-10")], None).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], None).unwrap();
         let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
         update_task(
             &c,
@@ -2794,7 +2794,7 @@ mod tests {
         let c = conn();
         let a = feed(&c);
         let b = create_calendar_feed(&c, "Personal", "https://otro.ics", None, 15).unwrap();
-        import_eventos(&c, b.id, &[evento("b@x", "Otra", "2026-08-10")], None).unwrap();
+        import_events(&c, b.id, &[event("b@x", "Otra", "2026-08-10")], None).unwrap();
         let id_b = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
 
         update_calendar_feed(&c, a.id, "Trabajo", "https://x/y.ics", Some(7), true, 15).unwrap();
@@ -2803,11 +2803,11 @@ mod tests {
     }
 
     /// Crea una tarea de calendario y devuelve su id.
-    fn importada(c: &Connection, feed_id: i64, uid: &str, fecha: &str) -> i64 {
-        let mut ev = evento(uid, "Reunión", fecha);
-        ev.fecha = fecha.into();
-        import_eventos(c, feed_id, &[ev], None).unwrap();
-        list_tasks_for_date(c, fecha).unwrap().last().unwrap().id
+    fn imported(c: &Connection, feed_id: i64, uid: &str, date: &str) -> i64 {
+        let mut ev = event(uid, "Reunión", date);
+        ev.date = date.into();
+        import_events(c, feed_id, &[ev], None).unwrap();
+        list_tasks_for_date(c, date).unwrap().last().unwrap().id
     }
 
     #[test]
@@ -2815,11 +2815,11 @@ mod tests {
         // El caso del usuario: borró el evento en Google y la tarea seguía viva.
         let c = conn();
         let f = feed(&c);
-        let id = importada(&c, f.id, "a@x", "2026-08-20");
+        let id = imported(&c, f.id, "a@x", "2026-08-20");
 
-        let (borradas, huerfanas) = reconciliar_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
 
-        assert_eq!((borradas, huerfanas), (1, 0));
+        assert_eq!((deleted, orphaned), (1, 0));
         assert!(get_task(&c, id).unwrap().is_none());
     }
 
@@ -2831,13 +2831,13 @@ mod tests {
         // y del rail. Se suelta del feed y se queda: dejó de ser del calendario.
         let c = conn();
         let f = feed(&c);
-        let id = importada(&c, f.id, "a@x", "2026-08-20");
+        let id = imported(&c, f.id, "a@x", "2026-08-20");
         start_timer(&c, id).unwrap();
         stop_timer(&c).unwrap();
 
-        let (borradas, tocadas) = reconciliar_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, touched) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
 
-        assert_eq!((borradas, tocadas), (0, 1));
+        assert_eq!((deleted, touched), (0, 1));
         let t = get_task(&c, id).unwrap().unwrap();
         assert_eq!(t.source_state, "ACTIVE", "tiene que seguir en los listados");
         assert_eq!(t.feed_id, None);
@@ -2854,12 +2854,12 @@ mod tests {
         // ya no se puede detener desde ahí.
         let c = conn();
         let f = feed(&c);
-        let id = importada(&c, f.id, "a@x", "2026-08-20");
+        let id = imported(&c, f.id, "a@x", "2026-08-20");
         start_timer(&c, id).unwrap(); // queda una entrada ABIERTA
 
-        let (borradas, huerfanas) = reconciliar_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
 
-        assert_eq!((borradas, huerfanas), (0, 0));
+        assert_eq!((deleted, orphaned), (0, 0));
         assert_eq!(get_task(&c, id).unwrap().unwrap().source_state, "ACTIVE");
         assert!(get_active_timer(&c).unwrap().is_some());
     }
@@ -2870,25 +2870,25 @@ mod tests {
         // reglas normales y queda ORPHANED por tener tiempo trackeado.
         let c = conn();
         let f = feed(&c);
-        let id = importada(&c, f.id, "a@x", "2026-08-20");
+        let id = imported(&c, f.id, "a@x", "2026-08-20");
         start_timer(&c, id).unwrap();
         stop_timer(&c).unwrap();
 
-        let (borradas, huerfanas) = reconciliar_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
 
-        assert_eq!((borradas, huerfanas), (0, 1));
+        assert_eq!((deleted, orphaned), (0, 1));
     }
 
     #[test]
     fn la_reunion_completada_tampoco_se_borra_y_se_suelta_del_feed() {
         let c = conn();
         let f = feed(&c);
-        let id = importada(&c, f.id, "a@x", "2026-08-20");
+        let id = imported(&c, f.id, "a@x", "2026-08-20");
         set_task_status(&c, id, "DONE").unwrap();
 
-        let (borradas, tocadas) = reconciliar_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, touched) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
 
-        assert_eq!((borradas, tocadas), (0, 1));
+        assert_eq!((deleted, touched), (0, 1));
         let t = get_task(&c, id).unwrap().unwrap();
         assert_eq!(t.source_state, "ACTIVE");
         assert_eq!(t.feed_id, None);
@@ -2901,9 +2901,9 @@ mod tests {
         // saque de ahí (el carry-over no toca las de calendario).
         let c = conn();
         let f = feed(&c);
-        let id = importada(&c, f.id, "a@x", "2026-08-01");
+        let id = imported(&c, f.id, "a@x", "2026-08-01");
 
-        reconciliar_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
 
         let t = get_task(&c, id).unwrap().unwrap();
         assert_eq!(t.source_state, "ORPHANED");
@@ -2917,12 +2917,12 @@ mod tests {
         // la primera sync del día borraría toda la historia de reuniones.
         let c = conn();
         let f = feed(&c);
-        let id = importada(&c, f.id, "a@x", "2026-08-01");
+        let id = imported(&c, f.id, "a@x", "2026-08-01");
 
-        let (borradas, huerfanas) = reconciliar_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
 
-        assert_eq!(borradas, 0, "una reunión pasada nunca se borra sola");
-        assert_eq!(huerfanas, 1);
+        assert_eq!(deleted, 0, "una reunión pasada nunca se borra sola");
+        assert_eq!(orphaned, 1);
         assert!(get_task(&c, id).unwrap().is_some());
     }
 
@@ -2930,12 +2930,12 @@ mod tests {
     fn no_toca_las_que_siguen_en_el_feed() {
         let c = conn();
         let f = feed(&c);
-        let id = importada(&c, f.id, "a@x", "2026-08-20");
+        let id = imported(&c, f.id, "a@x", "2026-08-20");
 
-        let (borradas, huerfanas) =
-            reconciliar_feed(&c, f.id, &["a@x".to_string()], "2026-08-13").unwrap();
+        let (deleted, orphaned) =
+            reconcile_feed(&c, f.id, &["a@x".to_string()], "2026-08-13").unwrap();
 
-        assert_eq!((borradas, huerfanas), (0, 0));
+        assert_eq!((deleted, orphaned), (0, 0));
         assert_eq!(get_task(&c, id).unwrap().unwrap().source_state, "ACTIVE");
     }
 
@@ -2944,10 +2944,10 @@ mod tests {
         let c = conn();
         let a = feed(&c);
         let b = create_calendar_feed(&c, "Personal", "https://otro.ics", None, 15).unwrap();
-        let de_b = importada(&c, b.id, "b@x", "2026-08-20");
+        let de_b = imported(&c, b.id, "b@x", "2026-08-20");
         let a_mano = create_task(&c, new_task("mía", Some("2026-08-20"))).unwrap().id;
 
-        reconciliar_feed(&c, a.id, &[], "2026-08-13").unwrap();
+        reconcile_feed(&c, a.id, &[], "2026-08-13").unwrap();
 
         assert!(get_task(&c, de_b).unwrap().is_some());
         assert!(get_task(&c, a_mano).unwrap().is_some());
@@ -2959,13 +2959,13 @@ mod tests {
         let f = feed(&c);
 
         stamp_feed_sync(&c, f.id, Some("el feed no existe (404)")).unwrap();
-        let roto = get_calendar_feed(&c, f.id).unwrap().unwrap();
-        assert!(roto.last_synced_at.is_some(), "el intento se sella igual");
-        assert_eq!(roto.last_error.as_deref(), Some("el feed no existe (404)"));
+        let broken = get_calendar_feed(&c, f.id).unwrap().unwrap();
+        assert!(broken.last_synced_at.is_some(), "el intento se sella igual");
+        assert_eq!(broken.last_error.as_deref(), Some("el feed no existe (404)"));
 
         stamp_feed_sync(&c, f.id, None).unwrap();
-        let sano = get_calendar_feed(&c, f.id).unwrap().unwrap();
-        assert!(sano.last_error.is_none(), "una sync buena limpia el error");
+        let healthy = get_calendar_feed(&c, f.id).unwrap().unwrap();
+        assert!(healthy.last_error.is_none(), "una sync buena limpia el error");
     }
 
     #[test]
@@ -2974,7 +2974,7 @@ mod tests {
         // completadas y con tiempo encima. Pasan a ser tareas normales.
         let c = conn();
         let f = feed(&c);
-        import_eventos(&c, f.id, &[evento("a@x", "Daily", "2026-08-10")], None).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], None).unwrap();
 
         delete_calendar_feed(&c, f.id).unwrap();
 
@@ -2990,7 +2990,7 @@ mod tests {
         // que la tarea apareció de la nada.
         let c = conn();
         let f = feed(&c);
-        import_eventos(&c, f.id, &[evento("a@x", "Daily", "2026-08-10")], None).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], None).unwrap();
         let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
         let evs = list_task_events(&c, id).unwrap();
         assert_eq!(evs.len(), 1);
@@ -3004,10 +3004,10 @@ mod tests {
     /// `'2026-08-10'` + hora local → RFC 3339 UTC. Los tests **no pueden**
     /// escribir la hora en UTC a mano: la atribución es por día local, así que
     /// un literal fijo cae en un día u otro según la zona de quien corra el test.
-    fn local(fecha: &str, hora: u32) -> String {
-        let d = chrono::NaiveDate::parse_from_str(fecha, "%Y-%m-%d").unwrap();
+    fn local(date: &str, hour: u32) -> String {
+        let d = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap();
         chrono::Local
-            .from_local_datetime(&d.and_hms_opt(hora, 0, 0).unwrap())
+            .from_local_datetime(&d.and_hms_opt(hour, 0, 0).unwrap())
             .single()
             .unwrap()
             .with_timezone(&Utc)
@@ -3015,18 +3015,18 @@ mod tests {
     }
 
     /// Una entrada cerrada de `seconds` segundos, empezada a esa hora local.
-    fn entrada(c: &Connection, task_id: i64, fecha: &str, hora: u32, seconds: i64) {
-        let ini = local(fecha, hora);
+    fn entry(c: &Connection, task_id: i64, date: &str, hour: u32, seconds: i64) {
+        let start = local(date, hour);
         c.execute(
             "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
              VALUES (?1, ?2, ?2, ?3)",
-            params![task_id, ini, seconds],
+            params![task_id, start, seconds],
         )
         .unwrap();
     }
 
-    fn segundos_del_dia(r: &WeeklyRollup, fecha: &str) -> i64 {
-        r.dias.iter().find(|d| d.date == fecha).unwrap().seconds
+    fn seconds_of_day(r: &WeeklyRollup, date: &str) -> i64 {
+        r.days.iter().find(|d| d.date == date).unwrap().seconds
     }
 
     #[test]
@@ -3034,16 +3034,16 @@ mod tests {
         // Regla 2: mover la tarea a otra semana no puede mover sus horas.
         let c = conn();
         let t = create_task(&c, new_task("análisis", Some("2026-08-10"))).unwrap();
-        entrada(&c, t.id, "2026-08-11", 10, 3600);
+        entry(&c, t.id, "2026-08-11", 10, 3600);
         move_task(&c, t.id, Some("2026-08-19"), 0).unwrap();
 
         let esta = weekly_rollup(&c, "2026-08-10").unwrap();
-        let siguiente = weekly_rollup(&c, "2026-08-17").unwrap();
+        let next = weekly_rollup(&c, "2026-08-17").unwrap();
         assert_eq!(esta.total_seconds, 3600);
-        assert_eq!(segundos_del_dia(&esta, "2026-08-11"), 3600);
-        assert_eq!(siguiente.total_seconds, 0);
+        assert_eq!(seconds_of_day(&esta, "2026-08-11"), 3600);
+        assert_eq!(next.total_seconds, 0);
         // Lo planificado sí se fue con ella: la asimetría es a propósito.
-        assert_eq!(siguiente.planned_minutes, 30);
+        assert_eq!(next.planned_minutes, 30);
         assert_eq!(esta.planned_minutes, 0);
     }
 
@@ -3053,11 +3053,11 @@ mod tests {
         // al día siguiente todo lo trabajado de tarde en Chile.
         let c = conn();
         let t = create_task(&c, new_task("nocturna", Some("2026-08-12"))).unwrap();
-        entrada(&c, t.id, "2026-08-12", 22, 1800);
+        entry(&c, t.id, "2026-08-12", 22, 1800);
 
         let r = weekly_rollup(&c, "2026-08-10").unwrap();
-        assert_eq!(segundos_del_dia(&r, "2026-08-12"), 1800);
-        assert_eq!(segundos_del_dia(&r, "2026-08-13"), 0);
+        assert_eq!(seconds_of_day(&r, "2026-08-12"), 1800);
+        assert_eq!(seconds_of_day(&r, "2026-08-13"), 0);
     }
 
     #[test]
@@ -3065,13 +3065,13 @@ mod tests {
         // Regla 3: estuviste ahí aunque no encendieras el taxímetro.
         let c = conn();
         let f = feed(&c);
-        let mut ev = evento("a@x", "Daily", "2026-08-11");
-        ev.inicio = Some(local("2026-08-11", 9));
-        ev.fin = Some(local("2026-08-11", 10));
-        import_eventos(&c, f.id, &[ev], None).unwrap();
+        let mut ev = event("a@x", "Daily", "2026-08-11");
+        ev.start = Some(local("2026-08-11", 9));
+        ev.end = Some(local("2026-08-11", 10));
+        import_events(&c, f.id, &[ev], None).unwrap();
 
         let r = weekly_rollup(&c, "2026-08-10").unwrap();
-        assert_eq!(segundos_del_dia(&r, "2026-08-11"), 3600);
+        assert_eq!(seconds_of_day(&r, "2026-08-11"), 3600);
     }
 
     #[test]
@@ -3080,30 +3080,30 @@ mod tests {
         // una reunión trackeada contaría dos veces.
         let c = conn();
         let f = feed(&c);
-        let mut ev = evento("a@x", "Daily", "2026-08-11");
-        ev.inicio = Some(local("2026-08-11", 9));
-        ev.fin = Some(local("2026-08-11", 10));
-        import_eventos(&c, f.id, &[ev], None).unwrap();
+        let mut ev = event("a@x", "Daily", "2026-08-11");
+        ev.start = Some(local("2026-08-11", 9));
+        ev.end = Some(local("2026-08-11", 10));
+        import_events(&c, f.id, &[ev], None).unwrap();
         let id = list_tasks_for_date(&c, "2026-08-11").unwrap()[0].id;
-        entrada(&c, id, "2026-08-11", 9, 900);
+        entry(&c, id, "2026-08-11", 9, 900);
 
         let r = weekly_rollup(&c, "2026-08-10").unwrap();
-        assert_eq!(segundos_del_dia(&r, "2026-08-11"), 900);
+        assert_eq!(seconds_of_day(&r, "2026-08-11"), 900);
     }
 
     #[test]
     fn una_reunion_que_todavia_no_empieza_no_cuenta_como_trabajada() {
         let c = conn();
         let f = feed(&c);
-        let manana = (chrono::Local::now() + chrono::Duration::days(1)).date_naive();
-        let lunes = manana - chrono::Duration::days(manana.weekday().num_days_from_monday() as i64);
-        let fecha = manana.format("%Y-%m-%d").to_string();
-        let mut ev = evento("futura@x", "Kickoff", &fecha);
-        ev.inicio = Some(local(&fecha, 9));
-        ev.fin = Some(local(&fecha, 10));
-        import_eventos(&c, f.id, &[ev], None).unwrap();
+        let tomorrow = (chrono::Local::now() + chrono::Duration::days(1)).date_naive();
+        let monday = tomorrow - chrono::Duration::days(tomorrow.weekday().num_days_from_monday() as i64);
+        let date = tomorrow.format("%Y-%m-%d").to_string();
+        let mut ev = event("futura@x", "Kickoff", &date);
+        ev.start = Some(local(&date, 9));
+        ev.end = Some(local(&date, 10));
+        import_events(&c, f.id, &[ev], None).unwrap();
 
-        let r = weekly_rollup(&c, &lunes.format("%Y-%m-%d").to_string()).unwrap();
+        let r = weekly_rollup(&c, &monday.format("%Y-%m-%d").to_string()).unwrap();
         assert_eq!(r.total_seconds, 0);
         // Pero sí está planificada: es tiempo comprometido, no trabajado.
         assert!(r.planned_minutes > 0);
@@ -3112,36 +3112,36 @@ mod tests {
     #[test]
     fn agrega_por_categoria_y_por_contexto_padre() {
         let c = conn();
-        let trabajo = create_category(&c, None, "Trabajo", "sky").unwrap();
-        let dev = create_category(&c, Some(trabajo.id), "Dev", "mint").unwrap();
-        let soporte = create_category(&c, Some(trabajo.id), "Soporte", "lavender").unwrap();
+        let work = create_category(&c, None, "Trabajo", "sky").unwrap();
+        let dev = create_category(&c, Some(work.id), "Dev", "mint").unwrap();
+        let support = create_category(&c, Some(work.id), "Soporte", "lavender").unwrap();
 
-        let mk = |titulo: &str, cat: i64| {
-            let mut n = new_task(titulo, Some("2026-08-11"));
+        let mk = |title: &str, cat: i64| {
+            let mut n = new_task(title, Some("2026-08-11"));
             n.category_id = Some(cat);
             create_task(&c, n).unwrap().id
         };
         let a = mk("feature", dev.id);
-        let b = mk("ticket", soporte.id);
-        entrada(&c, a, "2026-08-11", 9, 3600);
-        entrada(&c, b, "2026-08-11", 11, 1800);
+        let b = mk("ticket", support.id);
+        entry(&c, a, "2026-08-11", 9, 3600);
+        entry(&c, b, "2026-08-11", 11, 1800);
 
         let r = weekly_rollup(&c, "2026-08-10").unwrap();
         // Por channel: dos celdas distintas.
         let de = |cat: i64| {
-            r.celdas
+            r.cells
                 .iter()
                 .filter(|x| x.category_id == Some(cat))
                 .map(|x| x.seconds)
                 .sum::<i64>()
         };
         assert_eq!(de(dev.id), 3600);
-        assert_eq!(de(soporte.id), 1800);
+        assert_eq!(de(support.id), 1800);
         // Por contexto: las dos cuelgan de Trabajo.
         let ctx: i64 = r
-            .celdas
+            .cells
             .iter()
-            .filter(|x| x.context_id == Some(trabajo.id))
+            .filter(|x| x.context_id == Some(work.id))
             .map(|x| x.seconds)
             .sum();
         assert_eq!(ctx, 5400);
@@ -3152,11 +3152,11 @@ mod tests {
         // Un JOIN interno la dejaría fuera y el donut no sumaría el total.
         let c = conn();
         let t = create_task(&c, new_task("suelta", Some("2026-08-11"))).unwrap();
-        entrada(&c, t.id, "2026-08-11", 9, 600);
+        entry(&c, t.id, "2026-08-11", 9, 600);
 
         let r = weekly_rollup(&c, "2026-08-10").unwrap();
         assert_eq!(r.total_seconds, 600);
-        assert!(r.celdas.iter().any(|x| x.category_id.is_none() && x.seconds == 600));
+        assert!(r.cells.iter().any(|x| x.category_id.is_none() && x.seconds == 600));
     }
 
     #[test]
@@ -3165,7 +3165,7 @@ mod tests {
         // `ORPHANED` existen justamente para el historial y la review.
         let c = conn();
         let t = create_task(&c, new_task("cancelada", Some("2026-08-11"))).unwrap();
-        entrada(&c, t.id, "2026-08-11", 9, 1200);
+        entry(&c, t.id, "2026-08-11", 9, 1200);
         c.execute(
             "UPDATE tasks SET source_state = 'ORPHANED' WHERE id = ?1",
             [t.id],
@@ -3181,12 +3181,12 @@ mod tests {
         // `set_actual_seconds` guarda el delta, y hacia abajo es negativo.
         let c = conn();
         let t = create_task(&c, new_task("ajustada", Some("2026-08-11"))).unwrap();
-        entrada(&c, t.id, "2026-08-11", 9, 600);
-        entrada(&c, t.id, "2026-08-11", 10, -900);
+        entry(&c, t.id, "2026-08-11", 9, 600);
+        entry(&c, t.id, "2026-08-11", 10, -900);
 
         let r = weekly_rollup(&c, "2026-08-10").unwrap();
         assert_eq!(r.total_seconds, 0);
-        assert!(r.celdas.iter().all(|x| x.seconds > 0));
+        assert!(r.cells.iter().all(|x| x.seconds > 0));
     }
 
     #[test]
@@ -3198,10 +3198,10 @@ mod tests {
         create_task(&c, new_task("estimada", Some("2026-08-12"))).unwrap();
 
         let r = weekly_rollup(&c, "2026-08-10").unwrap();
-        let dia = r.dias.iter().find(|d| d.date == "2026-08-12").unwrap();
-        assert_eq!(dia.planned_minutes, 30);
-        assert_eq!(dia.sin_estimar, 1);
-        assert_eq!(r.sin_estimar, 1);
+        let day = r.days.iter().find(|d| d.date == "2026-08-12").unwrap();
+        assert_eq!(day.planned_minutes, 30);
+        assert_eq!(day.unestimated, 1);
+        assert_eq!(r.unestimated, 1);
     }
 
     #[test]
@@ -3210,18 +3210,18 @@ mod tests {
         let t = create_task(&c, new_task("cerrada", Some("2026-08-10"))).unwrap();
         set_task_status(&c, t.id, "DONE").unwrap();
         // Se cerró hoy, no el día en que estaba agendada.
-        let hoy = chrono::Local::now().date_naive();
-        let lunes = hoy - chrono::Duration::days(hoy.weekday().num_days_from_monday() as i64);
+        let today = chrono::Local::now().date_naive();
+        let monday = today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
 
-        let r = weekly_rollup(&c, &lunes.format("%Y-%m-%d").to_string()).unwrap();
-        assert_eq!(r.completadas.len(), 1);
-        assert_eq!(r.completadas[0].title, "cerrada");
-        let dia = r
-            .dias
+        let r = weekly_rollup(&c, &monday.format("%Y-%m-%d").to_string()).unwrap();
+        assert_eq!(r.completed_tasks.len(), 1);
+        assert_eq!(r.completed_tasks[0].title, "cerrada");
+        let day = r
+            .days
             .iter()
-            .find(|d| d.date == hoy.format("%Y-%m-%d").to_string())
+            .find(|d| d.date == today.format("%Y-%m-%d").to_string())
             .unwrap();
-        assert_eq!(dia.hechas, 1);
+        assert_eq!(day.done, 1);
     }
 
     // -----------------------------------------------------------------------
@@ -3235,8 +3235,8 @@ mod tests {
             .to_string()
     }
 
-    fn dia<'a>(b: &'a [DiaDeBitacora], fecha: &str) -> &'a DiaDeBitacora {
-        b.iter().find(|d| d.date == fecha).unwrap()
+    fn day<'a>(b: &'a [LogDay], date: &str) -> &'a LogDay {
+        b.iter().find(|d| d.date == date).unwrap()
     }
 
     #[test]
@@ -3245,7 +3245,7 @@ mod tests {
         // cerrado, no de que hayas entrado a cerrarlo.
         let c = conn();
         let t = create_task(&c, new_task("lo de ayer", Some(&hace(1)))).unwrap();
-        entrada(&c, t.id, &hace(1), 10, 1800);
+        entry(&c, t.id, &hace(1), 10, 1800);
         set_task_status(&c, t.id, "DONE").unwrap();
         // El cierre se acredita a hoy, así que la tarea sale en el día de hoy.
         c.execute(
@@ -3254,21 +3254,21 @@ mod tests {
         )
         .unwrap();
 
-        let b = bitacora(&c, &hace(0), 7).unwrap();
-        let ayer = dia(&b, &hace(1));
-        assert_eq!(ayer.worked_seconds, 1800);
-        assert_eq!(ayer.hechas.len(), 1);
-        assert_eq!(ayer.timeline.len(), 1);
-        assert_eq!(ayer.timeline[0].title, "lo de ayer");
+        let b = daily_log(&c, &hace(0), 7).unwrap();
+        let yesterday = day(&b, &hace(1));
+        assert_eq!(yesterday.worked_seconds, 1800);
+        assert_eq!(yesterday.done.len(), 1);
+        assert_eq!(yesterday.timeline.len(), 1);
+        assert_eq!(yesterday.timeline[0].title, "lo de ayer");
         // Y sigue siendo un borrador: nadie lo cerró.
-        assert!(ayer.closed_at.is_none());
-        assert!(ayer.note.is_none());
+        assert!(yesterday.closed_at.is_none());
+        assert!(yesterday.note.is_none());
     }
 
     #[test]
     fn la_bitacora_va_del_dia_mas_nuevo_al_mas_viejo() {
         let c = conn();
-        let b = bitacora(&c, &hace(0), 5).unwrap();
+        let b = daily_log(&c, &hace(0), 5).unwrap();
         assert_eq!(b.len(), 5);
         assert_eq!(b[0].date, hace(0));
         assert_eq!(b[4].date, hace(4));
@@ -3281,7 +3281,7 @@ mod tests {
         let c = conn();
         set_day_note(&c, "2026-08-12", Some("día raro")).unwrap();
 
-        let b = bitacora(&c, "2026-08-12", 1).unwrap();
+        let b = daily_log(&c, "2026-08-12", 1).unwrap();
         assert_eq!(b[0].note.as_deref(), Some("día raro"));
         assert!(b[0].closed_at.is_none());
     }
@@ -3292,7 +3292,7 @@ mod tests {
         set_day_note(&c, "2026-08-12", Some("algo")).unwrap();
         set_day_note(&c, "2026-08-12", Some("   ")).unwrap();
 
-        assert!(bitacora(&c, "2026-08-12", 1).unwrap()[0].note.is_none());
+        assert!(daily_log(&c, "2026-08-12", 1).unwrap()[0].note.is_none());
     }
 
     #[test]
@@ -3300,12 +3300,12 @@ mod tests {
         // "A qué hora cerré" es el dato interesante: volver a entrar no puede
         // reescribirlo.
         let c = conn();
-        let primera = cerrar_dia(&c, "2026-08-12").unwrap();
-        let segunda = cerrar_dia(&c, "2026-08-12").unwrap();
-        assert_eq!(primera, segunda);
+        let first = close_day(&c, "2026-08-12").unwrap();
+        let second = close_day(&c, "2026-08-12").unwrap();
+        assert_eq!(first, second);
 
-        reabrir_dia(&c, "2026-08-12").unwrap();
-        assert!(bitacora(&c, "2026-08-12", 1).unwrap()[0].closed_at.is_none());
+        reopen_day(&c, "2026-08-12").unwrap();
+        assert!(daily_log(&c, "2026-08-12", 1).unwrap()[0].closed_at.is_none());
     }
 
     #[test]
@@ -3323,16 +3323,16 @@ mod tests {
         )
         .unwrap();
 
-        let b = bitacora(&c, "2026-08-13", 2).unwrap();
-        assert_eq!(dia(&b, "2026-08-13").hechas[0].note.as_deref(), Some("salió"));
+        let b = daily_log(&c, "2026-08-13", 2).unwrap();
+        assert_eq!(day(&b, "2026-08-13").done[0].note.as_deref(), Some("salió"));
         // La del 12 existe en la tabla, pero la tarea no se cerró ese día.
-        assert!(dia(&b, "2026-08-12").hechas.is_empty());
+        assert!(day(&b, "2026-08-12").done.is_empty());
 
         // Vaciar el resumen **no** la saca de la bitácora: queda incluida y sin
         // texto, que es el estado normal después de apretar "Incluir".
         set_day_task_note(&c, "2026-08-13", t.id, "  ").unwrap();
-        let b = bitacora(&c, "2026-08-13", 1).unwrap();
-        assert_eq!(b[0].hechas[0].note.as_deref(), Some(""));
+        let b = daily_log(&c, "2026-08-13", 1).unwrap();
+        assert_eq!(b[0].done[0].note.as_deref(), Some(""));
     }
 
     #[test]
@@ -3349,24 +3349,24 @@ mod tests {
         .unwrap();
 
         // Sin incluir: no tiene fila.
-        assert!(bitacora(&c, "2026-08-12", 1).unwrap()[0].hechas[0].note.is_none());
+        assert!(daily_log(&c, "2026-08-12", 1).unwrap()[0].done[0].note.is_none());
 
-        incluir_en_bitacora(&c, "2026-08-12", t.id).unwrap();
+        include_in_log(&c, "2026-08-12", t.id).unwrap();
         assert_eq!(
-            bitacora(&c, "2026-08-12", 1).unwrap()[0].hechas[0].note.as_deref(),
+            daily_log(&c, "2026-08-12", 1).unwrap()[0].done[0].note.as_deref(),
             Some("")
         );
 
         // Incluir de nuevo no pisa lo escrito.
         set_day_task_note(&c, "2026-08-12", t.id, "quedó lista").unwrap();
-        incluir_en_bitacora(&c, "2026-08-12", t.id).unwrap();
+        include_in_log(&c, "2026-08-12", t.id).unwrap();
         assert_eq!(
-            bitacora(&c, "2026-08-12", 1).unwrap()[0].hechas[0].note.as_deref(),
+            daily_log(&c, "2026-08-12", 1).unwrap()[0].done[0].note.as_deref(),
             Some("quedó lista")
         );
 
-        quitar_de_bitacora(&c, "2026-08-12", t.id).unwrap();
-        assert!(bitacora(&c, "2026-08-12", 1).unwrap()[0].hechas[0].note.is_none());
+        remove_from_log(&c, "2026-08-12", t.id).unwrap();
+        assert!(daily_log(&c, "2026-08-12", 1).unwrap()[0].done[0].note.is_none());
     }
 
     #[test]
@@ -3376,21 +3376,21 @@ mod tests {
         let mut n = new_task("con channel", Some("2026-08-12"));
         n.category_id = Some(cat.id);
         let t = create_task(&c, n).unwrap();
-        entrada(&c, t.id, "2026-08-12", 10, 1200);
+        entry(&c, t.id, "2026-08-12", 10, 1200);
 
-        let b = bitacora(&c, "2026-08-12", 1).unwrap();
-        assert_eq!(b[0].celdas.len(), 1);
-        assert_eq!(b[0].celdas[0].category_id, Some(cat.id));
-        assert_eq!(b[0].celdas[0].seconds, 1200);
+        let b = daily_log(&c, "2026-08-12", 1).unwrap();
+        assert_eq!(b[0].cells.len(), 1);
+        assert_eq!(b[0].cells[0].category_id, Some(cat.id));
+        assert_eq!(b[0].cells[0].seconds, 1200);
     }
 
     #[test]
     fn el_mood_se_guarda_y_se_borra() {
         let c = conn();
         set_day_mood(&c, "2026-08-12", Some("🙂")).unwrap();
-        assert_eq!(bitacora(&c, "2026-08-12", 1).unwrap()[0].mood.as_deref(), Some("🙂"));
+        assert_eq!(daily_log(&c, "2026-08-12", 1).unwrap()[0].mood.as_deref(), Some("🙂"));
         set_day_mood(&c, "2026-08-12", None).unwrap();
-        assert!(bitacora(&c, "2026-08-12", 1).unwrap()[0].mood.is_none());
+        assert!(daily_log(&c, "2026-08-12", 1).unwrap()[0].mood.is_none());
     }
 
     #[test]
@@ -3401,7 +3401,7 @@ mod tests {
         let t = create_task(&c, new_task("en curso", Some(&hace(0)))).unwrap();
         start_timer(&c, t.id).unwrap();
 
-        let b = bitacora(&c, &hace(0), 1).unwrap();
+        let b = daily_log(&c, &hace(0), 1).unwrap();
         assert_eq!(b[0].timeline.len(), 1);
         assert!(b[0].timeline[0].running);
         assert_eq!(b[0].timeline[0].seconds, 0);
@@ -3412,10 +3412,10 @@ mod tests {
         let c = conn();
         let a = create_task(&c, new_task("segunda", Some("2026-08-12"))).unwrap();
         let b_ = create_task(&c, new_task("primera", Some("2026-08-12"))).unwrap();
-        entrada(&c, a.id, "2026-08-12", 15, 600);
-        entrada(&c, b_.id, "2026-08-12", 9, 600);
+        entry(&c, a.id, "2026-08-12", 15, 600);
+        entry(&c, b_.id, "2026-08-12", 9, 600);
 
-        let b = bitacora(&c, "2026-08-12", 1).unwrap();
+        let b = daily_log(&c, "2026-08-12", 1).unwrap();
         assert_eq!(
             b[0].timeline.iter().map(|x| x.title.as_str()).collect::<Vec<_>>(),
             vec!["primera", "segunda"]
@@ -3425,7 +3425,7 @@ mod tests {
     #[test]
     fn una_fecha_ilegible_da_una_bitacora_vacia() {
         let c = conn();
-        assert!(bitacora(&c, "no-es-fecha", 7).unwrap().is_empty());
+        assert!(daily_log(&c, "no-es-fecha", 7).unwrap().is_empty());
     }
 
     #[test]
@@ -3434,17 +3434,17 @@ mod tests {
         // de `mockDb.ts` tiene que hacer exactamente lo mismo.
         let c = conn();
         let r = weekly_rollup(&c, "2026-08-12").unwrap();
-        assert_eq!(r.dias[0].date, "2026-08-12");
-        assert_eq!(r.dias[6].date, "2026-08-18");
+        assert_eq!(r.days[0].date, "2026-08-12");
+        assert_eq!(r.days[6].date, "2026-08-18");
     }
 
     #[test]
     fn la_semana_siempre_trae_sus_siete_dias() {
         let c = conn();
         let r = weekly_rollup(&c, "2026-08-10").unwrap();
-        assert_eq!(r.dias.len(), 7);
-        assert_eq!(r.dias[0].date, "2026-08-10");
-        assert_eq!(r.dias[6].date, "2026-08-16");
+        assert_eq!(r.days.len(), 7);
+        assert_eq!(r.days[0].date, "2026-08-10");
+        assert_eq!(r.days[6].date, "2026-08-16");
         assert_eq!(r.total_seconds, 0);
     }
 }

@@ -6,9 +6,9 @@ import { TaskCardStatic } from "../week/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
 import { useBoard } from "../tasks/useBoard";
 import { CalendarRail } from "../calendar/CalendarRail";
-import { useTrabajoDelDia } from "../calendar/useTrabajoDelDia";
+import { useDayWork } from "../calendar/useTrabajoDelDia";
 import { api } from "../../lib/ipc";
-import type { Task, TrabajoDelDia } from "../../lib/types";
+import type { Task, DayWork } from "../../lib/types";
 import { CapacityLevel } from "../../lib/enums";
 import { formatMinutes } from "../../lib/capacity";
 import { dateLabel, parseISODate, toISODate, weekdayLabel } from "../../lib/date";
@@ -18,16 +18,16 @@ import {
   useCapacitySettings,
   useSettingsStore,
   useWorkHours,
-  yaPlanificado,
+  alreadyPlanned,
 } from "../../lib/settings";
 import { useAppStore } from "../../lib/store";
-import { celebrar } from "../../lib/confetti";
+import { celebrate } from "../../lib/confetti";
 import {
-  mensajeDeCapacidad,
-  minutosTrabajados,
-  repasoDelDia,
-  resumenDelDia,
-  ultimoDiaConTareas,
+  capacityMessage,
+  workedMinutes,
+  dayRecap,
+  daySummary,
+  lastDayWithTasks,
 } from "./dailyPlan";
 
 /** Modificadores propios: las `.cap--*` de la semana son un chip, no un medidor. */
@@ -72,8 +72,8 @@ export function DailyPlanningView() {
   const navigate = useNavigate();
   const board = useBoard(today, today);
   const capacity = useCapacitySettings();
-  const jornada = useWorkHours();
-  const { trabajo, segundosEnCurso } = useTrabajoDelDia(today);
+  const workday = useWorkHours();
+  const { work, segundosEnCurso } = useDayWork(today);
   const values = useSettingsStore((s) => s.values);
   const ajustesCargados = useSettingsStore((s) => s.loaded);
   const setSetting = useSettingsStore((s) => s.set);
@@ -82,40 +82,40 @@ export function DailyPlanningView() {
   const [paso, setPaso] = useState(0);
   const [previas, setPrevias] = useState<Task[]>([]);
   const [backlog, setBacklog] = useState<Task[]>([]);
-  const [rescatadas, setRescatadas] = useState<Map<number, string>>(new Map());
+  const [rescued, setRescued] = useState<Map<number, string>>(new Map());
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [aviso, setAviso] = useState(false);
+  const [notice, setAviso] = useState(false);
 
-  const cargar = useCallback(async () => {
+  const load = useCallback(async () => {
     const [atras, bl, rescates] = await Promise.all([
       api.listTasksForRange(sumarDias(today, -VENTANA_ATRAS), sumarDias(today, -1)),
       api.listBacklog(),
-      api.rescatadasDelBacklog(),
+      api.rescuedFromBacklog(),
     ]);
     setPrevias(atras);
     setBacklog(bl);
-    setRescatadas(new Map(rescates.map((r) => [r.taskId, r.desde])));
+    setRescued(new Map(rescates.map((r) => [r.taskId, r.from])));
   }, [today]);
 
   useEffect(() => {
-    void cargar();
-  }, [cargar, dataVersion]);
+    void load();
+  }, [load, dataVersion]);
 
   const tasks = board.tasksByDate[today] ?? [];
-  const resumen = resumenDelDia(tasks, capacity.target, capacity.warnRatio);
+  const summary = daySummary(tasks, capacity.target, capacity.warnRatio);
 
   /**
    * El día que se repasa es el último con tareas, y **coincide con el que la
-   * degradación preserva** (`repo::degradar_pendientes`): esa es la razón de que
+   * degradación preserva** (`repo::demote_pending`): esa es la razón de que
    * el conteo sea honesto sin hacer nada más. Todo lo anterior ya está en el
    * backlog, así que no hay tareas que se hayan ido sin que las vieras.
    */
-  const diaAnterior = useMemo(() => ultimoDiaConTareas(previas, today), [previas, today]);
+  const diaAnterior = useMemo(() => lastDayWithTasks(previas, today), [previas, today]);
   const delDiaAnterior = useMemo(
     () => previas.filter((t) => t.scheduledDate === diaAnterior),
     [previas, diaAnterior],
   );
-  const repaso = useMemo(() => repasoDelDia(delDiaAnterior), [delDiaAnterior]);
+  const repaso = useMemo(() => dayRecap(delDiaAnterior), [delDiaAnterior]);
 
   // Lo trabajado ese día es una lectura aparte: `actual_seconds` es el total de
   // la tarea, y una arrastrada de tres días lo trae todo junto.
@@ -126,8 +126,8 @@ export function DailyPlanningView() {
       return;
     }
     void api
-      .trabajoDelDia(diaAnterior)
-      .then((filas: TrabajoDelDia[]) => setTrabajadoAyer(minutosTrabajados(filas)));
+      .dayWork(diaAnterior)
+      .then((rows: DayWork[]) => setTrabajadoAyer(workedMinutes(rows)));
   }, [diaAnterior, dataVersion]);
 
   // Busca también en los días previos y en el backlog: el paso 1 abre tareas que
@@ -137,20 +137,20 @@ export function DailyPlanningView() {
       ? ([...board.tasks, ...previas, ...backlog].find((t) => t.id === selectedId) ?? null)
       : null;
 
-  const mover = async (id: number, date: string | null, position: number) => {
+  const move = async (id: number, date: string | null, position: number) => {
     await board.moveTask(id, date, position);
-    await cargar();
+    await load();
   };
 
   const terminar = async () => {
     await setSetting(SettingKey.PLANNED_ON, today);
     // El confeti es imperativo y cuelga de `document.body`: sobrevive al
     // navigate de la línea siguiente (ver `lib/confetti.ts`).
-    celebrar();
+    celebrate();
     navigate("/");
   };
 
-  const ultimo = paso === PASOS.length - 1;
+  const last = paso === PASOS.length - 1;
 
   /**
    * Avisar **una vez por día**, cuando se entra a un día ya planificado. Antes
@@ -165,11 +165,11 @@ export function DailyPlanningView() {
   useEffect(() => {
     if (!ajustesCargados || avisadoPara.current === today) return;
     avisadoPara.current = today;
-    if (yaPlanificado(values, today)) setAviso(true);
+    if (alreadyPlanned(values, today)) setAviso(true);
   }, [ajustesCargados, values, today]);
 
   useEffect(() => {
-    if (!aviso) return;
+    if (!notice) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" || e.key === "Enter") {
         e.preventDefault();
@@ -178,7 +178,7 @@ export function DailyPlanningView() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [aviso]);
+  }, [notice]);
 
   const cardDe = (t: Task) => (
     <TaskCardStatic
@@ -234,13 +234,13 @@ export function DailyPlanningView() {
                   <div className="repaso__cifras">
                     <div className="cifra">
                       <span className="cifra__n">
-                        {repaso.cerradas.length}
+                        {repaso.closed.length}
                         <small>/{repaso.total}</small>
                       </span>
                       <span className="cifra__label">cerradas</span>
                     </div>
                     <div className="cifra">
-                      <span className="cifra__n">{formatMinutes(repaso.planificados)}</span>
+                      <span className="cifra__n">{formatMinutes(repaso.planned)}</span>
                       <span className="cifra__label">planificado</span>
                     </div>
                     <div className="cifra">
@@ -253,7 +253,7 @@ export function DailyPlanningView() {
                       className="repaso__barra-fill"
                       style={{
                         width: `${
-                          repaso.total ? Math.round((repaso.cerradas.length / repaso.total) * 100) : 0
+                          repaso.total ? Math.round((repaso.closed.length / repaso.total) * 100) : 0
                         }%`,
                       }}
                     />
@@ -274,7 +274,7 @@ export function DailyPlanningView() {
                         <div className="repaso__acciones">
                           <button
                             className="btn-icon"
-                            onClick={() => mover(t.id, today, tasks.length)}
+                            onClick={() => move(t.id, today, tasks.length)}
                             aria-label={`Traer ${t.title} a hoy`}
                             title="Traer a hoy"
                           >
@@ -282,7 +282,7 @@ export function DailyPlanningView() {
                           </button>
                           <button
                             className="btn-icon"
-                            onClick={() => mover(t.id, null, 0)}
+                            onClick={() => move(t.id, null, 0)}
                             aria-label={`Mandar ${t.title} al backlog`}
                             title="Mandar al backlog"
                           >
@@ -294,12 +294,12 @@ export function DailyPlanningView() {
                   </>
                 )}
 
-                {repaso.cerradas.length > 0 && (
+                {repaso.closed.length > 0 && (
                   <>
                     <div className="repaso__grupo">
                       <Check size={12} strokeWidth={3} aria-hidden /> Cerradas
                     </div>
-                    {repaso.cerradas.map((t) => (
+                    {repaso.closed.map((t) => (
                       <div key={t.id} className="repaso__row">
                         {cardDe(t)}
                       </div>
@@ -322,7 +322,7 @@ export function DailyPlanningView() {
               date={today}
               tasks={tasks}
               backlog={backlog}
-              rescatadas={rescatadas}
+              rescued={rescued}
               categoryMap={board.categoryMap}
               categories={board.categories}
               capacityTarget={capacity.target}
@@ -330,7 +330,7 @@ export function DailyPlanningView() {
               onToggle={board.toggleTask}
               onOpen={(t) => setSelectedId(t.id)}
               onPatch={board.patchTask}
-              onMove={mover}
+              onMove={move}
               colClassName="daily-plan__col"
             />
           </div>
@@ -343,9 +343,9 @@ export function DailyPlanningView() {
           today={today}
           tasks={tasks}
           categoryMap={board.categoryMap}
-          workStart={jornada.start}
-          workEnd={jornada.end}
-          trabajo={trabajo}
+          workStart={workday.start}
+          workEnd={workday.end}
+          work={work}
           segundosEnCurso={segundosEnCurso}
           onOpen={(t) => setSelectedId(t.id)}
         />
@@ -354,8 +354,8 @@ export function DailyPlanningView() {
       <footer className="daily-plan__nav">
         {/* La carga del día en una línea. Como card ocupaba media pantalla para
          * decir dos números. */}
-        <div className={`cap-line ${NIVEL_CLASS[resumen.nivel]}`}>
-          <strong>{formatMinutes(resumen.planificados)}</strong>
+        <div className={`cap-line ${NIVEL_CLASS[summary.nivel]}`}>
+          <strong>{formatMinutes(summary.planned)}</strong>
           {capacity.target > 0 && <span> de {formatMinutes(capacity.target)}</span>}
           <span className="cap-line__bar">
             <span
@@ -363,15 +363,15 @@ export function DailyPlanningView() {
               style={{
                 width: `${
                   capacity.target > 0
-                    ? Math.min(100, Math.round((resumen.planificados / capacity.target) * 100))
+                    ? Math.min(100, Math.round((summary.planned / capacity.target) * 100))
                     : 0
                 }%`,
               }}
             />
           </span>
-          <span className="cap-line__msg">{mensajeDeCapacidad(resumen)}</span>
-          {resumen.sinEstimado > 0 && (
-            <span className="cap-line__warn">{resumen.sinEstimado} sin estimar</span>
+          <span className="cap-line__msg">{capacityMessage(summary)}</span>
+          {summary.withoutEstimate > 0 && (
+            <span className="cap-line__warn">{summary.withoutEstimate} sin estimar</span>
           )}
         </div>
 
@@ -381,7 +381,7 @@ export function DailyPlanningView() {
               Atrás
             </button>
           )}
-          {ultimo ? (
+          {last ? (
             <button className="btn-primary" onClick={terminar}>
               <Sunrise size={14} aria-hidden /> Empezar el día
             </button>
@@ -393,7 +393,7 @@ export function DailyPlanningView() {
         </div>
       </footer>
 
-      {aviso && (
+      {notice && (
         <div className="modal-overlay" onClick={() => setAviso(false)}>
           <div
             className="dialog dialog--hero"

@@ -11,13 +11,13 @@ const updateTask = vi.fn(async (_id: number, _patch: unknown) => null);
 const listTimeEntries = vi.fn(async (): Promise<TimeEntry[]> => []);
 
 /** Entrada cerrada de `seconds` segundos que arranca ese día a las 09:00 local. */
-function entrada(id: number, dia: string, seconds: number): TimeEntry {
-  const inicio = new Date(`${dia}T09:00:00`);
+function entry(id: number, day: string, seconds: number): TimeEntry {
+  const start = new Date(`${day}T09:00:00`);
   return {
     id,
     taskId: 7,
-    startedAt: inicio.toISOString(),
-    endedAt: new Date(inicio.getTime() + seconds * 1000).toISOString(),
+    startedAt: start.toISOString(),
+    endedAt: new Date(start.getTime() + seconds * 1000).toISOString(),
     seconds,
   };
 }
@@ -53,7 +53,7 @@ vi.mock("../../lib/ipc", () => ({
   },
 }));
 
-const task: Task = {
+const baseTask: Task = {
   id: 7,
   title: "Revisar PRs",
   notes: null,
@@ -79,7 +79,7 @@ const task: Task = {
   updatedAt: "2026-08-11T09:00:00Z",
 };
 
-function renderModal(onClose = vi.fn(), tarea: Task = task) {
+function renderModal(onClose = vi.fn(), task: Task = baseTask) {
   render(
     <MemoryRouter initialEntries={["/"]}>
       <Routes>
@@ -87,7 +87,7 @@ function renderModal(onClose = vi.fn(), tarea: Task = task) {
           path="/"
           element={
             <TaskModal
-              task={tarea}
+              task={task}
               categories={[]}
               objectives={[]}
               onClose={onClose}
@@ -185,7 +185,7 @@ describe("TaskModal · ⌘Enter no pierde lo escrito", () => {
 
     // Sin `await`: el guardado tiene que haber arrancado ya, no cuando venza el
     // temporizador que el cierre del modal iba a cancelar.
-    expect(updateTask).toHaveBeenCalledWith(task.id, { title: "Revisar PRs urgente" });
+    expect(updateTask).toHaveBeenCalledWith(baseTask.id, { title: "Revisar PRs urgente" });
   });
 });
 
@@ -199,15 +199,15 @@ describe("TaskModal · ACTUAL siempre es el total", () => {
     // El caso del usuario: una tarea que viene de tres días con 2h40 encima.
     // Antes, darle play mostraba solo lo de hoy y el número *bajaba*, como si
     // se hubiera perdido el tiempo anterior.
-    const arrastrada: Task = { ...task, actualSeconds: 2 * 3600 + 40 * 60 };
+    const carriedOver: Task = { ...baseTask, actualSeconds: 2 * 3600 + 40 * 60 };
     estadoTimer = {
       ...TIMER_DETENIDO,
-      active: { taskId: arrastrada.id },
+      active: { taskId: carriedOver.id },
       elapsed: 30, // lo de HOY, que es lo que mostraba antes
       runTotal: 30,
     };
 
-    renderModal(vi.fn(), arrastrada);
+    renderModal(vi.fn(), carriedOver);
 
     expect(await screen.findByText("2:40:30")).toBeInTheDocument();
     expect(screen.queryByText("0:00:30")).toBeNull();
@@ -224,8 +224,8 @@ describe("TaskModal · tiempo por día", () => {
     // El caso del usuario: una tarea que viene arrastrándose tres días. Antes
     // solo se veía el total y no había forma de saber el reparto.
     listTimeEntries.mockResolvedValueOnce([
-      entrada(1, "2026-08-11", 45 * 60),
-      entrada(2, "2026-08-12", 90 * 60),
+      entry(1, "2026-08-11", 45 * 60),
+      entry(2, "2026-08-12", 90 * 60),
     ]);
     renderModal();
 
@@ -257,7 +257,7 @@ describe("TaskModal · play", () => {
 
     await user.click(screen.getByRole("button", { name: "Iniciar" }));
 
-    await waitFor(() => expect(startTimer).toHaveBeenCalledWith(task.id));
+    await waitFor(() => expect(startTimer).toHaveBeenCalledWith(baseTask.id));
     expect(onClose).toHaveBeenCalled();
     expect(await screen.findByText("VISTA FOCUS")).toBeInTheDocument();
   });

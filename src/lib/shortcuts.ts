@@ -135,10 +135,10 @@ export function displayCombo(raw: string): string {
 export function ariaKeyshortcuts(raw: string): string | undefined {
   const c = parseCombo(raw);
   if (!c) return undefined;
-  const cola = [c.shift ? "Shift" : null, c.alt ? "Alt" : null, c.key]
+  const queue = [c.shift ? "Shift" : null, c.alt ? "Alt" : null, c.key]
     .filter(Boolean)
     .join("+");
-  return `Meta+${cola} Control+${cola}`;
+  return `Meta+${queue} Control+${queue}`;
 }
 
 /**

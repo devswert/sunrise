@@ -21,7 +21,7 @@ function degradarUnaVez(today: string): Promise<void> {
   if (degradadoPara === today) return Promise.resolve();
   // Dedup: si dos vistas montan a la vez, comparten la misma llamada.
   degradarInFlight ??= api
-    .degradarPendientes(today)
+    .demotePending(today)
     .then(() => {
       degradadoPara = today;
     })

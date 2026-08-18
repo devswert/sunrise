@@ -4,20 +4,20 @@
  */
 import type {
   ActiveTimer,
-  Rescate,
+  Rescue,
   CalendarFeed,
   Category,
   Objective,
   Task,
   TaskEvent,
   TimeEntry,
-  TrabajoDelDia,
+  DayWork,
   WeeklyRollup,
-  DiaDeBitacora,
-  ArchivoDeBackup,
-  Restauracion,
-  Actualizacion,
-  Perfil,
+  LogDay,
+  BackupFile,
+  RestoreResult,
+  AppUpdate,
+  Profile,
   NewTaskInput,
   TaskPatch,
 } from "./types";
@@ -55,10 +55,10 @@ export const api = {
       ? invoke<Task | null>("move_task", { id, date, position })
       : mock.moveTask(id, date, position),
 
-  degradarPendientes: (today: string) =>
+  demotePending: (today: string) =>
     isTauri()
-      ? invoke<number>("degradar_pendientes", { today })
-      : mock.degradarPendientes(today),
+      ? invoke<number>("demote_pending", { today })
+      : mock.demotePending(today),
 
   listTasksForRange: (start: string, end: string) =>
     isTauri()
@@ -92,8 +92,8 @@ export const api = {
   listTaskEvents: (taskId: number) =>
     isTauri() ? invoke<TaskEvent[]>("list_task_events", { taskId }) : mock.listTaskEvents(taskId),
 
-  rescatadasDelBacklog: () =>
-    isTauri() ? invoke<Rescate[]>("rescatadas_del_backlog") : mock.rescatadasDelBacklog(),
+  rescuedFromBacklog: () =>
+    isTauri() ? invoke<Rescue[]>("rescued_from_backlog") : mock.rescuedFromBacklog(),
 
   // --- timer / focus ---
   startTimer: (taskId: number) =>
@@ -107,8 +107,8 @@ export const api = {
   listTimeEntries: (taskId: number) =>
     isTauri() ? invoke<TimeEntry[]>("list_time_entries", { taskId }) : mock.listTimeEntries(taskId),
 
-  trabajoDelDia: (date: string) =>
-    isTauri() ? invoke<TrabajoDelDia[]>("trabajo_del_dia", { date }) : mock.trabajoDelDia(date),
+  dayWork: (date: string) =>
+    isTauri() ? invoke<DayWork[]>("day_work", { date }) : mock.dayWork(date),
 
   /** El rollup de la semana ISO que arranca en `weekStart` (lunes). */
   weeklyRollup: (weekStart: string) =>
@@ -117,10 +117,10 @@ export const api = {
       : mock.weeklyRollup(weekStart),
 
   /** Los `dias` días que terminan en `hasta`, del más nuevo al más viejo. */
-  bitacora: (hasta: string, dias: number) =>
+  dailyLog: (to: string, days: number) =>
     isTauri()
-      ? invoke<DiaDeBitacora[]>("bitacora", { hasta, dias })
-      : mock.bitacora(hasta, dias),
+      ? invoke<LogDay[]>("daily_log", { to, days })
+      : mock.dailyLog(to, days),
 
   /** Escribe (o borra) la reflexión del día. **No lo cierra.** */
   setDayNote: (date: string, note: string | null) =>
@@ -136,22 +136,22 @@ export const api = {
     isTauri() ? invoke<void>("set_day_mood", { date, mood }) : mock.setDayMood(date, mood),
 
   /** Sube una tarea a la bitácora del día, sin resumen todavía. */
-  incluirEnBitacora: (date: string, taskId: number) =>
+  includeInLog: (date: string, taskId: number) =>
     isTauri()
-      ? invoke<void>("incluir_en_bitacora", { date, taskId })
-      : mock.incluirEnBitacora(date, taskId),
+      ? invoke<void>("include_in_log", { date, taskId })
+      : mock.includeInLog(date, taskId),
 
-  quitarDeBitacora: (date: string, taskId: number) =>
+  removeFromLog: (date: string, taskId: number) =>
     isTauri()
-      ? invoke<void>("quitar_de_bitacora", { date, taskId })
-      : mock.quitarDeBitacora(date, taskId),
+      ? invoke<void>("remove_from_log", { date, taskId })
+      : mock.removeFromLog(date, taskId),
 
   /** Marca el día como cerrado por ti. Devuelve el `closedAt`. */
-  cerrarDia: (date: string) =>
-    isTauri() ? invoke<string>("cerrar_dia", { date }) : mock.cerrarDia(date),
+  closeDay: (date: string) =>
+    isTauri() ? invoke<string>("close_day", { date }) : mock.closeDay(date),
 
-  reabrirDia: (date: string) =>
-    isTauri() ? invoke<void>("reabrir_dia", { date }) : mock.reabrirDia(date),
+  reopenDay: (date: string) =>
+    isTauri() ? invoke<void>("reopen_day", { date }) : mock.reopenDay(date),
 
   focusQueue: (date: string, nowHhmm: string) =>
     isTauri() ? invoke<Task[]>("focus_queue", { date, nowHhmm }) : mock.focusQueue(date, nowHhmm),
@@ -216,25 +216,25 @@ export const api = {
   appVersion: () => (isTauri() ? invoke<string>("app_version") : mock.appVersion()),
 
   /**
-   * Perfil de esta ventana y el archivo de base que usa. No se llama directo
-   * desde los componentes: pasa por `usePerfil()`, que lo cachea por sesión.
+   * Profile de esta ventana y el archivo de base que usa. No se llama directo
+   * desde los componentes: pasa por `useProfile()`, que lo cachea por sesión.
    */
-  perfil: () => (isTauri() ? invoke<Perfil>("perfil") : mock.perfil()),
+  profile: () => (isTauri() ? invoke<Profile>("profile") : mock.profile()),
 
-  crearBackup: () =>
-    isTauri() ? invoke<ArchivoDeBackup>("crear_backup") : mock.crearBackup(),
+  createBackup: () =>
+    isTauri() ? invoke<BackupFile>("create_backup") : mock.createBackup(),
 
   /** Falla si no se puede escribir ahí. Se llama al guardar la carpeta. */
-  probarBackupDir: (dir: string) =>
-    isTauri() ? invoke<void>("probar_backup_dir", { dir }) : mock.probarBackupDir(dir),
+  testBackupDir: (dir: string) =>
+    isTauri() ? invoke<void>("test_backup_dir", { dir }) : mock.testBackupDir(dir),
 
   listBackups: () =>
-    isTauri() ? invoke<ArchivoDeBackup[]>("list_backups") : mock.listBackups(),
+    isTauri() ? invoke<BackupFile[]>("list_backups") : mock.listBackups(),
 
-  restaurarBackup: (zipPath: string) =>
+  restoreBackup: (zipPath: string) =>
     isTauri()
-      ? invoke<Restauracion>("restaurar_backup", { zipPath })
-      : mock.restaurarBackup(zipPath),
+      ? invoke<RestoreResult>("restore_backup", { zipPath })
+      : mock.restoreBackup(zipPath),
 
   // --- feeds de calendario ---
   listCalendarFeeds: () =>
@@ -282,8 +282,8 @@ export const api = {
     isTauri() ? invoke<number>("sync_calendar_feed", { id }) : mock.syncCalendarFeed(id),
 
   /** Sincroniza todos; con `forzar` sin mirar el intervalo de cada uno. */
-  syncCalendarFeeds: (forzar = false) =>
-    isTauri() ? invoke<number>("sync_calendar_feeds", { forzar }) : mock.syncCalendarFeeds(forzar),
+  syncCalendarFeeds: (force = false) =>
+    isTauri() ? invoke<number>("sync_calendar_feeds", { force }) : mock.syncCalendarFeeds(force),
 
   // --- actualizaciones ---
   /**
@@ -294,12 +294,12 @@ export const api = {
    * primer Release, la consulta al `latest.json` no llega. Quien la llame tiene
    * que decirlo como información, no como error.
    */
-  buscarActualizacion: () =>
-    isTauri() ? invoke<Actualizacion | null>("buscar_actualizacion") : mock.buscarActualizacion(),
+  checkForUpdate: () =>
+    isTauri() ? invoke<AppUpdate | null>("check_for_update") : mock.checkForUpdate(),
 
   /** Descarga, instala y **reinicia la app**. No devuelve si sale bien. */
-  instalarActualizacion: () =>
-    isTauri() ? invoke<void>("instalar_actualizacion") : mock.instalarActualizacion(),
+  installUpdate: () =>
+    isTauri() ? invoke<void>("install_update") : mock.installUpdate(),
 
   // --- ciclo de vida ---
   /** Detiene el timer y cierra la app. Fuera de Tauri no hay nada que cerrar. */

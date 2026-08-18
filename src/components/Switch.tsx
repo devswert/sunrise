@@ -18,7 +18,7 @@ export function Switch({
   id,
 }: {
   checked: boolean;
-  onChange: (valor: boolean) => void;
+  onChange: (value: boolean) => void;
   /** Nombre accesible: es un control sin texto adentro. */
   label: string;
   disabled?: boolean;

@@ -14,7 +14,7 @@
  * Se hace **al mostrar y no al importar** para no perder el original: si algún
  * día se quiere renderizar de verdad, el dato sigue completo en la base.
  */
-export function descripcionLegible(html: string): string {
+export function readableDescription(html: string): string {
   let t = html;
 
   // Bloques que separan párrafos, antes de borrar el resto de las etiquetas.

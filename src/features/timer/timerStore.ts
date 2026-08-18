@@ -82,9 +82,9 @@ export function hms(total: number): string {
  * significaba dos cosas y darle play a una tarea arrastrada lo hacía *bajar*.
  */
 export function runTotalSeconds(startedAt: string, ahora: number = Date.now()): number {
-  const inicio = new Date(startedAt).getTime();
-  if (Number.isNaN(inicio)) return 0;
-  return Math.max(0, Math.round((ahora - inicio) / 1000));
+  const start = new Date(startedAt).getTime();
+  if (Number.isNaN(start)) return 0;
+  return Math.max(0, Math.round((ahora - start) / 1000));
 }
 
 /**
@@ -96,12 +96,12 @@ export function runTotalSeconds(startedAt: string, ahora: number = Date.now()): 
  * noche mostraba las 15 horas a las 9 de la mañana.
  */
 export function runSeconds(startedAt: string, ahora: number = Date.now()): number {
-  const inicio = new Date(startedAt).getTime();
-  if (Number.isNaN(inicio)) return 0;
+  const start = new Date(startedAt).getTime();
+  if (Number.isNaN(start)) return 0;
   const medianoche = new Date(ahora);
   medianoche.setHours(0, 0, 0, 0);
-  const desde = Math.max(inicio, medianoche.getTime());
-  return Math.max(0, Math.round((ahora - desde) / 1000));
+  const from = Math.max(start, medianoche.getTime());
+  return Math.max(0, Math.round((ahora - from) / 1000));
 }
 
 /**

@@ -48,8 +48,8 @@ describe("runSeconds", () => {
 
   it("cuenta desde el inicio cuando la corrida empezó hoy", () => {
     const ahora = hoyALas(10);
-    const inicio = new Date(hoyALas(9, 30)).toISOString();
-    expect(runSeconds(inicio, ahora)).toBe(1800);
+    const start = new Date(hoyALas(9, 30)).toISOString();
+    expect(runSeconds(start, ahora)).toBe(1800);
   });
 
   it("cuenta solo desde la medianoche si la corrida viene de ayer", () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/ipc";
-import type { TrabajoDelDia } from "../../lib/types";
+import type { DayWork } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
 import { useTimer } from "../timer/useTimer";
 
@@ -16,23 +16,23 @@ import { useTimer } from "../timer/useTimer";
  * todavía no tiene segundos escritos, y sin esto el bloque de la tarea que estás
  * trabajando ahora mismo saldría de alto cero.
  */
-export function useTrabajoDelDia(date: string): {
-  trabajo: TrabajoDelDia[];
+export function useDayWork(date: string): {
+  work: DayWork[];
   segundosEnCurso: number;
 } {
-  const [trabajo, setTrabajo] = useState<TrabajoDelDia[]>([]);
+  const [work, setTrabajo] = useState<DayWork[]>([]);
   const dataVersion = useAppStore((s) => s.dataVersion);
   const timer = useTimer();
 
   useEffect(() => {
-    let vivo = true;
-    void api.trabajoDelDia(date).then((filas) => {
-      if (vivo) setTrabajo(filas);
+    let alive = true;
+    void api.dayWork(date).then((rows) => {
+      if (alive) setTrabajo(rows);
     });
     return () => {
-      vivo = false;
+      alive = false;
     };
   }, [date, dataVersion]);
 
-  return { trabajo, segundosEnCurso: timer.runTotal };
+  return { work, segundosEnCurso: timer.runTotal };
 }

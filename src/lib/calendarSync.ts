@@ -11,9 +11,9 @@ interface CalendarSyncState {
   /** Cuántos feeds hay configurados. Sin feeds, el botón no tiene sentido. */
   feeds: number;
   /** Relee el estado de los feeds sin sincronizar nada. */
-  refrescar: () => Promise<void>;
+  refresh: () => Promise<void>;
   /** Sincroniza. `id` para uno solo; sin `id`, todos y sin mirar el reloj. */
-  sincronizar: (id?: number) => Promise<void>;
+  sync: (id?: number) => Promise<void>;
 }
 
 /**
@@ -33,7 +33,7 @@ export const useCalendarSync = create<CalendarSyncState>((set, get) => ({
   ultimaSync: null,
   feeds: 0,
 
-  refrescar: async () => {
+  refresh: async () => {
     try {
       const feeds = await api.listCalendarFeeds();
       const marcas = feeds.map((f) => f.lastSyncedAt).filter((m): m is string => m != null);
@@ -46,7 +46,7 @@ export const useCalendarSync = create<CalendarSyncState>((set, get) => ({
     }
   },
 
-  sincronizar: async (id) => {
+  sync: async (id) => {
     // Dos clicks seguidos, o el botón de la semana mientras corre el de Configs:
     // una sola sync a la vez.
     if (get().sincronizando) return;
@@ -60,7 +60,7 @@ export const useCalendarSync = create<CalendarSyncState>((set, get) => ({
       console.error("[sunrise] calendario: falló la sincronización:", err);
     } finally {
       set({ sincronizando: false });
-      await get().refrescar();
+      await get().refresh();
       // Entraron o cambiaron tareas: las vistas y el taxímetro tienen que releer.
       useAppStore.getState().bumpData();
     }
@@ -79,19 +79,19 @@ export const useCalendarSync = create<CalendarSyncState>((set, get) => ({
  * ruido en los tests.
  */
 export function useCalendarSyncRuntime(): void {
-  const refrescar = useCalendarSync((s) => s.refrescar);
-  const sincronizar = useCalendarSync((s) => s.sincronizar);
+  const refresh = useCalendarSync((s) => s.refresh);
+  const sync = useCalendarSync((s) => s.sync);
 
   useEffect(() => {
-    void refrescar();
+    void refresh();
     if (!isTauri()) return;
 
     // Al montar. El poller de Rust también corre, pero su primer pulso puede
     // caer hasta un minuto después de abrir la app.
-    void sincronizar();
+    void sync();
 
     const alVolver = () => {
-      if (document.visibilityState === "visible") void sincronizar();
+      if (document.visibilityState === "visible") void sync();
     };
     window.addEventListener("focus", alVolver);
     document.addEventListener("visibilitychange", alVolver);
@@ -99,5 +99,5 @@ export function useCalendarSyncRuntime(): void {
       window.removeEventListener("focus", alVolver);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [refrescar, sincronizar]);
+  }, [refresh, sync]);
 }

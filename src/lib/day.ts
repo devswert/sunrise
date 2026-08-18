@@ -16,10 +16,10 @@ const suscriptores = new Set<() => void>();
 
 /** Definidas a nivel de módulo: `useSyncExternalStore` reintenta la suscripción
  * si la función cambia de identidad, y en línea cambiaría en cada render. */
-function suscribir(avisar: () => void): () => void {
-  suscriptores.add(avisar);
+function suscribir(notify: () => void): () => void {
+  suscriptores.add(notify);
   return () => {
-    suscriptores.delete(avisar);
+    suscriptores.delete(notify);
   };
 }
 
@@ -36,11 +36,11 @@ function leer(): string {
  * comparación pura da el resultado correcto se ejecute cuando se ejecute; con
  * lógica de "pasaron N ms" habría que adivinar cuánto durmió la máquina.
  */
-export function revisarCambioDeDia(): boolean {
-  const hoy = todayISO();
-  if (hoy === diaActual) return false;
-  diaActual = hoy;
-  for (const avisar of suscriptores) avisar();
+export function checkDayChange(): boolean {
+  const today = todayISO();
+  if (today === diaActual) return false;
+  diaActual = today;
+  for (const notify of suscriptores) notify();
   return true;
 }
 
@@ -66,22 +66,22 @@ const INTERVALO_MS = 60_000;
  */
 export function useDayWatcher(): void {
   useEffect(() => {
-    const revisar = () => {
-      if (!revisarCambioDeDia()) return;
+    const review = () => {
+      if (!checkDayChange()) return;
       useAppStore.getState().markDataStale();
     };
-    const alCambiarVisibilidad = () => {
-      if (document.visibilityState === "visible") revisar();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") review();
     };
 
-    window.addEventListener("focus", revisar);
-    document.addEventListener("visibilitychange", alCambiarVisibilidad);
-    const intervalo = setInterval(revisar, INTERVALO_MS);
-    revisar();
+    window.addEventListener("focus", review);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    const intervalo = setInterval(review, INTERVALO_MS);
+    review();
 
     return () => {
-      window.removeEventListener("focus", revisar);
-      document.removeEventListener("visibilitychange", alCambiarVisibilidad);
+      window.removeEventListener("focus", review);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       clearInterval(intervalo);
     };
   }, []);

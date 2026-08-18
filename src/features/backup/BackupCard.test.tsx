@@ -10,16 +10,16 @@ const CARPETA = "/Users/leo/Drive/sunrise";
  * El mock guarda los ajustes en estado de módulo, así que cada test parte de la
  * carpeta que necesita en vez de heredar la del anterior.
  */
-async function configurar(dir: string) {
+async function configure(dir: string) {
   await useSettingsStore.getState().set(SettingKey.BACKUP_DIR, dir);
   await useSettingsStore.getState().set(SettingKey.BACKUP_LAST_ERROR, "");
 }
 
-const guardados = () => backupSettings(useSettingsStore.getState().values);
+const saved = () => backupSettings(useSettingsStore.getState().values);
 
 describe("BackupCard · la carpeta", () => {
   beforeEach(async () => {
-    await configurar("");
+    await configure("");
   });
 
   it("sin carpeta, dice que el respaldo está apagado y no deja respaldar", async () => {
@@ -36,43 +36,43 @@ describe("BackupCard · la carpeta", () => {
    */
   it("una ruta que no sirve se rechaza y se dice, en vez de guardarse en silencio", async () => {
     render(<BackupCard />);
-    const campo = await screen.findByLabelText("Carpeta de respaldos");
+    const field = await screen.findByLabelText("Carpeta de respaldos");
 
-    await userEvent.type(campo, "respaldos");
+    await userEvent.type(field, "respaldos");
     await userEvent.tab();
 
-    expect(campo).toHaveClass("is-invalid");
+    expect(field).toHaveClass("is-invalid");
     expect(screen.getByText(/absoluta/)).toBeInTheDocument();
-    expect(guardados().dir).toBe("");
+    expect(saved().dir).toBe("");
   });
 
   it("guarda una carpeta válida y con eso enciende el respaldo", async () => {
     render(<BackupCard />);
-    const campo = await screen.findByLabelText("Carpeta de respaldos");
+    const field = await screen.findByLabelText("Carpeta de respaldos");
 
-    await userEvent.type(campo, CARPETA);
+    await userEvent.type(field, CARPETA);
     await userEvent.tab();
 
-    expect(guardados().dir).toBe(CARPETA);
-    expect(guardados().activo).toBe(true);
+    expect(saved().dir).toBe(CARPETA);
+    expect(saved().active).toBe(true);
   });
 
   it("vaciar el campo apaga el respaldo sin pedir validación", async () => {
-    await configurar(CARPETA);
+    await configure(CARPETA);
     render(<BackupCard />);
-    const campo = await screen.findByLabelText("Carpeta de respaldos");
+    const field = await screen.findByLabelText("Carpeta de respaldos");
 
-    await userEvent.clear(campo);
+    await userEvent.clear(field);
     await userEvent.tab();
 
-    expect(guardados().activo).toBe(false);
-    expect(campo).not.toHaveClass("is-invalid");
+    expect(saved().active).toBe(false);
+    expect(field).not.toHaveClass("is-invalid");
   });
 });
 
 describe("BackupCard · respaldar", () => {
   beforeEach(async () => {
-    await configurar(CARPETA);
+    await configure(CARPETA);
   });
 
   /**
@@ -83,14 +83,14 @@ describe("BackupCard · respaldar", () => {
   it("el respaldo manual aparece en la lista", async () => {
     render(<BackupCard />);
     await screen.findByRole("button", { name: /Respaldar ahora/ });
-    const antes = screen.queryAllByRole("button", { name: /Restaurar el respaldo del/ }).length;
+    const before = screen.queryAllByRole("button", { name: /Restaurar el respaldo del/ }).length;
 
     await userEvent.click(screen.getByRole("button", { name: /Respaldar ahora/ }));
 
     expect(await screen.findByText(/Respaldo listo/)).toBeInTheDocument();
     expect(
       screen.getAllByRole("button", { name: /Restaurar el respaldo del/ }),
-    ).toHaveLength(antes + 1);
+    ).toHaveLength(before + 1);
   });
 
   /**
@@ -121,38 +121,38 @@ describe("BackupCard · respaldar", () => {
 
   it("un `conservar` menor que 1 se rechaza: no puede ser 'borra todos'", async () => {
     render(<BackupCard />);
-    const campo = await screen.findByLabelText("Conservar");
+    const field = await screen.findByLabelText("Conservar");
 
-    await userEvent.clear(campo);
-    await userEvent.type(campo, "0");
+    await userEvent.clear(field);
+    await userEvent.type(field, "0");
     await userEvent.tab();
 
-    expect(campo).toHaveClass("is-invalid");
-    expect(guardados().conservar).toBe(2);
+    expect(field).toHaveClass("is-invalid");
+    expect(saved().keep).toBe(2);
   });
 });
 
 describe("BackupCard · restaurar", () => {
   beforeEach(async () => {
-    await configurar(CARPETA);
+    await configure(CARPETA);
   });
 
-  /** El recién hecho, que `crearBackup` deja primero en la lista. */
-  async function abrirElMasNuevo() {
+  /** El recién hecho, que `createBackup` deja primero en la lista. */
+  async function openNewest() {
     await userEvent.click(await screen.findByRole("button", { name: /Respaldar ahora/ }));
-    const filas = await screen.findAllByRole("button", { name: /Restaurar el respaldo del/ });
-    await userEvent.click(filas[0]);
+    const rows = await screen.findAllByRole("button", { name: /Restaurar el respaldo del/ });
+    await userEvent.click(rows[0]);
   }
 
   /** Es la única acción de la app que destruye datos sin poder deshacerse. */
   it("no restaura sin pasar por la confirmación", async () => {
     render(<BackupCard />);
-    await abrirElMasNuevo();
+    await openNewest();
 
-    const dialogo = await screen.findByRole("alertdialog", { name: "Confirmar restauración" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Confirmar restauración" });
     // Tiene que decir las dos cosas que el usuario necesita saber.
-    expect(dialogo).toHaveTextContent(/no se pueden recuperar/);
-    expect(dialogo).toHaveTextContent(/guarda una copia de tu base actual/);
+    expect(dialog).toHaveTextContent(/no se pueden recuperar/);
+    expect(dialog).toHaveTextContent(/guarda una copia de tu base actual/);
 
     await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -164,16 +164,16 @@ describe("BackupCard · restaurar", () => {
    */
   it("confirmando, cierra la confirmación y abre el resumen de lo que quedó", async () => {
     render(<BackupCard />);
-    await abrirElMasNuevo();
+    await openNewest();
     await userEvent.click(await screen.findByRole("button", { name: /Restaurar y reemplazar/ }));
 
-    const resumen = await screen.findByRole("alertdialog", { name: "Respaldo restaurado" });
+    const summary = await screen.findByRole("alertdialog", { name: "Respaldo restaurado" });
     // Las tres cosas útiles: de qué momento es, con qué quedó, y el deshacer.
-    expect(resumen).toHaveTextContent(/Del/);
-    expect(resumen).toHaveTextContent(/tareas?/);
-    expect(resumen).toHaveTextContent(/antes-de-restaurar/);
+    expect(summary).toHaveTextContent(/Del/);
+    expect(summary).toHaveTextContent(/tareas?/);
+    expect(summary).toHaveTextContent(/antes-de-restaurar/);
     // Y no la versión, que en el mock es la misma: decir "dev → dev" es ruido.
-    expect(resumen).not.toHaveTextContent(/migrado a/);
+    expect(summary).not.toHaveTextContent(/migrado a/);
 
     await userEvent.click(screen.getByRole("button", { name: "Entendido" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();

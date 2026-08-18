@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./ipc";
-import type { Perfil } from "./types";
+import type { Profile } from "./types";
 
 /**
  * En qué perfil corre esta ventana, y sobre qué archivo de base.
@@ -17,10 +17,10 @@ import type { Perfil } from "./types";
  * resultado— para que dos componentes montándose a la vez compartan la misma
  * llamada en vez de disparar dos.
  */
-let pendiente: Promise<Perfil> | null = null;
+let pendiente: Promise<Profile> | null = null;
 
-function pedir(): Promise<Perfil> {
-  pendiente ??= api.perfil();
+function pedir(): Promise<Profile> {
+  pendiente ??= api.profile();
   return pendiente;
 }
 
@@ -29,18 +29,18 @@ function pedir(): Promise<Perfil> {
  * `null` como "todavía no sé", **no** como "no es dev": el respaldo automático se
  * apaga en dev, y asumir producción por un instante alcanza para que corra.
  */
-export function usePerfil(): Perfil | null {
-  const [perfil, setPerfil] = useState<Perfil | null>(null);
+export function useProfile(): Profile | null {
+  const [profile, setPerfil] = useState<Profile | null>(null);
 
   useEffect(() => {
-    let vivo = true;
+    let alive = true;
     void pedir().then((p) => {
-      if (vivo) setPerfil(p);
+      if (alive) setPerfil(p);
     });
     return () => {
-      vivo = false;
+      alive = false;
     };
   }, []);
 
-  return perfil;
+  return profile;
 }

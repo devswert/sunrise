@@ -14,7 +14,7 @@ export function describeTaskEvent(e: TaskEvent): string {
   // Sin fecha no hay "fecha de inicio" que mover: la tarea se fue al backlog, y
   // decirlo así evita el "…la fecha de inicio al backlog" que salía de traducir
   // la plantilla en inglés tal cual.
-  const mover = (s: string | null) =>
+  const move = (s: string | null) =>
     s ? `Moviste la fecha de inicio al ${shortDate(s)}` : "Moviste la tarea al backlog";
   switch (e.type) {
     case "CREATED":
@@ -22,9 +22,9 @@ export function describeTaskEvent(e: TaskEvent): string {
     // Los dos comparten texto a propósito: para quien lee el historial, fijar
     // la fecha por primera vez y cambiarla después son el mismo hecho.
     case "START_DATE_SET":
-      return mover(e.toDate);
+      return move(e.toDate);
     case "MOVED":
-      return mover(e.toDate);
+      return move(e.toDate);
     // La app como sujeto explícito, que es lo que este evento vino a distinguir:
     // "Moviste" diría que fuiste tú, y no fuiste tú.
     case "CARRIED_OVER":

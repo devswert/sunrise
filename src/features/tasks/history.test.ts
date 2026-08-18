@@ -27,13 +27,13 @@ describe("describeTaskEvent", () => {
     // acá en vez de aparecer suelto en el historial.
     const tipos = ["CREATED", "START_DATE_SET", "MOVED", "CARRIED_OVER"] as const;
     for (const type of tipos) {
-      const linea = describeTaskEvent(
+      const line = describeTaskEvent(
         ev({ type, fromDate: "2026-08-05", toDate: "2026-08-06" }),
       );
       // `\s` y no `\b`: en JS `\b` se define con [A-Za-z0-9_], así que después
       // de la "ú" no hay frontera de palabra y la primera versión de este test
       // pasaba igual con "Tú creaste esta tarea".
-      expect(linea).not.toMatch(/^(Tú|Tu)\s/);
+      expect(line).not.toMatch(/^(Tú|Tu)\s/);
     }
   });
 
@@ -50,15 +50,15 @@ describe("describeTaskEvent", () => {
   });
 
   it("distingue el arrastre automático de un movimiento a mano", () => {
-    const linea = describeTaskEvent(
+    const line = describeTaskEvent(
       ev({ type: "CARRIED_OVER", fromDate: "2026-08-05", toDate: "2026-08-06" }),
     );
     // De dónde venía, que es lo que uno quiere saber al ver la tarea hoy.
-    expect(linea).toContain("5 ago");
+    expect(line).toContain("5 ago");
     // Y con la app como sujeto explícito: no fuiste tú quien la movió, y decir
     // lo contrario haría inútil tener un evento aparte.
-    expect(linea).toContain("sunrise");
-    expect(linea).not.toContain("Moviste");
+    expect(line).toContain("sunrise");
+    expect(line).not.toContain("Moviste");
   });
 
   it("sin fecha destino dice que se fue al backlog", () => {

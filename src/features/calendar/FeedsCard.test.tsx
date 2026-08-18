@@ -41,12 +41,12 @@ vi.mock("../../lib/ipc", () => ({
     updateCalendarFeed: () => updateCalendarFeed(),
     deleteCalendarFeed: (id: number) => deleteCalendarFeed(id),
     syncCalendarFeed: (id: number) => syncCalendarFeed(id),
-    syncCalendarFeeds: (forzar?: boolean) => syncCalendarFeeds(forzar),
+    syncCalendarFeeds: (force?: boolean) => syncCalendarFeeds(force),
     listCategories: async (): Promise<Category[]> => [],
   },
 }));
 
-const categorias: Category[] = [
+const categories: Category[] = [
   { id: 1, parentId: null, name: "Meetings", color: "sage", position: 0, archived: false },
 ];
 
@@ -76,7 +76,7 @@ describe("FeedsCard", () => {
   });
 
   it("sin calendarios ofrece agregar el primero", async () => {
-    render(<FeedsCard categories={categorias} />);
+    render(<FeedsCard categories={categories} />);
     expect(
       await screen.findByRole("button", { name: /Agregar calendario/ }),
     ).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe("FeedsCard", () => {
     // Inline era peor por una razón concreta: con cuatro campos y autosave al
     // salir de cada uno, cualquier orden de llenado guardaba a medias.
     const user = userEvent.setup();
-    render(<FeedsCard categories={categorias} />);
+    render(<FeedsCard categories={categories} />);
 
     await user.click(await screen.findByRole("button", { name: /Agregar calendario/ }));
     expect(screen.getByRole("dialog", { name: "Agregar calendario" })).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe("FeedsCard", () => {
     // Un feed sin URL no tiene nada que sincronizar: en vez de guardarlo y que
     // falle en cada pasada del poller, el botón queda deshabilitado.
     const user = userEvent.setup();
-    render(<FeedsCard categories={categorias} />);
+    render(<FeedsCard categories={categories} />);
 
     await user.click(await screen.findByRole("button", { name: /Agregar calendario/ }));
     await user.type(screen.getByLabelText("Nombre del calendario"), "Sin URL");
@@ -124,7 +124,7 @@ describe("FeedsCard", () => {
     // Es la dirección secreta del calendario, o sea una credencial: esta
     // pantalla termina en screenshots y en pantallas compartidas.
     const user = userEvent.setup();
-    render(<FeedsCard categories={categorias} />);
+    render(<FeedsCard categories={categories} />);
     await user.click(await screen.findByRole("button", { name: /Agregar calendario/ }));
 
     expect(screen.getByLabelText("URL del calendario")).toHaveAttribute("type", "password");
@@ -133,7 +133,7 @@ describe("FeedsCard", () => {
   it("sincroniza un feed a pedido", async () => {
     const user = userEvent.setup();
     conFeed();
-    render(<FeedsCard categories={categorias} />);
+    render(<FeedsCard categories={categories} />);
 
     await user.click(await screen.findByLabelText("Sincronizar Trabajo"));
 
@@ -144,12 +144,12 @@ describe("FeedsCard", () => {
     // El estado es compartido con el botón de la vista semana: si uno corre, el
     // otro no puede lanzar una segunda pasada encima.
     conFeed();
-    render(<FeedsCard categories={categorias} />);
-    const boton = await screen.findByLabelText("Sincronizar Trabajo");
+    render(<FeedsCard categories={categories} />);
+    const button = await screen.findByLabelText("Sincronizar Trabajo");
 
     useCalendarSync.setState({ sincronizando: true });
 
-    await waitFor(() => expect(boton).toBeDisabled());
+    await waitFor(() => expect(button).toBeDisabled());
   });
 
   it("un feed con error lo dice, en vez de parecer que nunca se sincronizó", async () => {
@@ -159,7 +159,7 @@ describe("FeedsCard", () => {
       lastSyncedAt: "2026-08-13T10:00:00Z",
       lastError: "el feed rechazó la credencial (401/403): revisa la URL secreta",
     });
-    render(<FeedsCard categories={categorias} />);
+    render(<FeedsCard categories={categories} />);
 
     expect(await screen.findByText(/rechazó la credencial/)).toBeInTheDocument();
   });
@@ -167,7 +167,7 @@ describe("FeedsCard", () => {
   it("quitar un feed pide confirmación", async () => {
     const user = userEvent.setup();
     conFeed();
-    render(<FeedsCard categories={categorias} />);
+    render(<FeedsCard categories={categories} />);
 
     await user.click(await screen.findByLabelText("Quitar Trabajo"));
     expect(deleteCalendarFeed).not.toHaveBeenCalled();
@@ -180,7 +180,7 @@ describe("FeedsCard", () => {
     // Es lo que identifica al feed, y editarla en un campo `password` con
     // autosave es la receta para apuntar a otro calendario sin darse cuenta.
     conFeed();
-    render(<FeedsCard categories={categorias} />);
+    render(<FeedsCard categories={categories} />);
     await screen.findByLabelText("Nombre de Trabajo");
 
     expect(screen.queryByLabelText("URL del calendario")).toBeNull();

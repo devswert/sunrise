@@ -20,7 +20,7 @@ export interface Caja {
  * se descartan: si no, arrastrarían la envolvente hasta la esquina superior
  * izquierda y medio taxímetro contaría como hover.
  */
-export function dentroDeLaEnvolvente(x: number, y: number, cajas: Caja[]): boolean {
+export function insideEnvelope(x: number, y: number, cajas: Caja[]): boolean {
   const vivas = cajas.filter((c) => c.right > c.left && c.bottom > c.top);
   if (vivas.length === 0) return false;
 
@@ -53,23 +53,23 @@ const INTERVALO_MS = 120;
  * sigue vivo aunque la ventana esté oculta, y si no, esto sondearía para siempre
  * sin nada en pantalla.
  */
-export function useCursorHover(activo: boolean, selectores: string): boolean {
+export function useCursorHover(active: boolean, selectores: string): boolean {
   const [dentro, setDentro] = useState(false);
 
   useEffect(() => {
-    if (!activo || !isTauri()) {
+    if (!active || !isTauri()) {
       setDentro(false);
       return;
     }
 
-    let cancelado = false;
+    let cancelled = false;
     let intervalo: ReturnType<typeof setInterval> | undefined;
     // Un aviso, no uno cada 120ms. Este sondeo ya falló callado una vez —
     // faltaba `core:window:allow-cursor-position` en las capabilities y el
     // `catch` se comía el rechazo, así que el hover sin foco simplemente no
     // funcionaba y no había ni una línea en la consola que lo dijera.
     let yaAvise = false;
-    const avisar = (err: unknown) => {
+    const notify = (err: unknown) => {
       if (yaAvise) return;
       yaAvise = true;
       console.error("[sunrise] taxímetro: no pude sondear el puntero:", err);
@@ -81,7 +81,7 @@ export function useCursorHover(activo: boolean, selectores: string): boolean {
           "@tauri-apps/api/window"
         );
         const win = getCurrentWindow();
-        if (cancelado) return;
+        if (cancelled) return;
 
         const medir = async () => {
           try {
@@ -94,7 +94,7 @@ export function useCursorHover(activo: boolean, selectores: string): boolean {
               win.scaleFactor(),
               primaryMonitor(),
             ]);
-            if (cancelado) return;
+            if (cancelled) return;
 
             // Las dos vienen "físicas", pero NO en la misma escala. Restarlas en
             // crudo fue el bug que dejó este sondeo sin acertar ni una vez:
@@ -117,12 +117,12 @@ export function useCursorHover(activo: boolean, selectores: string): boolean {
             const cajas = Array.from(document.querySelectorAll(selectores)).map((el) =>
               el.getBoundingClientRect(),
             );
-            setDentro(dentroDeLaEnvolvente(x, y, cajas));
+            setDentro(insideEnvelope(x, y, cajas));
           } catch (err) {
             // Si el sondeo falla no dejamos el panel clavado abierto.
-            if (cancelado) return;
+            if (cancelled) return;
             setDentro(false);
-            avisar(err);
+            notify(err);
           }
         };
 
@@ -131,15 +131,15 @@ export function useCursorHover(activo: boolean, selectores: string): boolean {
       } catch (err) {
         // Sin esto el taxímetro se queda sin hover del todo, porque el CSS ya no
         // tiene un `:hover` de respaldo. Que se sepa.
-        avisar(err);
+        notify(err);
       }
     })();
 
     return () => {
-      cancelado = true;
+      cancelled = true;
       if (intervalo) clearInterval(intervalo);
     };
-  }, [activo, selectores]);
+  }, [active, selectores]);
 
   return dentro;
 }

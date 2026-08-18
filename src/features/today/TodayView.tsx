@@ -6,7 +6,7 @@ import { dateLabel } from "../../lib/date";
 import { useToday } from "../../lib/day";
 import { useCapacitySettings, useWorkHours } from "../../lib/settings";
 import { CalendarRail } from "../calendar/CalendarRail";
-import { useTrabajoDelDia } from "../calendar/useTrabajoDelDia";
+import { useDayWork } from "../calendar/useTrabajoDelDia";
 
 export function TodayView() {
   // `useToday` y no `todayISO()`: calculado al renderizar, una sesión abierta
@@ -15,8 +15,8 @@ export function TodayView() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const board = useBoard(today, today);
   const capacity = useCapacitySettings();
-  const jornada = useWorkHours();
-  const { trabajo, segundosEnCurso } = useTrabajoDelDia(today);
+  const workday = useWorkHours();
+  const { work, segundosEnCurso } = useDayWork(today);
 
   const tasks = board.tasksByDate[today] ?? [];
   // Deriva de los datos frescos: así el modal refleja al instante lo guardado.
@@ -53,9 +53,9 @@ export function TodayView() {
           today={today}
           tasks={tasks}
           categoryMap={board.categoryMap}
-          workStart={jornada.start}
-          workEnd={jornada.end}
-          trabajo={trabajo}
+          workStart={workday.start}
+          workEnd={workday.end}
+          work={work}
           segundosEnCurso={segundosEnCurso}
           onOpen={(t) => setSelectedId(t.id)}
         />

@@ -6,7 +6,7 @@ import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
 import { relativeTime } from "../../lib/date";
 import { useCalendarSync } from "../../lib/calendarSync";
-import { iconoDeSeccion } from "../settings/secciones";
+import { sectionIcon } from "../settings/secciones";
 import { AddFeedModal, POLL_DEFAULT, POLL_MINIMO } from "./AddFeedModal";
 import { SyncButton } from "./SyncButton";
 
@@ -14,7 +14,7 @@ interface Props {
   categories: Category[];
 }
 
-const IconoSeccion = iconoDeSeccion("calendarios");
+const SectionIcon = sectionIcon("calendarios");
 
 /**
  * Calendarios configurados: alta en modal, edición inline y borrado.
@@ -27,8 +27,8 @@ export function FeedsCard({ categories }: Props) {
   const [feeds, setFeeds] = useState<CalendarFeed[]>([]);
   const [agregando, setAgregando] = useState(false);
   const sincronizando = useCalendarSync((s) => s.sincronizando);
-  const sincronizar = useCalendarSync((s) => s.sincronizar);
-  const refrescarSync = useCalendarSync((s) => s.refrescar);
+  const sync = useCalendarSync((s) => s.sync);
+  const refrescarSync = useCalendarSync((s) => s.refresh);
 
   const load = useCallback(async () => {
     setFeeds(await api.listCalendarFeeds());
@@ -61,7 +61,7 @@ export function FeedsCard({ categories }: Props) {
         <div>
           <h2>
             {/* El mismo icono que su tab: sale de `TABS` para que no se separen. */}
-            <IconoSeccion size={16} aria-hidden /> Calendarios
+            <SectionIcon size={16} aria-hidden /> Calendarios
           </h2>
           <p>
             Los eventos entran como tareas normales: les puedes poner el taxímetro, completarlas
@@ -87,10 +87,10 @@ export function FeedsCard({ categories }: Props) {
               <FeedItem
                 key={f.id}
                 feed={f}
-                canales={opcionesCanal}
+                channels={opcionesCanal}
                 sincronizando={sincronizando}
-                onSincronizar={() => void sincronizar(f.id)}
-                onGuardar={async (patch) => {
+                onSync={() => void sync(f.id)}
+                onSave={async (patch) => {
                   await api.updateCalendarFeed(
                     f.id,
                     patch.name ?? f.name,
@@ -103,7 +103,7 @@ export function FeedsCard({ categories }: Props) {
                   );
                   await load();
                 }}
-                onBorrar={async () => {
+                onDelete={async () => {
                   await api.deleteCalendarFeed(f.id);
                   await load();
                 }}
@@ -118,14 +118,14 @@ export function FeedsCard({ categories }: Props) {
 
       {agregando && (
         <AddFeedModal
-          categorias={opcionesCanal}
+          categories={opcionesCanal}
           onClose={() => setAgregando(false)}
-          onGuardar={async (d) => {
+          onSave={async (d) => {
             await api.createCalendarFeed(d.name, d.icsUrl, d.defaultCategoryId, d.pollMinutes);
             await load();
             // Recién creado: traer sus eventos de inmediato en vez de esperar al
             // poller, que puede tardar hasta un minuto en despertar.
-            await sincronizar();
+            await sync();
           }}
         />
       )}
@@ -151,23 +151,23 @@ interface PatchFeed {
  */
 function FeedItem({
   feed,
-  canales,
+  channels,
   sincronizando,
-  onGuardar,
-  onSincronizar,
-  onBorrar,
+  onSave,
+  onSync,
+  onDelete,
 }: {
   feed: CalendarFeed;
-  canales: SearchOption[];
+  channels: SearchOption[];
   sincronizando: boolean;
-  onGuardar: (p: PatchFeed) => Promise<void>;
-  onSincronizar: () => void;
-  onBorrar: () => Promise<void>;
+  onSave: (p: PatchFeed) => Promise<void>;
+  onSync: () => void;
+  onDelete: () => Promise<void>;
 }) {
   const [name, setName] = useState(feed.name);
   const [poll, setPoll] = useState(String(feed.pollMinutes));
   const [abierto, setAbierto] = useState(false);
-  const [confirmar, setConfirmar] = useState(false);
+  const [confirmar, setConfirm] = useState(false);
   const catRef = useRef<HTMLDivElement>(null);
 
   // El feed llega fresco desde el padre después de cada guardado.
@@ -176,7 +176,7 @@ function FeedItem({
     setPoll(String(feed.pollMinutes));
   }, [feed.name, feed.pollMinutes]);
 
-  const canal = canales.find((o) => o.value === String(feed.defaultCategoryId));
+  const channel = channels.find((o) => o.value === String(feed.defaultCategoryId));
 
   return (
     <li className={`feed${feed.lastError ? " is-roto" : ""}`}>
@@ -190,7 +190,7 @@ function FeedItem({
           onChange={(e) => setName(e.target.value)}
           onBlur={() => {
             const v = name.trim();
-            if (v && v !== feed.name) void onGuardar({ name: v });
+            if (v && v !== feed.name) void onSave({ name: v });
             else setName(feed.name);
           }}
           onKeyDown={(e) => {
@@ -204,16 +204,16 @@ function FeedItem({
             aria-label={`Sincronizar ${feed.name}`}
             title="Sincronizar solo este calendario"
             disabled={sincronizando}
-            onClick={onSincronizar}
+            onClick={onSync}
           >
             <RefreshCw size={14} className={sincronizando ? "is-spinning" : undefined} />
           </button>
           {confirmar ? (
             <span className="confirm">
-              <button className="btn-ghost" onClick={() => setConfirmar(false)}>
+              <button className="btn-ghost" onClick={() => setConfirm(false)}>
                 Cancelar
               </button>
-              <button className="btn-danger is-solid" onClick={onBorrar}>
+              <button className="btn-danger is-solid" onClick={onDelete}>
                 Sí, quitar
               </button>
             </span>
@@ -222,7 +222,7 @@ function FeedItem({
               className="set-row__icon is-danger"
               aria-label={`Quitar ${feed.name}`}
               title="Quitar el calendario (las tareas ya importadas se quedan)"
-              onClick={() => setConfirmar(true)}
+              onClick={() => setConfirm(true)}
             >
               <Trash2 size={14} />
             </button>
@@ -233,22 +233,22 @@ function FeedItem({
       <div className="feed__meta">
         <div className="chip-wrap" ref={catRef}>
           <button
-            className={`chip${canal ? " is-set" : ""}`}
+            className={`chip${channel ? " is-set" : ""}`}
             aria-label={`Canal por defecto de ${feed.name}`}
             onClick={() => setAbierto((v) => !v)}
           >
-            {canal ? canal.label : "sin canal"}
+            {channel ? channel.label : "sin canal"}
           </button>
           {abierto && (
             <Popover anchorRef={catRef} onClose={() => setAbierto(false)}>
               <SearchSelect
-                options={canales}
+                options={channels}
                 value={feed.defaultCategoryId != null ? String(feed.defaultCategoryId) : null}
                 placeholder="Buscar canal…"
                 clearLabel="Sin canal"
                 onSelect={(v) => {
                   setAbierto(false);
-                  void onGuardar({ defaultCategoryId: v ? Number(v) : null });
+                  void onSave({ defaultCategoryId: v ? Number(v) : null });
                 }}
               />
             </Popover>
@@ -266,7 +266,7 @@ function FeedItem({
             onBlur={() => {
               const v = Math.max(POLL_MINIMO, Number.parseInt(poll, 10) || POLL_DEFAULT);
               setPoll(String(v));
-              if (v !== feed.pollMinutes) void onGuardar({ pollMinutes: v });
+              if (v !== feed.pollMinutes) void onSave({ pollMinutes: v });
             }}
           />
           min
@@ -276,9 +276,9 @@ function FeedItem({
           <input
             type="checkbox"
             checked={feed.importAsTasks}
-            onChange={(e) => void onGuardar({ importAsTasks: e.target.checked })}
+            onChange={(e) => void onSave({ importAsTasks: e.target.checked })}
           />
-          Importar como tareas
+          Importar como tasks
         </label>
       </div>
 

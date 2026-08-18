@@ -14,7 +14,7 @@ import { relativeTime } from "../../lib/date";
  * que sincronizar es una promesa vacía.
  */
 export function SyncButton({ className = "" }: { className?: string }) {
-  const { sincronizando, ultimaSync, feeds, sincronizar } = useCalendarSync();
+  const { sincronizando, ultimaSync, feeds, sync } = useCalendarSync();
 
   if (feeds === 0) return null;
 
@@ -24,7 +24,7 @@ export function SyncButton({ className = "" }: { className?: string }) {
       className={`sync-btn ${className}`}
       disabled={sincronizando}
       aria-busy={sincronizando}
-      onClick={() => void sincronizar()}
+      onClick={() => void sync()}
       title={
         ultimaSync
           ? `Última sincronización: ${relativeTime(ultimaSync)}`

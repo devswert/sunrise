@@ -24,29 +24,29 @@ import { TaskCardStatic } from "../week/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
 import { Donut } from "../../components/Donut";
 import {
-  barrasPorDia,
-  cerradasPorDia,
-  horas,
-  horasDeMinutos,
-  porContexto,
-  techoEnMinutos,
+  barsByDay,
+  closedByDay,
+  hours,
+  hoursFromMinutes,
+  byContext,
+  ceilingInMinutes,
 } from "./weeklyReview";
 import "./review.css";
 
 /** Una cifra de la cabecera: punto de color, número y su etiqueta, en una línea. */
 function Chip({
   color,
-  valor,
+  value,
   label,
 }: {
   color: string;
-  valor: string | number;
+  value: string | number;
   label: string;
 }) {
   return (
     <span className="chip-cifra">
       <span className="chip-cifra__punto" style={{ background: color }} />
-      <strong>{valor}</strong> {label}
+      <strong>{value}</strong> {label}
     </span>
   );
 }
@@ -94,10 +94,10 @@ export function WeeklyReviewView() {
   }, [load, dataVersion]);
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-  const barras = useMemo(() => (rollup ? barrasPorDia(rollup, catMap) : []), [rollup, catMap]);
-  const contextos = useMemo(() => (rollup ? porContexto(rollup, catMap) : []), [rollup, catMap]);
-  const cerradas = useMemo(() => (rollup ? cerradasPorDia(rollup) : new Map()), [rollup]);
-  const techo = techoEnMinutos(barras);
+  const barras = useMemo(() => (rollup ? barsByDay(rollup, catMap) : []), [rollup, catMap]);
+  const contextos = useMemo(() => (rollup ? byContext(rollup, catMap) : []), [rollup, catMap]);
+  const closed = useMemo(() => (rollup ? closedByDay(rollup) : new Map()), [rollup]);
+  const techo = ceilingInMinutes(barras);
 
   const toggle = async (t: Task) => {
     await api.setTaskStatus(t.id, t.status === "DONE" ? "TODO" : "DONE");
@@ -105,7 +105,7 @@ export function WeeklyReviewView() {
   };
 
   const selectedTask =
-    rollup?.completadas.find((t) => t.id === abierta?.id) ?? abierta;
+    rollup?.completedTasks.find((t) => t.id === abierta?.id) ?? abierta;
   const esSemanaActual = dates.includes(todayISO());
   const cumplidos = objectives.filter((o) => o.completed).length;
 
@@ -126,19 +126,19 @@ export function WeeklyReviewView() {
             falta a "lo que se cerró". */}
         {rollup && (
           <div className="review__cifras">
-            <Chip color="var(--mint-ink)" valor={rollup.completadas.length} label="cerradas" />
-            <Chip color="var(--sage-ink)" valor={horas(rollup.totalSeconds)} label="trabajado" />
+            <Chip color="var(--mint-ink)" value={rollup.completedTasks.length} label="cerradas" />
+            <Chip color="var(--sage-ink)" value={hours(rollup.totalSeconds)} label="trabajado" />
             {/* El gris es el mismo de la marca punteada del gráfico: el color
                 ata la cifra a lo que representa más abajo. */}
             <Chip
               color="var(--faint)"
-              valor={horasDeMinutos(rollup.plannedMinutes)}
+              value={hoursFromMinutes(rollup.plannedMinutes)}
               label="planificado"
             />
             {objectives.length > 0 && (
               <Chip
                 color="var(--lavender-ink)"
-                valor={`${cumplidos}/${objectives.length}`}
+                value={`${cumplidos}/${objectives.length}`}
                 label="objetivos"
               />
             )}
@@ -174,9 +174,9 @@ export function WeeklyReviewView() {
         <p className="review__vacio">Cargando la semana…</p>
       ) : (
         <div className="review__body">
-          {rollup.sinEstimar > 0 && (
+          {rollup.unestimated > 0 && (
             <p className="review__aviso">
-              {rollup.sinEstimar} {rollup.sinEstimar === 1 ? "tarea" : "tareas"} sin estimar: lo
+              {rollup.unestimated} {rollup.unestimated === 1 ? "tarea" : "tareas"} sin estimar: lo
               planificado de la semana va corto.
             </p>
           )}
@@ -191,7 +191,7 @@ export function WeeklyReviewView() {
                     choca con su propia marca. */}
                 <span className="review__pista">
                   <span className="review__pista-linea" /> planificado · escala{" "}
-                  {horasDeMinutos(techo)}
+                  {hoursFromMinutes(techo)}
                 </span>
               </h2>
               <div className="barras">
@@ -204,11 +204,11 @@ export function WeeklyReviewView() {
                         <span
                           className="barra__plan"
                           style={{ bottom: `${(d.plannedMinutes / techo) * 100}%` }}
-                          title={`Planificado: ${horasDeMinutos(d.plannedMinutes)}`}
+                          title={`Planificado: ${hoursFromMinutes(d.plannedMinutes)}`}
                         />
                       )}
                       <div className="barra__pila">
-                        {d.segmentos.map((s) => (
+                        {d.segments.map((s) => (
                           <span
                             key={s.key}
                             className="barra__seg"
@@ -216,13 +216,13 @@ export function WeeklyReviewView() {
                               height: `${(s.seconds / 60 / techo) * 100}%`,
                               background: s.color,
                             }}
-                            title={`${s.nombre}: ${horas(s.seconds)}`}
+                            title={`${s.name}: ${hours(s.seconds)}`}
                           />
                         ))}
                       </div>
                     </div>
-                    <span className="barra__label">{d.etiqueta}</span>
-                    <span className="barra__total">{d.seconds > 0 ? horas(d.seconds) : "—"}</span>
+                    <span className="barra__label">{d.label}</span>
+                    <span className="barra__total">{d.seconds > 0 ? hours(d.seconds) : "—"}</span>
                   </div>
                 ))}
               </div>
@@ -237,13 +237,13 @@ export function WeeklyReviewView() {
                 <p className="review__vacio">Sin tiempo registrado esta semana.</p>
               ) : (
                 <div className="donut-bloque">
-                  <Donut segmentos={contextos} total={rollup.totalSeconds} />
+                  <Donut segments={contextos} total={rollup.totalSeconds} />
                   <ul className="leyenda">
                     {contextos.map((s) => (
                       <li key={s.key}>
                         <span className="leyenda__punto" style={{ background: s.color }} />
-                        <span className="leyenda__nombre">{s.nombre}</span>
-                        <span className="leyenda__valor">{horas(s.seconds)}</span>
+                        <span className="leyenda__nombre">{s.name}</span>
+                        <span className="leyenda__valor">{hours(s.seconds)}</span>
                       </li>
                     ))}
                   </ul>
@@ -285,18 +285,18 @@ export function WeeklyReviewView() {
           <section className="review__panel">
             <h2 className="review__h2">Lo que se cerró</h2>
             <div className="review__dias">
-              {rollup.dias.map((d) => {
-                const lista: Task[] = cerradas.get(d.date) ?? [];
+              {rollup.days.map((d) => {
+                const list: Task[] = closed.get(d.date) ?? [];
                 return (
                   <div key={d.date} className="review__dia">
                     <header className="review__dia-head">
                       <span>{shortWeekday(d.date)}</span>
-                      <span className="review__dia-h">{d.seconds > 0 ? horas(d.seconds) : ""}</span>
+                      <span className="review__dia-h">{d.seconds > 0 ? hours(d.seconds) : ""}</span>
                     </header>
-                    {lista.length === 0 ? (
+                    {list.length === 0 ? (
                       <p className="review__vacio">—</p>
                     ) : (
-                      lista.map((t) => (
+                      list.map((t) => (
                         <TaskCardStatic
                           key={t.id}
                           task={t}
