@@ -12,6 +12,9 @@ import { FocusView } from "./features/focus/FocusView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { AddTaskModal } from "./features/tasks/AddTaskModal";
 import { QuitConfirm, useQuitListener } from "./components/QuitConfirm";
+import { WhatsNew } from "./features/updates/WhatsNew";
+import { useUpdateRuntime } from "./features/updates/useUpdateRuntime";
+import { useDevFake } from "./features/updates/devFake";
 import { useAppStore, useDataSync } from "./lib/store";
 import { useDayWatcher } from "./lib/day";
 import { useSettingsRuntime } from "./lib/settings";
@@ -24,6 +27,7 @@ import { useCalendarSyncRuntime } from "./lib/calendarSync";
 import { useShutdownReminder } from "./features/shutdown/useShutdownReminder";
 import { useBackupRuntime } from "./features/backup/useBackupRuntime";
 import "./features/week/week.css";
+import "./features/updates/updates.css";
 import "./features/tasks/task-modal.css";
 import "./features/tasks/add-task-modal.css";
 import "./components/search-select.css";
@@ -57,6 +61,12 @@ function Shell({ children }: { children: React.ReactNode }) {
   useShutdownReminder();
   // El respaldo automático, por lo mismo: dos ventanas serían dos zips por día.
   useBackupRuntime();
+  // Sondea el updater cada 4 h y detecta si esta sesión viene de actualizarse.
+  // También una sola ventana: dos serían dos consultas por intervalo.
+  useUpdateRuntime();
+  // Banco de pruebas del updater en la consola. Solo en dev; en el build es código
+  // muerto. Para sacarlo: borra `devFake.ts` y esta línea.
+  useDevFake();
   return <>{children}</>;
 }
 
@@ -85,6 +95,7 @@ export default function App() {
       </div>
       {composeOpen && <AddTaskModal />}
       <QuitConfirm />
+      <WhatsNew />
       </Shell>
     </HashRouter>
   );

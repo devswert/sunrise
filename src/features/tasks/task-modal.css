@@ -521,6 +521,16 @@ button.tmodal__time:hover {
   color: var(--ink);
   font-weight: 500;
 }
+/* El anuncio de "Lo nuevo" viene de `docs/CHANGELOG.md` y se renderiza como
+ * markdown, así que trae sus propios `<p>`: el `.dialog__body` de al lado es un
+ * `<p>` directo y no tiene que reponer estos márgenes. */
+.nuevo__texto p {
+  margin: 0 0 var(--space-2);
+}
+.nuevo__texto p:last-child {
+  margin-bottom: 0;
+}
+
 .dialog__actions {
   display: flex;
   justify-content: flex-end;

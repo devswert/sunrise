@@ -1504,16 +1504,132 @@ preguntar en vez de guardarse el `Update` de la búsqueda anterior — mantenerl
 entre dos comandos obliga a un `State` con media operación de red adentro, y el
 costo real es una petición HTTP.
 
-> **I** — **No se busca al arrancar.** La app ya interrumpe dos veces a una hora
-> fija (el aviso de cerrar el día y el respaldo automático); una tercera cosa que
-> aparece sola al abrir es la que sobra, y lo primero que uno mira en la mañana es
-> el día. Se busca desde Configs → General → Actualizaciones, con un botón.
+**Cuándo se busca.** Al abrir la app y después **cada 4 horas** (`useUpdateRuntime`,
+§4.23), más el botón de Configs → General → Actualizaciones cuando quieras
+preguntar ahora.
+
+> **I** — **Nada de esto interrumpe.** La decisión original de 5.3 fue no buscar al
+> arrancar, con el argumento de que la app ya interrumpe dos veces a una hora fija
+> (el aviso de cerrar el día y el respaldo). El sondeo automático **no la
+> contradice**: lo que aparece es una franja en el sidebar que espera, no un modal.
+> Lo que sigue prohibido es que algo se ponga adelante del día sin que lo pidas. Y
+> sin la consulta al arrancar, un intervalo de 4 horas no dispararía nunca para
+> quien cierra la app todos los días.
 
 **El fallo se dice en gris, no en rojo.** Sin conexión, o antes de que exista el
 primer Release, la consulta al `latest.json` no llega. La vista distingue los tres
 finales —hay versión nueva, no hay, no se pudo preguntar— porque los dos últimos se
 ven parecidos y significan lo contrario: "estás al día" es una respuesta, "sin
 conexión" es la falta de una.
+
+### 4.22 Changelog y el aviso "Lo nuevo"
+
+`docs/CHANGELOG.md` es **la fuente única de lo que se anuncia**, y de cada sección
+salen tres textos:
+
+| Dónde se lee | Qué parte |
+|---|---|
+| Modal "Lo nuevo en la vX.Y.Z", al abrir después de actualizar | el primer párrafo |
+| Configs → Actualizaciones, **antes** de instalar (`AppUpdate.notes`) | la sección entera |
+| El cuerpo del Release en GitHub | la sección entera |
+
+> **I** — **El aviso previo y el modal salen del mismo texto.** Es la razón del
+> diseño: si fueran dos, se prometería una cosa en Configs y se anunciaría otra al
+> reiniciar, y nadie lo notaría hasta que ya está publicado.
+
+**El formato es estricto porque lo leen dos cosas distintas.** `## vX.Y.Z — fecha`
+abre la sección; los párrafos que siguen son el anuncio; `### Detalle` empieza lo
+que **no** llega al modal (el detalle técnico). En el front lo parsea
+`src/lib/changelog.ts` (`announcementFor` / `sectionFor`); en CI, un `awk` de tres
+líneas en `release.yml`. No son dos parsers del mismo dato: uno quiere el primer
+párrafo y el otro la sección completa.
+
+**El changelog viaja en el bundle** (`import ... from "../../docs/CHANGELOG.md?raw"`).
+Cuesta unas decenas de líneas por versión y compra lo que importa: el modal aparece
+justo después de que el updater reinició la app, y ahí no es momento de depender de
+una petición HTTP.
+
+> **I** — **La versión que se compila tiene que tener su sección.** Si no, el modal
+> queda vacío **y** las notas del Release también, sin que nada se ponga rojo. Lo
+> cubre un test en `src/lib/changelog.test.ts` que lee la versión de `package.json`
+> — el equivalente del que compara los tres archivos de versión en Rust.
+
+**El modal `WhatsNew` no se abre solo.** Lo levanta el aviso del sidebar, que es lo
+que aparece al volver de un update — ver §4.23.
+
+---
+
+### 4.23 El aviso del updater en el sidebar
+
+Una franja arriba del switch de tema, con **dos estados y ninguno interrumpe**.
+`UpdateBanner` la dibuja; `useUpdateRuntime` decide cuál va.
+
+| Estado | Cuándo | Al apretarlo | Cuánto dura |
+|---|---|---|---|
+| **Versión X disponible** | el sondeo encontró algo | descarga, instala y **reinicia la app** | hasta que lo aprietes |
+| **Estás al día** | esta sesión viene de un cambio de versión | abre el modal "Lo nuevo" | **30 segundos** |
+
+> **I** — **Se monta una sola vez, en `Shell`** (ventana `main`). Dos ventanas
+> sondeando serían dos consultas por intervalo, por lo mismo que la campana (I6) y
+> el respaldo automático.
+
+**El aviso reemplazó al modal automático**, que fue la primera versión de esto. Un
+modal encima de la app al abrirla es la interrupción que §4.21 descartó: el aviso
+espera en el sidebar y tú decides si lo lees. Y como se va solo a los 30 segundos,
+no deja basura en pantalla para quien no le interesa.
+
+**Cómo se detecta "vengo de un update".** Se compara `app_version` contra
+`sunrise-seen-version` en `localStorage`:
+
+- **Sin marca** (instalación nueva) no avisa nada y solo la deja. Abrir la app por
+  primera vez con un aviso encima es la peor bienvenida posible.
+- **Marca distinta** ⇒ avisa, si además hay anuncio escrito para esa versión: sin
+  texto, el aviso llevaría a un modal vacío.
+- **La marca se escribe siempre**, incluso cuando no se avisa. Si no, una versión
+  sin anuncio dejaría la marca vieja y el aviso saltaría en la siguiente mostrando
+  el texto equivocado.
+
+> **I** — **La marca vive en `localStorage`, no en `settings`.** Por lo mismo que el
+> inicio automático (§4.18): describe esta instalación, no tus datos. En `settings`
+> viajaría dentro de los respaldos, y restaurar un zip viejo haría reaparecer el
+> aviso de una versión ya leída. Depende de que el store de WebKit
+> —`~/Library/WebKit/sunrise`, con el nombre del producto (§4.20)— **sobreviva a que
+> el updater reemplace el `.app`**, y sobrevive porque no está indexado por el
+> bundle. Si eso cambiara, el aviso aparecería en cada arranque.
+
+**Dispara con cualquier cambio de versión**, no solo con una actualización
+automática: reinstalar el `.dmg` a mano también cuenta. Detectar "vengo del updater"
+pediría que Rust dejara una marca y no compra nada — lo que importa es que la
+versión cambió desde la última vez que miraste.
+
+**`updatedTo` y `bannerVisible` son dos campos y no uno.** Apretar el aviso lo
+apaga, pero el modal todavía necesita saber **qué** versión mostrar; con un solo
+campo, el click se llevaría el dato junto con el aviso.
+
+**Si la instalación falla, el botón vuelve.** La app no se reinició, así que dejarlo
+en "Instalando…" para siempre es mentirle a alguien que está mirando el sidebar
+esperando que algo pase.
+
+**Las animaciones tienen que poder apagarse.** El brillo que cruza la franja, la
+flecha que sube y la chispa se anulan bajo `prefers-reduced-motion`, y ahí no se
+pierde información: el color, el icono y el texto dicen lo mismo. Los 30 segundos
+los cuenta el store y no el CSS, así que el aviso se va igual.
+
+**Cómo se prueban las dos franjas antes de publicar.** No se puede esperar a tener
+dos versiones: `devFake.ts` deja un banco de pruebas en la consola del webview, con
+`sunriseDev.flujoCompleto()`, `.hayUpdate()`, `.alDia()` y `.limpiar()`. Trabaja
+sobre el store y no sobre `mockDb`, que es lo que lo hace servir **dentro de
+`pnpm tauri dev`**: ahí el front habla con Rust y el mock no participa.
+
+> **I** — **El banco de pruebas no llega a producción.** Todo cuelga de
+> `import.meta.env.DEV`, que en el build es una constante falsa. Y la instalación
+> simulada **no llama a `installUpdate`**: descargaría un paquete real y reiniciaría
+> la app. Aterriza en la versión que está corriendo y no en la falsa, porque es la
+> única con anuncio escrito — sin eso el flujo de prueba muere en una franja muda.
+
+> **I** — **Los 28 s del desvanecido y los 30 del store van juntos.** La animación
+> de salida arranca a los 28 y dura 2; el store desmonta a los 30. Si alguien mueve
+> uno sin el otro, el aviso desaparece de golpe o se queda invisible ocupando lugar.
 
 ---
 
@@ -1856,7 +1972,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **350 tests front (40 archivos) y 139 Rust, todos verdes.**
+estado actual: **367 tests front (43 archivos) y 139 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -2000,6 +2116,24 @@ pnpm test:all    # ambos
   `dev` esté y diga qué base usa: es **toda** la protección del lado del usuario, y
   si desaparece el aislamiento sigue funcionando pero el error humano —editar en la
   ventana equivocada— vuelve intacto.
+- **El aviso del sidebar** (§4.23): siete en `UpdateBanner.test.tsx` — que sin
+  versión nueva no ocupa espacio, que instala al apretarlo, que **si la instalación
+  falla el botón vuelve** (dejarlo en "Instalando…" es mentir), que "Estás al día"
+  abre el modal, que **desaparece a los 30 segundos** sin que nadie lo toque, que
+  una instalación nueva no avisa pero sí deja la marca, y que el sondeo pregunta al
+  arrancar y otra vez a las 4 horas, y que **un update de prueba no llama al
+  updater** (llamarlo mientras miras el componente reiniciaría la app). El de los
+  4 h usa timers falsos con
+  `shouldAdvanceTime`: instalados **antes** de montar, porque el intervalo se crea
+  en el efecto y uno instalado después no lo controla.
+- **Changelog y "Lo nuevo"** (§4.22): en `changelog.test.ts`, que el anuncio corta
+  antes del detalle (es la distinción que sostiene el diseño), que una versión
+  ausente no es un error, y —el que importa— **que la versión de `package.json`
+  tenga su sección escrita**: sin eso el modal y las notas del Release quedan
+  vacíos en silencio. Y en `WhatsNew.test.tsx`, los cuatro caminos: primera
+  ejecución (no abre solo), versión distinta
+  (muestra el texto del changelog de verdad), y versión sin entrada (no abre un
+  modal vacío).
 - **Actualizaciones** (§4.21): `la_config_del_updater_esta_completa` en Rust —
   `pubkey`, `endpoints` https que terminen en `latest.json`, y
   `createUpdaterArtifacts` — y cuatro en `SettingsView.test.tsx`: que **no** se

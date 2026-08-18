@@ -17,6 +17,7 @@ import { useProfile } from "../lib/profile";
 import { useTheme } from "../lib/theme";
 import { SunriseMark } from "./SunriseMark";
 import { ThemeToggle } from "./ThemeToggle";
+import { UpdateBanner } from "../features/updates/UpdateBanner";
 import { api } from "../lib/ipc";
 import { useAppStore } from "../lib/store";
 import type { Category, Task } from "../lib/types";
@@ -177,8 +178,10 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* Footer: switch de tema + Settings al final. */}
+      {/* Footer: aviso del updater, switch de tema y Settings al final. El aviso
+        * va acá arriba y no junto a la navegación: no es un lugar al que ir. */}
       <div className="sidebar__footer">
+        <UpdateBanner />
         <div className="sidebar__theme-row">
           <span className="sidebar__theme-label">Tema</span>
           <ThemeToggle theme={theme} onToggle={toggle} />

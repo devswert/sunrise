@@ -1,14 +1,13 @@
 # Publica el .dmg de sunrise en un GitHub Release.
 #
-# Se dispara al **empujar un tag** `v*` (v0.1.0, v1.2.3), no en cada push a main:
-# publicar es un acto deliberado, y el número de versión ya vive en tres archivos
-# del repo. También se puede correr a mano desde la pestaña Actions.
+# Se dispara **solo** al empujar un tag `v*` (v0.1.0, v1.2.3). No hay
+# `workflow_dispatch` a propósito: disparado a mano desde una rama, el `tagName`
+# de abajo valdría `main`, y publicaría un Release llamado "sunrise main" con un
+# tag `main` — basura difícil de limpiar en un repo público.
 #
-# Cómo se saca una versión:
-#
-#   1. sube la versión en los tres archivos (Cargo.toml, tauri.conf.json,
-#      package.json) y commitea
-#   2. git tag v0.2.0 && git push origin main --tags
+# Para sacar una versión, usa la skill `sunrise-release`: sube la versión en los
+# tres archivos, escribe la entrada del changelog, commitea y empuja el tag. A
+# mano son cuatro pasos y el que se olvida siempre es el changelog.
 #
 # El paso "versión" de acá falla si el tag no coincide con esos archivos, que es
 # el único lugar donde eso se puede pillar: los tests de Rust comprueban que los
@@ -18,7 +17,6 @@ name: release
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 # El Release lo crea el propio workflow.
 permissions:
@@ -35,10 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Solo cuando lo disparó un tag: en `workflow_dispatch` no hay tag que
-      # comparar y el paso se salta.
       - name: versión
-        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           tag="${GITHUB_REF_NAME#v}"
           cargo_v=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
@@ -71,6 +66,46 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # El cuerpo del Release sale de `docs/CHANGELOG.md`, no de un texto fijo:
+      # es el mismo párrafo que la app muestra en el modal "Lo nuevo" y en Configs
+      # → Actualizaciones, porque prometer una cosa y anunciar otra no lo pilla
+      # nadie hasta que ya está publicado.
+      #
+      # Se extrae del archivo y no del mensaje del tag: el checkout trae el
+      # archivo siempre, y con un tag ligero (o un `fetch-depth` corto) la
+      # anotación puede no estar. Es el único paso que no se puede ensayar antes
+      # del primer tag, así que no depende de nada que pueda faltar.
+      - name: notas del release
+        id: notas
+        run: |
+          # Cada paso corre en su propio shell: `tag` del paso anterior no llega
+          # hasta acá, así que se vuelve a sacar del ref.
+          tag="${GITHUB_REF_NAME#v}"
+          awk -v v="$tag" '
+            $0 ~ "^## v" v "([^0-9.]|$)" { dentro=1; next }
+            dentro && /^## v/ { exit }
+            dentro { print }
+          ' docs/CHANGELOG.md > /tmp/notas.md
+          if [ ! -s /tmp/notas.md ]; then
+            echo "::error::docs/CHANGELOG.md no tiene una sección '## v$tag'"
+            exit 1
+          fi
+          {
+            echo "body<<SUNRISE_EOF"
+            cat /tmp/notas.md
+            echo ""
+            echo "---"
+            echo ""
+            echo "**Si es tu primera instalación**: abre el \`.dmg\` y arrastra sunrise a"
+            echo "Aplicaciones. macOS va a decir que no puede verificar al desarrollador"
+            echo "—el paquete no está firmado con una cuenta de Apple Developer—, así que"
+            echo "la primera vez ábrelo con **clic derecho → Abrir**. Una sola vez."
+            echo ""
+            echo "Después, la app se actualiza sola desde Configs → General →"
+            echo "Actualizaciones. Esas descargas no vuelven a pasar por el aviso."
+            echo "SUNRISE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - run: pnpm install --frozen-lockfile
 
       # Las dos suites antes de empaquetar. Un .dmg publicado con tests rojos es
@@ -94,19 +129,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: sunrise ${{ github.ref_name }}
-          # Sin firma de Apple Developer (decisión tomada: la app no sale del
-          # equipo). Un .dmg descargado del navegador queda en cuarentena, así que
-          # la primera vez hay que abrirlo con clic derecho. Las actualizaciones
-          # automáticas no pasan por ahí: ahí el que descarga es la app.
-          releaseBody: |
-            Instalación: abre el `.dmg` y arrastra sunrise a Aplicaciones.
-
-            **La primera vez**, macOS va a decir que no puede verificar al
-            desarrollador. Es porque el paquete no está firmado con una cuenta de
-            Apple Developer, no porque algo ande mal: haz **clic derecho sobre
-            sunrise → Abrir**, y confirma. Una sola vez; después abre normal.
-
-            De ahí en adelante la app se actualiza sola: Configs → General →
-            Actualizaciones. Esas descargas no vuelven a pasar por el aviso.
+          releaseBody: ${{ steps.notas.outputs.body }}
           releaseDraft: false
           prerelease: false

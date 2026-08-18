@@ -13,7 +13,7 @@ fuera de git y quedó reemplazado por él.
 | M2 | Timer + Focus (taxímetro, `time_entries`, campana, Focus Mode) | ✅ `1175035` |
 | M3 | Calendar + review + resúmenes | ✅ 3.1 a 3.6 hechos |
 | M4 | Durabilidad, branding, empaque | ✅ 4.1 a 4.3 hechos |
-| M5 | Compartir con el equipo | ✅ 5.1 a 5.3 hechos; falta crear el repo y publicar |
+| M5 | Compartir con el equipo | ✅ 5.1 a 5.4 hechos; falta publicar la primera versión |
 
 ---
 
@@ -740,8 +740,7 @@ Detalle en [SPECS §4.19](SPECS.md#419-empaque-dmg). Lo que vale contar:
 
 > **Falta que lo instales**: arrastrar el `.app` a Aplicaciones y abrirlo desde ahí.
 > No lo hice yo a propósito — abrir el paquete escribe en tu base de datos real, no
-> en una copia. Ojo con el `copyright`: puse "© 2026 Leonardo Manríquez" deduciendo
-> el apellido de tu correo, corrígelo si no va.
+> en una copia.
 
 ---
 
@@ -818,7 +817,8 @@ Las cuatro piezas del plan, y cómo quedaron:
 - **`createUpdaterArtifacts: true`**, que agrega el `.app.tar.gz` firmado. El `.dmg`
   queda solo para la primera instalación.
 - **El `latest.json`** lo escribe `tauri-action` en el Release, y `endpoints` apunta
-  a `releases/latest/download/latest.json`.
+  a `releases/latest/download/latest.json`. Sus notas salen del cuerpo del Release,
+  que al principio era un texto fijo: eso se arregló en 5.4.
 - **El momento de avisar: cuando lo pidas.** No hay chequeo al arrancar, y por eso
   mismo **hoy nada avisa** de que salió una versión nueva: hay que entrar a
   preguntar. Ese hueco está en Mej.18.
@@ -852,6 +852,39 @@ cuatro en `SettingsView.test.tsx`. Total **350 front (40 archivos) y 139 Rust**.
 > `~/.tauri/sunrise-updater.key`—, y recién ahí el
 > primer tag. Ojo con el orden: **si el primer Release sale sin la llave en los
 > secrets, los artefactos van sin firmar y la app los rechaza sin decir por qué.**
+
+### 5.4 ✅ Changelog, notas de release y el aviso "Lo nuevo" — hecho
+
+El updater de 5.3 quedó publicando **siempre el mismo texto**: el cuerpo del
+Release estaba escrito fijo en el workflow, así que la 0.2.0 le habría mostrado al
+equipo las instrucciones de instalación en el lugar donde uno espera leer qué
+cambió. Ahora hay `docs/CHANGELOG.md` y de ahí salen los tres textos. Detalle en
+[SPECS §4.22](SPECS.md#422-changelog-y-el-aviso-lo-nuevo).
+
+- **Un texto, tres lectores**: el primer párrafo es el modal "Lo nuevo"; la sección
+  entera es el cuerpo del Release y el aviso de Configs. Que el aviso previo y el
+  modal digan lo mismo es la razón del diseño, no una coincidencia.
+- **El aviso dispara con cualquier cambio de versión**, comparando contra
+  `localStorage`. La primera ejecución no muestra nada y solo deja la marca. (El
+  modal se abría solo en la primera versión de esto; Mej.18 lo movió detrás del
+  aviso del sidebar.)
+- **El workflow ya no se puede correr a mano.** Se quitó `workflow_dispatch`:
+  disparado desde una rama, el `tagName` valía `main` y habría publicado un Release
+  "sunrise main" con un tag `main`.
+- **Las notas se extraen del archivo, no del mensaje del tag.** El checkout trae el
+  archivo siempre; la anotación de un tag puede no estar según el `fetch-depth`, y
+  ese paso es justo uno de los que no se pueden ensayar antes del primer tag. El
+  `awk` sí se ensayó en local contra el changelog real.
+- **Skill nueva `sunrise-release`** con el procedimiento completo, incluido qué
+  hacer con un release fallido: un tag no se mueve, se saca otro.
+
+Tests: cuatro en `changelog.test.ts` y tres en `WhatsNew.test.tsx`. El que más vale
+es el que exige que la versión de `package.json` tenga su sección: es el modo de
+falla que abre esta feature —subir la versión y olvidar la entrada— y sin él no se
+pone rojo nada.
+
+> **Falta verlo en la app**: el modal solo aparece cuando la versión cambia, así
+> que se prueba de verdad recién con la 0.2.0 instalada sobre la 0.1.0.
 
 ---
 
@@ -1329,34 +1362,44 @@ un gesto explícito desde el planning.
 
 ---
 
-### Mej.18 🔵 Que se sepa que hay una versión nueva sin ir a buscarla
+### Mej.18 ✅ Que se sepa que hay una versión nueva sin ir a buscarla — hecho
 
-El updater de 5.3 funciona, pero **solo se enciende cuando aprietas el botón** de
-Configs → General → Actualizaciones. No hay chequeo al arrancar ni ninguna marca
-en el resto de la app: si se publica una versión nueva, sigues en la vieja hasta
-el día que te acuerdes de entrar a preguntar. Estando en Focus, o en la semana, no
-existe ninguna señal.
+El updater de 5.3 solo se encendía apretando el botón de Configs, así que una
+versión nueva podía quedarse ahí sin que nadie se enterara. Ahora la app **sondea
+al abrir y cada 4 horas**, y lo que encuentra aparece como una franja en el sidebar,
+arriba del switch de tema. Detalle en [SPECS §4.23](SPECS.md#423-el-aviso-del-updater-en-el-sidebar).
 
-La decisión de 5.3 fue **no interrumpir**, y eso se sostiene: la app ya interrumpe
-dos veces a una hora fija (el aviso de cerrar el día y el respaldo automático). Pero
-lo que quedó implementado es *no avisar*, que no es lo mismo. Este es el hueco.
+Salió como se había anotado, con dos cosas que el plan no tenía:
 
-Qué falta:
+- **La franja tiene dos estados, no uno.** Al volver de un update se convierte en
+  "Estás al día", que dura 30 segundos y abre el modal "Lo nuevo" si lo aprietas.
+  Eso **reemplazó al modal que se abría solo** (5.4): un modal encima de la app al
+  arrancar es justo la interrupción que 5.3 había descartado, y esto deja el aviso
+  esperando sin tapar nada.
+- **Sondear al arrancar contradice a 5.3 solo en apariencia.** Ahí el argumento era
+  no interrumpir, y una franja en el sidebar no interrumpe. Sin la consulta inicial,
+  además, un intervalo de 4 horas no dispararía nunca para quien cierra la app todos
+  los días.
 
-- **Buscar al arrancar, en silencio.** Una sola vez por sesión, sin bloquear el
-  render y sin tocar nada si falla — sin conexión es el caso normal, no un error.
-- **Una señal pasiva y permanente en el sidebar**: un punto en el ítem de Configs.
-  Aparece, se queda, y la abres cuando quieras. **Nunca un modal ni un toast**: es
-  lo mismo que la app ya evita a propósito, y un aviso que tapa la pantalla mientras
-  estás cronometrando algo es exactamente lo que 5.3 decidió no hacer.
-- El botón de instalar **se queda donde está**. La señal lleva a Configs; instalar
-  sigue siendo un acto deliberado, a punta de botón.
+Lo que **no** se hizo: el punto en el ítem de Configs que decía el plan. La franja
+ya es la señal, y dos marcas para lo mismo obligan a mantener las dos sincronizadas.
+Lo del diálogo antes de reiniciar tampoco: instalar es una decisión que ya tomaste
+al apretar la franja, y un segundo "¿seguro?" encima no agrega nada. Si molesta al
+usarlo, se agrega.
 
-Y un detalle aparte, del mismo tamaño: **instalar reinicia la app de inmediato, sin
-preguntar**. ⌘Q sí pregunta (Mej.0) y esto cierra la ventana igual. No se pierde
-tiempo trackeado —el timer sobrevive entre sesiones a propósito, y la fila abierta de
-`time_entries` queda intacta— pero si estás a mitad de una tarea, la ventana
-desaparece y vuelve sin haberte avisado. Le falta el mismo diálogo que ya existe.
+Tests: ocho en `UpdateBanner.test.tsx`, incluidos los dos que cuestan —los 30
+segundos y las 4 horas— con timers falsos. Total **367 front (43 archivos) y 139
+Rust**.
+
+**Se pueden mirar sin publicar nada**: `sunriseDev.flujoCompleto()` en la consola
+del webview finge el update, la instalación y la llegada. Verificado así, en los dos
+temas, incluido el modal.
+
+> **Falta verlo con un Release de verdad**: la franja "versión nueva" necesita un
+> Release más nuevo que el instalado, y "Estás al día" necesita haber actualizado de
+> verdad. Las dos se estrenan con la 0.2.0 sobre la 0.1.0. Lo que el banco de
+> pruebas no cubre es justamente lo que no se puede fingir: que la descarga, la
+> firma y el reinicio funcionen.
 
 ---
 

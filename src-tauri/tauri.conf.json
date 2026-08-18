@@ -68,7 +68,7 @@
     "category": "Productivity",
     "shortDescription": "Planifica el día, cronometra lo que haces y cierra la jornada.",
     "longDescription": "Un planner diario personal y liviano: planificación diaria y semanal, taxímetro con ventana flotante, calendario por ICS, review de la semana y cierre del día. Los datos viven en esta máquina, en un SQLite, y nunca salen salvo que tú mandes un respaldo afuera.",
-    "copyright": "© 2026 Leonardo Manríquez",
+    "copyright": "© 2026 Leonardo David",
     "macOS": {
       "minimumSystemVersion": "11.0",
       "dmg": {

@@ -15,8 +15,9 @@ solas cuando el tema aparece — no hace falta leerlas todas por adelantado:
 | `sunrise-capa-de-datos` | migraciones, `repo.rs`, comandos, `ipc.ts` + `mockDb.ts` |
 | `sunrise-ui` | autosave, popovers, slots, paleta, DnD |
 | `sunrise-tests` | Vitest/RTL, `cargo test`, por qué el mock es obligatorio |
+| `sunrise-release` | publicar: changelog, versión en tres archivos, tag |
 
-**Si tu cambio no cae limpio en ninguna de esas cinco, lee `docs/SPECS.md` antes
+**Si tu cambio no cae limpio en ninguna de esas seis, lee `docs/SPECS.md` antes
 de tocar código** — las skills cubren los dominios más frágiles, no todo el
 proyecto (por ejemplo el reconciler ICS de M3 no tiene skill todavía).
 
@@ -38,9 +39,11 @@ pnpm dmg          # build de release + .app y .dmg (SPECS §4.19)
 pnpm iconos       # regenera el icon set desde public/app-icon.svg
 ```
 
-**Subir la versión son tres archivos** —`Cargo.toml`, `tauri.conf.json` y
-`package.json`— y hay un test que se pone rojo si divergen: la versión va escrita
-en el manifest de cada respaldo.
+**Publicar una versión la maneja la skill `sunrise-release`.** Son cuatro cosas
+—los tres archivos de versión (`Cargo.toml`, `tauri.conf.json`, `package.json`) y
+la entrada en `docs/CHANGELOG.md`— y el que se olvida siempre es el changelog: de
+ahí salen el cuerpo del Release, el aviso de Configs y el modal "Lo nuevo". Hay dos
+tests que se ponen rojos si algo de eso divergió.
 
 ## Reglas de trabajo
 
