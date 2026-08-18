@@ -37,7 +37,10 @@ abajo, en `### Detalle`, y no llega al modal.
 1. **Working tree limpio y en `main`.** Si hay cambios sin commitear, pregunta qué
    hacer con ellos antes de seguir; no los arrastres al commit de versión.
 2. **`pnpm test:all` en verde.** Un `.dmg` publicado con tests rojos es peor que no
-   publicar: alguien lo instala.
+   publicar: alguien lo instala. Y si el cambio toca fechas, horas o zonas, corre
+   además `TZ=UTC pnpm test:rust`: **CI corre en UTC** y ahí aparecen los supuestos
+   de zona que en Santiago pasan por casualidad. Así falló el primer tag de la 0.1.0
+   (ROADMAP 5.5).
 3. **Decide el número.** Semver, y **mayor que el publicado** o las apps
    instaladas no van a ver nada. `git tag --list` dice cuál fue el último.
 4. **Pídele al usuario el anuncio.** No lo inventes solo: es el texto que lee todo
@@ -80,7 +83,8 @@ abajo, en `### Detalle`, y no llega al modal.
 ## Si algo sale mal
 
 **Un tag no se mueve.** Si CI falla o el Release sale incompleto, borra los dos y
-vuelve a taguear el commit corregido:
+vuelve a taguear el commit corregido. Si CI falló **antes** del paso que publica no
+hay Release que borrar, solo el tag:
 
 ```bash
 gh release delete v0.2.0 --yes && git push origin :refs/tags/v0.2.0 && git tag -d v0.2.0

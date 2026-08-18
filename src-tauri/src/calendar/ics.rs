@@ -87,9 +87,11 @@ pub fn parse_events(
         // Una instancia editada de una serie viene como un VEVENT aparte con el
         // mismo UID y un `RECURRENCE-ID` que dice a qué repetición reemplaza.
         // Su clave tiene que ser la de esa repetición, o quedarían las dos.
-        let overrides = ev
-            .property_value("RECURRENCE-ID")
-            .and_then(|v| instant_of_value(v, ev.property_value("DTSTART")));
+        // Su `TZID` va aparte, en los parámetros: `property_value` devuelve el
+        // valor pelado y ahí ya se perdió la zona.
+        let overrides = ev.properties().get("RECURRENCE-ID").and_then(|p| {
+            instant_of_value(p.value(), p.params().get("TZID").map(|t| t.value()))
+        });
 
         let is_series = ev.property_value("RRULE").is_some();
 
@@ -357,17 +359,32 @@ fn stamp(dt: DateTime<Local>) -> String {
     dt.format("%Y%m%dT%H%M%S").to_string()
 }
 
-/// Interpreta el valor crudo de un `RECURRENCE-ID`.
+/// Interpreta el valor crudo de un `RECURRENCE-ID`, en la zona que declara.
 ///
-/// Llega sin sus parámetros (el crate expone el valor pelado), así que se
-/// prueban los tres formatos de ICS. El `DTSTART` se pasa solo para heredar su
-/// zona cuando el `RECURRENCE-ID` viene sin `Z`: en la práctica los dos usan la
-/// misma, y sin eso una instancia editada no calzaría con la generada.
-fn instant_of_value(value: &str, _dtstart: Option<&str>) -> Option<DateTime<Local>> {
+/// Se prueban los tres formatos de ICS. **El `tzid` no es opcional de adorno**:
+/// sin él, un valor sin `Z` se leería en la zona del computador, y la clave de la
+/// instancia editada dejaría de calzar con la de la repetición que reemplaza en
+/// cuanto tu máquina no esté en la misma zona que el calendario — o sea, la
+/// reunión movida aparecería dos veces en la semana. Se veía "bien" porque la
+/// máquina de desarrollo y las fixtures comparten zona; lo delató CI, que corre
+/// en UTC.
+///
+/// Sin `tzid` el valor es flotante y ahí sí se lee en local, que es lo que manda
+/// el estándar.
+fn instant_of_value(value: &str, tzid: Option<&str>) -> Option<DateTime<Local>> {
     if let Ok(utc) = DateTime::parse_from_str(value, "%Y%m%dT%H%M%SZ") {
         return Some(utc.with_timezone(&Local));
     }
     if let Ok(naive) = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S") {
+        if let Some(tz) = tzid.and_then(|t| t.parse::<chrono_tz::Tz>().ok()) {
+            // Igual que en `to_local`: `.single()` falla en el salto de horario
+            // de verano, y ahí se toma la primera lectura válida.
+            let zoned = tz
+                .from_local_datetime(&naive)
+                .single()
+                .or_else(|| tz.from_local_datetime(&naive).earliest())?;
+            return Some(zoned.with_timezone(&Local));
+        }
         return local_from_naive(naive);
     }
     if let Ok(date) = NaiveDate::parse_from_str(value, "%Y%m%d") {
@@ -551,6 +568,36 @@ mod tests {
             same.len(),
             2,
             "la instancia editada y la generada comparten clave, así el upsert deja una"
+        );
+        assert!(same.iter().any(|e| e.title == "Standup (movido)"));
+    }
+
+    /// El mismo caso que el de arriba pero **en una zona que no es la de esta
+    /// máquina**, que es lo que el otro no puede pillar: con fixtures en Santiago y
+    /// un Mac en Santiago, leer el `RECURRENCE-ID` en la zona equivocada da el mismo
+    /// resultado por casualidad. Este se cae en cualquier parte si alguien vuelve a
+    /// ignorar el `TZID`, y de hecho así se descubrió el bug: verde en local, rojo
+    /// en CI, que corre en UTC.
+    #[test]
+    fn la_instancia_editada_calza_aunque_el_calendario_este_en_otra_zona() {
+        let ics = cal(
+            "BEGIN:VEVENT\nUID:madrid@test\nSUMMARY:Standup\nDTSTART;TZID=Europe/Madrid:20260810T090000\nDTEND;TZID=Europe/Madrid:20260810T091500\nRRULE:FREQ=WEEKLY;COUNT=2\nEND:VEVENT\nBEGIN:VEVENT\nUID:madrid@test\nRECURRENCE-ID;TZID=Europe/Madrid:20260817T090000\nSUMMARY:Standup (movido)\nDTSTART;TZID=Europe/Madrid:20260817T110000\nDTEND;TZID=Europe/Madrid:20260817T111500\nEND:VEVENT",
+        );
+        let evs = todo(&ics);
+        let generated = stamp(
+            chrono_tz::Europe::Madrid
+                .with_ymd_and_hms(2026, 8, 17, 9, 0, 0)
+                .unwrap()
+                .with_timezone(&Local),
+        );
+        let same: Vec<_> = evs
+            .iter()
+            .filter(|e| e.uid == format!("madrid@test#{generated}"))
+            .collect();
+        assert_eq!(
+            same.len(),
+            2,
+            "sin respetar el TZID del RECURRENCE-ID la reunión movida sale dos veces"
         );
         assert!(same.iter().any(|e| e.title == "Standup (movido)"));
     }

@@ -13,7 +13,7 @@ fuera de git y quedó reemplazado por él.
 | M2 | Timer + Focus (taxímetro, `time_entries`, campana, Focus Mode) | ✅ `1175035` |
 | M3 | Calendar + review + resúmenes | ✅ 3.1 a 3.6 hechos |
 | M4 | Durabilidad, branding, empaque | ✅ 4.1 a 4.3 hechos |
-| M5 | Compartir con el equipo | ✅ 5.1 a 5.4 hechos; falta publicar la primera versión |
+| M5 | Compartir con el equipo | ✅ 5.1 a 5.5 hechos; falta publicar la primera versión |
 
 ---
 
@@ -885,6 +885,35 @@ pone rojo nada.
 
 > **Falta verlo en la app**: el modal solo aparece cuando la versión cambia, así
 > que se prueba de verdad recién con la 0.2.0 instalada sobre la 0.1.0.
+
+---
+
+### 5.5 ✅ El primer tag encontró un bug de zona horaria — hecho
+
+El primer `v0.1.0` **falló en CI**, en `pnpm test:all`, con un solo test rojo:
+`una_instancia_editada_reemplaza_a_la_generada`. Verde en local, rojo en el runner.
+
+La causa no tenía nada que ver con el release: **el `TZID` del `RECURRENCE-ID` se
+estaba ignorando** desde el primer commit. El parámetro existía en la firma —
+`_dtstart`, con guion bajo— y el doc comment describía un comportamiento que nunca
+se implementó. El valor se leía en la zona del computador, así que una instancia
+editada de una serie recibía una clave distinta a la repetición que reemplaza, y la
+reunión movida habría aparecido **dos veces** en la semana de cualquiera cuyo Mac no
+estuviera en la zona del calendario.
+
+Pasó desapercibido porque la máquina de desarrollo está en Santiago y todas las
+fixtures usan `America/Santiago`: leer la zona equivocada daba el mismo resultado por
+casualidad. **CI corre en UTC, y por eso lo encontró.**
+
+El arreglo lee el `TZID` de los parámetros de la propiedad y no del valor pelado. Se
+agregó un test con una serie en `Europe/Madrid`, que es el que faltaba: se cae en
+cualquier zona, incluida la tuya, si alguien vuelve a ignorar el `TZID`. Comprobado
+en los dos sentidos —deshaciendo el arreglo se pone rojo en Santiago y en UTC— y la
+suite completa corre verde con `TZ=UTC`.
+
+Deja dos cosas escritas para la próxima: que **CI en UTC es una ventaja** y no un
+estorbo, y que un test de zonas horarias con fixtures en tu propia zona no prueba
+nada. Total **367 front y 140 Rust**.
 
 ---
 

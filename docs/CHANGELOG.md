@@ -34,4 +34,5 @@ y todo vive en un SQLite en tu máquina.
   proyectadas en los huecos.
 - Weekly review y cierre del día, con horas por canal y avance de objetivos.
 - Respaldos en `.zip` con manifest, a la hora y en la carpeta que elijas.
-- Actualizaciones automáticas desde el Release, a pedido y nunca al arrancar.
+- Actualizaciones automáticas desde el Release: se avisan en el sidebar y se
+  instalan cuando tú quieras.

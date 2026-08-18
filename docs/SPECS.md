@@ -474,6 +474,16 @@ feature:
   el `UNIQUE(feed_id, calendar_uid)` usarlo pelado colapsaría el mes en una fila.
   Una instancia editada llega como un VEVENT aparte con `RECURRENCE-ID`: su clave
   es la de la repetición que reemplaza, así el upsert deja una sola.
+  - **El `TZID` del `RECURRENCE-ID` vive en sus parámetros, no en su valor.**
+    `property_value` devuelve el valor pelado, y leerlo así lo interpreta en la zona
+    **del computador**: en cuanto tu máquina no está en la misma zona que el
+    calendario, la clave de la instancia editada deja de calzar con la de la
+    repetición y la reunión movida sale **dos veces** en la semana. Se lee con
+    `ev.properties().get("RECURRENCE-ID")` y su parámetro `TZID`. Sin `TZID` el
+    valor es flotante y ahí sí se lee en local, que es lo que manda el estándar.
+    Esto estuvo roto desde el primer commit y no se notó porque la máquina de
+    desarrollo y las fixtures comparten zona; lo delató el primer tag, porque **CI
+    corre en UTC**.
 - **Todo se convierte a hora local** (`ics::to_local`), y las tres formas de ICS
   —UTC con `Z`, con `TZID`, y flotante— tienen que aterrizar en la misma regla.
   Cortar el timestamp por los primeros 10 caracteres da el día UTC: un evento de
@@ -1972,13 +1982,20 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **367 tests front (43 archivos) y 139 Rust, todos verdes.**
+estado actual: **367 tests front (43 archivos) y 140 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
 pnpm test:rust   # cargo test (SQLite en memoria)
 pnpm test:all    # ambos
+TZ=UTC pnpm test:rust   # como corre CI, que es donde aparecen los supuestos de zona
 ```
+
+**CI corre en UTC y eso es una ventaja, no un estorbo.** El primer tag de la 0.1.0
+falló ahí por un bug de zona horaria que llevaba desde el primer commit (§4.12,
+`RECURRENCE-ID`): en Santiago pasaba por casualidad. Si un test toca zonas, córrelo
+con `TZ=UTC` antes de empujar, y de paso escríbelo con una zona **distinta** a la
+tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 
 - **Rust** (`#[cfg(test)]` en `repo.rs` y `sound.rs`): eventos de creación y
   movimiento, degradación selectiva al backlog, acumulación del timer, supervivencia del
