@@ -15,6 +15,25 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.1.1 — 2026-08-18
+
+Arregla la primera instalación. La 0.1.0 se bajaba y macOS decía que el paquete
+estaba dañado, lo que no era cierto: le faltaba una firma. Si ya la tienes
+instalada y andando, esta versión no te cambia nada — sirve para que la próxima
+persona que baje el `.dmg` no tenga que adivinar.
+
+### Detalle
+
+- El bundle de macOS ahora se firma ad-hoc (`signingIdentity: "-"`). Sin eso solo
+  quedaba firmado el binario, que el linker de Apple Silicon firma por su cuenta,
+  y esa firma a medias prometía recursos sellados que nadie había sellado. Ante la
+  contradicción macOS reportaba `"sunrise" is damaged`, no el aviso normal de
+  desarrollador sin verificar.
+- Firmar ad-hoc no es notarizar: la primera instalación sigue pidiendo
+  `xattr -cr /Applications/sunrise.app`, y ahora eso está escrito en el README con
+  los pasos completos.
+- Documentado el modo de falla y por qué en SPECS §4.19.
+
 ## v0.1.0 — 2026-08-18
 
 La primera versión que se puede instalar. Planificas el día, cronometras lo que
