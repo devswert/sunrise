@@ -28,11 +28,19 @@ Sunrise es una herramienta personal, publicada porque _why not_. Pasé por organ
 
 ## 📦 Instalar
 
-Descarga el `.dmg` de la [última versión](https://github.com/devswert/sunrise/releases/latest), ábrelo y arrastra sunrise a Aplicaciones. Necesitas macOS 11 o más nuevo, en un Mac con Apple Silicon.
+Necesitas macOS 11 o más nuevo, en un Mac con Apple Silicon.
 
-> ⚠️ **La primera vez** macOS va a decir que no puede verificar al desarrollador. Es porque el paquete no está firmado con una cuenta de Apple Developer (no quería pagar 99 USD).
+1. Descarga el `.dmg` de la [última versión](https://github.com/devswert/sunrise/releases/latest).
+2. Ábrelo y arrastra sunrise a Aplicaciones.
+3. Quítale la cuarentena que le puso el navegador:
 
-De ahí en adelante la app se actualiza sola desde `Configs → General → Actualizaciones`. Esas descargas no vuelven a pasar por el aviso.
+   ```bash
+   xattr -cr /Applications/sunrise.app
+   ```
+
+> ⚠️ **El tercer paso no es opcional en la primera instalación.** El paquete está firmado ad-hoc, no con una cuenta de Apple Developer (no quería pagar 99 USD al año), así que macOS lo bloquea hasta que le digas que confías. Si prefieres no usar la terminal, ábrela igual desde `Ajustes del Sistema → Privacidad y seguridad`, donde aparece el botón para abrirla de todos modos.
+
+De ahí en adelante **la app se actualiza sola** desde `Configs → General → Actualizaciones`, o desde la franja que aparece en el sidebar cuando hay algo nuevo. Esas descargas las trae y las verifica la app, no el navegador, así que no vuelven a pasar por la cuarentena ni por este trámite.
 
 ## 🛠️ Desarrollo
 

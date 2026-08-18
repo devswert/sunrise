@@ -96,8 +96,10 @@ y el `latest.json` apuntando a uno de ellos. Si ya lo instaló alguien del equip
 
 ## Lo que esta skill no hace
 
-- **No firma con Apple Developer.** Decisión tomada: la primera instalación pide
-  clic derecho → Abrir, y está escrito en el cuerpo del Release.
+- **No firma con Apple Developer.** Decisión tomada: el bundle se firma **ad-hoc**
+  (`signingIdentity: "-"`), que no evita el bloqueo de Gatekeeper pero lo deja
+  levantable; la primera instalación pide `xattr -cr /Applications/sunrise.app` y
+  está escrito en el README. Detalle y el modo de falla en SPECS §4.19.
 - **No toca la llave privada del updater.** Vive en los secrets del repo. Si falta,
   los artefactos salen sin firmar y las apps los rechazan sin decir por qué.
 - **No decide el número por ti.** Un cambio que rompe datos o una migración que no

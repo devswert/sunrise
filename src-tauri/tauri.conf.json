@@ -71,6 +71,7 @@
     "copyright": "© 2026 Leonardo David",
     "macOS": {
       "minimumSystemVersion": "11.0",
+      "signingIdentity": "-",
       "dmg": {
         "background": "dmg/background.png",
         "windowSize": { "width": 660, "height": 400 },

@@ -1351,13 +1351,31 @@ Subir una y olvidar otra deja los respaldos mintiendo sobre de qué build salier
 > Si alguna vez hace falta aislarlos, es cambiando el identifier del build de dev,
 > y eso deja la base vieja donde estaba.
 
-**Sin firma de desarrollador.** No hay certificado en esta máquina, así que Tauri
-firma **ad-hoc** (`Signature=adhoc`, `TeamIdentifier=not set`). Un `.dmg`
-construido localmente no queda en cuarentena, así que instalarlo acá funciona sin
-pelear con Gatekeeper. Copiarlo a otra máquina sí muestra el aviso de desarrollador
-no verificado, y ahí hay que abrir con clic derecho → Abrir la primera vez. Firmar
-y notarizar de verdad necesita cuenta de Apple Developer; mientras la app no salga
-de esta máquina, no hace falta.
+**Sin firma de desarrollador, pero el bundle sí se firma ad-hoc.**
+`bundle.macOS.signingIdentity` vale `"-"`, y eso **no es cosmético**: sin esa
+clave, Tauri no firma el bundle, y el único que queda firmado es el binario
+Mach-O, porque en Apple Silicon el linker lo firma solo —un ejecutable sin firma
+no corre—. Ese estado a medias es peor que no tener firma: la firma del binario
+promete recursos sellados que nadie selló (`Sealed Resources=none`,
+`Info.plist=not bound`), y ante la contradicción macOS no dice "desarrollador no
+verificado" sino **`"sunrise" is damaged and can't be opened`**, que manda a
+botar el `.dmg`. Pasó con la 0.1.0.
+
+Firmar ad-hoc no evita el bloqueo de Gatekeeper —ad-hoc no es notarizado, y
+`spctl` sigue rechazando— pero lo convierte en el bloqueo que sí se puede
+levantar. Un `.dmg` construido localmente no queda en cuarentena, así que
+instalarlo acá funciona sin trámite; **el que baja del navegador sí**, y la
+primera instalación pide
+
+```bash
+xattr -cr /Applications/sunrise.app
+```
+
+Está escrito en el README. **Las actualizaciones no vuelven a pasar por esto**:
+el `.tar.gz` lo baja Rust y lo verifica con la llave del updater (§4.21), no el
+navegador, y la cuarentena la pone quien descarga. Firmar y notarizar de verdad
+necesita cuenta de Apple Developer (99 USD al año) y dos secrets más; mientras la
+app la instale su autor, no hace falta.
 
 **El fondo del `.dmg` y las posiciones de los iconos son un par, no dos ajustes.**
 `src-tauri/dmg/background.svg` está dibujado para 660×400 con el resplandor puesto
