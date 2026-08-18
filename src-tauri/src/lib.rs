@@ -44,6 +44,11 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // Actualizaciones desde el Release de GitHub. Solo se registra el plugin:
+        // no hay chequeo al arrancar. La app ya interrumpe a una hora fija dos
+        // veces (el aviso de cierre y el respaldo) y una tercera cosa que aparece
+        // sola al abrir es la que sobra. Se busca cuando lo pides, en Configs.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Base de datos en el directorio de datos de la app.
             let dir = app.path().app_data_dir()?;
@@ -152,6 +157,8 @@ pub fn run() {
             commands::set_setting,
             commands::autostart_enabled,
             commands::set_autostart,
+            commands::buscar_actualizacion,
+            commands::instalar_actualizacion,
             // respaldos
             commands::app_version,
             commands::perfil,

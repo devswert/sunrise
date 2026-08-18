@@ -16,6 +16,7 @@ import type {
   DiaDeBitacora,
   ArchivoDeBackup,
   Restauracion,
+  Actualizacion,
   Perfil,
   NewTaskInput,
   TaskPatch,
@@ -283,6 +284,22 @@ export const api = {
   /** Sincroniza todos; con `forzar` sin mirar el intervalo de cada uno. */
   syncCalendarFeeds: (forzar = false) =>
     isTauri() ? invoke<number>("sync_calendar_feeds", { forzar }) : mock.syncCalendarFeeds(forzar),
+
+  // --- actualizaciones ---
+  /**
+   * Busca versión nueva. `null` = estás al día. Fuera de Tauri nunca hay: el
+   * updater actualiza un `.app` instalado, y en el browser no existe tal cosa.
+   *
+   * **Puede fallar** sin que nada esté roto: sin red, o antes de que exista el
+   * primer Release, la consulta al `latest.json` no llega. Quien la llame tiene
+   * que decirlo como información, no como error.
+   */
+  buscarActualizacion: () =>
+    isTauri() ? invoke<Actualizacion | null>("buscar_actualizacion") : mock.buscarActualizacion(),
+
+  /** Descarga, instala y **reinicia la app**. No devuelve si sale bien. */
+  instalarActualizacion: () =>
+    isTauri() ? invoke<void>("instalar_actualizacion") : mock.instalarActualizacion(),
 
   // --- ciclo de vida ---
   /** Detiene el timer y cierra la app. Fuera de Tauri no hay nada que cerrar. */

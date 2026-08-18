@@ -21,6 +21,12 @@ pnpm-debug.log*
 !.vscode/extensions.json
 .idea
 
+# llaves del updater — la privada firma las actualizaciones y no entra al repo
+# ni por accidente (un `git add -A` distraído basta). La pública sí va, pero
+# versionada dentro de tauri.conf.json, no como archivo suelto.
+*.key
+*.key.pub
+
 # local data / backups
 *.sqlite
 *.sqlite-*

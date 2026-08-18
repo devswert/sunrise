@@ -13,7 +13,7 @@ fuera de git y quedó reemplazado por él.
 | M2 | Timer + Focus (taxímetro, `time_entries`, campana, Focus Mode) | ✅ `1175035` |
 | M3 | Calendar + review + resúmenes | ✅ 3.1 a 3.6 hechos |
 | M4 | Durabilidad, branding, empaque | ✅ 4.1 a 4.3 hechos |
-| M5 | Compartir con el equipo | 🟡 5.1 y 5.2 hechos; falta el auto-update |
+| M5 | Compartir con el equipo | ✅ 5.1 a 5.3 hechos; falta crear el repo y publicar |
 
 ---
 
@@ -804,21 +804,54 @@ Rust los compara entre sí, pero no sabe nada del tag.
 > corrida de verdad es la primera vez que se empuje un tag. Falta también crear el
 > repo remoto y empujar.
 
-### 5.3 ⬜ Auto-update
+### 5.3 ✅ Auto-update — hecho
 
-`tauri-plugin-updater`. Se cuelga del mismo Release que publica 5.2. Piezas:
+La app se actualiza sola desde el mismo Release que publica 5.2. Detalle en
+[SPECS §4.21](SPECS.md#421-actualizaciones-updater).
 
-- `tauri signer generate` da un par de llaves **propio del updater**, que no tiene
-  nada que ver con la firma de Apple: la privada va a los secrets del repo, la
-  pública a `tauri.conf.json`. Es lo que impide que alguien sirva una actualización
-  falsa.
-- `createUpdaterArtifacts: true` en el bundle. **El updater no usa el `.dmg`**: usa
-  un `.app.tar.gz` aparte con su firma al lado, y el Action publica los dos.
-- Un `latest.json` en el Release, que la app consulta al abrir; `tauri-action` lo
-  genera.
-- Decidir el momento de avisar. La app ya tiene dos cosas que interrumpen a una hora
-  (el aviso de cierre, el respaldo); una tercera que aparezca sola necesita pensarse,
-  no meterse al arranque porque es lo fácil.
+Las cuatro piezas del plan, y cómo quedaron:
+
+- **El par de llaves**, generado con `pnpm tauri signer generate`. La pública está
+  en `tauri.conf.json`; la privada **no está en el repo** y hay que pegarla en los
+  secrets como `TAURI_SIGNING_PRIVATE_KEY`. Se generó sin contraseña: guardarla en
+  el mismo almacén de secrets que la llave no protege de nada.
+- **`createUpdaterArtifacts: true`**, que agrega el `.app.tar.gz` firmado. El `.dmg`
+  queda solo para la primera instalación.
+- **El `latest.json`** lo escribe `tauri-action` en el Release, y `endpoints` apunta
+  a `releases/latest/download/latest.json`.
+- **El momento de avisar: cuando lo pidas.** No hay chequeo al arrancar, y por eso
+  mismo **hoy nada avisa** de que salió una versión nueva: hay que entrar a
+  preguntar. Ese hueco está en Mej.18.
+
+  La app ya interrumpe dos veces a una hora fija —el aviso de cerrar el día y el
+  respaldo— y una tercera que aparece sola al abrir es la que sobra; lo primero que
+  uno mira en la mañana es el día. Queda un botón en Configs → General →
+  Actualizaciones.
+
+Dos cosas que salieron de hacerlo:
+
+- **Todo el updater quedó en Rust**, sin el paquete npm ni permisos nuevos en
+  `capabilities`. La API de JavaScript del plugin habría dejado a `ipc.ts` de ser
+  la única puerta a la app, que es la regla del proyecto.
+- **El fallo no es rojo.** Sin conexión, o antes de que exista el primer Release, no
+  se puede preguntar. La vista distingue tres finales y no dos, porque "estás al
+  día" y "no pude preguntar" se ven parecidos y significan lo contrario: el segundo
+  disfrazado del primero deja a alguien tranquilo en una versión vieja.
+
+Tests: uno en Rust (`la_config_del_updater_esta_completa`: sin `pubkey`, sin
+`endpoints` o sin `createUpdaterArtifacts` el updater se apaga en silencio) y
+cuatro en `SettingsView.test.tsx`. Total **350 front (40 archivos) y 139 Rust**.
+
+> **El repo va a ser público**, y eso es una condición del updater, no un detalle:
+> el `latest.json` se pide sin credenciales.
+>
+> **No está ejercitado, y no se puede estar hasta que haya dos versiones
+> publicadas**: el camino completo es un Release firmado, una app instalada más
+> vieja, y la descarga que la reemplaza. Falta crear el repo
+> (`devswert/sunrise`, público), cargar el secret con la llave privada —que está en
+> `~/.tauri/sunrise-updater.key`—, y recién ahí el
+> primer tag. Ojo con el orden: **si el primer Release sale sin la llave en los
+> secrets, los artefactos van sin firmar y la app los rechaza sin decir por qué.**
 
 ---
 
@@ -1293,6 +1326,37 @@ un gesto explícito desde el planning.
 - Sync multi-dispositivo (el modelo de datos queda listo, pero no se implementa).
 - Email de resumen vía SMTP.
 - Nada de IA ni integraciones.
+
+---
+
+### Mej.18 🔵 Que se sepa que hay una versión nueva sin ir a buscarla
+
+El updater de 5.3 funciona, pero **solo se enciende cuando aprietas el botón** de
+Configs → General → Actualizaciones. No hay chequeo al arrancar ni ninguna marca
+en el resto de la app: si se publica una versión nueva, sigues en la vieja hasta
+el día que te acuerdes de entrar a preguntar. Estando en Focus, o en la semana, no
+existe ninguna señal.
+
+La decisión de 5.3 fue **no interrumpir**, y eso se sostiene: la app ya interrumpe
+dos veces a una hora fija (el aviso de cerrar el día y el respaldo automático). Pero
+lo que quedó implementado es *no avisar*, que no es lo mismo. Este es el hueco.
+
+Qué falta:
+
+- **Buscar al arrancar, en silencio.** Una sola vez por sesión, sin bloquear el
+  render y sin tocar nada si falla — sin conexión es el caso normal, no un error.
+- **Una señal pasiva y permanente en el sidebar**: un punto en el ítem de Configs.
+  Aparece, se queda, y la abres cuando quieras. **Nunca un modal ni un toast**: es
+  lo mismo que la app ya evita a propósito, y un aviso que tapa la pantalla mientras
+  estás cronometrando algo es exactamente lo que 5.3 decidió no hacer.
+- El botón de instalar **se queda donde está**. La señal lleva a Configs; instalar
+  sigue siendo un acto deliberado, a punta de botón.
+
+Y un detalle aparte, del mismo tamaño: **instalar reinicia la app de inmediato, sin
+preguntar**. ⌘Q sí pregunta (Mej.0) y esto cierra la ventana igual. No se pierde
+tiempo trackeado —el timer sobrevive entre sesiones a propósito, y la fila abierta de
+`time_entries` queda intacta— pero si estás a mitad de una tarea, la ventana
+desaparece y vuelve sin haberte avisado. Le falta el mismo diálogo que ya existe.
 
 ---
 

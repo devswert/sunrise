@@ -1451,6 +1451,70 @@ devuelve `null` mientras no llega. Ese `null` significa "todavía no sé", **no*
 producción": asumir producción por un instante alcanza para que el respaldo
 automático corra una vez.
 
+### 4.21 Actualizaciones (`updater`)
+
+La app se actualiza sola desde el mismo Release de GitHub que publica el `.dmg`
+(§4.19), con `tauri-plugin-updater`. Configuración en `tauri.conf.json`:
+
+```json
+"plugins": { "updater": { "endpoints": ["…/releases/latest/download/latest.json"], "pubkey": "…" } },
+"bundle":  { "createUpdaterArtifacts": true }
+```
+
+**El updater no usa el `.dmg`.** Con `createUpdaterArtifacts` el build produce
+además un `.app.tar.gz` con su firma al lado, y `tauri-action` escribe el
+`latest.json` que la app consulta. El `.dmg` sigue siendo solo para la primera
+instalación.
+
+**La firma del updater no tiene nada que ver con la de Apple.** Es un par de
+llaves propio (`pnpm tauri signer generate`): la pública va versionada en
+`tauri.conf.json`, la privada vive en los secrets del repo y el workflow la pasa
+como `TAURI_SIGNING_PRIVATE_KEY`. Es lo que impide que alguien sirva una
+actualización falsa desde esa URL. Se generó **sin contraseña**: guardarla en el
+mismo almacén de secrets que la llave no protege de nada, pero la variable
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` va igual porque el firmador la exige aunque
+esté vacía.
+
+> **I** — **El repo tiene que ser público.** La URL del `latest.json` se pide sin
+> credenciales; en un repo privado devuelve 404 a todos, y el síntoma es "nunca hay
+> actualizaciones", que es indistinguible de estar al día. Si algún día se cierra,
+> el updater deja de funcionar en silencio y hay que cambiar la forma del endpoint
+> (uno con token, o un repo público aparte solo para los Releases).
+
+> **I** — **La llave privada no entra al repo.** Ni como archivo suelto (hay
+> `*.key` en `.gitignore`) ni pegada en un YAML. Si se pierde, no se puede firmar
+> una actualización que las apps ya instaladas acepten: hay que repartir un `.dmg`
+> nuevo con la llave pública nueva.
+
+> **I** — **Faltar una pieza de config no rompe nada visible.** Sin `pubkey` el
+> plugin no arranca, sin `endpoints` no hay a quién preguntar, sin
+> `createUpdaterArtifacts` el Release sale con `.dmg` pero sin manifiesto, y sin
+> `TAURI_SIGNING_PRIVATE_KEY` los artefactos salen sin firmar y la app los rechaza.
+> Las cuatro dan el mismo síntoma —"nunca hay actualizaciones"— que es
+> indistinguible de estar al día. El test `la_config_del_updater_esta_completa`
+> cubre las tres primeras; la cuarta solo se ve en el primer tag.
+
+**Todo el updater vive en Rust**, en `commands.rs`: `buscar_actualizacion` (que
+devuelve `Option<Actualizacion>`, donde `None` es "estás al día") e
+`instalar_actualizacion` (que descarga, instala y llama a `app.restart()`, así que
+no retorna). El plugin también tiene API de JavaScript, y no se usa: obligaría a
+un paquete npm más y a abrirle permisos en `capabilities/default.json`, y dejaría a
+`ipc.ts` de ser la única puerta a la app. `instalar_actualizacion` vuelve a
+preguntar en vez de guardarse el `Update` de la búsqueda anterior — mantenerlo vivo
+entre dos comandos obliga a un `State` con media operación de red adentro, y el
+costo real es una petición HTTP.
+
+> **I** — **No se busca al arrancar.** La app ya interrumpe dos veces a una hora
+> fija (el aviso de cerrar el día y el respaldo automático); una tercera cosa que
+> aparece sola al abrir es la que sobra, y lo primero que uno mira en la mañana es
+> el día. Se busca desde Configs → General → Actualizaciones, con un botón.
+
+**El fallo se dice en gris, no en rojo.** Sin conexión, o antes de que exista el
+primer Release, la consulta al `latest.json` no llega. La vista distingue los tres
+finales —hay versión nueva, no hay, no se pudo preguntar— porque los dos últimos se
+ven parecidos y significan lo contrario: "estás al día" es una respuesta, "sin
+conexión" es la falta de una.
+
 ---
 
 ## 5. Sincronización de estado — LEER ANTES DE TOCAR
@@ -1792,7 +1856,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **346 tests front (40 archivos) y 138 Rust, todos verdes.**
+estado actual: **350 tests front (40 archivos) y 139 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -1936,6 +2000,14 @@ pnpm test:all    # ambos
   `dev` esté y diga qué base usa: es **toda** la protección del lado del usuario, y
   si desaparece el aislamiento sigue funcionando pero el error humano —editar en la
   ventana equivocada— vuelve intacto.
+- **Actualizaciones** (§4.21): `la_config_del_updater_esta_completa` en Rust —
+  `pubkey`, `endpoints` https que terminen en `latest.json`, y
+  `createUpdaterArtifacts` — y cuatro en `SettingsView.test.tsx`: que **no** se
+  busque al montar (si hubiera chequeo de arranque, ya habría corrido), que sin
+  versión nueva diga "estás al día", que con una ofrezca instalarla con sus notas,
+  y que un fallo de red **no** se cuente como estar al día. Ese último es el que
+  vale: los dos estados se ven parecidos y significan lo contrario. **La descarga
+  no está cubierta**: reemplaza el `.app` instalado y reinicia el proceso.
 - **Cruce entre ventanas**: `src/lib/store.test.tsx` (el listener invalida, no
   responde al aviso, ignora otras claves, se desregistra) y
   `src/features/today/TodayView.sync.test.tsx` (una tarea completada por la otra

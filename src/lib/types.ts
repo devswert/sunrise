@@ -274,3 +274,19 @@ export interface Perfil {
   /** Nombre del archivo SQLite en uso. */
   base: string;
 }
+
+/**
+ * Una versión nueva disponible. Espejo de `models::Actualizacion`.
+ *
+ * `null` en vez de esta interfaz significa "estás al día", que es el caso normal.
+ */
+export interface Actualizacion {
+  /** La versión publicada (`0.2.0`). */
+  version: string;
+  /** La que está corriendo ahora, para poder mostrar las dos juntas. */
+  versionActual: string;
+  /** Cuerpo del Release. Es markdown escrito a mano por quien publicó. */
+  notas: string | null;
+  /** Día de publicación (`2026-08-17`), o `null` si el `latest.json` no lo trae. */
+  fecha: string | null;
+}

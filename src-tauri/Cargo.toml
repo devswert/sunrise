@@ -33,6 +33,7 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 tauri-plugin-dialog = "2.7.2"
 tempfile = "3.27.0"
 tauri-plugin-autostart = "2.5.1"
+tauri-plugin-updater = "2"
 
 [features]
 # default Tauri custom-protocol for production bundling

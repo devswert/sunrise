@@ -782,6 +782,39 @@
   cursor: default;
   opacity: 0.7;
 }
+/* Actualizaciones (Configs → General). Reusa `.resp-btn`: es el mismo botón
+ * plano del sync y del respaldo, y una tercera definición idéntica solo se
+ * separaría con el tiempo. */
+.upd-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+/* El único de los tres que propone algo en vez de consultar, así que es el
+ * único con color de fondo. */
+.upd-btn--primario {
+  border-color: color-mix(in srgb, var(--apricot) 60%, var(--border));
+  background: color-mix(in srgb, var(--apricot) 22%, var(--surface));
+  color: var(--ink);
+}
+/* Markdown en crudo: se respetan los saltos de línea del Release, sin
+ * interpretarlo. Con alto máximo porque el cuerpo lo escribe una persona y
+ * puede ser una lista de veinte líneas dentro de una card de ajustes. */
+.upd-notas {
+  margin: var(--space-2) 0 0;
+  padding: 8px 10px;
+  max-height: 180px;
+  overflow-y: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .sync-btn__texto {
   font-weight: 600;
 }

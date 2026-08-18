@@ -61,6 +61,10 @@ en el manifest de cada respaldo.
   ni en comentarios, ni en docs. Una regla del tipo "que se vea como X" no sirve
   igual: hay que decir **qué es** la cosa y por qué. Si te encuentras escribiendo
   "como lo hace <producto>", eso es la señal de que falta la razón.
+- **La llave privada del updater no entra al repo**, ni como archivo suelto ni
+  pegada en un YAML: vive en los secrets de GitHub. La pública sí va versionada,
+  en `tauri.conf.json`. Si se pierde la privada no se puede firmar una
+  actualización que las apps instaladas acepten. Detalle en SPECS §4.21.
 - **Dev y producción usan bases distintas** (`sunrise-dev.sqlite` vs
   `sunrise.sqlite`). El sidebar muestra `dev` cuando corresponde. Detalle en
   SPECS §4.20.

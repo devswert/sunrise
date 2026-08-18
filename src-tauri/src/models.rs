@@ -421,3 +421,21 @@ pub struct Perfil {
     /// Nombre del archivo SQLite en uso, para poder mostrarlo tal cual.
     pub base: String,
 }
+
+/// Una versión nueva publicada, tal como la anuncia el `latest.json` del Release.
+///
+/// Es `Option<Actualizacion>` en el comando: `None` significa "estás al día", que
+/// es el caso normal y no es un error.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Actualizacion {
+    /// La versión que hay disponible (`0.2.0`), no la instalada.
+    pub version: String,
+    /// La instalada, para poder mostrar las dos juntas sin que el front tenga que
+    /// pedirla aparte y arriesgarse a mezclar una vieja con la nueva.
+    pub version_actual: String,
+    /// El cuerpo del Release, si lo trae. Es markdown escrito por quien publicó.
+    pub notas: Option<String>,
+    /// Fecha de publicación en el formato que venga del `latest.json`, o `None`.
+    pub fecha: Option<String>,
+}

@@ -5,8 +5,8 @@ use tauri::{Emitter, Manager, State};
 use crate::backup;
 use crate::db::Db;
 use crate::models::{
-    ActiveTimer, ArchivoDeBackup, CalendarFeed, Category, DiaDeBitacora, Objective, Perfil,
-    Rescate, Restauracion, Task, TaskEvent, TimeEntry, TrabajoDelDia, WeeklyRollup,
+    ActiveTimer, Actualizacion, ArchivoDeBackup, CalendarFeed, Category, DiaDeBitacora, Objective,
+    Perfil, Rescate, Restauracion, Task, TaskEvent, TimeEntry, TrabajoDelDia, WeeklyRollup,
 };
 use crate::repo::{self, NewTask, TaskPatch};
 
@@ -744,5 +744,102 @@ pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
         auto.enable().map_err(e)
     } else {
         auto.disable().map_err(e)
+    }
+}
+
+// --- Actualizaciones ---
+//
+// El updater vive **entero acá y no en el front**. El plugin tiene también una
+// API de JavaScript, pero usarla obligaría a instalar el paquete npm y a abrirle
+// permisos en `capabilities/default.json`, y sobre todo dejaría a `ipc.ts` sin ser
+// la única puerta a la app: la regla del proyecto es que ningún componente hable
+// con Tauri por su cuenta. Desde Rust el ACL no aplica, así que hay menos piezas.
+//
+// Lo que la app consulta es el `latest.json` que publica el Release de GitHub
+// (`endpoints` en `tauri.conf.json`), firmado con la llave privada del updater —
+// que no tiene nada que ver con la firma de Apple. Sin esa firma el paquete se
+// rechaza, y por eso una actualización falsa no basta con servirla desde una URL.
+
+/// Pregunta si hay versión nueva. `Ok(None)` es "estás al día", no un error.
+///
+/// Falla —con el mensaje del transporte— cuando no hay red o el Release todavía no
+/// existe. Quien la llame tiene que tratar ese caso como información, no como algo
+/// roto: es exactamente lo que pasa trabajando sin conexión.
+#[tauri::command]
+pub async fn buscar_actualizacion(app: tauri::AppHandle) -> Result<Option<Actualizacion>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let update = app.updater().map_err(e)?.check().await.map_err(e)?;
+    Ok(update.map(|u| Actualizacion {
+        version: u.version.clone(),
+        version_actual: u.current_version.clone(),
+        notas: u.body.clone(),
+        // Solo el día: la hora exacta de publicación no le sirve a nadie, y el
+        // `Display` de `OffsetDateTime` trae el offset a cuestas.
+        fecha: u.date.map(|d| d.date().to_string()),
+    }))
+}
+
+/// Descarga e instala la versión nueva, y **reinicia la app**.
+///
+/// Vuelve a preguntar en vez de guardarse el `Update` de `buscar_actualizacion`:
+/// mantenerlo vivo entre dos comandos obliga a un `State` con la mitad de una
+/// operación de red adentro, y el costo real es una petición HTTP más.
+///
+/// Si no devuelve nunca es porque salió bien: `restart()` no retorna.
+#[tauri::command]
+pub async fn instalar_actualizacion(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let update = app.updater().map_err(e)?.check().await.map_err(e)?;
+    let Some(update) = update else {
+        // Alguien publicó y despublicó entremedio, o la app ya se actualizó en
+        // otra ventana. No hay nada que instalar y tampoco nada roto.
+        return Ok(());
+    };
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(e)?;
+    app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    /// El updater se apaga en silencio si le falta una pieza de config: sin
+    /// `pubkey` el plugin no arranca, sin `endpoints` no tiene a quién preguntar,
+    /// y sin `createUpdaterArtifacts` el Release sale con `.dmg` pero sin el
+    /// `.app.tar.gz` ni el `latest.json` que la app va a buscar. Ninguna de las
+    /// tres falla al compilar y las tres dan el mismo síntoma —"nunca hay
+    /// actualizaciones"— que es indistinguible de estar al día.
+    #[test]
+    fn la_config_del_updater_esta_completa() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+
+        let upd = &conf["plugins"]["updater"];
+        assert!(
+            upd["pubkey"].as_str().is_some_and(|k| !k.is_empty()),
+            "falta la llave pública del updater en tauri.conf.json"
+        );
+
+        let endpoints = upd["endpoints"].as_array().expect("faltan los endpoints");
+        assert!(!endpoints.is_empty(), "la lista de endpoints está vacía");
+        for ep in endpoints {
+            let url = ep.as_str().unwrap_or_default();
+            assert!(
+                url.starts_with("https://"),
+                "el endpoint {url} no es https: el manifiesto va firmado, pero \
+                 pedirlo en claro deja ver qué versión corre cada máquina"
+            );
+            assert!(
+                url.ends_with("latest.json"),
+                "el endpoint {url} tiene que apuntar al manifiesto, no al Release"
+            );
+        }
+
+        assert_eq!(
+            conf["bundle"]["createUpdaterArtifacts"].as_bool(),
+            Some(true),
+            "sin createUpdaterArtifacts el Release no lleva el .app.tar.gz firmado"
+        );
     }
 }

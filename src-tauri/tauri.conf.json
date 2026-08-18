@@ -46,9 +46,18 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/devswert/sunrise/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwRUI0NUEyMDI1RjdCM0QKUldROWUxOENva1hyZ0p6ZVZTT1I4QTlBU0RoSndYaXVlMkh6V3FFOG5LQVZmUzZMUHdGMmdGdngK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

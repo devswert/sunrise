@@ -77,9 +77,20 @@ jobs:
       # peor que no publicar: alguien lo instala.
       - run: pnpm test:all
 
+      # Las dos llaves del updater. Sin ellas `tauri-action` **no falla**: publica
+      # artefactos sin firmar, y la app los rechaza al intentar actualizar — un
+      # Release que se ve bien y no sirve. La privada vive en los secrets del repo
+      # (Settings → Secrets and variables → Actions); la pública está en
+      # `tauri.conf.json` y sí va versionada.
+      #
+      # La llave se generó sin contraseña a propósito: guardarla al lado de la
+      # llave, en el mismo almacén de secrets, no protege de nada. La variable va
+      # igual porque el firmador la exige aunque esté vacía.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           tagName: ${{ github.ref_name }}
           releaseName: sunrise ${{ github.ref_name }}
@@ -94,5 +105,8 @@ jobs:
             desarrollador. Es porque el paquete no está firmado con una cuenta de
             Apple Developer, no porque algo ande mal: haz **clic derecho sobre
             sunrise → Abrir**, y confirma. Una sola vez; después abre normal.
+
+            De ahí en adelante la app se actualiza sola: Configs → General →
+            Actualizaciones. Esas descargas no vuelven a pasar por el aviso.
           releaseDraft: false
           prerelease: false

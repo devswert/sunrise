@@ -124,3 +124,64 @@ describe("SettingsView · inicio automático", () => {
     expect(await screen.findByText(/no se pudo escribir el LaunchAgent/)).toBeInTheDocument();
   });
 });
+
+/**
+ * Actualizaciones. Lo que se prueba acá es la distinción entre los tres finales
+ * posibles de una búsqueda —hay, no hay, no se pudo preguntar—, porque los dos
+ * últimos se parecen en pantalla y significan lo contrario: "estás al día" es una
+ * respuesta y "sin conexión" es la falta de una. Confundirlos deja a alguien
+ * tranquilo en una versión vieja.
+ *
+ * La descarga misma no se puede probar acá: reemplaza el `.app` instalado y
+ * reinicia el proceso, y en jsdom no hay ni uno ni otro.
+ */
+describe("SettingsView · actualizaciones", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("no busca nada hasta que se lo pides", async () => {
+    const spy = vi.spyOn(api, "buscarActualizacion");
+    render(<SettingsView />);
+    // Con la vista montada y estable: si hubiera un chequeo al arrancar, acá ya
+    // habría corrido. No hay, y es a propósito (ver el comentario del componente).
+    expect(await screen.findByText(/Se busca solo cuando lo pides/)).toBeInTheDocument();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("dice que estás al día cuando no hay versión nueva", async () => {
+    render(<SettingsView />);
+    await userEvent.click(await screen.findByRole("button", { name: /Buscar/ }));
+    // El mock devuelve `null`, que es lo que corresponde fuera de Tauri.
+    expect(await screen.findByText(/Estás en la última versión/)).toBeInTheDocument();
+  });
+
+  it("ofrece instalar la versión nueva y muestra las notas del Release", async () => {
+    vi.spyOn(api, "buscarActualizacion").mockResolvedValue({
+      version: "0.2.0",
+      versionActual: "0.1.0",
+      notas: "- El rail muestra los feriados",
+      fecha: "2026-09-01",
+    });
+
+    render(<SettingsView />);
+    await userEvent.click(await screen.findByRole("button", { name: /Buscar/ }));
+
+    expect(await screen.findByText(/Hay una versión nueva: 0\.2\.0/)).toBeInTheDocument();
+    expect(screen.getByText(/publicada el 2026-09-01/)).toBeInTheDocument();
+    expect(screen.getByText("- El rail muestra los feriados")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Instalar 0\.2\.0 y reiniciar/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("un fallo de red no se cuenta como 'estás al día'", async () => {
+    vi.spyOn(api, "buscarActualizacion").mockRejectedValue(new Error("no route to host"));
+
+    render(<SettingsView />);
+    await userEvent.click(await screen.findByRole("button", { name: /Buscar/ }));
+
+    expect(await screen.findByText(/No se pudo preguntar por versiones nuevas/)).toBeInTheDocument();
+    expect(screen.queryByText(/Estás en la última versión/)).not.toBeInTheDocument();
+  });
+});

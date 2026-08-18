@@ -22,6 +22,7 @@ import type {
   ArchivoDeBackup,
   Restauracion,
   Perfil,
+  Actualizacion,
 } from "./types";
 import { toISODate, todayISO, weekDates } from "./date";
 
@@ -898,6 +899,18 @@ export const mock = {
    * distintivo "dev" visible en el sidebar del preview.
    */
   perfil: async (): Promise<Perfil> => ({ dev: true, base: "sunrise-dev.sqlite" }),
+
+  /**
+   * Fuera de Tauri **nunca hay actualización**, y eso no es una simplificación:
+   * el updater reemplaza un `.app` instalado, y en el browser o en jsdom no hay
+   * ninguno. Devolver `null` deja a la vista en su estado "estás al día", que es
+   * justamente lo que corresponde mostrar ahí.
+   */
+  buscarActualizacion: async (): Promise<Actualizacion | null> => null,
+
+  instalarActualizacion: async (): Promise<void> => {
+    throw new Error("no hay nada que instalar fuera de la app de escritorio");
+  },
 
   crearBackup: async (): Promise<ArchivoDeBackup> => {
     const dir = settings.get("backup_dir")?.trim();

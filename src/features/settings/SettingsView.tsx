@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Download, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { api } from "../../lib/ipc";
-import type { Category } from "../../lib/types";
+import type { Actualizacion, Category } from "../../lib/types";
 import { formatMinutes, parseDuration } from "../../lib/capacity";
 import { Popover } from "../../components/Popover";
 import { Switch } from "../../components/Switch";
@@ -152,6 +152,7 @@ function GeneralCard() {
 
       <JornadaFields />
       <InicioAutomatico />
+      <Actualizaciones />
     </Card>
   );
 }
@@ -214,6 +215,104 @@ function InicioAutomatico() {
           ? `No se pudo cambiar el inicio automático: ${error}`
           : "El respaldo automático y el aviso de cerrar el día ocurren a una hora fija, y solo si sunrise está abierta."}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Estados de la búsqueda de actualización. Son seis y no un par de booleanos
+ * porque "no pude preguntar" y "estás al día" se ven parecidos y significan lo
+ * contrario: uno dice que no hay nada nuevo, el otro que no se sabe.
+ */
+type EstadoUpd =
+  | { tipo: "quieto" }
+  | { tipo: "buscando" }
+  | { tipo: "al-dia" }
+  | { tipo: "hay"; upd: Actualizacion }
+  | { tipo: "instalando" }
+  | { tipo: "sin-respuesta"; detalle: string };
+
+/**
+ * Actualizaciones: se buscan **cuando las pides**, nunca solas.
+ *
+ * La app ya interrumpe dos veces a una hora fija —el aviso de cerrar el día y el
+ * respaldo automático— y una tercera cosa que aparece sola al arrancar es la que
+ * sobra: lo primero que uno mira en la mañana es el día, no un diálogo. Por eso el
+ * plugin queda registrado en `lib.rs` sin chequeo de arranque y todo empieza acá,
+ * con un botón.
+ *
+ * El fallo se dice en gris y no en rojo. Mientras no exista el Release —o
+ * trabajando sin conexión— la consulta al `latest.json` no llega, y eso es lo
+ * normal, no una avería.
+ */
+function Actualizaciones() {
+  const [estado, setEstado] = useState<EstadoUpd>({ tipo: "quieto" });
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    let vivo = true;
+    void api.appVersion().then((v) => vivo && setVersion(v));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  async function buscar() {
+    setEstado({ tipo: "buscando" });
+    try {
+      const upd = await api.buscarActualizacion();
+      setEstado(upd ? { tipo: "hay", upd } : { tipo: "al-dia" });
+    } catch (err) {
+      setEstado({ tipo: "sin-respuesta", detalle: String(err) });
+    }
+  }
+
+  async function instalar() {
+    setEstado({ tipo: "instalando" });
+    try {
+      // Si sale bien no vuelve: la app se reinicia sola en la versión nueva.
+      await api.instalarActualizacion();
+    } catch (err) {
+      setEstado({ tipo: "sin-respuesta", detalle: String(err) });
+    }
+  }
+
+  const ocupado = estado.tipo === "buscando" || estado.tipo === "instalando";
+  const hay = estado.tipo === "hay" ? estado.upd : null;
+
+  return (
+    <div className="set-field">
+      <div className="set-field__row">
+        <span className="set-field__label">Actualizaciones</span>
+        <div className="upd-acciones">
+          {hay && (
+            <button type="button" className="resp-btn upd-btn--primario" onClick={() => void instalar()}>
+              <Download size={13} aria-hidden />
+              <span className="resp-btn__texto">Instalar {hay.version} y reiniciar</span>
+            </button>
+          )}
+          <button type="button" className="resp-btn" onClick={() => void buscar()} disabled={ocupado}>
+            <RotateCcw size={13} aria-hidden className={ocupado ? "is-spinning" : undefined} />
+            <span className="resp-btn__texto">
+              {estado.tipo === "buscando" ? "Buscando…" : "Buscar"}
+            </span>
+          </button>
+        </div>
+      </div>
+      <span className="set-note">
+        {estado.tipo === "instalando"
+          ? "Descargando la versión nueva. La app se va a reiniciar sola al terminar."
+          : estado.tipo === "hay"
+            ? `Hay una versión nueva: ${hay!.version}${hay!.fecha ? `, publicada el ${hay!.fecha}` : ""}. Tienes la ${hay!.versionActual}.`
+            : estado.tipo === "al-dia"
+              ? `Estás en la última versión${version ? ` (${version})` : ""}.`
+              : estado.tipo === "sin-respuesta"
+                ? `No se pudo preguntar por versiones nuevas; puede ser que estés sin conexión. ${estado.detalle}`
+                : `Estás usando la versión ${version || "…"}. Se busca solo cuando lo pides.`}
+      </span>
+      {/* Las notas del Release en crudo: es markdown escrito a mano y puede venir
+        * largo, así que va en un bloque aparte y no en la bajada. */}
+      {hay?.notas && <p className="upd-notas">{hay.notas}</p>}
     </div>
   );
 }
