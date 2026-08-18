@@ -1,0 +1,233 @@
+.compose-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh var(--space-4) var(--space-4);
+  z-index: 60;
+}
+
+.compose {
+  width: 100%;
+  max-width: 560px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.compose__title {
+  font-family: var(--font-title);
+  font-size: 20px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  outline: none;
+  padding: 2px 0;
+}
+.compose__title::placeholder {
+  color: var(--faint);
+}
+
+.compose__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.chip:hover {
+  color: var(--ink);
+}
+.chip.is-set {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--apricot) 22%, transparent);
+  border-color: color-mix(in srgb, var(--apricot) 40%, transparent);
+}
+.chip.is-open {
+  border-color: var(--apricot);
+}
+
+/* Popover anclado al chip */
+.chip-wrap {
+  position: relative;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  /* Clave: sin esto el ancho lo limita el .chip-wrap (que es angosto) y el
+   * calendario/lista se ven aplastados. */
+  width: max-content;
+  max-width: 92vw;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: pop-in 0.12s ease-out;
+}
+
+/* Popover en portal: posición fija, fuera de contenedores con overflow */
+.popover--portal {
+  position: fixed;
+  z-index: 200;
+  animation: pop-in 0.12s ease-out;
+}
+
+/* Calendario centrado respecto al chip */
+.popover--center {
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-2);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.popover--center {
+  animation: none;
+}
+
+.compose__panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: var(--space-2);
+}
+
+.panel-quick {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.panel-quick button {
+  flex: 1;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.panel-list button {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-list button:hover {
+  background: var(--surface-sunken);
+}
+.panel-clear {
+  color: var(--muted) !important;
+}
+.panel-ctx {
+  font-weight: 600;
+}
+.panel-ch {
+  padding-left: 22px !important;
+  color: var(--muted) !important;
+}
+.panel-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.panel-list .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.compose__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.compose__hint {
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* react-day-picker acomodado a la paleta.
+ * Se aplica a .popover (no a .compose) porque el calendario se renderiza
+ * en un portal fuera del modal. */
+.popover .rdp-root {
+  --rdp-accent-color: var(--apricot-ink);
+  --rdp-accent-background-color: color-mix(in srgb, var(--apricot) 32%, transparent);
+  --rdp-today-color: var(--apricot-ink);
+  --rdp-selected-border: 2px solid var(--apricot-ink);
+  --rdp-nav_button-height: 26px;
+  --rdp-nav_button-width: 26px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink);
+  margin: 0;
+}
+.popover .rdp-month_caption {
+  font-family: var(--font-title);
+  font-weight: 600;
+}
+.popover .rdp-weekday {
+  color: var(--faint);
+  font-weight: 500;
+}
+.popover .rdp-chevron {
+  fill: var(--muted);
+}
+.popover .rdp-button_next:hover .rdp-chevron,
+.popover .rdp-button_previous:hover .rdp-chevron {
+  fill: var(--apricot-ink);
+}
+.popover .rdp-day_button:hover {
+  background: var(--surface-sunken);
+}
+.popover .rdp-today .rdp-day_button {
+  color: var(--apricot-ink);
+  font-weight: 700;
+}
+.popover .rdp-selected .rdp-day_button {
+  border-color: var(--apricot-ink);
+  color: var(--apricot-ink);
+  font-weight: 700;
+}

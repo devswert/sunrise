@@ -1,0 +1,389 @@
+/* sunrise — estilos globales / reset ligero */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root,
+#timer-root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+.title {
+  font-family: var(--font-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: var(--peach);
+  color: var(--peach-ink);
+}
+
+/* --- Ventana flotante del timer: fondo transparente, arrastrable --- */
+.timer-body {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* --- App shell --- */
+.app-shell {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-main {
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-5) var(--space-5);
+}
+
+/* --- Sidebar --- */
+.sidebar {
+  background: var(--surface-sunken);
+  border-right: 1px solid var(--border);
+  padding: var(--space-4) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-y: auto;
+}
+
+.sidebar__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar__footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.sidebar__icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.sidebar__folder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-3) 4px 34px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 12px;
+}
+.sidebar__folder:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.sidebar__folder-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sidebar__folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar__folder-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+}
+
+.sidebar__brand {
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 18px;
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* La marca (`SunriseMark`) reemplazó al punto de color que había acá. El punto
+   escalaba perfecto pero no decía nada: era un círculo pastel más.
+   El horizonte de la marca hereda el color de esta línea de texto, así que basta
+   con no pisarle el `color`. */
+.sidebar__brand-mark {
+  flex: 0 0 auto;
+  /* El sol arranca a media altura del cuadro, así que ópticamente la marca
+     queda alta respecto de la palabra. Un pelo abajo y se sientan juntas. */
+  margin-bottom: -1px;
+}
+
+/* Distintivo del perfil: solo aparece en dev. Discreto pero legible —no es una
+   alarma, es una etiqueta— y con `title` para ver el archivo de base. */
+.sidebar__perfil {
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
+  cursor: default;
+}
+
+.sidebar__section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.sidebar__link:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+/* Apunta a la etiqueta, no a todos los spans: el atajo (`.sidebar__key`) es
+ * otro span y con `flex: 1` se repartía el ancho con el nombre, dejando su
+ * texto a media fila en vez de pegado al borde derecho. */
+.sidebar__link .sidebar__label {
+  flex: 1;
+}
+
+.sidebar__link.is-active {
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  font-weight: 500;
+}
+
+.sidebar__theme-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* Sin padding derecho: así el borde del switch coincide con el borde
+   * del recuadro activo de los items (cuyo fondo llega hasta el content-edge). */
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+}
+
+.sidebar__theme-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* --- Switch de tema fancy --- */
+.theme-switch {
+  position: relative;
+  width: 60px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0;
+  cursor: pointer;
+  transition: background var(--theme-fade) var(--theme-ease),
+    border-color var(--theme-fade) var(--theme-ease);
+}
+
+.theme-switch.is-light {
+  background: linear-gradient(135deg, var(--butter), var(--peach));
+}
+
+.theme-switch.is-dark {
+  background: linear-gradient(135deg, #2b2b36, #1e2740);
+}
+
+.theme-switch__corner {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: opacity 0.3s ease, color 0.3s ease;
+}
+
+.theme-switch__corner--sun {
+  left: 7px;
+}
+
+.theme-switch__corner--moon {
+  right: 7px;
+}
+
+/* La esquina del modo activo se oculta (la perilla ya lo representa);
+ * la del modo inactivo usa un color de alto contraste contra su track. */
+.theme-switch.is-light .theme-switch__corner--sun {
+  opacity: 0;
+}
+.theme-switch.is-light .theme-switch__corner--moon {
+  color: #3d2f6e; /* índigo profundo sobre track cálido */
+  opacity: 0.85;
+}
+.theme-switch.is-dark .theme-switch__corner--moon {
+  opacity: 0;
+}
+.theme-switch.is-dark .theme-switch__corner--sun {
+  color: #ffd166; /* ámbar brillante sobre track navy */
+  opacity: 0.9;
+}
+
+.theme-switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 23px;
+  height: 23px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #fffdf8;
+  box-shadow: var(--shadow-md);
+  /* rebote suave (overshoot) al deslizar */
+  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.theme-switch.is-light .theme-switch__knob {
+  transform: translateX(0);
+  color: #ef7f38; /* sol naranja vivo sobre perilla blanca */
+}
+
+.theme-switch.is-dark .theme-switch__knob {
+  transform: translateX(32px);
+  color: #3a3a5c; /* luna índigo oscuro sobre perilla blanca */
+}
+
+.theme-switch:active .theme-switch__knob {
+  width: 27px;
+}
+
+/* --- Interruptor neutro (`Switch.tsx`) ---
+   Más chico que el del tema y sin dibujos adentro: va en una fila de Configs
+   junto a los campos de texto, y tiene que pesar lo mismo que ellos. */
+.switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex: 0 0 auto;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  transition: background var(--theme-fade) var(--theme-ease),
+    border-color var(--theme-fade) var(--theme-ease);
+}
+.switch.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fffdf8;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.24s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.switch.is-on .switch__knob {
+  transform: translateX(16px);
+}
+
+/* --- Fade de color en toda la app durante el toggle ---
+ * Un solo timing (var --theme-fade) para bg, texto/títulos, iconos (fill/stroke)
+ * y bordes, para que todos cambien exactamente a la misma velocidad. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color var(--theme-fade) var(--theme-ease),
+    color var(--theme-fade) var(--theme-ease),
+    border-color var(--theme-fade) var(--theme-ease),
+    fill var(--theme-fade) var(--theme-ease),
+    stroke var(--theme-fade) var(--theme-ease),
+    box-shadow var(--theme-fade) var(--theme-ease) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch__knob {
+    transition: none;
+  }
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition: none !important;
+  }
+}
+
+/* Atajo de teclado junto al nombre en el sidebar. Se apaga hasta que el ítem
+ * está activo o con el mouse encima: es una pista, no información principal. */
+.sidebar__key {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+.sidebar__link:hover .sidebar__key,
+.sidebar__link.is-active .sidebar__key {
+  opacity: 1;
+}

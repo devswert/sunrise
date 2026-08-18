@@ -1,0 +1,1897 @@
+/* --- Vista semana / Today (una columna por día) --- */
+
+.week,
+.today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100%;
+}
+
+.week__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.week__range {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--muted);
+}
+.week__isoweek {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--faint);
+  background: var(--surface-sunken);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.week__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: 13px;
+}
+.btn-ghost:hover {
+  background: var(--surface-raised);
+}
+/* --- Tira de paneles, pegada al borde derecho de la semana --- */
+.dock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  width: 44px;
+  padding-top: var(--space-1);
+  border-left: 1px solid var(--border);
+  /* Sobre el panel: la tira es permanente y desde ella se cierra lo que abrió. */
+  position: relative;
+  z-index: 6;
+  background: var(--surface);
+}
+.dock__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  border-radius: var(--radius-sm);
+}
+.dock__btn:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.dock__btn.is-active {
+  background: var(--surface-sunken);
+  color: var(--accent-ink);
+}
+
+/* Contenedor del board y de la agenda superpuesta. El absoluto se cuelga de
+   acá y no de `.board`, que tiene scroll horizontal y lo arrastraría fuera de
+   pantalla; y queda debajo de la barra, o taparía el botón que lo cierra. */
+.week__body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Board: columnas separadas por líneas verticales, sin cajas */
+.board {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 0;
+}
+
+/* Today: lista del día + rail de calendario, centrados como un solo bloque. */
+.today__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: var(--space-4);
+  justify-content: center;
+}
+
+/* La cabecera va centrada sobre el par, no pegada al borde izquierdo. */
+.today > .week__toolbar {
+  justify-content: center;
+}
+
+.today__col {
+  /* `flex: 1` se comía todo el espacio libre y dejaba a `justify-content` sin
+     nada que repartir: la columna quedaba a la izquierda igual.
+     El ancho es el de una columna de la semana y no más: una card de 460px se
+     leía como otro componente, y Today y la semana muestran lo mismo. Se ajusta
+     acá y no en `.day-col`, que la semana comparte. */
+  flex: 0 1 300px;
+  max-width: 300px;
+  display: flex;
+  min-height: 0;
+}
+
+/* Columna de día */
+.day-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 236px;
+  flex: 1 0 236px;
+  padding: 0 var(--space-3);
+  border-right: 1px solid var(--border);
+  min-height: 0;
+}
+.board .day-col:first-child {
+  padding-left: 0;
+}
+.today__col .day-col {
+  border-right: none;
+  padding: 0;
+}
+.day-col.is-over {
+  background: color-mix(in srgb, var(--apricot) 12%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.day-col__head {
+  display: flex;
+  align-items: center;        /* día y fecha alineados al centro */
+  justify-content: space-between;
+  gap: 6px;
+  padding-bottom: var(--space-2);
+}
+/* Selector del día que muestra la agenda. Sin caja propia: es el mismo título
+   del día, que ahora responde al click. */
+.day-col__pick {
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+}
+.day-col__head.is-picked .day-col__weekday {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--accent);
+}
+
+.day-col__weekday {
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.2;
+}
+.day-col.is-today .day-col__weekday {
+  color: var(--apricot-ink);
+}
+.day-col__date {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Fila de acciones: Add task + orden + total del día */
+.day-col__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 var(--space-2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
+}
+.add-task {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  padding: 2px 0;
+  font-size: 13px;
+}
+.add-task:hover {
+  color: var(--ink);
+}
+.day-col__sort {
+  color: var(--faint);
+  flex-shrink: 0;
+}
+.day-col__cap {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  color: #3a3a44;
+  flex-shrink: 0;
+}
+.cap--ok {
+  background: var(--surface-sunken);
+  color: var(--muted);
+}
+.cap--warn {
+  background: var(--cap-warn);
+}
+.cap--over {
+  background: var(--cap-over);
+  color: #fff;
+}
+
+.day-col__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 60px;
+  padding-bottom: var(--space-4);
+}
+
+/* --- Task card --- */
+.task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 9px 11px;
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+}
+.task-card:hover {
+  border-color: var(--muted);
+}
+.task-card.is-dragging {
+  opacity: 0.35;
+}
+.task-card.is-done .tc__title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.task-card.is-overlay {
+  cursor: grabbing;
+  transform: rotate(3deg);
+  box-shadow: var(--shadow-lg);
+  width: 236px;
+  opacity: 0.97;
+}
+
+.tc__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 14px;
+}
+.tc__time {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.tc__badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--surface-sunken);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+/* Solo la tarea en curso va en verde; el resto queda en gris. */
+.tc__badge.is-running {
+  background: color-mix(in srgb, var(--mint) 55%, transparent);
+  color: var(--mint-ink);
+  font-weight: 600;
+}
+/* Punto pulsante: deja claro que se está trabajando en esa tarea. */
+.tc__pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mint-ink);
+  margin-right: 5px;
+  animation: tc-pulse 1.4s ease-in-out infinite;
+}
+@keyframes tc-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+/* La card activa se destaca con un borde verde. */
+.task-card.is-running {
+  border-color: var(--mint-ink);
+  box-shadow: 0 0 0 1px var(--mint-ink) inset, var(--shadow-sm);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc__pulse { animation: none; }
+}
+
+.tc__title {
+  font-size: 13.5px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.tc__foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+}
+.tc__check {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--faint);
+  padding: 0;
+  flex-shrink: 0;
+}
+.tc__check:hover {
+  border-color: var(--mint-ink);
+  color: var(--mint-ink);
+}
+.tc__check.is-checked {
+  background: var(--mint-ink);
+  border-color: var(--mint-ink);
+  color: #fff;
+}
+.tc__tag {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Category tag (backlog / otras vistas) */
+.cat-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--tag-ink);
+  background: color-mix(in srgb, var(--tag-bg) 35%, transparent);
+  padding: 1px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.cat-tag__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tag-bg);
+}
+
+/* Card del backlog (mantiene layout horizontal simple) */
+.backlog .task-card {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.backlog .task-card__check {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+  background: transparent;
+  color: #fff;
+  padding: 0;
+}
+.backlog .task-card__check.is-checked {
+  background: var(--mint-ink);
+  border-color: var(--mint-ink);
+}
+.backlog .task-card__body {
+  flex: 1;
+  min-width: 0;
+}
+.backlog .task-card__title {
+  font-size: 13px;
+  line-height: 1.35;
+}
+.backlog .task-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 4px;
+}
+.backlog .task-card__est {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+/* --- Objetivos de la semana --- */
+.objectives {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.objectives__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.objectives__list {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.obj-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px 4px 6px;
+  font-size: 12px;
+}
+.obj-chip.is-done .obj-chip__title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.obj-chip__check {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+  background: transparent;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.obj-chip__check.is-checked {
+  background: var(--mint-ink);
+  border-color: var(--mint-ink);
+}
+.obj-chip__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--surface-raised);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+.obj-chip__del {
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  padding: 0 2px;
+  display: inline-flex;
+}
+.obj-chip__del:hover {
+  color: var(--rose-ink);
+}
+.obj-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+.obj-add input {
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  outline: none;
+}
+
+/* --- Backlog --- */
+.backlog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 720px;
+}
+.backlog__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.backlog__group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 14px;
+}
+.backlog__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.backlog__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* --- Settings --- */
+.settings {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-areas:
+    "title  title"
+    "tabs   panels";
+  gap: var(--space-3) var(--space-5);
+  align-items: start;
+  max-width: 820px;
+  padding-bottom: 40vh; /* deja bajar hasta la última sección con el scroll */
+}
+.settings__title {
+  grid-area: title;
+  font-family: var(--font-title);
+  font-size: 24px;
+  margin: 0 0 var(--space-2);
+}
+
+/* Tabs verticales. Se quedan fijas mientras la columna derecha se desplaza. */
+.set-tabs {
+  grid-area: tabs;
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.set-tab {
+  /* Flex y no `text-align`: el icono va antes de la etiqueta y las cinco tabs
+     tienen que alinear su texto en la misma columna. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.set-tab:hover {
+  color: var(--ink);
+  background: var(--surface-raised);
+}
+/* El icono acompaña, no compite: se apaga salvo en la sección activa. */
+.set-tab svg {
+  flex: 0 0 auto;
+  color: var(--faint);
+}
+.set-tab.is-active {
+  color: var(--ink);
+  font-weight: 500;
+  border-left-color: var(--apricot);
+  background: var(--surface-raised);
+}
+.set-tab.is-active svg,
+.set-tab:hover svg {
+  color: var(--muted);
+}
+
+.set-panels {
+  grid-area: panels;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.set-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  /* El scroll animado no debe dejar la card pegada al borde superior. */
+  scroll-margin-top: var(--space-4);
+}
+/* Flex por el icono, que va antes del nombre y tiene que quedar centrado con la
+   línea del texto. Un poco más grande que la bajada para que se lea como el
+   encabezado de la sección y no como otra línea más de la card. */
+.set-card__head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-title);
+  font-size: 17px;
+  margin: 0 0 4px;
+}
+.set-card__head h2 svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+/* La bajada explica la sección que sigue, no la pantalla entera. */
+.set-card__head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.set-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.set-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.set-group + .set-group {
+  margin-top: var(--space-3);
+}
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  min-height: 38px;
+}
+.set-row.is-child {
+  margin-left: var(--space-5);
+}
+.set-row.is-adding {
+  border-style: dashed;
+  border-color: var(--apricot);
+}
+.set-row__name {
+  flex: 1;
+  font-size: 13px;
+}
+.set-row__input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  min-width: 0;
+}
+.set-row__icon {
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  padding: 2px;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.set-row__icon:hover:not(:disabled) {
+  color: var(--ink);
+}
+.set-row__icon.is-danger:hover {
+  color: var(--rose-ink);
+}
+.set-row__icon:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+/* --- Hora del evento en la tarjeta -------------------------------------------
+ * Mismo diseño que los labels de tiempo (ACTUAL / PLANNED) pero con su propio
+ * color: es información de otra naturaleza —cuándo, no cuánto— y confundirlas
+ * cuesta un segundo de lectura cada vez. */
+.tc__time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--sky) 55%, transparent);
+  color: var(--sky-ink);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+/* Un evento de día completo no ocupa una hora concreta, así que su label no
+ * debería pesar como uno que sí. */
+.tc__time.is-todoeldia {
+  background: transparent;
+  color: var(--faint);
+  padding-left: 0;
+}
+
+/* --- Botón plano de acción en una cabecera ----------------------------------
+ * Lo comparten el sync de calendarios (semana y Configs, el mismo componente) y
+ * las acciones de Respaldo. **Una sola definición con dos nombres, a propósito**:
+ * tienen que verse idénticos, y dos reglas separadas se habrían separado en el
+ * primer ajuste. Sin color de fondo propio: son acciones, no estados. */
+.sync-btn,
+.resp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sync-btn:hover:not(:disabled),
+.resp-btn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--faint);
+}
+.sync-btn:disabled,
+.resp-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.sync-btn__texto {
+  font-weight: 600;
+}
+.sync-btn__cuando {
+  color: var(--faint);
+  font-size: 11px;
+}
+.is-spinning {
+  animation: feed-spin 0.9s linear infinite;
+}
+@keyframes feed-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Sin animación para quien la pidió apagada; el estado se lee en el texto
+ * ("Sincronizando…"). */
+@media (prefers-reduced-motion: reduce) {
+  .is-spinning {
+    animation: none;
+  }
+}
+
+/* Focus muestra el mismo detalle que el modal, con más aire: es la pantalla en
+ * la que estás cuando empieza la reunión. */
+.focus__notas {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+.focus .evento {
+  margin-top: var(--space-4);
+}
+.focus .meet__link {
+  font-size: 15px;
+}
+
+/* --- Bloque del evento en el detalle ---------------------------------------- */
+.evento {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.evento__fila {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.evento__icono {
+  color: var(--faint);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.evento__hora {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.evento__desc {
+  /* Ya viene limpia de etiquetas (ver `descripcion.ts`); lo único que queda por
+   * respetar son los saltos de línea. */
+  white-space: pre-wrap;
+  /* Una descripción larga no debe empujar el ancho del modal. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Entrar a la reunión: se ve como link porque es lo que hace, aunque sea un
+ * <button> (dentro del webview un anchor externo no navega — ver MeetingLink). */
+.meet {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.meet__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--sky-ink);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.meet__link:hover {
+  text-decoration: underline;
+}
+.meet__icono {
+  flex-shrink: 0;
+}
+.meet__sala {
+  font-size: 11.5px;
+  color: var(--faint);
+  padding-left: 22px;
+}
+
+/* --- Participantes ---------------------------------------------------------- */
+.gente {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.gente__fila {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+/* Sin avatares ni iniciales: la app no tiene fotos, y unas letras en un círculo
+ * compiten con el nombre, que es lo que uno viene a leer. El punto lleva todo el
+ * estado, y cada color va acompañado de su texto accesible (ver Participantes). */
+.gente__punto {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 3px;
+}
+.gente__punto.is-si {
+  background: var(--mint-ink);
+}
+.gente__punto.is-quizas {
+  background: var(--sky-ink);
+}
+.gente__punto.is-no {
+  background: var(--rose-ink);
+}
+.gente__punto.is-pendiente {
+  background: var(--faint);
+}
+.gente__nombre {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gente__org {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--apricot-ink);
+  flex-shrink: 0;
+}
+
+/* --- Lista de calendarios en Configs ---------------------------------------- */
+.set-card__head--conaccion {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.feeds {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.feed.is-roto {
+  border-color: var(--rose-ink);
+}
+.feed__linea {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.feed__nombre {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 14px;
+  outline: none;
+  min-width: 0;
+}
+.feed__acciones {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.feed__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.feed__poll,
+.feed__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.feed__poll-input {
+  width: 3.2em;
+  text-align: center;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  outline: none;
+}
+.feed__estado {
+  font-size: 11.5px;
+  color: var(--faint);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.feed__estado.is-error {
+  color: var(--rose-ink);
+}
+.feeds__vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+.feeds__vacio p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* --- Modal de alta de calendario -------------------------------------------- */
+.feedmodal {
+  width: 100%;
+  max-width: 560px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+}
+.feedmodal:focus {
+  outline: none;
+}
+.feedmodal__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.feedmodal__top h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.feedmodal__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.feedmodal__fila {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+.feedfield {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.feedfield--corto {
+  flex: 0 0 6em;
+}
+.feedfield__label {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.feedfield__url {
+  letter-spacing: 0.08em;
+}
+/* Los inputs del modal ocupan el ancho completo de su campo: la URL de un ICS
+ * es larguísima y en un input angosto no se ve dónde estás parado. */
+.feedmodal .set-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.feedfield--canal {
+  /* El chip no debe estirarse hasta el otro campo. */
+  align-items: flex-start;
+}
+.feedfield--corto .set-input {
+  text-align: center;
+}
+.feedmodal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.feedmodal__acciones {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+.feedmodal__foot--soloacciones {
+  justify-content: flex-end;
+}
+
+.set-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  width: 100%;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 38px;
+}
+.set-add-btn:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.set-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.set-field__label {
+  font-size: 13px;
+}
+/* Etiqueta a la izquierda, control a la derecha, ocupando la línea completa.
+   Es la fila de un interruptor: sin el `space-between` el switch queda pegado a
+   la etiqueta, a media card, y no se lee como el control de esa línea. */
+.set-field__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex: 1 1 100%;
+}
+.set-input {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  width: 96px;
+}
+.set-input:focus {
+  border-color: var(--muted);
+}
+.set-input.is-invalid {
+  border-color: var(--rose-ink);
+}
+/* Inicio y fin de jornada: dos campos cortos en la misma fila. Nombre propio y
+   no `.set-row`, que ya es la fila de canales/atajos y trae su propio borde. */
+.set-jornada {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.set-field--inline {
+  flex-wrap: nowrap;
+}
+.set-input--hora {
+  width: 76px;
+}
+
+.set-note {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.set-note.is-error {
+  color: var(--rose-ink);
+}
+
+/* Un punto por fila; la paleta completa vive en el popover. */
+.color-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: block;
+}
+.color-dot:hover {
+  border-color: var(--muted);
+}
+.palette {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.swatch.is-active {
+  border-color: var(--ink);
+}
+
+/* Atajos de teclado */
+.hotkey {
+  cursor: pointer;
+  min-width: 116px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+.hotkey:hover {
+  border-color: var(--muted);
+}
+.hotkey.is-capturing {
+  border-color: var(--apricot);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+/* Check genérico (usado por Weekly planning) */
+.task-card__check {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+  background: transparent;
+  color: #fff;
+  padding: 0;
+  flex-shrink: 0;
+}
+.task-card__check.is-checked {
+  background: var(--mint-ink);
+  border-color: var(--mint-ink);
+}
+
+/* --- Weekly planning --- */
+.planning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 860px;
+}
+.planning__step-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  margin-bottom: var(--space-2);
+}
+.plan-obj {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.plan-obj__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.plan-obj__title {
+  flex: 1;
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 15px;
+}
+.plan-obj.is-done .plan-obj__title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.plan-obj__progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+  margin-bottom: var(--space-2);
+}
+.plan-obj__bar {
+  height: 100%;
+  background: var(--mint-ink);
+  transition: width 0.3s ease;
+}
+.plan-obj__tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 4px 0;
+}
+.plan-task.is-done {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.plan-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* --- Card: título + tiempo alineados --- */
+.tc__main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tc__main .tc__title {
+  flex: 1;
+  min-width: 0;
+}
+.tc__badge {
+  flex-shrink: 0;
+  margin-left: 0;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  line-height: 1.4;
+}
+
+
+.tc__icon {
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+.tc__icon:hover {
+  color: var(--ink);
+}
+
+.tc__tagwrap {
+  margin-left: auto;
+  display: flex;
+  min-width: 0;
+  overflow: visible;
+}
+button.tc__tag {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--faint);
+  font-family: var(--font-body);
+  cursor: pointer;
+  margin-left: 0;
+}
+button.tc__tag:hover {
+  filter: brightness(0.9);
+  text-decoration: underline;
+}
+
+/* Mini footer de tiempos dentro de la card */
+.tc__timer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.tc__play {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tc__play:hover {
+  border-color: var(--mint-ink);
+  color: var(--mint-ink);
+}
+.tc__play.is-running {
+  background: var(--mint-ink);
+  border-color: var(--mint-ink);
+  color: #fff;
+}
+.tc__timer-times {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-left: auto;
+}
+.tc__timer-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.tc__timer-planned {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.tc__timer-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+}
+.tc__timer-value {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+}
+.tc__timer-value.is-running {
+  color: var(--mint-ink);
+}
+
+/* --- Barra de progreso del día actual --- */
+/* El slot existe en TODAS las columnas (misma altura) para que las listas
+ * queden alineadas; la barra solo se pinta en el día activo. */
+.day-progress-slot {
+  height: 12px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+}
+.day-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.day-progress__bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+.day-progress__fill {
+  height: 100%;
+  background: var(--mint-ink);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.day-progress__label {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* --- Atajos de teclado (Settings) --- */
+.hotkey {
+  cursor: pointer;
+  min-width: 140px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.hotkey:hover {
+  border-color: var(--muted);
+}
+.hotkey.is-capturing {
+  border-color: var(--apricot);
+  background: var(--surface-raised);
+  color: var(--muted);
+}
+.cat-row__del:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+
+
+/* --- Daily planning (M3.4) ---------------------------------------------
+   Dos pasos y el rail. Se centra como Today y usa los mismos anchos de columna:
+   es el mismo tablero, visto de otra forma. */
+.daily-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100%;
+  min-height: 0;
+}
+
+.daily-plan__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.daily-plan__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-title);
+  font-size: 22px;
+  margin: 0;
+}
+
+.daily-plan__sub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+/* Los pasos son un guion, no un trámite: se puede saltar a cualquiera. */
+.steps {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.steps__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.steps__pill:hover {
+  border-color: var(--sage-ink);
+}
+
+.steps__pill.is-active {
+  color: var(--ink);
+  border-color: var(--sage-ink);
+}
+
+.steps__n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--surface-sunken);
+  font-size: 10px;
+}
+
+.steps__pill.is-active .steps__n {
+  background: var(--sage-ink);
+  color: var(--surface);
+}
+
+/* Centrado como Today: el contenido no se pega al borde izquierdo. */
+.daily-plan__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: var(--space-4);
+  justify-content: center;
+}
+
+/* Paso 1: las secciones se apilan en una sola columna centrada. */
+.daily-plan__paso {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-2);
+}
+
+/* Paso 2: día y backlog, uno al lado del otro. Del **mismo ancho que una columna
+   de la semana** (el `flex-basis` de `.day-col`), no repartiéndose el espacio
+   libre: una card estirada al doble deja de leerse como la misma card. El aire
+   que sobra a la izquierda queda como aire. */
+.daily-plan__hoy {
+  flex-direction: row;
+  gap: var(--space-4);
+}
+
+.daily-plan__hoy .daily-plan__col {
+  flex: 0 0 236px;
+  max-width: 236px;
+}
+
+.daily-plan__col {
+  flex: 0 0 300px;
+  max-width: 300px;
+  display: flex;
+  min-height: 0;
+}
+
+.daily-plan__col .day-col {
+  border-right: none;
+  padding: 0;
+}
+
+/* En el ritual la barra de progreso del día no aporta: se está planificando,
+   no midiendo. El slot se queda para no desalinear las dos columnas. */
+.daily-plan__col .day-progress-slot > * {
+  display: none;
+}
+
+.daily-plan__empty {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* Paso 1: las mismas cards de la semana, en una columna centrada, con el
+   resumen del día arriba como portada. */
+.repaso {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 360px;
+  flex: 0 0 360px;
+  margin: 0 auto;
+}
+
+.repaso__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-3);
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--sage) 22%, var(--surface-raised)),
+    var(--surface-raised)
+  );
+}
+
+.repaso__dia {
+  margin: 0;
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 17px;
+  text-align: center;
+}
+
+.repaso__cifras {
+  display: flex;
+  gap: var(--space-5);
+}
+
+.cifra {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.cifra__n {
+  font-family: var(--font-title);
+  font-size: 24px;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.cifra__n small {
+  font-size: 14px;
+  color: var(--faint);
+}
+
+.cifra__label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.repaso__barra {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.repaso__barra-fill {
+  height: 100%;
+  background: var(--mint-ink);
+  transition: width 0.4s ease;
+}
+
+/* Rótulo de cada grupo: separa lo que quedó ahí de lo que ya se movió solo. */
+.repaso__grupo {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: var(--space-3);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.repaso__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.repaso__row .task-card {
+  flex: 1;
+  min-width: 0;
+}
+
+.repaso__acciones {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.repaso__desde {
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.btn-icon:hover {
+  color: var(--sage-ink);
+  border-color: var(--sage-ink);
+}
+
+/* La carga del día vive en la barra de abajo, en una línea: como card ocupaba
+   media pantalla para decir dos números. */
+.daily-plan__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+.daily-plan__botones {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.cap-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.cap-line strong {
+  font-family: var(--font-title);
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.cap-line__bar {
+  width: 90px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.cap-line__fill {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+  transition: width 0.3s ease;
+}
+
+.cap-line.is-warn .cap-line__fill {
+  background: var(--cap-warn);
+}
+
+.cap-line.is-over .cap-line__fill {
+  background: var(--cap-over);
+}
+
+.cap-line.is-over .cap-line__msg {
+  color: var(--cap-over);
+}
+
+.cap-line__msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cap-line__warn {
+  color: var(--accent-ink);
+  white-space: nowrap;
+}
+
+/* Rótulos dentro de una columna (el backlog separa lo que vino de un día de lo
+   que guardaste a propósito). Van dentro de la lista para no partir el
+   `SortableContext`, que rompería el arrastre entre grupos. */
+.col-grupo {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: var(--space-3) 0 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.col-grupo:first-child {
+  margin-top: 0;
+}
+
+.col-desde {
+  display: block;
+  margin: -2px 0 6px;
+  padding-left: 2px;
+  font-size: 10px;
+  color: var(--faint);
+}

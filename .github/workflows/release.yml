@@ -1,0 +1,98 @@
+# Publica el .dmg de sunrise en un GitHub Release.
+#
+# Se dispara al **empujar un tag** `v*` (v0.1.0, v1.2.3), no en cada push a main:
+# publicar es un acto deliberado, y el número de versión ya vive en tres archivos
+# del repo. También se puede correr a mano desde la pestaña Actions.
+#
+# Cómo se saca una versión:
+#
+#   1. sube la versión en los tres archivos (Cargo.toml, tauri.conf.json,
+#      package.json) y commitea
+#   2. git tag v0.2.0 && git push origin main --tags
+#
+# El paso "versión" de acá falla si el tag no coincide con esos archivos, que es
+# el único lugar donde eso se puede pillar: los tests de Rust comprueban que los
+# tres archivos coincidan **entre sí**, pero no saben nada del tag.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# El Release lo crea el propio workflow.
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    # macos-14 y no macos-latest: del 14 en adelante los runners son arm64, que es
+    # el único target que este proyecto compila (SPECS §4.19 fija
+    # minimumSystemVersion 11.0). En macos-13, que es Intel, saldría un .dmg que no
+    # corre en el Mac de nadie del equipo.
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Solo cuando lo disparó un tag: en `workflow_dispatch` no hay tag que
+      # comparar y el paso se salta.
+      - name: versión
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          cargo_v=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
+          conf_v=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          pkg_v=$(node -p "require('./package.json').version")
+          echo "tag=$tag cargo=$cargo_v conf=$conf_v package=$pkg_v"
+          for v in "$cargo_v" "$conf_v" "$pkg_v"; do
+            if [ "$v" != "$tag" ]; then
+              echo "::error::el tag $GITHUB_REF_NAME no coincide con la versión $v del repo"
+              exit 1
+            fi
+          done
+
+      # Sin `version:` a propósito: `action-setup` lee `packageManager` de
+      # package.json, así que la versión de CI no puede separarse de la local. Con
+      # el número acá escrito a mano, un `pnpm install --frozen-lockfile` contra un
+      # lockfile de otra major falla, y eso solo se ve en la primera corrida.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # El build de release desde cero toma unos tres minutos en local; sin caché
+      # en CI son más, y se pagan en cada tag.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      # Las dos suites antes de empaquetar. Un .dmg publicado con tests rojos es
+      # peor que no publicar: alguien lo instala.
+      - run: pnpm test:all
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: sunrise ${{ github.ref_name }}
+          # Sin firma de Apple Developer (decisión tomada: la app no sale del
+          # equipo). Un .dmg descargado del navegador queda en cuarentena, así que
+          # la primera vez hay que abrirlo con clic derecho. Las actualizaciones
+          # automáticas no pasan por ahí: ahí el que descarga es la app.
+          releaseBody: |
+            Instalación: abre el `.dmg` y arrastra sunrise a Aplicaciones.
+
+            **La primera vez**, macOS va a decir que no puede verificar al
+            desarrollador. Es porque el paquete no está firmado con una cuenta de
+            Apple Developer, no porque algo ande mal: haz **clic derecho sobre
+            sunrise → Abrir**, y confirma. Una sola vez; después abre normal.
+          releaseDraft: false
+          prerelease: false

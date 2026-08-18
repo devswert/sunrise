@@ -1,0 +1,38 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permisos base para las ventanas de sunrise",
+  "windows": [
+    "main",
+    "floating-timer"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-focusable",
+    "core:window:allow-unminimize",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-visible-on-all-workspaces",
+    "core:window:allow-set-position",
+    "core:window:allow-outer-position",
+    "core:window:allow-cursor-position",
+    "core:window:allow-is-visible",
+    "core:window:allow-outer-size",
+    "core:window:allow-inner-size",
+    "core:window:allow-current-monitor",
+    "core:window:allow-primary-monitor",
+    "core:window:allow-available-monitors",
+    "core:window:allow-scale-factor",
+    "core:event:default",
+    "notification:default",
+    "dialog:allow-open",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+# pnpm v11 lee estos settings desde aquí (ya no desde el campo "pnpm" de package.json).
+# esbuild es el bundler que usan Vite y Vitest; su build script debe correr.
+onlyBuiltDependencies:
+  - esbuild

@@ -1,0 +1,630 @@
+/* --- Bitácora y cierre del día (M3.6) ----------------------------------
+   Reusa `.review__cifras`, `.chip-cifra`, `.leyenda` y `.review__vacio` de la
+   weekly review, y `.repaso__row` / `.repaso__acciones` del ritual diario: es la
+   misma familia de vistas —mirar hacia atrás— y duplicar los estilos
+   garantizaba que se separaran con el primer retoque.
+
+   La tipografía es deliberadamente chica. Los contadores son un dato de
+   referencia, no el contenido: el contenido son las tareas y lo que escribiste
+   sobre ellas. */
+
+.bitacora,
+.shutdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  min-height: 0;
+}
+
+/* --- Bitácora (Daily highlights) --- */
+
+.bitacora__head {
+  text-align: center;
+}
+
+.bitacora__titulo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.bitacora__lema {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.bitacora__feed {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Sin tarjetas: el feed es un cuaderno y el corte lo hace el separador. */
+.dia {
+  display: flex;
+  flex-direction: column;
+}
+
+/* La fecha centrada sobre una línea, como el corte de una libreta. */
+.dia__sep {
+  position: relative;
+  text-align: center;
+  margin: var(--space-5) 0 var(--space-4);
+}
+
+.dia__sep::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--border);
+}
+
+.dia__sep span {
+  position: relative;
+  padding: 3px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Contenido centrado: dos columnas con ancho máximo, no pegadas al borde. */
+.dia__cuerpo,
+.shutdown__cuerpo {
+  display: flex;
+  gap: var(--space-5);
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.dia__izq,
+.shutdown__centro {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* La ficha del día: contadores, timeline y channels. Angosta, gris, a la
+   derecha — se consulta, no se lee. */
+.dia__der {
+  flex: 0 0 250px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dia__estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.dia__nombre {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 var(--space-3);
+  font-family: var(--font-title);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.dia__mood {
+  font-size: 17px;
+  line-height: 1;
+}
+
+/* Tu voz: se destaca con la barra, no con color. */
+.dia__nota {
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--sage);
+  font-size: 13px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.dia__otras {
+  margin: var(--space-3) 0 0;
+  padding-left: 22px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* --- Los hitos, como línea de tiempo --- */
+
+.hitos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hitos li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 7px 0;
+}
+
+/* La línea que une los puntos. Se corta antes del primero y después del último
+   para que no sobresalga de la serie. */
+.hitos li::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--border);
+}
+
+.hitos li:first-child::before {
+  top: 50%;
+}
+
+.hitos li:last-child::before {
+  bottom: 50%;
+}
+
+.hitos li:only-child::before {
+  display: none;
+}
+
+/* El punto va centrado verticalmente sobre la fila entera —con o sin channel,
+   con o sin resumen—: alineado arriba, cada hito parecía arrancar a una altura
+   distinta. */
+.hitos__punto {
+  position: relative;
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--mint-ink);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+
+.hitos__punto.is-tenue {
+  background: var(--border);
+}
+
+.hitos__cuerpo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* El channel arriba y más chico que el título: el contexto antes del qué. */
+.hitos__channel {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.hitos__titulo {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.hitos__link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.hitos__link:hover {
+  text-decoration: underline;
+}
+
+.hitos__nota {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* --- La ficha: contadores, timeline, channels --- */
+
+.dia__contadores {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.dia__contadores span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dia__contadores em {
+  font-style: normal;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.dia__contadores b {
+  font-family: var(--font-title);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.dia__rotulo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.dia__toggle {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.dia__toggle:hover {
+  color: var(--muted);
+}
+
+.dia__toggle svg.is-open {
+  transform: rotate(180deg);
+}
+
+.dia__tl,
+.dia__analytics {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start;
+}
+
+.dia__tl ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.dia__tl li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 3px 0 3px var(--space-3);
+  border-left: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.dia__tl li.is-running {
+  border-left-color: var(--sage-ink);
+}
+
+.dia__tlTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.dia__tlDur {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+}
+
+.dia__tl li.is-running .dia__tlDur {
+  color: var(--sage-ink);
+}
+
+.dia__donut {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.dia__donut .donut {
+  width: 110px;
+  height: 110px;
+  margin: 0 auto;
+}
+
+.dia__donut .leyenda {
+  font-size: 11px;
+  max-width: none;
+}
+
+/* --- Shutdown --- */
+
+.shutdown {
+  overflow-y: auto;
+  padding-right: var(--space-2);
+}
+
+/* Los chips a la derecha, sin nada que compita a la izquierda. */
+.shutdown__head {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.shutdown__chips {
+  margin: 0;
+}
+
+.entrada__cabecera {
+  margin-bottom: var(--space-5);
+}
+
+.entrada__dia {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.entrada__fecha {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* El botón del ánimo: redondo y punteado mientras esté vacío, para que se lea
+   como "falta elegir" y no como un adorno. */
+.mood {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px dashed var(--border);
+  border-radius: 50%;
+  background: none;
+  color: var(--faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mood.tiene-valor {
+  border-style: solid;
+  border-color: var(--border);
+}
+
+.mood:hover {
+  border-color: var(--sage-ink);
+  color: var(--sage-ink);
+}
+
+/* La grilla de caras, como las reacciones de un chat. */
+.mood-picker {
+  padding: var(--space-2);
+}
+
+.mood-picker__grilla {
+  display: grid;
+  grid-template-columns: repeat(6, 30px);
+  gap: 2px;
+}
+
+.mood-picker__grilla button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mood-picker__grilla button:hover {
+  background: var(--surface-sunken);
+}
+
+.mood-picker__grilla .is-elegido {
+  background: var(--sage);
+}
+
+.mood-picker__quitar {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mood-picker__quitar:hover {
+  color: var(--ink);
+}
+
+/* El resumen del día se escribe donde se lee: sin caja, pegado al título. */
+.entrada__resumen {
+  width: 100%;
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.entrada__resumen::placeholder {
+  color: var(--faint);
+}
+
+.entrada__resumen:focus {
+  outline: none;
+}
+
+.entrada__bloque {
+  margin-bottom: var(--space-5);
+}
+
+.entrada__h2 {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.entrada__lema {
+  margin: 2px 0 var(--space-3);
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* Un highlight es una caja con su resumen adentro. */
+.hitos--edit .hitos__caja {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.hitos__fila {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.hitos__resumen {
+  width: 100%;
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.hitos__resumen::placeholder {
+  color: var(--faint);
+}
+
+.hitos__resumen:focus {
+  outline: none;
+  color: var(--ink);
+}
+
+/* Aparece al pasar por encima: subir algo es la excepción, no lo que se mira. */
+.incluir {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.hitos li:hover .incluir,
+.incluir:focus-visible {
+  opacity: 1;
+}
+
+.incluir:hover {
+  border-color: var(--sage-ink);
+  color: var(--sage-ink);
+}
+
+.shutdown__pendientes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Ancho fijo aunque no haya botones (una reunión no se mueve): si no, la card de
+   al lado queda más ancha y la columna se desalinea. */
+.shutdown__pendientes .repaso__acciones {
+  flex: 0 0 26px;
+}
+
+.shutdown__pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.shutdown__hint,
+.shutdown__sello {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.shutdown__sello {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

@@ -1,0 +1,144 @@
+import { describe, expect, it } from "vitest";
+import {
+  SETTING_DEFAULTS,
+  SettingKey,
+  capacityWarnRatio,
+  dailyCapacityMinutes,
+  workHours,
+} from "./settings";
+import { computeCapacityLevel } from "./capacity";
+import { CapacityLevel } from "./enums";
+
+/**
+ * Los ajustes son TEXT en SQLite y pueden faltar, venir vacíos o traer basura
+ * editada a mano. Si un parser devolviera `NaN`, el semáforo de capacidad se
+ * quedaría en OK para siempre —todas las comparaciones con `NaN` dan false— sin
+ * ningún error visible. De ahí que estos casos sean el corazón del módulo.
+ */
+
+describe("dailyCapacityMinutes", () => {
+  it("lee el valor guardado", () => {
+    expect(dailyCapacityMinutes({ [SettingKey.DAILY_CAPACITY_MINUTES]: "300" })).toBe(300);
+  });
+
+  it("cae al default si la clave falta", () => {
+    expect(dailyCapacityMinutes({})).toBe(SETTING_DEFAULTS.dailyCapacityMinutes);
+  });
+
+  it("cae al default con valores vacíos o no numéricos", () => {
+    for (const raw of ["", "   ", "ocho horas", "8h", "NaN"]) {
+      expect(dailyCapacityMinutes({ [SettingKey.DAILY_CAPACITY_MINUTES]: raw })).toBe(
+        SETTING_DEFAULTS.dailyCapacityMinutes,
+      );
+    }
+  });
+
+  it("respeta 0 como 'sin objetivo'", () => {
+    expect(dailyCapacityMinutes({ [SettingKey.DAILY_CAPACITY_MINUTES]: "0" })).toBe(0);
+  });
+});
+
+describe("capacityWarnRatio", () => {
+  it("lee el valor guardado", () => {
+    expect(capacityWarnRatio({ [SettingKey.CAPACITY_WARN_RATIO]: "0.5" })).toBe(0.5);
+  });
+
+  it("cae al default si falta o no es numérico", () => {
+    expect(capacityWarnRatio({})).toBe(SETTING_DEFAULTS.capacityWarnRatio);
+    expect(capacityWarnRatio({ [SettingKey.CAPACITY_WARN_RATIO]: "casi" })).toBe(
+      SETTING_DEFAULTS.capacityWarnRatio,
+    );
+  });
+
+  it("descarta valores fuera de (0, 1], donde el semáforo no tendría sentido", () => {
+    // Con 0 todo sería WARN; con 2 nunca lo sería.
+    for (const raw of ["0", "-1", "2", "100"]) {
+      expect(capacityWarnRatio({ [SettingKey.CAPACITY_WARN_RATIO]: raw })).toBe(
+        SETTING_DEFAULTS.capacityWarnRatio,
+      );
+    }
+    expect(capacityWarnRatio({ [SettingKey.CAPACITY_WARN_RATIO]: "1" })).toBe(1);
+  });
+});
+
+describe("workHours", () => {
+  it("lee la jornada guardada", () => {
+    expect(
+      workHours({
+        [SettingKey.WORK_START]: "08:30",
+        [SettingKey.WORK_END]: "17:00",
+      }),
+    ).toEqual({ start: "08:30", end: "17:00" });
+  });
+
+  it("cae al default si falta o no es una hora", () => {
+    expect(workHours({})).toEqual({
+      start: SETTING_DEFAULTS.workStart,
+      end: SETTING_DEFAULTS.workEnd,
+    });
+    expect(workHours({ [SettingKey.WORK_START]: "temprano" }).start).toBe(
+      SETTING_DEFAULTS.workStart,
+    );
+    expect(workHours({ [SettingKey.WORK_END]: "25:00" }).end).toBe(SETTING_DEFAULTS.workEnd);
+  });
+
+  it("una jornada invertida vuelve al default: si no, el rail sale de altura cero", () => {
+    expect(
+      workHours({
+        [SettingKey.WORK_START]: "18:00",
+        [SettingKey.WORK_END]: "09:00",
+      }),
+    ).toEqual({
+      start: SETTING_DEFAULTS.workStart,
+      end: SETTING_DEFAULTS.workEnd,
+    });
+  });
+});
+
+describe("el semáforo con ajustes rotos", () => {
+  it("no se queda mudo: un valor basura usa el default en vez de NaN", () => {
+    const values = {
+      [SettingKey.DAILY_CAPACITY_MINUTES]: "ocho",
+      [SettingKey.CAPACITY_WARN_RATIO]: "mucho",
+    };
+    const target = dailyCapacityMinutes(values);
+    const ratio = capacityWarnRatio(values);
+
+    // Con NaN esto daría OK y el semáforo nunca se encendería.
+    expect(computeCapacityLevel(600, target, ratio)).toBe(CapacityLevel.OVER);
+    expect(computeCapacityLevel(420, target, ratio)).toBe(CapacityLevel.WARN);
+    expect(computeCapacityLevel(60, target, ratio)).toBe(CapacityLevel.OK);
+  });
+
+  it("el umbral configurado sí cambia el semáforo", () => {
+    const values = {
+      [SettingKey.DAILY_CAPACITY_MINUTES]: "480",
+      [SettingKey.CAPACITY_WARN_RATIO]: "0.5",
+    };
+    const target = dailyCapacityMinutes(values);
+    const ratio = capacityWarnRatio(values);
+
+    // 300/480 = 62%: con el default (85%) sería OK; con 50% es WARN.
+    expect(computeCapacityLevel(300, target)).toBe(CapacityLevel.OK);
+    expect(computeCapacityLevel(300, target, ratio)).toBe(CapacityLevel.WARN);
+  });
+});
+
+describe("useSettingsStore · round-trip por ipc/mockDb", () => {
+  it("carga los valores sembrados y persiste los cambios", async () => {
+    const { useSettingsStore } = await import("./settings");
+
+    await useSettingsStore.getState().load();
+    expect(useSettingsStore.getState().loaded).toBe(true);
+    // La semilla del mock espeja la de la migración 2.
+    expect(dailyCapacityMinutes(useSettingsStore.getState().values)).toBe(480);
+
+    await useSettingsStore.getState().set(SettingKey.DAILY_CAPACITY_MINUTES, "300");
+    expect(dailyCapacityMinutes(useSettingsStore.getState().values)).toBe(300);
+
+    // Y sobrevive a una recarga: quedó escrito, no solo en memoria del store.
+    useSettingsStore.setState({ values: {}, loaded: false });
+    await useSettingsStore.getState().load();
+    expect(dailyCapacityMinutes(useSettingsStore.getState().values)).toBe(300);
+  });
+});

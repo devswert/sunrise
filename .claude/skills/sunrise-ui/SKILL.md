@@ -1,0 +1,305 @@
+---
+name: sunrise-ui
+description: Convenciones de UI de sunrise — autosave sin botón "Guardar", popovers en portal, selects con búsqueda, slots de altura fija, paleta pastel por tokens y el DnD del board. Úsala siempre que agregues o modifiques una vista, un modal, un popover, un select, una card, un formulario o estilos, y cuando algo se recorte, se desalinee entre columnas o no quepa en su contenedor. Varias de estas decisiones se tomaron después de que la alternativa obvia fallara, así que revísalas antes de resolver un problema de layout por tu cuenta.
+---
+
+# Convenciones de UI de sunrise
+
+**La distribución ya está decidida y no se rediseña sobre la marcha.** Ante una
+duda de layout, la respuesta sale de lo que ya existe en el proyecto —la vista
+hermana, la card equivalente, el modal que resuelve el mismo problema— y no de una
+variante "mejorada" inventada para el caso. Es una app de uso diario: la
+consistencia entre vistas vale más que la mejor idea suelta, porque la mano ya
+aprendió dónde está todo. El usuario insiste en esto de forma consistente.
+
+En concreto, el estilo de la app es:
+
+- **Densidad alta y cromo bajo.** Nada de cajas dentro de cajas: las columnas se
+  separan con una línea de 1px, no con tarjetas. Los controles aparecen al hover
+  en vez de ocupar espacio permanente.
+- **El texto es el contenido.** Los títulos de tarea se leen enteros; los números
+  (tiempos, capacidad) van en tabulares y en 11-12px, al costado, sin competir.
+- **Pastel para clasificar, nunca para decorar.** El color dice a qué canal
+  pertenece algo o cómo va la capacidad. Un color sin significado no va.
+- **Nada pide confirmación salvo lo irreversible.** Todo se autoguarda, todo se
+  puede deshacer moviendo la tarea de vuelta.
+- **Cada vista responde una pregunta.** Si una vista necesita un párrafo para
+  explicarse, está haciendo dos cosas.
+
+## La app le habla al usuario en español **de Chile**
+
+**Todo texto que se muestre va en español**: labels, placeholders, `aria-label`,
+`title`, mensajes de error, el historial de tareas, los nombres de los días y de
+los meses. Estuvo mezclado durante Fase 0 y se unificó de una vez.
+
+Las excepciones son deliberadas y son pocas:
+
+- **El sidebar completo** — Home, Today, Focus, los tres ítems de Daily, los dos
+  de Weekly, Backlog y los rótulos "Daily rituals" / "Weekly rituals". Son los
+  nombres propios de la app, no etiquetas traducibles: "Daily shutdown" es el
+  nombre del ritual, igual que "Focus". La única
+  que sí se traduce es **Settings → Configs**, y el `<h1>` de esa vista dice lo
+  mismo que el link: un sidebar y un título que no coinciden se leen como dos
+  pantallas distintas.
+- **Los títulos de vista que espejan una entrada del sidebar** (`Placeholder`,
+  el `<h1>` de Backlog y de Weekly planning). Si el sidebar dice "Weekly
+  planning" y la página dice "Planificación semanal", se lee roto.
+- **Los formatos numéricos** (`hms`, `formatMinutes`, `duracionCorta`) no tienen
+  idioma; no los toques.
+- **El menú nativo de macOS** sigue en inglés porque lo genera
+  `Menu::default` de Tauri: traducir solo nuestro ítem de Quit lo dejaría peor
+  que dejarlo entero.
+
+**Y es español de Chile: se habla de tú, nunca de vos.** "puedes", "quieres",
+"incluye", "sube", "mira", "cierras" — no "podés", "querés", "incluí", "subí",
+"mirá", "cerrás". Vale para la pantalla, los `aria-label` y el texto de las
+notificaciones nativas. Se colaron formas de voseo dos veces (M3.6 las dos), así
+que **al escribir un texto nuevo, releelo buscando imperativos y segundas
+personas** antes de darlo por hecho. "Acá", "recién" y "de una" sí son de la casa.
+
+Para las fechas usa los helpers de `src/lib/date.ts`, que ya llevan el locale.
+No formatees con `date-fns` a mano en una vista: el locale va **por llamada** y
+es fácil olvidarlo. Y ojo con los componentes de terceros que traen su propio
+texto — `react-day-picker` necesita `locale={es}` en cada `<DayPicker>`.
+
+## Componentes que ya existen — úsalos, no los reimplementes
+
+| Componente | Para qué |
+|---|---|
+| `src/components/Popover.tsx` | todo popover flotante |
+| `src/components/SearchSelect.tsx` | todo select con búsqueda (channel, objetivo) |
+| `src/components/TimePicker.tsx` | elegir duraciones (planned / actual) |
+| `src/components/ThemeToggle.tsx` | switch de tema (solo ese: tiene sol y luna dibujados) |
+| `src/components/Switch.tsx` | cualquier otro interruptor on/off |
+| `src/components/SunriseMark.tsx` | la marca dentro de la app |
+| `src/features/week/DayColumn.tsx` | columna de un día (la reusa Today) |
+| `src/features/week/TaskCardContent.tsx` | contenido de la card |
+
+## Autosave, nunca un botón "Guardar"
+
+Los modales de detalle guardan solos. `TaskModal` es el patrón de referencia:
+
+- **`commit(patch)`** guarda de inmediato: selects, checks, fechas — todo lo que
+  el usuario percibe como una decisión puntual.
+- **`commitDebounced(patch)`** guarda con **500 ms** de debounce: campos de texto
+  (título, notas).
+- **`flush()`** escribe ya lo que el debounce tuviera pendiente, y lo llama todo
+  lo que cierra el modal (⌘Enter explícitamente, y el cleanup al desmontar para
+  Escape / click afuera / la X). Con debounce, cualquier cierre es una carrera
+  contra el temporizador: el cleanup **cancelaba** el `setTimeout`, así que
+  escribir y cerrar en el mismo gesto descartaba la edición sin decir nada. Si
+  agregas otro campo con debounce, acumula su patch en `pendienteRef` en vez de
+  cerrarlo dentro del `setTimeout`, o `flush` no tendrá qué escribir.
+- El feedback es el flash **"Guardado"**, más el texto fijo "Los cambios se
+  guardan automáticamente" en el footer.
+- El footer solo tiene **Eliminar**, con confirmación en dos pasos.
+
+No agregues un botón Guardar ni un formulario plano: el usuario lo ha pedido
+explícitamente más de una vez. Si un cambio necesita confirmación, es porque es
+destructivo, y el patrón para eso es el de Eliminar.
+
+**Color de los botones**: confirmar es **salvia** (`.btn-primary`, `--sage` /
+`--sage-ink`), nunca naranjo. El damasco de la paleta es el mismo tono que
+`--cap-over` ("te pasaste"), así que un aceptar en naranjo se lee como error. El
+naranjo queda para lo que avisa. Todo botón de acción lleva su icono de
+`lucide-react` además del texto.
+
+**La única excepción no es una excepción**: un ritual puede terminar con un
+botón, pero ese botón **no guarda** —cierra el ritual—. "Empezar el día" en
+`DailyPlanningView` sella `planned_on`, tira confeti y navega a la semana; todo
+lo que se editó ya se había guardado solo. Si te encuentras uno de estos, no lo
+conviertas en un save ni lo borres por inútil: nómbralo como lo que hace (SPECS
+§4.14).
+
+Después de guardar, llama **`bumpData()`** para que el resto de la app (incluido
+el taxímetro) se entere. Ver la skill `sunrise-sync-ventanas`.
+
+## Los atajos de un modal van en `window`, no en su `onKeyDown`
+
+Un `onKeyDown` en el div del modal solo se dispara si el `target` del evento está
+**dentro** del modal, y en esta app eso falla en tres caminos, los tres normales:
+
+1. **Abrir con el mouse deja el foco en la tarjeta de atrás**, que no es
+   descendiente del modal.
+2. **Los popovers viven en un portal sobre `body`** (ver más abajo), así que con
+   un picker abierto y el foco en su input, la tecla tampoco pasa por el modal.
+3. **Un click en cualquier zona no enfocable** del modal manda el foco al `body`.
+
+En los tres, Escape y ⌘Enter quedaban muertos sin ningún síntoma que apuntara al
+foco. Cuélgalos de `window` en un `useEffect`, en **fase de burbuja** para que un
+control interno pueda quedarse con la tecla antes (`SearchSelect` corta el Enter
+con `stopPropagation`), y saltea el handler si `quitOpen` está arriba — mismo
+criterio que `useShortcuts`.
+
+Y **enfoca el modal al abrirlo** (`tabIndex={-1}` + `focus()` en un efecto con
+deps vacías). No es solo accesibilidad: las tarjetas del board llevan los
+`listeners` de `useSortable`, y el `KeyboardSensor` de dnd-kit arranca un
+arrastre con Enter o Espacio **sin mirar los modificadores**. Con el foco en una
+tarjeta, ⌘Enter levantaba la tarjeta en vez de cerrar el modal. Cualquier
+overlay que se abra encima del board tiene el mismo problema.
+
+## Popovers en portal con posición fija
+
+`Popover.tsx` renderiza en un portal con posición fija **a propósito**. Si lo
+resuelves con posicionamiento relativo dentro de la card o del modal:
+
+- el `overflow` de las columnas y del modal **recorta** el popover, y
+- el ancho queda limitado por el contenedor del chip que lo ancla.
+
+Ambas cosas ya pasaron. Pásale el `anchorRef` y usa `align="right"` cuando el
+ancla esté pegada al borde derecho.
+
+## Slots de altura fija para no desalinear columnas
+
+Cuando algo aparece solo en algunas columnas —el caso real es la barra de
+progreso, que solo se pinta en el día de hoy— **reserva su espacio en todas** con
+un slot de altura fija (`day-progress-slot`) en vez de renderizarlo
+condicionalmente. Si no, la columna de hoy empuja su contenido y las listas
+quedan desalineadas entre días — que es exactamente el defecto que el slot existe
+para evitar.
+
+Aplica el mismo criterio a cualquier elemento condicional dentro de una fila de
+elementos comparables.
+
+## No pongas todas las opciones a la vista
+
+Si una fila ofrece un puñado de opciones, muestra **la elegida** y deja el resto
+en un popover. El caso real: cada categoría en Settings mostraba las ocho
+muestras de color, y con ocho categorías eran 64 puntos compitiendo con los
+nombres, que es lo que uno va a leer ahí. Hoy es un `ColorDot` que abre la
+paleta. Mismo criterio que los chips del modal de tarea.
+
+## Controles que aparecen al hover
+
+Cuatro reglas, las cuatro pagadas con el panel de opciones del taxímetro:
+
+1. **Nada de huecos muertos entre el disparador y el panel.** Había 4px de
+   `margin` entre el botón y las opciones: al cruzarlos el puntero no estaba
+   sobre ninguno de los dos y el panel se cerraba justo cuando ibas llegando. La
+   zona sensible tiene que envolver a los dos (o puentear el hueco con un
+   `::after`).
+2. **Entran con `transform`, no solo con `opacity`**, y en `position: absolute`
+   superpuestos al contenido: si empujan, la caja se reacomoda al pasar el
+   mouse. Deja el recorrido corto (6–10px) cuando el contenedor tiene
+   `overflow: hidden`, o se ve recortado.
+3. **`:focus-within` en el selector que los revela.** Sin eso quedan botones
+   alcanzables con Tab estando invisibles.
+4. **En el taxímetro no se usa `:hover` de CSS.** Esa ventana casi nunca tiene
+   el foco y sin foco el hover nativo enciende pero no apaga: el control queda
+   pegado. Manda `useCursorHover`, que sondea la posición global del puntero y
+   prende una clase. Si agregas otro control al hover ahí, súmalo a `ZONA_HOVER`
+   en `FloatingTimer.tsx`. El porqué está en la skill `sunrise-sync-ventanas`.
+
+El tamaño del disparador es decisión de producto, no técnica: hoy las opciones
+del taxímetro salen solo desde el botón de play, a pedido explícito, aunque un
+disparador chico siempre cuesta más de acertar.
+
+## Atajos visibles en la navegación
+
+Cuando muestres un atajo junto a un ítem clicable, el texto va **`aria-hidden`**
+y el atajo real como **`aria-keyshortcuts`** en el elemento. Si lo dejas como
+texto dentro del link, el nombre accesible pasa a ser "Focus ⌘ 3" en vez de
+"Focus": molesta a un lector de pantalla y rompe los tests que buscan por nombre.
+
+## Clases compartidas entre features
+
+`shutdown.css` (bitácora y cierre del día) usa `.review__panel`, `.review__h2`,
+`.review__head`, `.review__cifras`, `.chip-cifra` y `.cifra` de la weekly review,
+más `.repaso__row` / `.repaso__acciones` del ritual diario. Es a propósito: son la
+misma familia de vistas y duplicarlas las habría separado con el primer retoque.
+
+**Consecuencia práctica: restilar la review toca la bitácora.** Antes de cambiar
+una de esas clases, abrí las tres vistas.
+
+El formato de duraciones vive en **`src/lib/capacity.ts`** (`formatMinutes` para
+las cards, `horas`/`horasDeMinutos` para las cifras de cabecera).
+`weeklyReview.ts` las re-exporta por comodidad, pero la casa es `capacity.ts`.
+
+## Paleta y tema
+
+Colores por **token CSS**, nunca hex en el componente: `var(--lavender)`,
+`var(--lavender-ink)` para texto sobre ese color. Tokens en
+`src/styles/tokens.css`, con tema claro/oscuro. La paleta disponible es
+`peach`, `apricot`, `lavender`, `mint`, `sky`, `butter`, `rose`, `sage`
+(la misma lista que `PALETTE` en `SettingsView`).
+
+Fuentes **Sora** (títulos) y **Manrope/Inter** (cuerpo), auto-hospedadas vía
+`@fontsource` para que la app funcione offline. No agregues fuentes por CDN.
+
+El tema se persiste en `localStorage` (`sunrise-theme`) y la ventana flotante lo
+sigue escuchando ese `storage`.
+
+**Los gráficos se dibujan con CSS, no con una librería** (weekly review, §4.15:
+divs para las barras, un `<svg>` con `stroke-dasharray` para el donut).
+`recharts` está instalado y sin uso: el color de un channel es un token de la
+paleta, y pasarlo como prop a un chart obliga a resolverlo a hex —y a volver a
+resolverlo al cambiar de tema—. Con CSS los dos temas salen gratis y los tests
+pueden mirar el DOM en vez de un SVG que en jsdom mide 0×0. En SVG el color va en
+`style`, nunca como atributo: los atributos de presentación no resuelven `var()`.
+
+## La marca
+
+Un sol saliendo sobre el horizonte. **Un solo archivo es la fuente**:
+`public/app-icon.svg`, del que salen el icon set del `.app` y del `.dmg`
+(`pnpm tauri icon public/app-icon.svg`, que reescribe `src-tauri/icons/`) y el
+favicon de las dos ventanas. Los PNG **no se editan a mano**: se regeneran.
+
+Dentro de la app se usa `SunriseMark.tsx`, que es la misma figura sin el cielo:
+horizonte en `currentColor` (hereda el color del texto que lo acompaña, así que se
+aclara solo en tema oscuro) y sol en tokens de la paleta. Ids de degradado con
+`useId()` — dos marcas con el mismo id hacen que el navegador resuelva las dos
+referencias al primer `<defs>`, y una deja de responder a su degradado sin fallar.
+
+Si tocas el dibujo, dos cosas:
+
+- **Se juzga a 32px, no a 1024.** Rayos, nubes y reflejos son trazos finos que a
+  ese tamaño se vuelven suciedad. El primer intento hubo que agrandarlo dos veces.
+- **El SVG del icono es XML**, así que sus comentarios no pueden contener dos
+  guiones seguidos: escribir un token como `--ink` ahí lo vuelve ilegal y
+  `tauri icon` falla con un error de parseo que no menciona el logo. Hay un test.
+
+## DnD del board
+
+`WeekView` y `TodayView` usan `@dnd-kit` con una detección de colisión custom en
+`src/features/week/collision.ts`: `pointerWithin` → `rectIntersection` →
+`closestCorners`. Esa cascada existe para que **toda la columna** acepte el drop
+—incluida la mitad superior, donde están el header y "Agregar tarea"— y para que la
+card no se pierda al arrastrarla entre columnas. No la simplifiques a un solo
+detector.
+
+Detalles que ya están resueltos y conviene mantener:
+
+- `PointerSensor` con `activationConstraint: { distance: 4 }`, para que un click
+  en la card no se interprete como arrastre.
+- Los controles dentro de la card llaman `stopPropagation` en `onPointerDown` y
+  `onClick`, para que tocar el check o un chip no arranque un drag.
+- La card seleccionada se deriva de los datos frescos del board
+  (`board.tasks.find(...)`), no de una copia en estado local: así el modal
+  refleja al instante lo que se guardó.
+
+## Interacciones ya definidas
+
+- El **play del modal de detalle** cierra el modal y navega a `/focus`: arrancar
+  el timer desde el detalle significa "me pongo a trabajar".
+- En el **taxímetro**, click simple abre Focus y mantener + mover arrastra la
+  ventana. Lo distingue `useDragOrClick`, que descarta los eventos que caen en
+  `button, .tax__opts`. Si agregas otra capa flotante encima de la tarjeta,
+  súmala a ese selector: el panel de opciones entra deslizándose *bajo el
+  cursor*, así que un click iniciado en el título puede soltarse encima suyo y
+  abriría Focus sin que nadie lo pidiera.
+- En **Focus**, ↑/↓ mueven entre tareas del día, y se ignoran si el foco está en
+  un input, textarea o contenteditable.
+- Los **atajos globales** viven en un registro central (`src/lib/shortcuts.ts`)
+  con un solo listener: no agregues un hook suelto por atajo, agrega una fila a
+  `SHORTCUT_ACTIONS`. Se ignoran dentro de campos de texto por la misma razón que
+  las flechas de Focus — ⌘A pisaría "seleccionar todo". Son configurables desde
+  Settings; el detalle está en SPECS §4.9.
+- Notas en markdown con `react-markdown` + `remark-gfm`; los links se extraen del
+  texto con `extractLinks` y se listan aparte.
+
+## Tests de UI
+
+Vitest + RTL. Los tests existentes se apoyan en `aria-label` y roles, no en
+clases CSS. Mantén los `aria-label` de los controles (`"Completar tarea"`,
+`"Pausar"`, `"Cambiar channel"`…): son el punto de agarre de los tests y además
+lo correcto para accesibilidad.

@@ -1,0 +1,389 @@
+/* --- Weekly review (M3.5) ----------------------------------------------
+   Los gráficos son CSS, no una librería: los colores de los channels son
+   tokens de la paleta, y así el tema oscuro sale gratis. Ver el comentario de
+   `WeeklyReviewView`. */
+
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  min-height: 0;
+}
+
+.review__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.review__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-title);
+  font-size: 22px;
+  margin: 0;
+}
+
+.review__sub {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.review__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.review__nav .steps__pill:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.review__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: var(--space-2);
+}
+
+/* Las cifras viven en la cabecera, entre el título y la navegación: cada una es
+   un chip con su punto de color, y el punto es lo que la ata al gráfico de más
+   abajo. Ni banda a lo ancho ni texto suelto — las dos se leían como una
+   continuación del título. */
+.review__cifras {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 auto;
+  flex-wrap: wrap;
+}
+
+.chip-cifra {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 13px 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.chip-cifra strong {
+  font-family: var(--font-title);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.chip-cifra__punto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.review__aviso {
+  margin: 0;
+  font-size: 12px;
+  color: var(--accent-ink);
+}
+
+
+.review__panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  padding: var(--space-4);
+}
+
+.review__h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-title);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.review__vacio {
+  color: var(--faint);
+  font-size: 12px;
+  margin: 0;
+}
+
+.review__objs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 13px;
+}
+
+.review__objs li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.review__objs li > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--faint);
+}
+
+.review__objs .is-done {
+  color: var(--faint);
+}
+
+.review__objs .is-done > span {
+  text-decoration: line-through;
+}
+
+.review__objs .is-done > svg {
+  color: var(--mint-ink);
+}
+
+/* Una semana sin objetivos es un dato, no un panel que sobra. */
+.review__sin-objs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 110px;
+  color: var(--faint);
+  text-align: center;
+}
+
+.review__sin-objs p {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Los dos gráficos, lado a lado mientras quepan. */
+.review__graficos {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.review__graficos > .review__panel {
+  flex: 1 1 340px;
+  min-width: 0;
+}
+
+/* Los objetivos son texto corto: no se reparten el ancho con los gráficos. Va
+   con el mismo `>` que la regla de arriba, o esa gana por especificidad y el
+   panel se lleva un `flex-basis` de gráfico —con el que ya no entran tres en la
+   fila y éste se va solo a la línea de abajo, a lo ancho. */
+.review__graficos > .review__panel--objs {
+  flex: 0 1 220px;
+}
+
+/* --- Barras apiladas --- */
+
+.barras {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  height: 200px;
+}
+
+/* La pista de lectura del gráfico, en el propio título. */
+.review__pista {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.review__pista-linea {
+  width: 16px;
+  border-top: 2px dashed var(--faint);
+}
+
+.barra {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+}
+
+.barra__caja {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.barra__pila {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.barra__seg {
+  width: 60%;
+  max-width: 34px;
+  min-height: 2px;
+}
+
+.barra__pila > .barra__seg:last-child {
+  border-radius: 3px 3px 0 0;
+}
+
+/* Lo planificado: una línea punteada cruzando la barra. Como segunda barra
+   parecería otra jornada; como marca se lee "hasta acá dije que llegaría". */
+.barra__plan {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  height: 0;
+  border-top: 2px dashed var(--faint);
+  z-index: 1;
+}
+
+.barra__label {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.barra__total {
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* --- Donut --- */
+
+.donut-bloque {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.donut {
+  width: 150px;
+  height: 150px;
+  flex: 0 0 auto;
+  /* El 0 arriba en vez de a las 3 en punto. */
+  transform: rotate(-90deg);
+}
+
+.donut__seg {
+  fill: none;
+  stroke-width: 14;
+}
+
+.donut__centro {
+  font-family: var(--font-title);
+  font-size: 13px;
+  fill: var(--ink);
+  /* Contrarresta la rotación del svg para que el total se lea derecho. */
+  transform: rotate(90deg);
+  transform-origin: 50px 50px;
+}
+
+.leyenda {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.leyenda li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.leyenda__punto {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+.leyenda__nombre {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leyenda__valor {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* La leyenda no se estira a lo ancho del panel: un valor a 30 cm del nombre
+   deja de leerse como el mismo dato. */
+.leyenda {
+  max-width: 260px;
+}
+
+/* --- Lo cerrado, día por día --- */
+
+.review__dias {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+}
+
+.review__dia {
+  flex: 1 1 0;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review__dia-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.review__dia-h {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}

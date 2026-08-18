@@ -1,0 +1,196 @@
+//! sunrise — runtime de la app de escritorio (Tauri v2).
+
+mod backup;
+mod calendar;
+mod commands;
+mod db;
+mod models;
+mod repo;
+mod sound;
+
+use std::sync::Mutex;
+
+use tauri::{Emitter, Manager};
+
+use crate::db::Db;
+
+/// Id del ítem de menú que reemplaza al Quit nativo (ver `setup`).
+const QUIT_MENU_ID: &str = "sunrise-quit";
+/// Evento que le pide al front abrir el diálogo de confirmación de salida.
+const CLOSE_REQUESTED: &str = "sunrise://close-requested";
+/// Aviso de que el poller de calendario escribió algo. Lo escuchan las dos
+/// ventanas para invalidar sus vistas (ver `useCalendarListener` en el front).
+pub const CALENDAR_SYNCED: &str = "sunrise://calendar-synced";
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
+        // Abre los links de reunión en el navegador del sistema. Sin esto, un
+        // `<a target="_blank">` dentro del webview no hace absolutamente nada.
+        .plugin(tauri_plugin_opener::init())
+        // Selectores nativos de archivo y carpeta: la carpeta de respaldos y el
+        // `.zip` a restaurar se eligen con el Finder, no escribiendo una ruta.
+        .plugin(tauri_plugin_dialog::init())
+        // Inicio automático con el sistema, apagado hasta que se prenda en
+        // Configs. `LaunchAgent` en vez de `AppleScript`: escribe un plist en
+        // `~/Library/LaunchAgents` sin pedir permiso de automatización, que es lo
+        // que haría aparecer un diálogo del sistema al prender la casilla.
+        //
+        // Se abre la ventana como siempre, sin argumentos extra: la app es lo
+        // primero que uno mira en la mañana, y sin un icono en la barra de menú
+        // arrancar escondida sería arrancar invisible.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .setup(|app| {
+            // Base de datos en el directorio de datos de la app.
+            let dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&dir)?;
+            let db_path = dir.join(db::archivo());
+
+            let conn = db::open(&db_path)?;
+            db::migrate(&conn)?;
+            app.manage(Db(Mutex::new(conn)));
+
+            // En macOS el "Quit" del menú por defecto mapea a
+            // `NSApplication terminate:`, que mata el proceso **sin pasar por
+            // el event loop**: ni `ExitRequested` ni `CloseRequested` llegan a
+            // dispararse, así que ⌘Q cerraba la app de una. Se reemplaza por un
+            // ítem propio con el mismo acelerador, que sí llega como
+            // `MenuEvent` y podemos convertir en el pedido de confirmación.
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{Menu, MenuItem, MenuItemKind};
+
+                let menu = Menu::default(app.handle())?;
+                if let Some(MenuItemKind::Submenu(app_menu)) = menu.items()?.first() {
+                    // El Quit es el último ítem del submenú de la app
+                    // (ver `Menu::default` en tauri). Si algún día deja de
+                    // serlo, preferimos no tocar nada antes que borrar el ítem
+                    // equivocado en silencio.
+                    let items = app_menu.items()?;
+                    match items.last() {
+                        Some(MenuItemKind::Predefined(quit_por_defecto)) => {
+                            app_menu.remove(quit_por_defecto)?;
+                            let propio = MenuItem::with_id(
+                                app.handle(),
+                                QUIT_MENU_ID,
+                                format!("Quit {}", app.package_info().name),
+                                true,
+                                Some("CmdOrCtrl+Q"),
+                            )?;
+                            app_menu.append(&propio)?;
+                            app.set_menu(menu)?;
+                        }
+                        _ => eprintln!(
+                            "[sunrise] el menú de la app no termina en el Quit esperado; \
+                             ⌘Q va a cerrar sin confirmar"
+                        ),
+                    }
+                }
+            }
+
+            // Poller de calendario. Va después de la DB porque la necesita.
+            calendar::arrancar_poller(app.handle().clone());
+
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == QUIT_MENU_ID {
+                let _ = app.emit(CLOSE_REQUESTED, ());
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::ping,
+            // tasks
+            commands::create_task,
+            commands::update_task,
+            commands::delete_task,
+            commands::set_task_status,
+            commands::move_task,
+            commands::degradar_pendientes,
+            commands::list_tasks_for_range,
+            commands::list_tasks_for_date,
+            commands::list_backlog,
+            commands::list_task_events,
+            commands::rescatadas_del_backlog,
+            // timer
+            commands::start_timer,
+            commands::stop_timer,
+            commands::get_active_timer,
+            commands::list_time_entries,
+            commands::trabajo_del_dia,
+            commands::weekly_rollup,
+            commands::bitacora,
+            commands::set_day_note,
+            commands::set_day_task_note,
+            commands::set_day_mood,
+            commands::incluir_en_bitacora,
+            commands::quitar_de_bitacora,
+            commands::cerrar_dia,
+            commands::reabrir_dia,
+            commands::focus_queue,
+            commands::play_bell,
+            commands::bell_dir,
+            commands::set_taximeter_visible,
+            commands::get_task,
+            commands::set_actual_seconds,
+            // categories
+            commands::list_categories,
+            commands::create_category,
+            commands::update_category,
+            commands::delete_category,
+            // objectives
+            commands::list_objectives,
+            commands::create_objective,
+            commands::update_objective,
+            commands::delete_objective,
+            // settings
+            commands::list_settings,
+            commands::set_setting,
+            commands::autostart_enabled,
+            commands::set_autostart,
+            // respaldos
+            commands::app_version,
+            commands::perfil,
+            commands::crear_backup,
+            commands::probar_backup_dir,
+            commands::list_backups,
+            commands::restaurar_backup,
+            // calendario
+            commands::list_calendar_feeds,
+            commands::create_calendar_feed,
+            commands::update_calendar_feed,
+            commands::delete_calendar_feed,
+            commands::sync_calendar_feed,
+            commands::sync_calendar_feeds,
+            // ciclo de vida
+            commands::confirm_quit,
+        ])
+        // Cerrar la ventana (botón rojo, ⌘W) no cierra la app de una: se le
+        // pregunta al usuario. Solo `main`: el taxímetro no debe abrir este
+        // diálogo si algún día se cierra por código.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.app_handle().emit(CLOSE_REQUESTED, ());
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error al iniciar sunrise")
+        .run(|app, event| {
+            // `code: None` = lo pidió el usuario (⌘Q, menú Quit) => preguntar.
+            // `code: Some(_)` = salida programática, que es la que dispara
+            // `confirm_quit` una vez confirmado => dejarla pasar.
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
+                if code.is_none() {
+                    api.prevent_exit();
+                    let _ = app.emit(CLOSE_REQUESTED, ());
+                }
+            }
+        });
+}

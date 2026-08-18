@@ -1,0 +1,698 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { api } from "../../lib/ipc";
+import type { Category } from "../../lib/types";
+import { formatMinutes, parseDuration } from "../../lib/capacity";
+import { Popover } from "../../components/Popover";
+import { Switch } from "../../components/Switch";
+import { FeedsCard } from "../calendar/FeedsCard";
+import { BackupCard } from "../backup/BackupCard";
+import { TABS, type TabId, iconoDeSeccion } from "./secciones";
+import {
+  SettingKey,
+  useCapacitySettings,
+  useSettingsStore,
+  useWorkHours,
+} from "../../lib/settings";
+import { minutosDeHora } from "../calendar/railLayout";
+import {
+  SHORTCUT_ACTIONS,
+  type ShortcutId,
+  comboFromEvent,
+  displayCombo,
+  findConflict,
+  resolveShortcuts,
+  shortcutKey,
+} from "../../lib/shortcuts";
+
+const PALETTE = ["peach", "apricot", "lavender", "mint", "sky", "butter", "rose", "sage"];
+
+/** Cada sección es una card con su título y bajada. */
+function Card({
+  id,
+  title,
+  hint,
+  children,
+}: {
+  id: TabId;
+  title: string;
+  hint: string;
+  children: React.ReactNode;
+}) {
+  const Icono = iconoDeSeccion(id);
+  return (
+    <section className="set-card" id={`set-${id}`} data-section={id}>
+      <header className="set-card__head">
+        <h2>
+          <Icono size={16} aria-hidden /> {title}
+        </h2>
+        <p>{hint}</p>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Punto de color que abre la paleta en un popover.
+ *
+ * Antes las ocho muestras estaban siempre visibles en cada fila: con ocho
+ * categorías eran 64 puntos compitiendo por atención con los nombres, que es lo
+ * que uno viene a leer.
+ */
+function ColorDot({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  return (
+    <div className="chip-wrap" ref={ref}>
+      <button
+        className="color-dot"
+        style={{ background: `var(--${value})` }}
+        aria-label={`Color: ${value}`}
+        onClick={() => setOpen((v) => !v)}
+      />
+      {open && (
+        <Popover anchorRef={ref} onClose={() => setOpen(false)} className="popover--pad">
+          <div className="palette">
+            {PALETTE.map((c) => (
+              <button
+                key={c}
+                className={`swatch${value === c ? " is-active" : ""}`}
+                style={{ background: `var(--${c})` }}
+                aria-label={`Color ${c}`}
+                onClick={() => {
+                  onChange(c);
+                  setOpen(false);
+                }}
+              />
+            ))}
+          </div>
+        </Popover>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Capacidad diaria: el objetivo de minutos planificados con el que la vista
+ * semana pinta su semáforo. Autosave al salir del campo (sin botón Guardar).
+ */
+function GeneralCard() {
+  const { target } = useCapacitySettings();
+  const setSetting = useSettingsStore((s) => s.set);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  // Mientras no se esté editando, refleja el valor guardado.
+  const value = draft ?? formatMinutes(target);
+
+  async function commit() {
+    if (draft == null) return;
+    const mins = parseDuration(draft);
+    if (mins == null) {
+      setError(true);
+      return;
+    }
+    setError(false);
+    setDraft(null);
+    await setSetting(SettingKey.DAILY_CAPACITY_MINUTES, String(mins));
+  }
+
+  return (
+    <Card id="general" title="General" hint="Ajustes del día a día.">
+      <div className="set-field">
+        <label className="set-field__label" htmlFor="cap">
+          Capacidad diaria
+        </label>
+        <input
+          id="cap"
+          className={`set-input${error ? " is-invalid" : ""}`}
+          aria-label="Capacidad diaria"
+          value={value}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setError(false);
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Escape") {
+              setDraft(null);
+              setError(false);
+            }
+          }}
+        />
+        <span className={`set-note${error ? " is-error" : ""}`}>
+          {error
+            ? "No entendí esa duración. Prueba 8h, 7h30 o 480."
+            : "Objetivo de minutos planificados por día; el semáforo de la semana se pinta contra este número. Acepta 8h, 7h30 o 480."}
+        </span>
+      </div>
+
+      <JornadaFields />
+      <InicioAutomatico />
+    </Card>
+  );
+}
+
+/**
+ * Inicio automático con el sistema.
+ *
+ * **No sale de `useSettingsStore`.** Este ajuste no vive en la tabla `settings`
+ * sino en el sistema operativo, que lo puede apagar por su cuenta desde Ajustes
+ * del sistema; se lee preguntándole a él en cada montaje (ver `commands.rs`). Eso
+ * también es lo que lo mantiene fuera de los respaldos: describe la máquina, no
+ * los datos.
+ *
+ * `null` mientras carga, y no `false`: mostrar el switch apagado para después
+ * prenderlo solo se ve como si la app hubiera cambiado el ajuste al entrar.
+ */
+function InicioAutomatico() {
+  const [activo, setActivo] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    api
+      .autostartEnabled()
+      .then((v) => vivo && setActivo(v))
+      .catch((err) => vivo && setError(String(err)));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  async function cambiar(quiere: boolean) {
+    // Optimista, y se revierte si falla: el switch tiene que responder al dedo.
+    setActivo(quiere);
+    setError(null);
+    try {
+      await api.setAutostart(quiere);
+    } catch (err) {
+      setActivo(!quiere);
+      setError(String(err));
+    }
+  }
+
+  return (
+    <div className="set-field">
+      <div className="set-field__row">
+        <label className="set-field__label" htmlFor="autostart">
+          Abrir sunrise al iniciar sesión
+        </label>
+        <Switch
+          id="autostart"
+          label="Abrir sunrise al iniciar sesión"
+          checked={activo === true}
+          disabled={activo === null}
+          onChange={(v) => void cambiar(v)}
+        />
+      </div>
+      <span className={`set-note${error ? " is-error" : ""}`}>
+        {error
+          ? `No se pudo cambiar el inicio automático: ${error}`
+          : "El respaldo automático y el aviso de cerrar el día ocurren a una hora fija, y solo si sunrise está abierta."}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Inicio y fin de jornada. Es lo que dibuja la grilla del rail de calendario:
+ * define el rango visible y desde dónde se proyectan las tareas sin hora.
+ *
+ * `workHours()` ya cae al default con basura o con un rango invertido, pero eso
+ * es la defensa al **leer** la base. Acá hace falta validar al **escribir**: si
+ * el campo se traga un `25:00` y el rail no cambia, nada explica por qué.
+ */
+function JornadaFields() {
+  const jornada = useWorkHours();
+  const setSetting = useSettingsStore((s) => s.set);
+  const [draft, setDraft] = useState<{ start?: string; end?: string }>({});
+  const [error, setError] = useState<null | "start" | "end">(null);
+
+  async function commit(cual: "start" | "end") {
+    const raw = draft[cual];
+    if (raw == null) return;
+    const min = minutosDeHora(raw);
+    if (min == null) {
+      setError(cual);
+      return;
+    }
+    // El otro extremo puede venir a medio editar; se compara contra lo guardado.
+    const otro = cual === "start" ? jornada.end : jornada.start;
+    const invertido = cual === "start" ? raw >= otro : raw <= otro;
+    if (invertido) {
+      setError(cual);
+      return;
+    }
+    setError(null);
+    setDraft((d) => ({ ...d, [cual]: undefined }));
+    await setSetting(cual === "start" ? SettingKey.WORK_START : SettingKey.WORK_END, raw);
+  }
+
+  const campo = (cual: "start" | "end", label: string, id: string) => (
+    <div className="set-field set-field--inline">
+      <label className="set-field__label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className={`set-input set-input--hora${error === cual ? " is-invalid" : ""}`}
+        aria-label={label}
+        placeholder="09:00"
+        value={draft[cual] ?? jornada[cual]}
+        onChange={(e) => {
+          setDraft((d) => ({ ...d, [cual]: e.target.value }));
+          setError(null);
+        }}
+        onBlur={() => void commit(cual)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") {
+            setDraft((d) => ({ ...d, [cual]: undefined }));
+            setError(null);
+          }
+        }}
+      />
+    </div>
+  );
+
+  return (
+    <div className="set-field">
+      <span className="set-field__label">Jornada</span>
+      <div className="set-jornada">
+        {campo("start", "Inicio", "work-start")}
+        {campo("end", "Fin", "work-end")}
+      </div>
+      <span className={`set-note${error ? " is-error" : ""}`}>
+        {error === "start"
+          ? "Una hora en formato 24 h (09:00), y antes del fin de jornada."
+          : error === "end"
+            ? "Una hora en formato 24 h (18:00), y después del inicio."
+            : "Define la grilla del rail de calendario en Today y desde dónde se proyectan las tareas sin hora. No recorta: una reunión fuera de la jornada se muestra igual."}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Atajos de teclado. Se capturan pulsando la combinación de verdad, no
+ * escribiéndola: es lo que evita que alguien guarde `Comando+1` como texto.
+ */
+function ShortcutsCard() {
+  const values = useSettingsStore((s) => s.values);
+  const setSetting = useSettingsStore((s) => s.set);
+  const resolved = useMemo(() => resolveShortcuts(values), [values]);
+  const [capturing, setCapturing] = useState<ShortcutId | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!capturing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setCapturing(null);
+        setError(null);
+        return;
+      }
+      // Evita que la combinación dispare su propio atajo mientras se captura.
+      e.preventDefault();
+      e.stopPropagation();
+
+      const combo = comboFromEvent(e);
+      if (!combo) return; // todavía no soltó una combinación válida
+
+      const clash = findConflict(resolved, combo, capturing);
+      if (clash) {
+        setError(`${displayCombo(combo)} ya lo usa "${clash.label}"`);
+        return;
+      }
+      setCapturing(null);
+      setError(null);
+      void setSetting(shortcutKey(capturing) as SettingKey, combo);
+    };
+    // `capture` para ganarle al listener global de atajos.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [capturing, resolved, setSetting]);
+
+  return (
+    <Card
+      id="atajos"
+      title="Atajos"
+      hint="Requieren ⌘ (o Ctrl). Se ignoran mientras escribes en un campo de texto."
+    >
+      <ul className="set-list">
+        {SHORTCUT_ACTIONS.map((a) => {
+          const esDefault = resolved[a.id] === a.fallback;
+          return (
+            <li className="set-row" key={a.id}>
+              <span className="set-row__name">{a.label}</span>
+              <button
+                className={`hotkey${capturing === a.id ? " is-capturing" : ""}`}
+                aria-label={`Cambiar atajo de ${a.label}`}
+                onClick={() => {
+                  setError(null);
+                  setCapturing((c) => (c === a.id ? null : a.id));
+                }}
+              >
+                {capturing === a.id ? "Presiona…" : displayCombo(resolved[a.id])}
+              </button>
+              <button
+                className="set-row__icon"
+                aria-label={`Restaurar atajo de ${a.label}`}
+                disabled={esDefault}
+                title={esDefault ? "Ya es el de fábrica" : "Restaurar el de fábrica"}
+                onClick={() => void setSetting(shortcutKey(a.id) as SettingKey, "")}
+              >
+                <RotateCcw size={14} />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {(error || capturing) && (
+        <span className={`set-note${error ? " is-error" : ""}`}>
+          {error ?? "Pulsa la combinación, o Escape para cancelar."}
+        </span>
+      )}
+    </Card>
+  );
+}
+
+/** Campo inline para crear un contexto o un canal dentro de uno. */
+function AddRow({
+  placeholder,
+  child,
+  onCreate,
+  onCancel,
+}: {
+  placeholder: string;
+  child?: boolean;
+  onCreate: (name: string, color: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [color, setColor] = useState("lavender");
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+
+  async function submit() {
+    const n = name.trim();
+    if (!n) return onCancel();
+    await onCreate(n, color);
+    setName("");
+    onCancel();
+  }
+
+  return (
+    <li className={`set-row is-adding${child ? " is-child" : ""}`}>
+      <ColorDot value={color} onChange={setColor} />
+      <input
+        ref={ref}
+        className="set-row__input"
+        placeholder={placeholder}
+        aria-label={placeholder}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={submit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+          if (e.key === "Escape") onCancel();
+        }}
+      />
+    </li>
+  );
+}
+
+/**
+ * Contextos (nivel 1) y sus canales (nivel 2).
+ *
+ * No hay selector de "contexto padre": el `+` de cada contexto crea un canal
+ * dentro de él, y el de arriba crea un contexto. La jerarquía se dice con el
+ * lugar donde haces click, no eligiéndola en un combo aparte.
+ */
+function ChannelsCard() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  /** `"root"` = creando contexto; un id = creando canal dentro de ese contexto. */
+  const [adding, setAdding] = useState<number | "root" | null>(null);
+
+  const load = useCallback(async () => {
+    setCategories(await api.listCategories());
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const parents = useMemo(() => categories.filter((c) => c.parentId === null), [categories]);
+  const childrenOf = (id: number) => categories.filter((c) => c.parentId === id);
+
+  const rename = async (c: Category, name: string) => {
+    await api.updateCategory(c.id, name, c.color);
+    await load();
+  };
+  const recolor = async (c: Category, color: string) => {
+    await api.updateCategory(c.id, c.name, color);
+    await load();
+  };
+  const remove = async (id: number) => {
+    await api.deleteCategory(id);
+    await load();
+  };
+  const create = async (parentId: number | null, name: string, color: string) => {
+    await api.createCategory(parentId, name, color);
+    await load();
+  };
+
+  return (
+    <Card
+      id="canales"
+      title="Canales"
+      hint="Los contextos son las carpetas del backlog; los canales son el #tag de las tarjetas. Una tarea puede ir en cualquiera de los dos niveles."
+    >
+      <ul className="set-list">
+        {/* Agregar va arriba: es lo primero que se busca. */}
+        {adding === "root" ? (
+          <AddRow
+            placeholder="Nombre del contexto"
+            onCreate={(n, c) => create(null, n, c)}
+            onCancel={() => setAdding(null)}
+          />
+        ) : (
+          <li>
+            <button className="set-add-btn" onClick={() => setAdding("root")}>
+              <Plus size={14} /> Agregar contexto
+            </button>
+          </li>
+        )}
+
+        {parents.map((p) => (
+          <li key={p.id} className="set-group">
+            <ul className="set-list">
+              <li className="set-row">
+                <ColorDot value={p.color} onChange={(color) => recolor(p, color)} />
+                <input
+                  className="set-row__input"
+                  defaultValue={p.name}
+                  onBlur={(e) => {
+                    if (e.target.value.trim() && e.target.value !== p.name) {
+                      rename(p, e.target.value.trim());
+                    }
+                  }}
+                  aria-label={`Nombre de ${p.name}`}
+                />
+                <button
+                  className="set-row__icon"
+                  aria-label={`Agregar canal en ${p.name}`}
+                  title="Agregar canal dentro"
+                  onClick={() => setAdding(p.id)}
+                >
+                  <Plus size={14} />
+                </button>
+                <button
+                  className="set-row__icon is-danger"
+                  aria-label={`Eliminar ${p.name}`}
+                  onClick={() => remove(p.id)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </li>
+
+              {adding === p.id && (
+                <AddRow
+                  child
+                  placeholder={`Nombre del canal en ${p.name}`}
+                  onCreate={(n, c) => create(p.id, n, c)}
+                  onCancel={() => setAdding(null)}
+                />
+              )}
+
+              {childrenOf(p.id).map((ch) => (
+                <li className="set-row is-child" key={ch.id}>
+                  <ColorDot value={ch.color} onChange={(color) => recolor(ch, color)} />
+                  <input
+                    className="set-row__input"
+                    defaultValue={ch.name}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() && e.target.value !== ch.name) {
+                        rename(ch, e.target.value.trim());
+                      }
+                    }}
+                    aria-label={`Nombre de ${ch.name}`}
+                  />
+                  <button
+                    className="set-row__icon is-danger"
+                    aria-label={`Eliminar ${ch.name}`}
+                    onClick={() => remove(ch.id)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+/**
+ * Los feeds viven en su propio módulo (`features/calendar`) porque el calendario
+ * es un dominio aparte; acá solo se les pasan las categorías, que es lo que
+ * necesitan para elegir la categoría por defecto de cada feed.
+ */
+function CalendariosCard() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  useEffect(() => {
+    api.listCategories().then(setCategories);
+  }, []);
+  return <FeedsCard categories={categories} />;
+}
+
+/** El ancestro que realmente hace scroll (en la app, `.app-main`). */
+function scrollParent(el: HTMLElement): HTMLElement | null {
+  let p = el.parentElement;
+  while (p) {
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight) return p;
+    p = p.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Lleva la sección al tope con una animación propia.
+ *
+ * No se usa `scrollIntoView({ behavior: "smooth" })` porque el scroll suave
+ * nativo no está disponible en todos los webviews —en el browser embebido
+ * simplemente no hace nada, sin error—, y la animación es parte de lo pedido.
+ * Con `prefers-reduced-motion` se salta el salto animado.
+ */
+function animarScrollHasta(target: HTMLElement, duracion = 320) {
+  const cont = scrollParent(target);
+  if (!cont) {
+    target.scrollIntoView({ block: "start" });
+    return;
+  }
+
+  const margen = 16;
+  const desde = cont.scrollTop;
+  const delta = target.getBoundingClientRect().top - cont.getBoundingClientRect().top - margen;
+  const hasta = Math.max(0, Math.min(desde + delta, cont.scrollHeight - cont.clientHeight));
+  if (Math.abs(hasta - desde) < 1) return;
+
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    cont.scrollTop = hasta;
+    return;
+  }
+
+  const t0 = performance.now();
+  const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+
+  const paso = (ahora: number) => {
+    const t = Math.min(1, (ahora - t0) / duracion);
+    cont.scrollTop = desde + (hasta - desde) * easeInOut(t);
+    if (t < 1) requestAnimationFrame(paso);
+  };
+  requestAnimationFrame(paso);
+}
+
+/**
+ * Tabs verticales que llevan a su sección con scroll animado. No ocultan
+ * contenido: las tres cards viven en la misma columna y la tab activa se
+ * resuelve por lo que está a la vista, así el resaltado no miente si el usuario
+ * baja con la rueda.
+ */
+function useActiveTab(): [TabId, (id: TabId) => void] {
+  const [active, setActive] = useState<TabId>("general");
+
+  useEffect(() => {
+    // El resaltado automático es una mejora: sin `IntersectionObserver`
+    // (jsdom) las tabs siguen navegando, solo no se resaltan solas al scrollear.
+    if (typeof IntersectionObserver === "undefined") return;
+
+    const secciones = TABS.map((t) => document.getElementById(`set-${t.id}`)).filter(
+      (el): el is HTMLElement => el != null,
+    );
+    if (secciones.length === 0) return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        const id = visible?.target.getAttribute("data-section");
+        if (id) setActive(id as TabId);
+      },
+      // El margen inferior grande hace que "activa" sea la de más arriba en
+      // pantalla, no cualquiera que asome por abajo.
+      { rootMargin: "-10% 0px -70% 0px", threshold: 0 },
+    );
+    secciones.forEach((s) => io.observe(s));
+    return () => io.disconnect();
+  }, []);
+
+  const goTo = (id: TabId) => {
+    setActive(id);
+    const el = document.getElementById(`set-${id}`);
+    if (el) animarScrollHasta(el);
+  };
+
+  return [active, goTo];
+}
+
+export function SettingsView() {
+  const [active, goTo] = useActiveTab();
+
+  return (
+    <div className="settings">
+      <h1 className="settings__title">Configs</h1>
+
+      <nav className="set-tabs" aria-label="Secciones de ajustes">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`set-tab${active === t.id ? " is-active" : ""}`}
+            aria-current={active === t.id ? "true" : undefined}
+            onClick={() => goTo(t.id)}
+          >
+            <t.icon size={14} aria-hidden /> {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className="set-panels">
+        <GeneralCard />
+        <CalendariosCard />
+        <ChannelsCard />
+        <ShortcutsCard />
+        <BackupCard />
+      </div>
+    </div>
+  );
+}

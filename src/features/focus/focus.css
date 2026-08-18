@@ -1,0 +1,200 @@
+/* --- Focus Mode --- */
+/* Todo el contenido centrado en la pantalla (vertical y horizontalmente). */
+.focus {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  height: 100%;
+  padding-bottom: 8vh;
+}
+
+.focus__card {
+  width: 100%;
+  max-width: 620px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Título + tiempos + play en una sola fila; los tiempos van a la derecha. */
+.focus__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-3);
+}
+
+.focus__check {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: transparent;
+  color: var(--faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.focus__check:hover {
+  background: var(--mint-ink);
+  border-color: var(--mint-ink);
+  color: #fff;
+}
+
+.focus__title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.focus__times {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.focus__time {
+  display: flex;
+  flex-direction: column;
+}
+.focus__time-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 3px 7px;
+}
+.focus__time-btn:hover {
+  background: var(--surface-sunken);
+  border-color: var(--border);
+}
+.focus__time-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.focus__time-value {
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.focus__time-value.is-actual {
+  color: var(--mint-ink);
+}
+.focus__time-value.is-over {
+  color: var(--cap-over);
+}
+
+.focus__play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+.focus__play:hover {
+  border-color: var(--mint-ink);
+  color: var(--mint-ink);
+}
+.focus__play.is-running {
+  background: var(--mint-ink);
+  border-color: var(--mint-ink);
+  color: #fff;
+}
+
+.focus__over {
+  font-size: 12.5px;
+  color: var(--cap-over);
+  background: color-mix(in srgb, var(--cap-over) 14%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+.focus__notes {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* Estado vacío */
+.focus--empty {
+  align-items: center;
+  justify-content: center;
+  padding-top: 14vh;
+  text-align: center;
+  color: var(--muted);
+}
+.focus__done-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--mint) 55%, transparent);
+  color: var(--mint-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+}
+.focus--empty h1 {
+  font-size: 22px;
+}
+
+/* Referencia a la siguiente tarea (sin lista completa) */
+.focus__next {
+  width: 100%;
+  max-width: 620px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: 13px;
+  color: var(--muted);
+}
+.focus__next-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  flex-shrink: 0;
+}
+.focus__next-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.focus__next-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--faint);
+}
+.focus__next-hint {
+  display: inline-flex;
+  align-items: center;
+  color: var(--faint);
+  margin-left: auto;
+}

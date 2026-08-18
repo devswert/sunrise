@@ -1,0 +1,63 @@
+<!-- Fondo de la ventana del .dmg. Fuente del `background.png` que está al lado:
+
+       rsvg-convert -w 660 -h 400 src-tauri/dmg/background.svg \
+         -o src-tauri/dmg/background.png
+
+     Los 660x400 no son decorativos: son el `windowSize` del dmg en
+     tauri.conf.json, y el fondo se estira si no coinciden. El PNG va commiteado
+     porque es una entrada del build (el bundler no sabe leer SVG).
+
+     La idea: el icono de la app cae en (180, 170) y la carpeta Applications en
+     (480, 170) —también de tauri.conf.json—, así que el resplandor de acá abajo
+     está puesto justo donde va a aterrizar el icono. El sol del logo no está
+     dibujado: el sol **es** el icono, saliendo sobre la línea. Por eso el
+     horizonte pasa por debajo de los dos y la flecha va entre medio.
+
+     Sin texto a propósito. La tipografía del proyecto es Sora y viene de
+     `@fontsource`, no del sistema, así que al rasterizar caería a una sans
+     genérica; un "sunrise" en la fuente equivocada se ve peor que ningún
+     "sunrise". El nombre igual aparece: en el título de la ventana y bajo el
+     icono.
+
+     Claro y cálido, no oscuro como el icono: esto es una ventana del Finder, que
+     dibuja los nombres de los archivos en texto oscuro encima. -->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 660 400"
+  width="660"
+  height="400"
+>
+  <defs>
+    <linearGradient id="dmg-fondo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fdfcfa" />
+      <stop offset="1" stop-color="#fff0e4" />
+    </linearGradient>
+
+    <radialGradient id="dmg-resplandor" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffb59e" stop-opacity="0.34" />
+      <stop offset="0.6" stop-color="#ffb59e" stop-opacity="0.1" />
+      <stop offset="1" stop-color="#ffb59e" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="660" height="400" fill="url(#dmg-fondo)" />
+
+  <!-- Donde va a caer el icono de la app. -->
+  <circle cx="180" cy="170" r="135" fill="url(#dmg-resplandor)" />
+
+  <!-- El horizonte, por debajo de los nombres que dibuja el Finder. -->
+  <path
+    d="M70 258h520"
+    stroke="#f0e2d5"
+    stroke-width="3"
+    stroke-linecap="round"
+    fill="none"
+  />
+
+  <!-- De la app a la carpeta. Discreta: es un recordatorio, no una instrucción a
+       gritos. -->
+  <g stroke="#e4d5c7" stroke-width="2.5" stroke-linecap="round" fill="none">
+    <path d="M292 170h60" />
+    <path d="M345 162l8 8-8 8" />
+  </g>
+</svg>

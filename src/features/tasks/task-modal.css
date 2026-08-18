@@ -1,0 +1,562 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh var(--space-4) var(--space-4);
+  z-index: 50;
+}
+
+/* --- Modal de detalle de tarea --- */
+.tmodal {
+  width: 100%;
+  max-width: 680px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  max-height: 86vh;
+}
+/* El modal recibe el foco al abrirse (ver `TaskModal`), y ahí un anillo alrededor
+ * de toda la caja no informa nada: nadie llegó tabulando hasta él. */
+.tmodal:focus {
+  outline: none;
+}
+
+/* Barra superior */
+.tmodal__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.tmodal__top-right {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.tmodal__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  text-align: left;
+}
+.tmodal__meta:hover {
+  background: var(--surface-sunken);
+  border-color: var(--border);
+}
+.tmodal__meta-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.tmodal__meta-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.tmodal__meta-value.is-set {
+  color: var(--apricot-ink);
+}
+
+.tmodal__close {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  margin-top: 4px;
+}
+.tmodal__close:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+
+/* Cuerpo */
+.tmodal__body {
+  padding: var(--space-4);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tmodal__titlerow {
+  display: flex;
+  align-items: center; /* check centrado con el título */
+  gap: var(--space-3);
+}
+
+.tmodal__check {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+  background: transparent;
+  color: #fff;
+  padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.tmodal__check.is-checked {
+  background: var(--mint-ink);
+  border-color: var(--mint-ink);
+}
+
+.tmodal__title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 21px;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  outline: none;
+  padding: 2px 0;
+}
+.tmodal__title:focus {
+  border-bottom-color: var(--border);
+}
+.tmodal__title.is-done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+/* Tiempos actual / planned */
+.tmodal__times {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+.tmodal__time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+}
+button.tmodal__time:hover {
+  background: var(--surface-sunken);
+  border-color: var(--border);
+}
+.tmodal__time-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.tmodal__time-value {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  outline: none;
+  text-align: right;
+  width: 62px;
+  padding: 0;
+  font-family: var(--font-body);
+}
+.tmodal__time-value.is-actual {
+  color: var(--mint-ink);
+}
+
+/* Notas markdown */
+.tmodal__notes {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+.tmodal__notes-input,
+.tmodal__notes-view {
+  width: 100%;
+  min-height: 160px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  outline: none;
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  resize: vertical;
+}
+.tmodal__notes-view {
+  cursor: text;
+}
+.tmodal__notes-view:hover {
+  background: var(--surface-sunken);
+}
+.tmodal__notes-placeholder {
+  color: var(--faint);
+}
+
+/* Render de markdown */
+.md p {
+  margin: 0 0 8px;
+}
+.md h1,
+.md h2,
+.md h3 {
+  font-family: var(--font-title);
+  margin: 12px 0 6px;
+  font-size: 16px;
+}
+.md ul,
+.md ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.md li {
+  margin-bottom: 2px;
+}
+.md code {
+  background: var(--surface-sunken);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+.md pre {
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  overflow-x: auto;
+}
+.md a {
+  color: var(--sky-ink);
+}
+.md blockquote {
+  border-left: 3px solid var(--border);
+  margin: 0 0 8px;
+  padding-left: 10px;
+  color: var(--muted);
+}
+.md table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.md th,
+.md td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+}
+.md input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+/* Links detectados */
+.tmodal__links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+.tmodal__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--sky-ink);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tmodal__link:hover {
+  text-decoration: underline;
+}
+
+/* Historial en timeline */
+/* Tiempo por día: cuánto se trabajó en cada fecha, no solo el total */
+.tmodal__bydays {
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tmodal__bydays-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.tmodal__bydays ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tmodal__bydays li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.tmodal__bydays-dur {
+  /* Tabular para que las duraciones queden alineadas en columna. */
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tmodal__history {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.tmodal__history li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  position: relative;
+}
+.tmodal__history-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex-shrink: 0;
+  position: relative;
+}
+/* línea vertical entre puntos */
+.tmodal__history li:not(:last-child) .tmodal__history-dot::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  transform: translateX(-50%);
+}
+
+/* Footer */
+.tmodal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.tmodal__foot-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+/* Salvia y no damasco: el naranjo de la paleta es el mismo tono que usa el
+   semáforo de capacidad para "te pasaste", así que un botón de confirmar en
+   naranjo se lee como una advertencia. */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--sage);
+  color: var(--sage-ink);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.btn-primary:hover {
+  filter: brightness(0.97);
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--rose-ink);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  font-size: 13px;
+}
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--rose) 30%, transparent);
+}
+.btn-danger.is-solid {
+  background: var(--rose-ink);
+  color: #fff;
+  border-color: var(--rose-ink);
+}
+
+.popover--right {
+  left: auto;
+  right: 0;
+}
+.popover--pad {
+  padding: var(--space-2);
+}
+
+/* Autosave: aviso y flash */
+.tmodal__autosave {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.tmodal__saved {
+  align-self: center;
+  font-size: 11px;
+  color: var(--mint-ink);
+  background: color-mix(in srgb, var(--mint) 45%, transparent);
+  border-radius: 999px;
+  padding: 2px 8px;
+  animation: pop-in 0.15s ease-out;
+}
+
+/* La barra superior no debe recortar los popovers */
+.tmodal__top {
+  position: relative;
+  z-index: 2;
+}
+
+/* Play/pausa junto a Actual/Planned, sincronizado con el timer global */
+.tmodal__play {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  margin-left: var(--space-2);
+}
+.tmodal__play:hover {
+  border-color: var(--mint-ink);
+  color: var(--mint-ink);
+}
+.tmodal__play.is-running {
+  background: var(--mint-ink);
+  border-color: var(--mint-ink);
+  color: #fff;
+}
+.tmodal__time-value.is-over {
+  color: var(--cap-over);
+}
+
+/* --- Diálogo chico: confirmar salida (⌘Q), avisos de ritual --- */
+.dialog {
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg, 0 18px 48px rgba(0, 0, 0, 0.28));
+}
+.dialog__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-title);
+  font-size: 17px;
+  margin: 0;
+}
+.dialog__body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.dialog__body strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.dialog__hint {
+  font-size: 11.5px;
+  color: var(--faint);
+  text-align: right;
+}
+
+/* Variante con más presencia, para los avisos de ritual: icono en círculo y
+   todo centrado. El de ⌘Q sigue siendo el diálogo seco de siempre. */
+.dialog--hero {
+  align-items: center;
+  text-align: center;
+  padding: var(--space-5) var(--space-4) var(--space-4);
+}
+
+.dialog--hero .dialog__title {
+  justify-content: center;
+  font-size: 19px;
+}
+
+.dialog--hero .dialog__actions {
+  width: 100%;
+  justify-content: center;
+}
+
+.dialog__icono {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--sage);
+  color: var(--sage-ink);
+}

@@ -1,0 +1,101 @@
+/* sunrise — design tokens
+ * Fuentes: Sora (títulos/destacados) + Inter (cuerpo), auto-hospedadas vía @fontsource.
+ * Paleta pastel con tema claro/oscuro.
+ */
+
+:root {
+  /* --- Paleta pastel (colores de categoría) --- */
+  --peach: #ffd9c7;
+  --apricot: #ffb59e;
+  --lavender: #d9c7ff;
+  --mint: #c7f0db;
+  --sky: #c7e3ff;
+  --butter: #fff1c7;
+  --rose: #ffc7d9;
+  --sage: #d7ecc7;
+
+  /* Versiones "ink" (texto sobre chip pastel) — más saturadas/oscuras */
+  --peach-ink: #b5502b;
+  --apricot-ink: #b5502b;
+  --lavender-ink: #6b4fb5;
+  --mint-ink: #2f8f5f;
+  --sky-ink: #2f6fb5;
+  --butter-ink: #9c7a1f;
+  --rose-ink: #b53f66;
+  --sage-ink: #558f2f;
+
+  /* --- Semáforo de capacidad --- */
+  --cap-ok: #b8c0cc; /* gris: bajo el objetivo */
+  --cap-warn: #f2c14e; /* amarillo: cerca */
+  --cap-over: #e8836b; /* rojo pastel: sobre el objetivo */
+
+  /* --- Fuentes --- */
+  --font-title: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Manrope", ui-sans-serif, system-ui, sans-serif;
+
+  /* Fade de tema: misma duración y curva para bg, color, iconos y títulos.
+   * ease-out hace que el color llegue casi al final enseguida (sin cola lenta
+   * perceptible en trazos finos como iconos y glifas de los títulos). */
+  --theme-fade: 160ms;
+  --theme-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* --- Radios / sombras --- */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --shadow-sm: 0 1px 2px rgba(58, 58, 68, 0.06), 0 1px 3px rgba(58, 58, 68, 0.08);
+  --shadow-md: 0 4px 12px rgba(58, 58, 68, 0.1);
+  --shadow-lg: 0 12px 32px rgba(58, 58, 68, 0.16);
+
+  /* --- Espaciado base --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+}
+
+/* --- Tema claro (default) --- */
+:root,
+:root[data-theme="light"] {
+  --ink: #3a3a44;
+  --muted: #8a8a99;
+  --faint: #b8b8c4;
+  --surface: #fbfaf7;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f2f1ec;
+  --border: #eae9e3;
+  --accent: #ffb59e;
+  --accent-ink: #b5502b;
+  --overlay: rgba(58, 58, 68, 0.32);
+}
+
+/* --- Tema oscuro --- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #ecebe6;
+    --muted: #9a9aa6;
+    --faint: #6a6a76;
+    --surface: #1c1c22;
+    --surface-raised: #26262e;
+    --surface-sunken: #16161b;
+    --border: #33333d;
+    --accent: #ffb59e;
+    --accent-ink: #ffd9c7;
+    --overlay: rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ink: #ecebe6;
+  --muted: #9a9aa6;
+  --faint: #6a6a76;
+  --surface: #1c1c22;
+  --surface-raised: #26262e;
+  --surface-sunken: #16161b;
+  --border: #33333d;
+  --accent: #ffb59e;
+  --accent-ink: #ffd9c7;
+  --overlay: rgba(0, 0, 0, 0.5);
+}

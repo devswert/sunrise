@@ -1,0 +1,91 @@
+import { HashRouter, Route, Routes } from "react-router-dom";
+import { Sidebar } from "./components/Sidebar";
+import { TodayView } from "./features/today/TodayView";
+import { WeekView } from "./features/week/WeekView";
+import { WeeklyPlanningView } from "./features/planning/WeeklyPlanningView";
+import { DailyPlanningView } from "./features/planning/DailyPlanningView";
+import { WeeklyReviewView } from "./features/review/WeeklyReviewView";
+import { DailyShutdownView } from "./features/shutdown/DailyShutdownView";
+import { DailyHighlightsView } from "./features/shutdown/DailyHighlightsView";
+import { BacklogView } from "./features/backlog/BacklogView";
+import { FocusView } from "./features/focus/FocusView";
+import { SettingsView } from "./features/settings/SettingsView";
+import { AddTaskModal } from "./features/tasks/AddTaskModal";
+import { QuitConfirm, useQuitListener } from "./components/QuitConfirm";
+import { useAppStore, useDataSync } from "./lib/store";
+import { useDayWatcher } from "./lib/day";
+import { useSettingsRuntime } from "./lib/settings";
+import { useShortcuts } from "./lib/shortcuts";
+import { useTimerStore } from "./features/timer/timerStore";
+import { useTimerRuntime } from "./features/timer/useTimer";
+import { useFloatingWindow, useGotoListener } from "./features/timer/useFloatingWindow";
+import { useCalendarListener } from "./features/calendar/useCalendarListener";
+import { useCalendarSyncRuntime } from "./lib/calendarSync";
+import { useShutdownReminder } from "./features/shutdown/useShutdownReminder";
+import { useBackupRuntime } from "./features/backup/useBackupRuntime";
+import "./features/week/week.css";
+import "./features/tasks/task-modal.css";
+import "./features/tasks/add-task-modal.css";
+import "./components/search-select.css";
+import "./features/focus/focus.css";
+import "./features/calendar/rail.css";
+import "./features/backup/respaldo.css";
+
+/** Efectos que necesitan estar dentro del Router. */
+function Shell({ children }: { children: React.ReactNode }) {
+  useTimerRuntime({ bell: true });
+  // Recarga las vistas cuando el taxímetro (u otra ventana) muta datos.
+  useDataSync();
+  useSettingsRuntime();
+  // Una sesión que queda abierta cruza la medianoche sin enterarse.
+  useDayWatcher();
+  useShortcuts();
+  useQuitListener();
+  // OJO: tiene que ser un valor estable. Si se pasa el objeto `display`, su
+  // identidad cambia con cada tick del reloj y el efecto llamaría a `show()`
+  // una vez por segundo, robando el foco continuamente.
+  const taximeterVisible = useTimerStore((s) => !!(s.active || s.last));
+  useFloatingWindow(taximeterVisible);
+  useGotoListener();
+  // El poller de calendario corre en Rust y avisa por evento de Tauri.
+  useCalendarListener();
+  // Y además se sincroniza al abrir la app y al volver a la ventana, que es
+  // cuando de verdad importa que esté al día.
+  useCalendarSyncRuntime();
+  // Avisa a la hora de `work_end` que toca cerrar el día. Va acá y no en el
+  // taxímetro por la misma razón que la campana (I6): una sola ventana avisa.
+  useShutdownReminder();
+  // El respaldo automático, por lo mismo: dos ventanas serían dos zips por día.
+  useBackupRuntime();
+  return <>{children}</>;
+}
+
+export default function App() {
+  const composeOpen = useAppStore((s) => s.composeOpen);
+
+  return (
+    <HashRouter>
+      <Shell>
+      <div className="app-shell">
+        <Sidebar />
+        <main className="app-main">
+          <Routes>
+            <Route path="/" element={<WeekView />} />
+            <Route path="/today" element={<TodayView />} />
+            <Route path="/focus" element={<FocusView />} />
+            <Route path="/daily-planning" element={<DailyPlanningView />} />
+            <Route path="/daily-shutdown" element={<DailyShutdownView />} />
+            <Route path="/daily-highlights" element={<DailyHighlightsView />} />
+            <Route path="/weekly-planning" element={<WeeklyPlanningView />} />
+            <Route path="/weekly-review" element={<WeeklyReviewView />} />
+            <Route path="/backlog" element={<BacklogView />} />
+            <Route path="/settings" element={<SettingsView />} />
+          </Routes>
+        </main>
+      </div>
+      {composeOpen && <AddTaskModal />}
+      <QuitConfirm />
+      </Shell>
+    </HashRouter>
+  );
+}

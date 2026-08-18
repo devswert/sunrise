@@ -1,0 +1,27 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# build
+dist
+dist-ssr
+*.local
+
+# rust / tauri
+src-tauri/target
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor / os
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# local data / backups
+*.sqlite
+*.sqlite-*
+backups/

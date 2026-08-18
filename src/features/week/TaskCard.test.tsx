@@ -1,0 +1,99 @@
+import { describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { DndContext } from "@dnd-kit/core";
+import { SortableContext } from "@dnd-kit/sortable";
+import { TaskCard } from "./TaskCard";
+import type { Task } from "../../lib/types";
+
+function makeTask(over: Partial<Task> = {}): Task {
+  return {
+    id: 1,
+    title: "Demo task",
+    notes: null,
+    categoryId: null,
+    objectiveId: null,
+    scheduledDate: "2026-08-10",
+    scheduledTime: null,
+    position: 0,
+    estimatedMinutes: 30,
+    actualSeconds: 0,
+    status: "TODO",
+    completedAt: null,
+    source: "MANUAL",
+    sourceState: "ACTIVE",
+    feedId: null,
+    calendarUid: null,
+    eventStart: null,
+    eventEnd: null,
+    meetingUrl: null,
+    eventDescription: null,
+    attendees: [],
+    createdAt: "2026-08-10T09:00:00Z",
+    updatedAt: "2026-08-10T09:00:00Z",
+    ...over,
+  };
+}
+
+function renderCard(task: Task, onToggle = vi.fn(), onOpen = vi.fn()) {
+  render(
+    <DndContext>
+      <SortableContext items={[`task-${task.id}`]}>
+        <TaskCard task={task} category={null} onToggle={onToggle} onOpen={onOpen} />
+      </SortableContext>
+    </DndContext>,
+  );
+  return { onToggle, onOpen };
+}
+
+describe("TaskCard", () => {
+  it("muestra título y estimado", () => {
+    renderCard(makeTask());
+    expect(screen.getByText("Demo task")).toBeInTheDocument();
+    expect(screen.getByText("0:30")).toBeInTheDocument();
+  });
+
+  it("el check dispara onToggle sin abrir el detalle", async () => {
+    const user = userEvent.setup();
+    const { onToggle, onOpen } = renderCard(makeTask());
+    await user.click(
+      screen.getByRole("button", { name: "Marcar como completada" }),
+    );
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("una tarea DONE se marca visualmente", () => {
+    renderCard(makeTask({ status: "DONE" }));
+    const card = screen.getByText("Demo task").closest(".task-card");
+    expect(card).toHaveClass("is-done");
+    expect(
+      screen.getByRole("button", { name: "Marcar como pendiente" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("TaskCard · origen calendario", () => {
+  it("una reunión importada se distingue de una tarea escrita a mano", () => {
+    // Una reunión no se planifica igual: no la puedes achicar ni moverla sin
+    // avisarle a alguien. El icono lo dice sin ocupar una línea.
+    renderCard(makeTask({ source: "CALENDAR", scheduledTime: "16:00" }));
+    expect(screen.getByLabelText("Viene del calendario")).toBeInTheDocument();
+    // El icono va junto a la hora, no al título: la hora es justamente lo que no
+    // se puede tocar en una reunión.
+    expect(screen.getByText("16:00")).toBeInTheDocument();
+  });
+
+  it("una tarea normal no lo lleva", () => {
+    renderCard(makeTask({ scheduledTime: "16:00" }));
+    expect(screen.queryByLabelText("Viene del calendario")).toBeNull();
+  });
+
+  it("un evento de día completo igual se marca, aunque no tenga hora", () => {
+    // Al mover el icono junto a la hora, un evento sin hora perdía su marca de
+    // origen por completo. La fila aparece igual y dice "todo el día".
+    renderCard(makeTask({ source: "CALENDAR", scheduledTime: null }));
+    expect(screen.getByLabelText("Viene del calendario")).toBeInTheDocument();
+    expect(screen.getByText("todo el día")).toBeInTheDocument();
+  });
+});

@@ -1,0 +1,315 @@
+/* --- Rail de calendario: la agenda del día, al lado de la lista --- */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 260px;
+  flex: 0 0 260px;
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-3);
+}
+
+/* Variante superpuesta: en la semana la agenda no vive abierta —son siete
+   columnas y el espacio es de las tareas—, así que se pide y se monta encima
+   de la última columna. Mientras está abierta esa columna no recibe drops, y
+   está bien: la agenda se abre para consultar, no para arrastrar (ver el
+   comentario en `WeekView.tsx`). */
+.rail--overlay {
+  position: absolute;
+  top: 0;
+  /* A la izquierda de la tira de iconos, que es permanente y no se tapa. */
+  right: 44px;
+  bottom: 0;
+  width: 300px;
+  flex: none;
+  z-index: 5;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  border-left: 1px solid var(--border);
+  padding: 0 var(--space-3);
+  animation: rail-entra 140ms var(--theme-ease);
+}
+@keyframes rail-entra {
+  from {
+    transform: translateX(12px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail--overlay {
+    animation: none;
+  }
+}
+
+.rail__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: var(--space-2);
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--muted);
+}
+/* Qué día muestra. Solo en la variante superpuesta: montada fija en Today la
+   fecha ya está en la cabecera de la vista. */
+.rail__head-dia {
+  font-family: var(--font-body);
+  font-weight: 500;
+  color: var(--faint);
+}
+.rail__cerrar {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--faint);
+  background: transparent;
+  border: none;
+  padding: 2px;
+}
+.rail__cerrar:hover {
+  color: var(--ink);
+}
+
+/* Franja de día completo: arriba de la grilla, porque no tiene dónde caer
+   dentro de la escala de horas. */
+.rail__todoeldia {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
+}
+.rail__chip {
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.rail__grid {
+  position: relative;
+  /* Deja el canal de la izquierda libre para las etiquetas de hora. */
+  padding-left: 54px;
+  /* Las etiquetas van centradas en su línea, así que la primera y la última
+     sobresalen media altura: sin este margen quedan cortadas por el scroll. */
+  margin: 8px 0;
+}
+
+.rail__hora {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.rail__hora-label {
+  width: 48px;
+  text-align: right;
+  font-size: 10.5px;
+  color: var(--faint);
+  /* Centrada en su línea, no colgando debajo. */
+  transform: translateY(-0.5px);
+  white-space: nowrap;
+}
+.rail__hora-linea {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Pista de los bloques: arranca donde termina el canal de las horas. Los
+   bloques son absolutos y se posicionan contra la caja de padding, así que
+   sueltos en `.rail__grid` ignorarían su `padding-left` y taparían las
+   etiquetas. */
+.rail__pista {
+  position: absolute;
+  inset: 0 0 0 54px;
+}
+
+.rail__bloque {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  text-align: left;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  font-size: 11.5px;
+  line-height: 1.25;
+}
+.rail__bloque:hover {
+  filter: brightness(0.97);
+}
+/* Proyectado: la hora la puso el rail, no tú. Borde punteado y sin sombra, para
+   que no se lea como un compromiso adquirido. */
+.rail__bloque.is-proyectado {
+  border-style: dashed;
+  border-left-style: solid;
+  box-shadow: none;
+  opacity: 0.9;
+}
+.rail__bloque.is-done .rail__bloque-titulo {
+  text-decoration: line-through;
+}
+/* Bloque corto: hora y título en la misma línea, porque apilados no caben.
+   También sube al frente al pasar por encima: dos tareas cortas y seguidas se
+   montan unos pocos px por el alto mínimo, y así siempre se lee la de arriba. */
+.rail__bloque.is-corto {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0 5px;
+  font-size: 10.5px;
+}
+.rail__bloque.is-corto .rail__bloque-titulo {
+  -webkit-line-clamp: 1;
+  font-weight: 500;
+}
+.rail__bloque:hover {
+  z-index: 1;
+}
+
+.rail__bloque-hora {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+/* "1/2": marca que este bloque es un tramo de una tarea partida. */
+.rail__bloque-parte {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 4px;
+  font-size: 9px;
+  line-height: 1.4;
+  opacity: 0.8;
+}
+.rail__bloque-titulo {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Las dos líneas de la jornada. Son una marca, no un límite: la grilla muestra
+   las 24 h y nada queda bloqueado fuera de ellas.
+
+   Van onduladas y en el color de acento porque punteadas en `--faint` perdían:
+   mismo grosor y mismo color que las líneas de hora que ya cruzan todo el rail,
+   así que se leían como una hora más. La forma sale de un SVG usado como
+   **máscara** y no como imagen de fondo: un data-URI no hereda `currentColor`,
+   y enmascarar es lo que deja que el color siga a los tokens del tema. */
+.rail__jornada {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Alto real, no 0: una máscara necesita superficie donde pintar. Se centra
+     sobre su minuto con el desplazamiento negativo. */
+  height: 6px;
+  margin-top: -3px;
+  background-color: var(--accent-ink);
+  opacity: 0.75;
+  pointer-events: none;
+  --onda: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='6' viewBox='0 0 16 6'><path d='M0 3 Q 4 0.4 8 3 T 16 3' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round'/></svg>");
+  -webkit-mask-image: var(--onda);
+  mask-image: var(--onda);
+  -webkit-mask-repeat: repeat-x;
+  mask-repeat: repeat-x;
+  -webkit-mask-size: 16px 6px;
+  mask-size: 16px 6px;
+}
+
+/* Bloque de lo ya trabajado: sólido y con el borde entero, porque es un
+   registro y no una estimación. */
+.rail__bloque.is-real {
+  border-style: solid;
+}
+
+/* Punto verde de completada, en la esquina superior izquierda. Va **dentro**
+   del bloque: el `overflow: hidden` es lo que recorta el título en los bloques
+   cortos, y sacarlo para que quepa el punto dejaría el texto desbordado. El
+   contenido se corre a la derecha para no quedar debajo. */
+.rail__bloque.is-done::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mint-ink);
+}
+.rail__bloque.is-done {
+  padding-left: 14px;
+  /* Completada ya no se atenúa: verla es justamente el punto. */
+  opacity: 1;
+}
+.rail__bloque.is-corto.is-done {
+  padding-left: 13px;
+}
+
+/* Línea de la hora actual: solo aparece en el día de hoy. */
+.rail__ahora {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid var(--cap-over);
+  pointer-events: none;
+  z-index: 2;
+}
+.rail__ahora-punto {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cap-over);
+}
+
+.rail__vacio {
+  margin: 0;
+  padding-top: var(--space-2);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* En pantallas angostas la agenda fija estorba más de lo que ayuda. La
+   superpuesta se queda: ahí no compite por el ancho, y esconderla dejaría al
+   botón de la semana sin hacer nada visible al apretarlo. */
+@media (max-width: 900px) {
+  .rail:not(.rail--overlay) {
+    display: none;
+  }
+}

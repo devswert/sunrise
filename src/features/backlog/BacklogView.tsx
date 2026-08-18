@@ -1,0 +1,159 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Plus } from "lucide-react";
+import { api } from "../../lib/ipc";
+import type { Category, Objective, Task } from "../../lib/types";
+import { CategoryTag } from "../tasks/CategoryTag";
+import { TaskModal } from "../tasks/TaskModal";
+import { formatMinutes } from "../../lib/capacity";
+import { isoWeekId, shortDate } from "../../lib/date";
+import { useAppStore } from "../../lib/store";
+
+/** Card no-arrastrable para el backlog (reutiliza estilos de .task-card). */
+function BacklogCard({
+  task,
+  category,
+  onToggle,
+  onOpen,
+}: {
+  task: Task;
+  category: Category | null;
+  onToggle: (t: Task) => void;
+  onOpen: (t: Task) => void;
+}) {
+  const done = task.status === "DONE";
+  return (
+    <div className={`task-card${done ? " is-done" : ""}`} onClick={() => onOpen(task)}>
+      <button
+        className={`task-card__check${done ? " is-checked" : ""}`}
+        aria-label={done ? "Marcar como pendiente" : "Marcar como completada"}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(task);
+        }}
+      >
+        {done && <Check size={12} strokeWidth={3} />}
+      </button>
+      <div className="task-card__body">
+        <div className="task-card__title">{task.title}</div>
+        <div className="task-card__meta">
+          <CategoryTag category={category} />
+          {task.estimatedMinutes != null && (
+            <span className="task-card__est">{formatMinutes(task.estimatedMinutes)}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function BacklogView() {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [objectives, setObjectives] = useState<Objective[]>([]);
+  const [selected, setSelected] = useState<Task | null>(null);
+  const [rescatadas, setRescatadas] = useState<Map<number, string>>(new Map());
+  const openCompose = useAppStore((s) => s.openCompose);
+  const bumpData = useAppStore((s) => s.bumpData);
+  const dataVersion = useAppStore((s) => s.dataVersion);
+
+  const load = useCallback(async () => {
+    const [bl, cats, objs, rescates] = await Promise.all([
+      api.listBacklog(),
+      api.listCategories(),
+      api.listObjectives(isoWeekId(new Date())),
+      api.rescatadasDelBacklog(),
+    ]);
+    setTasks(bl);
+    setCategories(cats);
+    setObjectives(objs);
+    setRescatadas(new Map(rescates.map((r) => [r.taskId, r.desde])));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load, dataVersion]);
+
+  const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const parents = useMemo(() => categories.filter((c) => c.parentId === null), [categories]);
+
+  /** Carpeta (categoría padre) a la que pertenece una tarea. */
+  const folderOf = useCallback(
+    (t: Task): number | null => {
+      if (t.categoryId == null) return null;
+      const c = catMap.get(t.categoryId);
+      if (!c) return null;
+      return c.parentId ?? c.id;
+    },
+    [catMap],
+  );
+
+  const toggle = async (t: Task) => {
+    await api.setTaskStatus(t.id, t.status === "DONE" ? "TODO" : "DONE");
+    await load();
+    bumpData(); // completar pudo detener el timer
+  };
+
+  const groups: Array<{ folder: Category | null; items: Task[] }> = [
+    ...parents.map((p) => ({
+      folder: p,
+      items: tasks.filter((t) => folderOf(t) === p.id),
+    })),
+    { folder: null, items: tasks.filter((t) => folderOf(t) === null) },
+  ].filter((g) => g.items.length > 0 || g.folder !== null);
+
+  return (
+    <div>
+      <h1 style={{ fontSize: 24, marginBottom: 16 }}>Backlog</h1>
+      <div className="backlog">
+        {groups.map((g) => (
+          <div className="backlog__group" key={g.folder?.id ?? "none"}>
+            <div className="backlog__group-head">
+              {g.folder && (
+                <span
+                  className="backlog__dot"
+                  style={{ background: `var(--${g.folder.color})` }}
+                />
+              )}
+              {g.folder?.name ?? "Sin contexto"}
+            </div>
+            <div className="backlog__list">
+              {g.items.map((t) => (
+                <div key={t.id}>
+                  <BacklogCard
+                    task={t}
+                    category={t.categoryId != null ? catMap.get(t.categoryId) ?? null : null}
+                    onToggle={toggle}
+                    onOpen={setSelected}
+                  />
+                  {/* De dónde vino, si vino de un día. Acá no se agrupa aparte
+                   * —el backlog se agrupa por contexto— pero saber que esto se
+                   * cayó de un día cambia cómo lo lees. */}
+                  {rescatadas.has(t.id) && (
+                    <span className="col-desde">desde el {shortDate(rescatadas.get(t.id)!)}</span>
+                  )}
+                </div>
+              ))}
+              <button
+                className="add-task"
+                onClick={() => openCompose({ date: null, categoryId: g.folder?.id ?? null })}
+              >
+                <Plus size={14} aria-hidden className="add-task__icon" />
+                <span className="add-task__label">Agregar tarea</span>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {selected && (
+        <TaskModal
+          task={selected}
+          categories={categories}
+          objectives={objectives}
+          onClose={() => setSelected(null)}
+          onChanged={load}
+        />
+      )}
+    </div>
+  );
+}

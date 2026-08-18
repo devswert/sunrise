@@ -1,0 +1,84 @@
+<!-- sunrise — la marca, en su versión "icono".
+
+     Fuente única: de este archivo salen el icon set del .app y del .dmg
+     (`pnpm tauri icon public/app-icon.svg`) y el favicon de las dos ventanas.
+     Si cambia el logo, cambia acá y se regenera; no editar los PNG a mano.
+
+     Por qué el cielo es oscuro cuando la app es pastel y clara: un icono vive en
+     el Dock, sobre el fondo de pantalla de cualquiera, y a 32px lo único que lo
+     salva es el contraste. Un sol pastel sobre un cielo pastel desaparece. Acá el
+     sol usa los mismos tokens de la app (apricot y butter, de tokens.css) y el
+     cielo es el token `ink` del tema claro cayendo al `surface` del oscuro: los
+     colores siguen siendo los del proyecto, la relación entre ellos no.
+
+     Dos formas macizas y nada más: sol y horizonte. Todo lo que se le agregue
+     (rayos, nubes, reflejos) son trazos finos que a 32px se convierten en
+     suciedad. El halo es la única concesión, y es un degradado, no un borde.
+
+     Los colores van en hex y no en variables de CSS a propósito: este archivo lo
+     leen el generador de iconos y la pestaña del navegador, donde el tema no
+     existe. La versión que sí usa los tokens es `SunriseMark.tsx`.
+
+     La marca queda dentro de un squircle con margen en vez de ocupar el cuadro
+     completo: es la grilla de iconos de macOS, y sin el margen el icono se ve
+     más grande que sus vecinos en el Dock. -->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 1024 1024"
+  width="1024"
+  height="1024"
+  role="img"
+  aria-label="sunrise"
+>
+  <defs>
+    <!-- El cielo justo antes del amanecer: todavía no hay color, solo se aclara
+         hacia el horizonte. -->
+    <linearGradient id="sr-cielo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a3a44" />
+      <stop offset="0.58" stop-color="#2b2830" />
+      <stop offset="1" stop-color="#1c1c22" />
+    </linearGradient>
+
+    <!-- El sol es más claro en su núcleo, que está sobre la línea: es lo que lo
+         hace leerse como saliendo y no como poniéndose. -->
+    <radialGradient id="sr-sol" cx="0.5" cy="1" r="1">
+      <stop offset="0" stop-color="#fff1c7" />
+      <stop offset="0.5" stop-color="#ffd9c7" />
+      <stop offset="1" stop-color="#ffb59e" />
+    </radialGradient>
+
+    <radialGradient id="sr-halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffb59e" stop-opacity="0.5" />
+      <stop offset="0.55" stop-color="#ffb59e" stop-opacity="0.14" />
+      <stop offset="1" stop-color="#ffb59e" stop-opacity="0" />
+    </radialGradient>
+
+    <clipPath id="sr-marco">
+      <rect x="76" y="76" width="872" height="872" rx="196" ry="196" />
+    </clipPath>
+
+    <!-- El halo es un círculo completo y hay que cortarlo en el horizonte: si se
+         derrama hacia abajo, el sol parece flotar sobre la línea. -->
+    <clipPath id="sr-sobre-el-horizonte">
+      <rect x="0" y="0" width="1024" height="652" />
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#sr-marco)">
+    <rect x="76" y="76" width="872" height="872" fill="url(#sr-cielo)" />
+
+    <g clip-path="url(#sr-sobre-el-horizonte)">
+      <circle cx="512" cy="652" r="440" fill="url(#sr-halo)" />
+      <!-- Semidisco: centro en la línea, radio hacia arriba. -->
+      <path d="M232 652a280 280 0 0 1 560 0Z" fill="url(#sr-sol)" />
+    </g>
+
+    <path
+      d="M136 652h752"
+      stroke="#ffd9c7"
+      stroke-width="48"
+      stroke-linecap="round"
+      fill="none"
+    />
+  </g>
+</svg>

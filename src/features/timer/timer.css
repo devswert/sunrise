@@ -1,0 +1,194 @@
+/* --- Taxímetro flotante ---
+ * La ventana es transparente y más grande que la tarjeta a propósito:
+ * así la sombra redondeada se dibuja completa y no se ve un borde cuadrado.
+ * Usa los tokens de tema, por lo que sigue el modo claro/oscuro de la app. */
+
+.tax {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  display: flex;
+  align-items: stretch;
+  background: var(--surface-raised);
+  border-radius: 14px;
+  /* Sombra compacta: apenas despega la tarjeta del fondo. */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.10),
+    0 4px 10px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
+  padding-bottom: 3px; /* carril reservado para la barra de progreso */
+}
+
+.tax:active {
+  cursor: grabbing;
+}
+
+.tax__body {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  overflow: hidden;
+}
+
+.tax__title {
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.25;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tax__time {
+  font-variant-numeric: tabular-nums;
+  font-size: 13.5px;
+  line-height: 1.25;
+}
+.tax__actual {
+  color: var(--mint-ink);
+  font-weight: 600;
+}
+.tax__actual.is-over {
+  color: var(--cap-over);
+}
+.tax__sep,
+.tax__planned {
+  color: var(--muted);
+}
+
+/* Barra de progreso: todo el ancho, en su propio carril inferior */
+.tax__progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--surface-sunken);
+}
+.tax__progress-fill {
+  height: 100%;
+  background: var(--mint-ink);
+  transition: width 1s linear;
+}
+.tax__progress-fill.is-over {
+  background: var(--cap-over);
+}
+
+/* --- Controles --- */
+.tax__controls {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+/* Ojo y check: entran deslizándose desde la derecha y quedan flotando SOBRE el
+ * título y los tiempos. En `position: absolute` para que aparecer no cambie el
+ * tamaño de la caja ni reacomode nada.
+ *
+ * El disparador es el botón de play/pausa, no la tarjeta completa: es una
+ * decisión de producto, que las opciones no aparezcan por pasar el mouse por
+ * encima del título.
+ *
+ * **Aquí NO hay `:hover`, a propósito.** Lo había, y el modo de falla era peor
+ * que no tenerlo: esta ventana casi nunca tiene el foco, y sin foco macOS le
+ * entrega los eventos de mouse a medias (tao registra el hover con el
+ * `addTrackingRect` legado, que es solo para la ventana *key*). El resultado
+ * era un panel que a veces se encendía y **no se apagaba nunca**, porque el
+ * evento de salida no llegaba: quedaba pegado hasta que volvías a pasarle el
+ * mouse por encima. Un hover que sabe prender pero no apagar es peor que
+ * ninguno. Quien manda es `.tax.is-hover-controls`, que pone `useCursorHover`
+ * sondeando la posición global del puntero — esa sí funciona sin foco, y en
+ * los dos sentidos.
+ *
+ * El recorrido es corto a propósito: `.tax` tiene `overflow: hidden`, así que
+ * arrancar fuera de la tarjeta se vería como un barrido recortado, no como un
+ * deslizamiento. */
+.tax__opts {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%) translateX(8px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  margin-right: 4px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+/* `focus-within` no es decorativo: sin él estos botones siguen siendo
+ * alcanzables con Tab estando invisibles. */
+.tax.is-hover-controls .tax__opts,
+.tax__opts:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Solo se desvanece. Pierde en especificidad contra la regla de hover, que es
+   * justo lo que queremos: el estado visible mantiene su `translateX(0)`. */
+  .tax__opts {
+    transform: translateY(-50%);
+  }
+}
+
+.tax__opt {
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tax__opt:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.tax__opt:disabled {
+  opacity: 0.35;
+}
+
+.tax__btn {
+  cursor: pointer;
+  flex-shrink: 0;
+  width: 38px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tax__btn:not(:disabled):hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.tax__btn:disabled {
+  opacity: 0.4;
+}
