@@ -15,6 +15,26 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.2.0 — 2026-08-18
+
+Más espacio para trabajar: el sidebar se colapsa a una barra de iconos con un
+click, y la ventana dejó de gastar alto en una barra de título. De paso las barras
+de scroll siguen la paleta de la app en vez de verse como las del sistema.
+
+### Detalle
+
+- **Sidebar colapsable.** El botón vive arriba, junto a la marca. Colapsado queda
+  un rail de 78px con los iconos más grandes; los nombres se van pero el aviso de
+  versión nueva se queda, como icono. La elección se recuerda entre sesiones.
+- **La ventana ya no tiene barra de título.** Los botones de macOS flotan sobre el
+  contenido y la app se mueve arrastrando desde el borde superior.
+- **Las barras de scroll se dibujan.** Antes eran las del sistema, que en tema
+  oscuro se veían claras; ahora siguen la paleta. El sidebar es la excepción y no
+  muestra la suya, porque reservarle ancho dejaba el rail descentrado.
+- **Los controles nativos siguen el tema.** `color-scheme` va declarado en las tres
+  ramas, así que los `<select>` y el caret dejaron de salir claros sobre el tema
+  oscuro.
+
 ## v0.1.1 — 2026-08-18
 
 Arregla la primera instalación. La 0.1.0 se bajaba y macOS decía que el paquete
