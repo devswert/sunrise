@@ -1,7 +1,7 @@
 /**
  * Las cuentas de la bitácora y del cierre del día, separadas del render.
  *
- * El día llega armado desde `repo::bitacora` —trabajo, plan y lo cerrado, con la
+ * El día llega armado desde `repo::daily_log` —trabajo, plan y lo cerrado, con la
  * atribución local ya resuelta—, así que acá solo queda decidir qué se muestra y
  * cuándo toca avisar.
  */

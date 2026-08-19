@@ -73,11 +73,15 @@ tests que se ponen rojos si algo de eso divergió.
   que desaparecen en silencio. Las que están en español (`.rail__bloque-parte`,
   `.set-input--hora`) se quedan como están; una clase nueva puede nacer en inglés.
 
-  Al renombrar, ojo con los tres lugares donde una palabra en español **no** es
+  Al renombrar, ojo con los cuatro lugares donde una palabra en español **no** es
   prosa y hay que cambiarla: las interpolaciones (`format!("{x}")`, `${x}`), los
-  nombres de método escritos como string (`vi.spyOn(api, "x")`) y los alias de
-  SQL. Y con los dos donde parece código y **no** lo es: el texto JSX y los
-  literales de expresión regular de los tests.
+  nombres de método escritos como string (`vi.spyOn(api, "x")`), los alias de
+  SQL, y **las claves de argumento de un `invoke`**, que tienen que seguir siendo
+  el parámetro de Rust en camelCase. Ese último se cobró el renombre a inglés:
+  el parámetro pasó a `to_date` y la clave a `to`, y `daily_log` quedó rechazando
+  toda llamada durante días con las dos suites en verde. Ahora lo vigila
+  `src/lib/ipcContract.test.ts`. Y ojo con los dos lugares donde parece código y
+  **no** lo es: el texto JSX y los literales de expresión regular de los tests.
 - **Enums en MAYÚSCULAS** en la DB y en TS, espejados entre
   `src-tauri/src/db/migrations.rs` y `src/lib/enums.ts`.
 - **Tests obligatorios por milestone.** Cada milestone entrega con sus tests en

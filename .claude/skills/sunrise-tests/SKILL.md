@@ -57,6 +57,16 @@ Cuando agregues al mock, respeta la misma semántica que Rust (posiciones,
 filtros por `source_state`, eventos de historial). Un mock que se comporta
 distinto hace que los tests pasen con una realidad que no es la de la app.
 
+**Y hay un modo de falla peor que el mock desalineado: el mock de acuerdo con el
+front, los dos equivocados.** El mock recibe posicional y no revisa nombres, así
+que un campo o una clave de argumento mal escrita se ve perfecta en jsdom y en el
+browser, y **falla solo dentro de Tauri**, que es el único lado donde el nombre lo
+pone serde. Ya pasó dos veces —`Rescue.from_date` y `daily_log`— y ninguna la
+detectó una suite. Por eso hay un test que **no prueba comportamiento sino el
+contrato**: `src/lib/ipcContract.test.ts` lee `ipc.ts`, `commands.rs` y `lib.rs`
+como texto y compara los dos lados. Si escribes un test nuevo para un camino que
+cruza el puente, ten claro que **no** te está cubriendo esa parte.
+
 **La semilla del mock es data de preview, no una fixture.** Existe para que la app
 se vea con contenido en el browser, y varios de sus items se anclan a **días de la
 semana** (`weekDates`), no a hoy. O sea: **cuáles de sus tareas caen en el pasado

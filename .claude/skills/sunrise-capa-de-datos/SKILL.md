@@ -43,7 +43,7 @@ ser el 5 o el 6, y el síntoma aparece lejos (tests rojos, app en blanco).
 4. **Test Rust** en el `mod tests` de `repo.rs` (usa `db::open_in_memory()`).
 5. **Comando** en `src-tauri/src/commands.rs` **y su línea en el
    `invoke_handler![]` de `src-tauri/src/lib.rs`**. Si falta el registro, falla
-   en runtime, no al compilar.
+   en runtime, no al compilar; lo vigila `src/lib/ipcContract.test.ts`.
 6. **Tipo TS** en `src/lib/types.ts` (espejo exacto del modelo, en camelCase).
    **Los nombres son el contrato y nada los compara**: `types.ts` se escribe a
    mano, TypeScript no ve el otro lado, y un campo mal escrito no falla — llega
@@ -54,7 +54,13 @@ ser el 5 o el 6, y el síntoma aparece lejos (tests rojos, app en blanco).
    blanco, no un dato faltante. Si el modelo es nuevo, deja un test que serialice
    y compare las claves, como `los_nombres_de_rescue_son_los_que_lee_el_front` en
    `models.rs`.
-7. **Entrada en `src/lib/ipc.ts`** con las dos ramas.
+7. **Entrada en `src/lib/ipc.ts`** con las dos ramas. **La clave de cada
+   argumento del `invoke` es el parámetro de Rust en camelCase** (`to_date` →
+   `toDate`), no como se llame el argumento de la función TS. Con una clave
+   equivocada Tauri rechaza la llamada **entera** —no llegan datos parciales,
+   llega una promesa rechazada— y ninguna de las dos suites lo ve, porque las dos
+   corren contra `mockDb`, que recibe posicional. `src/lib/ipcContract.test.ts`
+   compara `ipc.ts` contra `commands.rs` y `lib.rs` justamente por eso.
 8. **Implementación en `src/lib/mockDb.ts`.** Sin esto los tests que toquen ese
    camino se caen y la app deja de verse en el browser.
 

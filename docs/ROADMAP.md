@@ -1029,6 +1029,40 @@ verificado" y que había que abrir con clic derecho. Eso quedó desmentido en 5.
 había arreglado en el README, pero no en el workflow, que es donde lo lee el que
 descarga.
 
+### 5.9 ✅ El renombre a inglés dejó la bitácora rota dentro de Tauri — hecho
+
+Síntoma: Daily highlights se quedaba en "Cargando la bitácora…" y el daily
+shutdown mostraba el día entero vacío —sin chips, "Todavía no cerraste nada
+hoy"— con tareas cerradas ese mismo día y guardadas en la base.
+
+Causa: `ipc.ts` mandaba la clave `to` a un comando cuyo parámetro es `to_date`.
+Tauri convierte los nombres de argumento a camelCase, así que esperaba `toDate`,
+y con una clave que no reconoce **rechaza la llamada completa**. Las dos vistas
+cuelgan de esa única llamada, de ahí que las dos se cayeran a la vez y de dos
+maneras distintas: la bitácora nunca sale de `days === null`, y el shutdown
+renderiza igual porque su `load` hace `if (!d) return`.
+
+Lo llamativo es de dónde salió: **del renombre a inglés** (`1b4fec8`). Antes el
+comando recibía `hasta` y el front mandaba `hasta` — coincidían. El renombre dejó
+el parámetro en `to_date` y la clave en `to`, y quedó así **días**, con las dos
+suites en verde todo ese tiempo. Un `git log -S` sobre `ipc.ts` lo fecha: no fue
+una regresión de esta semana, esas vistas nunca funcionaron dentro de Tauri desde
+ese commit.
+
+**Por qué ninguna suite lo vio, y qué se hizo al respecto.** Las dos corren contra
+`mockDb`, que recibe **posicional**: el mock no puede estar en desacuerdo con el
+front sobre un nombre. Es el mismo modo de falla que `Rescue.from_date` (M3.5), y
+la segunda vez ya no es casualidad, así que ahora hay un test que **no prueba
+comportamiento sino el contrato**: `src/lib/ipcContract.test.ts` lee `ipc.ts`,
+`commands.rs` y `lib.rs` como texto y verifica dos cosas —que cada clave de
+argumento sea el parámetro de Rust en camelCase, y que todo comando esté en el
+`invoke_handler![]`—. Se vio rojo con el bug puesto de vuelta antes de darlo por
+bueno. Cubre 59 comandos; el único desacuerdo era éste.
+
+La regla de renombre de CLAUDE.md pasó de tres lugares a cuatro: le faltaba
+justamente las claves de argumento del `invoke`. Y de paso se limpiaron tres
+comentarios que seguían nombrando `repo::bitacora`, resto del mismo renombre.
+
 ## Mejoras (no bloqueantes)
 
 Cosas que valen la pena pero que no bloquean ningún milestone. Se pueden tomar

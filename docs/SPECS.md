@@ -59,6 +59,16 @@ db/ (open, migrate)  →  repo.rs (todo el SQL, funciones puras sobre &Connectio
   `app_data_dir()/sunrise.sqlite`.
 - `models.rs` usa `#[serde(rename_all = "camelCase")]` para espejar
   `src/lib/types.ts`. **Si agregas un campo, tócalo en los dos lados.**
+- **El puente tiene dos contratos que son strings a los dos lados**, así que no
+  los revisa ningún compilador: los **nombres de campo** (serde ↔ `types.ts`) y
+  las **claves de argumento** del `invoke`, que son el parámetro de Rust en
+  camelCase (`to_date` → `toDate`). Los dos fallan **solo dentro de Tauri**: el
+  mock recibe posicional, así que puede estar de acuerdo con el front y los dos
+  equivocados, y el browser y las dos suites se ven perfectos. Un campo mal
+  escrito llega `undefined`; una clave mal escrita hace que Tauri **rechace la
+  llamada entera**, y la vista se queda cargando para siempre. Los dos ya
+  pasaron: `Rescue.from_date` (§4.14) y `daily_log` (§4.16).
+  `src/lib/ipcContract.test.ts` compara los archivos de los dos lados.
 
 ### 2.3 Capas del frontend
 
@@ -1073,7 +1083,16 @@ A la izquierda los highlights como **línea de tiempo** (punto del color del
 channel, unido por una línea), cada uno con su channel **arriba y más chico que el
 título**; a la derecha los contadores, el timeline completo y el **donut de
 channels, plegado por defecto** — es un detalle que se consulta, no algo que se
-mire siempre. Sale de `repo::bitacora(hasta, dias)`.
+mire siempre. Sale de `repo::daily_log(to_date, days)`.
+
+**Las dos vistas cuelgan de esa única llamada**, y por eso conviene saber cómo se
+ve cuando falla: la bitácora se queda en "Cargando la bitácora…" para siempre
+—`days` nunca deja de ser `null`— y el shutdown renderiza entero pero vacío, sin
+chips y diciendo "Todavía no cerraste nada hoy". Es lo que pasó cuando el
+renombre a inglés dejó la clave del `invoke` en `to` contra un parámetro
+`to_date` (§2.2): dentro de Tauri la llamada se rechazaba completa, y como las
+dos suites corren contra el mock, nada se puso rojo. Un cargando eterno acá
+significa que el comando ni siquiera respondió.
 
 **Los contadores son chicos a propósito.** Van en `h:mm` (`formatMinutes`, el
 mismo formato de las cards) y en un cuerpo menor que el contenido: son un dato de
@@ -2170,7 +2189,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **367 tests front (43 archivos) y 140 Rust, todos verdes.**
+estado actual: **391 tests front (48 archivos) y 148 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -2193,6 +2212,12 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 - **Front**: `capacity` (semáforo + parseo), `date`, `history`, `useTimer`,
   `useDragOrClick`, `TaskCard`, `TaskModal`, `Sidebar`, `FocusView`,
   `SettingsView`.
+- **El contrato del puente IPC**: `src/lib/ipcContract.test.ts` lee `ipc.ts`,
+  `commands.rs` y `lib.rs` **como texto** y compara los dos lados: que la clave de
+  cada argumento del `invoke` sea el parámetro de Rust en camelCase, y que todo
+  comando esté en el `invoke_handler![]`. Es el único test que no prueba
+  comportamiento sino el contrato, y existe porque las dos suites corren contra
+  `mockDb` y por definición no pueden ver un desacuerdo con Rust (§2.2).
 - **Settings**: `src/lib/settings.test.ts` (parsers con clave ausente, vacía o
   basura; rango del umbral; round-trip por ipc/mockDb).
 - **Atajos**: `src/lib/shortcuts.test.ts` (parseo, matching exacto de

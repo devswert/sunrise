@@ -116,11 +116,18 @@ export const api = {
       ? invoke<WeeklyRollup>("weekly_rollup", { weekStart })
       : mock.weeklyRollup(weekStart),
 
-  /** Los `dias` días que terminan en `hasta`, del más nuevo al más viejo. */
-  dailyLog: (to: string, days: number) =>
+  /**
+   * Los `days` días que terminan en `toDate`, del más nuevo al más viejo.
+   *
+   * `toDate` y no `to`: la clave del `invoke` es el nombre del parámetro de Rust
+   * en camelCase, no el del argumento de acá. Con la clave equivocada Tauri
+   * rechaza la llamada entera, y ninguna de las dos suites lo ve porque las dos
+   * corren contra `mockDb`, que recibe posicional.
+   */
+  dailyLog: (toDate: string, days: number) =>
     isTauri()
-      ? invoke<LogDay[]>("daily_log", { to, days })
-      : mock.dailyLog(to, days),
+      ? invoke<LogDay[]>("daily_log", { toDate, days })
+      : mock.dailyLog(toDate, days),
 
   /** Escribe (o borra) la reflexión del día. **No lo cierra.** */
   setDayNote: (date: string, note: string | null) =>

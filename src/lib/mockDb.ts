@@ -672,7 +672,7 @@ export const mock = {
   },
 
   /**
-   * Espeja `repo::bitacora`. Se arma sola: sale del trabajo y de lo cerrado, no
+   * Espeja `repo::daily_log`. Se arma sola: sale del trabajo y de lo cerrado, no
    * de haber pasado por el shutdown.
    */
   dailyLog: async (to: string, days: number): Promise<LogDay[]> => {
