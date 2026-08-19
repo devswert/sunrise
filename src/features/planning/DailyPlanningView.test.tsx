@@ -34,6 +34,21 @@ function hace(n: number): string {
 const goToToday = () => userEvent.click(screen.getByRole("button", { name: /Qué hay para hoy/ }));
 
 /**
+ * Manda al backlog lo que la semilla del mock dejó en días pasados.
+ *
+ * **La semilla es data de preview, no una fixture**: fija sus fechas por día de la
+ * semana (`weekDates`), así que cuáles caen en el pasado depende del día en que
+ * corras los tests. Un caso que repasa "el último día con tareas" tiene que partir
+ * de que el único día pasado con algo es el suyo, o el ritual repasa el de la
+ * semilla y el conteo calza de casualidad. Pasó: estos tests pasaban los martes y
+ * se caían de miércoles a domingo, y lo encontró CI corriendo en UTC.
+ */
+async function limpiarDiasPasados() {
+  const previas = await api.listTasksForRange(hace(30), hace(1));
+  for (const t of previas) await api.moveTask(t.id, null, 0);
+}
+
+/**
  * OJO con el orden de los casos, dos veces:
  *
  * 1. El mock guarda los ajustes en memoria del módulo, así que el caso que
@@ -51,6 +66,7 @@ describe("DailyPlanningView", () => {
   });
 
   it("arranca en el repaso del día anterior", async () => {
+    await limpiarDiasPasados();
     mount();
     await waitFor(() =>
       expect(screen.getByText(/No hay días anteriores con tareas/)).toBeInTheDocument(),
@@ -60,6 +76,7 @@ describe("DailyPlanningView", () => {
   it("repasa el último día con tareas, no 'ayer' a secas", async () => {
     // Un lunes, ayer es domingo y está vacío: lo que hay que revisar es el
     // viernes. La ventana mira varios días hacia atrás y elige el último.
+    await limpiarDiasPasados();
     await api.createTask({ title: "Quedó abierta", scheduledDate: hace(3) });
     const hecha = await api.createTask({ title: "Se cerró", scheduledDate: hace(3) });
     await api.setTaskStatus(hecha.id, "DONE");
@@ -93,6 +110,7 @@ describe("DailyPlanningView", () => {
   it("abre el detalle de una tarea del día anterior", async () => {
     // `useBoard` solo carga hoy: buscar ahí la tarea del paso 1 dejaba el click
     // sin efecto, que es peor que no ser clickeable.
+    await limpiarDiasPasados();
     await api.createTask({ title: "Vengo de antes", scheduledDate: hace(2) });
     mount();
 
@@ -104,6 +122,7 @@ describe("DailyPlanningView", () => {
   it("lo pendiente de días anteriores al repasado ya está en el backlog", async () => {
     // Ya no se arrastra nada a hoy: la degradación diaria lo baja al backlog en
     // primera posición, y el ritual repasa el último día, que queda intacto.
+    await limpiarDiasPasados();
     await api.createTask({ title: "Del lunes lejano", scheduledDate: hace(6) });
     await api.createTask({ title: "Ancla de ayer", scheduledDate: hace(1) });
     // Explícito y no vía `useBoard`: su guarda corre una sola vez por archivo y

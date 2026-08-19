@@ -227,15 +227,31 @@ describe("DailyHighlightsView", () => {
   });
 
   it("el donut de channels arranca plegado", async () => {
+    // Fixture propia y no la de la semilla. La semilla pone su tiempo trabajado
+    // en un día de la semana fijo, así que caer en hoy o en el pasado depende del
+    // día en que corras los tests, y sin tiempo trabajado hoy el donut no existe
+    // y no hay botón que plegar. Se caía de miércoles a domingo.
+    const conChannel = await cerradaHoy("con channel");
+    await api.updateTask(conChannel.id, { categoryId: 3 });
+    await api.setActualSeconds(conChannel.id, 1800);
+
     mount("/daily-highlights");
 
-    const toggle = await screen.findByRole("button", { name: /Channels/ });
+    // Acotado al bloque de hoy: la bitácora dibuja un día por fecha con tiempo
+    // trabajado, y cada uno trae su propio toggle. Buscar en toda la página
+    // encuentra varios en cuanto hay más de un día con tiempo.
+    const hoy = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(".dia");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const toggle = await within(hoy).findByRole("button", { name: /Channels/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(document.querySelector(".donut")).toBeNull();
+    expect(hoy.querySelector(".donut")).toBeNull();
 
     await userEvent.click(toggle);
 
-    await waitFor(() => expect(document.querySelector(".donut")).not.toBeNull());
+    await waitFor(() => expect(hoy.querySelector(".donut")).not.toBeNull());
   });
 
   it("hacer click en un hito abre el detalle de la tarea", async () => {

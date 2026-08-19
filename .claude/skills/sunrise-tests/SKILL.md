@@ -57,6 +57,19 @@ Cuando agregues al mock, respeta la misma semántica que Rust (posiciones,
 filtros por `source_state`, eventos de historial). Un mock que se comporta
 distinto hace que los tests pasen con una realidad que no es la de la app.
 
+**La semilla del mock es data de preview, no una fixture.** Existe para que la app
+se vea con contenido en el browser, y varios de sus items se anclan a **días de la
+semana** (`weekDates`), no a hoy. O sea: **cuáles de sus tareas caen en el pasado
+depende del día en que corras los tests.** Un caso que dependa de eso —"el último
+día con tareas", "hubo tiempo trabajado hoy"— tiene que neutralizarla primero:
+manda sus días pasados al backlog (`limpiarDiasPasados` en
+`DailyPlanningView.test.tsx`) o créate tu propia fixture en vez de apoyarte en la
+suya (`DailyShutdownView.test.tsx`, el caso del donut).
+
+No es teórico: tres casos pasaban **los martes** y se caían de miércoles a domingo,
+y lo encontró CI. Un test que se apoya en la semilla no falla al escribirlo, falla
+un día cualquiera al que nadie va a asociar el cambio.
+
 ## Front: qué y cómo
 
 Vitest + React Testing Library. Los tests se agarran de **`aria-label` y roles**,
@@ -97,8 +110,10 @@ escribir en este repo.
 
 - `pnpm` v11 lee su configuración de `pnpm-workspace.yaml`, **no** del campo
   `pnpm` de `package.json`. Ahí está `onlyBuiltDependencies: [esbuild]`.
-- Hay un warning de `act()` en el test del `Sidebar`: pasa, pero ensucia la
-  salida. Si tocas ese componente, vale limpiarlo de paso.
+- **Corre `TZ=UTC pnpm test` además del normal si tocas algo con fechas.** CI corre
+  en UTC y tu máquina no, así que entre las 20:00 y medianoche de Santiago el "hoy"
+  de CI ya es el día siguiente. Dos veces seguidas eso encontró bugs de fecha que
+  en local pasaban por casualidad (ROADMAP 5.5 y 5.7).
 
 ## Idioma: código en inglés, texto en español
 

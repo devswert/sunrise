@@ -13,7 +13,7 @@ fuera de git y quedó reemplazado por él.
 | M2 | Timer + Focus (taxímetro, `time_entries`, campana, Focus Mode) | ✅ `1175035` |
 | M3 | Calendar + review + resúmenes | ✅ 3.1 a 3.6 hechos |
 | M4 | Durabilidad, branding, empaque | ✅ 4.1 a 4.3 hechos |
-| M5 | Compartir con el equipo | ✅ 5.1 a 5.6 hechos; `v0.1.0` y `v0.1.1` publicadas |
+| M5 | Compartir con el equipo | ✅ 5.1 a 5.7 hechos; `v0.1.0` y `v0.1.1` publicadas |
 
 ---
 
@@ -914,6 +914,40 @@ suite completa corre verde con `TZ=UTC`.
 Deja dos cosas escritas para la próxima: que **CI en UTC es una ventaja** y no un
 estorbo, y que un test de zonas horarias con fixtures en tu propia zona no prueba
 nada. Total **367 front y 140 Rust**.
+
+### 5.7 ✅ Tres tests pasaban solo los martes — hecho
+
+El primer tag de la `v0.2.0` **falló en CI**, en `pnpm test:all`, con tres casos
+rojos —dos de `DailyPlanningView` y uno de `DailyShutdownView`— que en local
+estaban verdes. Reproducido en un comando: `TZ=UTC pnpm test`.
+
+La causa no tenía nada que ver con el cambio que se estaba publicando: **la semilla
+del mock ancla varios de sus items a días de la semana** (`weekDates`), no a hoy.
+Un item puesto "el martes" está en el futuro los lunes, es hoy los martes y es
+pasado el resto de la semana. Los tres casos daban por sentado que el único día
+pasado con tareas era el suyo, y eso solo es cierto los martes.
+
+Lo peor era cómo fallaba. Uno de ellos comprobaba `1/2 cerradas` **y pasaba**: el
+día de la semilla tenía justo una cerrada y una abierta, así que el conteo calzaba
+de casualidad y solo se caía el título. Un test que verifica el número correcto del
+día equivocado.
+
+El arreglo es aislar, no rehacer la semilla: la semilla tiene otro consumidor —el
+preview en el browser— y volverla determinista para los tests la empeora para eso.
+Los casos que dependen de qué días están en el pasado ahora lo neutralizan
+explícitamente (`limpiarDiasPasados`) o se crean su propia fixture. Verde en las
+dos zonas, que es la comprobación que importa: pasar en una sola significa haber
+movido la casualidad, no haberla sacado.
+
+De paso salió un bug de la app y no de los tests: la semilla llamaba `yesterday` a
+`wk[1]`, que es **el martes**, así que los lunes el "día anterior con algo cerrado"
+caía en el futuro y el repaso del ritual se veía vacío justo el día en que más se
+usa. Ahora se calcula desde hoy. Que arreglarlo no moviera ningún test es la señal
+de que el aislamiento quedó bien.
+
+**Es la segunda vez seguida que CI encuentra un bug de fecha que en Santiago pasa
+por casualidad** (la otra es 5.5). La regla quedó escrita en la skill
+`sunrise-tests`, con el comando: si tocas fechas, corre también `TZ=UTC pnpm test`.
 
 ### 5.6 ✅ La primera instalación decía que la app estaba dañada — hecho
 

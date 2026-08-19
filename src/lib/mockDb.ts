@@ -188,7 +188,14 @@ function logEvent(
   // Un día anterior con algo cerrado: sin esto el repaso del ritual (§4.14) no
   // se puede ver en el browser, porque el carry-over se lleva a hoy todo lo
   // manual sin terminar y la fecha queda vacía.
-  const yesterday = wk[1] ?? today;
+  //
+  // Se calcula desde hoy y no como `wk[1]`, que era el **martes** de la semana:
+  // los lunes eso caía en el futuro y el repaso quedaba vacío justo el día en que
+  // más se usa. Los demás items sí se anclan a días de la semana a propósito,
+  // para que el preview de la semana muestre varias columnas con contenido.
+  const ayer = new Date();
+  ayer.setDate(ayer.getDate() - 1);
+  const yesterday = toISODate(ayer);
   const closed = blankTask(
     { title: "Ajustar dashboards", scheduledDate: yesterday, estimatedMinutes: 60, categoryId: 3 },
     nextPosition(yesterday),
