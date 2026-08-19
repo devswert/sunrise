@@ -45,6 +45,15 @@ ser el 5 o el 6, y el síntoma aparece lejos (tests rojos, app en blanco).
    `invoke_handler![]` de `src-tauri/src/lib.rs`**. Si falta el registro, falla
    en runtime, no al compilar.
 6. **Tipo TS** en `src/lib/types.ts` (espejo exacto del modelo, en camelCase).
+   **Los nombres son el contrato y nada los compara**: `types.ts` se escribe a
+   mano, TypeScript no ve el otro lado, y un campo mal escrito no falla — llega
+   `undefined`. Peor: el mock puede estar de acuerdo con el front y los dos
+   equivocados, y entonces el browser y los tests se ven perfectos y **falla solo
+   dentro de Tauri**, que es el único lado donde el nombre lo pone serde. Ya pasó
+   (`Rescue.from_date` → el front leía `from`) y el síntoma fue una pantalla en
+   blanco, no un dato faltante. Si el modelo es nuevo, deja un test que serialice
+   y compare las claves, como `los_nombres_de_rescue_son_los_que_lee_el_front` en
+   `models.rs`.
 7. **Entrada en `src/lib/ipc.ts`** con las dos ramas.
 8. **Implementación en `src/lib/mockDb.ts`.** Sin esto los tests que toquen ese
    camino se caen y la app deja de verse en el browser.

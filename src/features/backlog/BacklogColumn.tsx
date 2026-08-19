@@ -17,9 +17,15 @@ interface Props {
   onPatch?: (id: number, patch: TaskPatch) => void;
 }
 
-/** Si esa tarea (existe y) viene de un día. Tolera el `tasks[i - 1]` del borde. */
+/**
+ * Si esa tarea (existe y) viene de un día. Tolera el `tasks[i - 1]` del borde.
+ *
+ * Mira el **valor**, no la clave: un mapa con la clave puesta y la fecha en
+ * `undefined` hacía que `has()` dijera que sí y que el formateo de fecha recibiera
+ * nada, y eso tumbaba la vista entera (pantalla en blanco).
+ */
 function vieneDeUnDia(rescued: Map<number, string> | undefined, t: Task | undefined): boolean {
-  return t != null && rescued != null && rescued.has(t.id);
+  return t != null && !!rescued?.get(t.id);
 }
 
 /**

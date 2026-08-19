@@ -1734,6 +1734,42 @@ juntos al principio porque mandar algo al backlog lo pone en primera posición, 
 un agrupado por día necesita que ese orden se respete o las cards van a saltar
 de grupo al arrastrarlas.
 
+### Mej.22 ✅ El ritual se iba a pantalla en blanco — hecho
+
+Reportado desde la app: entrar al paso 2 del daily planning dejaba la pantalla en
+blanco. Apareció justo después de mandar una tarea de hoy al backlog, y por eso
+parecía cosa del arrastre. No lo era.
+
+**El nombre del campo no coincidía entre Rust y el front.** `models::Rescue`
+tiene `from_date`, que con `rename_all = "camelCase"` viaja como `fromDate`, y
+`src/lib/types.ts` declaraba `from`. Así que `r.from` era `undefined`, el mapa de
+rescates quedaba con la clave puesta y la fecha vacía, `rescued.has(id)` decía que
+sí, y el formateo de fecha recibía nada y tiraba. Una excepción al renderizar tumba
+el árbol entero: de ahí el blanco.
+
+**Estuvo así desde que la feature existe, y no se veía por dos razones que se
+tapan entre sí.** Una: solo se rompe si hay una tarea en el backlog que *venga de
+un día*, o sea con un `MOVED` hacia `NULL` en su historial — un backlog escrito a
+mano no lo tiene. Dos, y es la que importa: **el mock devolvía `from`**, el nombre
+equivocado, así que en el browser y en los tests se veía perfecto. Fallaba **solo
+dentro de Tauri**, que es el único lado donde el nombre lo pone serde.
+
+Lo mismo rompía la vista Backlog, por el mismo mapa.
+
+Dos arreglos, y el segundo es el que importa a futuro:
+
+1. El front lee `fromDate` (tipo, mock y los dos consumidores), y los rescates sin
+   fecha se filtran al armar el mapa.
+2. `vieneDeUnDia` mira el **valor** y no la clave, así que un mapa con la fecha
+   vacía deja de mostrar el rótulo en vez de tumbar la vista. Un dato que falta
+   puede degradar lo que se ve; no puede apagar la pantalla.
+
+Tests: `los_nombres_de_rescue_son_los_que_lee_el_front` en `models.rs` —serializa
+y compara las claves, que es lo único que puede pillar esta clase de bug, porque
+el mock puede estar de acuerdo con el front y los dos equivocados— y dos en
+`BacklogColumn.test.tsx`, uno de ellos con el mapa roto a propósito. Los dos
+mutation-checked.
+
 ## Post-MVP (decidido: fuera de alcance)
 
 - Recurrentes / rituales auto-generados.

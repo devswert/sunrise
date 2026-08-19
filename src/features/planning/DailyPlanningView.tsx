@@ -95,7 +95,9 @@ export function DailyPlanningView() {
     ]);
     setPrevias(atras);
     setBacklog(bl);
-    setRescued(new Map(rescates.map((r) => [r.taskId, r.from])));
+    // Se filtran los sin fecha: la clave existiendo con valor `undefined` es lo
+    // que rompía la vista, porque `has()` decía que sí y el formateo recibía nada.
+    setRescued(new Map(rescates.filter((r) => r.fromDate).map((r) => [r.taskId, r.fromDate])));
   }, [today]);
 
   useEffect(() => {

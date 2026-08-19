@@ -439,3 +439,29 @@ pub struct AppUpdate {
     /// Fecha de publicación en el formato que venga del `latest.json`, o `None`.
     pub date: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Los nombres que salen por el puente IPC **son** el contrato con el front:
+    /// `src/lib/types.ts` los espeja a mano y nada los compara.
+    ///
+    /// Este caso existe porque ese contrato ya se rompió: `Rescue.from_date`
+    /// viaja como `fromDate` y el front leía `from`. El valor llegaba
+    /// `undefined` **solo dentro de Tauri** —el mock devolvía `from`, así que en
+    /// el browser y en los tests se veía perfecto— y la vista del ritual se caía
+    /// a pantalla en blanco al formatear una fecha que no estaba.
+    #[test]
+    fn los_nombres_de_rescue_son_los_que_lee_el_front() {
+        let json = serde_json::to_value(Rescue {
+            task_id: 7,
+            from_date: "2026-08-19".into(),
+        })
+        .unwrap();
+        let obj = json.as_object().unwrap();
+        assert_eq!(obj["taskId"], 7);
+        assert_eq!(obj["fromDate"], "2026-08-19");
+        assert_eq!(obj.len(), 2, "un campo nuevo también hay que espejarlo en types.ts");
+    }
+}

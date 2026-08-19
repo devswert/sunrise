@@ -408,7 +408,7 @@ export const mock = {
       const last = [...events]
         .reverse()
         .find((e) => e.taskId === t.id && e.type === "MOVED" && e.toDate === null);
-      if (last?.fromDate) out.push({ taskId: t.id, from: last.fromDate });
+      if (last?.fromDate) out.push({ taskId: t.id, fromDate: last.fromDate });
     }
     return out;
   },

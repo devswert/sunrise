@@ -66,7 +66,7 @@ export function BacklogView() {
     setTasks(bl);
     setCategories(cats);
     setObjectives(objs);
-    setRescued(new Map(rescates.map((r) => [r.taskId, r.from])));
+    setRescued(new Map(rescates.filter((r) => r.fromDate).map((r) => [r.taskId, r.fromDate])));
   }, []);
 
   useEffect(() => {
@@ -128,7 +128,7 @@ export function BacklogView() {
                   {/* De dónde vino, si vino de un día. Acá no se agrupa aparte
                    * —el backlog se agrupa por contexto— pero saber que esto se
                    * cayó de un día cambia cómo lo lees. */}
-                  {rescued.has(t.id) && (
+                  {!!rescued.get(t.id) && (
                     <span className="col-desde">desde el {shortDate(rescued.get(t.id)!)}</span>
                   )}
                 </div>

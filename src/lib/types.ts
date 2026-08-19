@@ -64,8 +64,15 @@ export interface TaskEvent {
  */
 export interface Rescue {
   taskId: number;
-  /** El día del que salió. */
-  from: string;
+  /**
+   * El día del que salió.
+   *
+   * Se llama `fromDate` porque así lo serializa `models::Rescue` (`from_date` en
+   * camelCase). Se llamó `from` un tiempo, y como el campo que llega es otro, el
+   * valor era `undefined` **dentro de Tauri nada más**: el mock devolvía `from`
+   * y en el browser y en los tests se veía bien.
+   */
+  fromDate: string;
 }
 
 /**
