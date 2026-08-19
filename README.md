@@ -83,3 +83,11 @@ La documentación está toda en el repo, y es el punto de partida para cambiar a
 | 📐 [CLAUDE.md](CLAUDE.md) | las reglas de trabajo |
 
 Cada decisión que costó algo está escrita **con el por qué**, incluidas las que se tomaron después de que la alternativa obvia fallara. Ahí está el valor, más que en el diff.
+
+## 📄 Licencia
+
+[PolyForm Internal Use 1.0.0](LICENSE). En una línea: **úsala y modifícala para lo que quieras, tuyo o de tu empresa; no la distribuyas ni la vendas.**
+
+- ✅ Usarla en tu máquina y en la de tu trabajo. Leer el código y cambiarlo para uso interno.
+- ❌ Distribuirla, publicar un fork, ofrecerla a terceros —gratis o pagada—, o meterla en un producto.
+- ♾️ **Sin fecha de vencimiento**: no se convierte en otra licencia con el tiempo.

@@ -4,6 +4,7 @@
   "description": "sunrise — planner diario de escritorio, con los datos en tu máquina",
   "type": "module",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@11.1.3",
   "scripts": {
     "dev": "vite",
