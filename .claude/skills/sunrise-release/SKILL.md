@@ -6,7 +6,7 @@ description: Publica una versión de sunrise — escribe la entrada del changelo
 # Publicar una versión de sunrise
 
 Publicar es **un tag**. El resto lo hace `.github/workflows/release.yml`: compila
-en `macos-14`, corre las dos suites, firma con la llave del updater y publica el
+en `macos-26`, corre las dos suites, firma con la llave del updater y publica el
 `.dmg`, el `.app.tar.gz`, su `.sig` y el `latest.json`.
 
 **El único gatillo es empujar un tag `v*`.** No hay disparo manual del workflow, y

@@ -24,11 +24,19 @@ permissions:
 
 jobs:
   dmg:
-    # macos-14 y no macos-latest: del 14 en adelante los runners son arm64, que es
-    # el único target que este proyecto compila (SPECS §4.19 fija
-    # minimumSystemVersion 11.0). En macos-13, que es Intel, saldría un .dmg que no
-    # corre en el Mac de nadie del equipo.
-    runs-on: macos-14
+    # Fijo y no `macos-latest`, por dos razones distintas:
+    #
+    # 1. **Arquitectura.** Este proyecto compila solo arm64, y `macos-13` es Intel:
+    #    ahí saldría un .dmg que no corre en el Mac de nadie del equipo.
+    # 2. **El SDK con el que se enlaza decide la apariencia de la ventana.** macOS
+    #    le da a cada app el marco de su SDK, así que un runner viejo publica
+    #    binarios con los botones de ventana de una versión anterior mientras en
+    #    desarrollo se ven los actuales. Pasó con `macos-14` (SDK 14.5): la app
+    #    distribuida no se veía como la compilada en la máquina del dev.
+    #
+    # `macos-latest` resolvería lo segundo, pero moviéndose solo: la apariencia de
+    # lo que publicas cambiaría un día sin que nadie tocara nada. Se sube a mano.
+    runs-on: macos-26
 
     steps:
       - uses: actions/checkout@v4

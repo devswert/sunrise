@@ -792,11 +792,19 @@ equivocada.
 `.github/workflows/release.yml`: empujas un tag `v*` y CI compila, corre las dos
 suites y publica el `.dmg` en un GitHub Release.
 
-Dos detalles que valen: corre en **`macos-14`** y no en `macos-latest`, porque del
-14 en adelante los runners son arm64 y en `macos-13` (Intel) saldría un `.dmg` que
-no corre en ningún Mac del equipo. Y tiene un paso que **compara el tag con los tres
+Dos detalles que valen: corre en un runner **fijo** y no en `macos-latest`, porque
+el proyecto compila solo arm64 y en `macos-13` (Intel) saldría un `.dmg` que no
+corre en ningún Mac del equipo. Y tiene un paso que **compara el tag con los tres
 archivos de versión**, que es el único lugar donde eso se puede pillar: el test de
 Rust los compara entre sí, pero no sabe nada del tag.
+
+> **Actualizado después de la 0.2.0**: arrancó en `macos-14` y se subió a
+> `macos-26`. Resultó que el runner elige algo más que la arquitectura: **el SDK
+> contra el que se enlaza el binario decide la apariencia de la ventana**, así que
+> lo publicado salía con los botones de macOS 14 mientras en desarrollo se veían los
+> actuales. Se descubrió comparando la app instalada con una compilada localmente —
+> mismo commit, misma config, distinto marco— y se confirma en el binario con
+> `otool -l | grep -A5 LC_BUILD_VERSION`. Detalle en SPECS §4.18.
 
 > **No está ejercitado**: cuando se escribió, el repo no tenía remoto. El YAML está
 > validado y la lógica del paso de versión se probó en local, pero la primera

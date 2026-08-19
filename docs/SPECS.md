@@ -1407,9 +1407,22 @@ no aplican, y pedirlos solo hace que el bundler avise que no puede.
 push— y publica el `.dmg` en un GitHub Release. Sacar una versión son dos pasos:
 subir el número en los tres archivos y `git push --tags`.
 
-El workflow corre en **`macos-14`** y no en `macos-latest`: del 14 en adelante los
-runners son arm64, y en `macos-13`, que es Intel, saldría un `.dmg` que no corre en
+El workflow corre en un runner **fijo** (`macos-26`) y no en `macos-latest`, y hay
+dos razones que no son la misma. La primera es la arquitectura: el proyecto compila
+solo arm64 y `macos-13` es Intel, así que ahí saldría un `.dmg` que no corre en
 ningún Mac del equipo.
+
+La segunda se descubrió comparando la app instalada con una compilada localmente:
+**el SDK contra el que se enlaza el binario decide la apariencia de la ventana**.
+macOS le da a cada app el marco de su SDK, así que con `macos-14` (SDK 14.5) lo
+publicado salía con los botones de ventana de macOS 14 mientras en la máquina del
+dev (SDK 26.5) se veían los actuales — misma configuración, mismo commit, distinto
+marco. Se ve en el binario con `otool -l | grep -A5 LC_BUILD_VERSION`.
+
+`macos-latest` arreglaría lo segundo, pero **moviéndose solo**: la apariencia de lo
+que publicas cambiaría un día sin que nadie tocara nada, y el `minimumSystemVersion`
+seguiría en 11.0 sin que nadie lo hubiera revisado contra el SDK nuevo. Por eso el
+runner se sube a mano.
 
 Tiene un paso propio que **compara el tag con los tres archivos** y falla si no
 coinciden. Es el único lugar donde eso se puede pillar: el test de Rust comprueba
