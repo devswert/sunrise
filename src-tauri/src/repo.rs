@@ -677,16 +677,18 @@ fn elapsed_seconds(start: &str, end: &str) -> i64 {
 /// el ajuste (p. ej. cuando olvidaste encender el taxímetro).
 pub fn set_actual_seconds(conn: &Connection, task_id: i64, seconds: i64) -> Result<Option<Task>> {
     let seconds = seconds.max(0);
-    let current: i64 = conn
-        .query_row("SELECT actual_seconds FROM tasks WHERE id = ?1", [task_id], |r| {
-            r.get(0)
-        })
-        .optional()?
-        .unwrap_or(0);
+    let fila: Option<(i64, Option<String>, Option<String>)> = conn
+        .query_row(
+            "SELECT actual_seconds, scheduled_date, scheduled_time FROM tasks WHERE id = ?1",
+            [task_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?;
+    let (current, date, time) = fila.unwrap_or((0, None, None));
 
     let delta = seconds - current;
     if delta != 0 {
-        let ts = now();
+        let ts = adjustment_stamp(date.as_deref(), time.as_deref());
         conn.execute(
             "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
              VALUES (?1, ?2, ?2, ?3)",
@@ -699,6 +701,60 @@ pub fn set_actual_seconds(conn: &Connection, task_id: i64, seconds: i64) -> Resu
         params![task_id, seconds, now()],
     )?;
     get_task(conn, task_id)
+}
+
+/// Cuándo se acredita un ajuste manual de tiempo: **el día de la tarea**, no el
+/// día en que abriste el modal.
+///
+/// El ajuste se guarda como una entrada de `time_entries` (es lo que hace que el
+/// total siempre salga de las entradas y no de un campo suelto), y todo lo que
+/// agrupa por día lo hace por `started_at` en hora local: el rail (`day_work`) y
+/// el rollup semanal (Regla 2, §4.15). Sellarlo con `now()` metía las horas en el
+/// día en que las escribiste: corregir el lunes una reunión del sábado dejaba el
+/// rail del sábado sin verlas y, si el ajuste cruzaba el domingo, el rollup las
+/// contaba en la semana equivocada.
+///
+/// Tres detalles que no son adorno:
+///
+/// - **Mediodía y no medianoche.** Chile cambia la hora, y en el salto de
+///   primavera la medianoche local **no existe**: la conversión devuelve `None` y
+///   habría que decidir algo ahí. El mediodía existe todos los días del año.
+/// - **Si la tarea tiene hora, se usa esa.** Es el caso que motiva la corrección
+///   —una reunión— y así el bloque del rail cae donde ocurrió en vez de a
+///   mediodía. Cuando la tarea ya tiene entradas reales de ese día no cambia
+///   nada: `day_work` dibuja desde `MIN(started_at)`.
+/// - **Una tarea futura se acredita a hoy.** Mañana no se trabajó, y fechar ahí
+///   dejaría horas "trabajadas" adelante del reloj sumando en un rollup futuro.
+///
+/// Consecuencia asumida: un ajuste sobre una tarea de otro día **ya no cuenta en
+/// el contador del taxímetro**, que mide `started_at >= start_of_today()`. Es lo
+/// correcto —ese contador es el de la sesión de hoy— pero antes sí aparecía ahí.
+fn adjustment_stamp(date: Option<&str>, time: Option<&str>) -> String {
+    let Some(day) = date.and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()) else {
+        return now();
+    };
+    if day > chrono::Local::now().date_naive() {
+        return now();
+    }
+
+    let hhmm = time.and_then(|t| {
+        let (h, m) = t.split_once(':')?;
+        Some((h.trim().parse::<u32>().ok()?, m.trim().parse::<u32>().ok()?))
+    });
+    // El mediodía es el respaldo de las dos ramas: sin hora, y con una hora que
+    // esa fecha no tuvo (el salto de DST se come una hora entera).
+    let local = hhmm
+        .and_then(|(h, m)| day.and_hms_opt(h, m, 0))
+        .and_then(|naive| chrono::Local.from_local_datetime(&naive).earliest())
+        .or_else(|| {
+            day.and_hms_opt(12, 0, 0)
+                .and_then(|naive| chrono::Local.from_local_datetime(&naive).earliest())
+        });
+
+    match local {
+        Some(dt) => dt.with_timezone(&Utc).to_rfc3339(),
+        None => now(),
+    }
 }
 
 pub fn list_time_entries(conn: &Connection, task_id: i64) -> Result<Vec<TimeEntry>> {
@@ -2256,8 +2312,17 @@ mod tests {
     fn ajuste_manual_del_tiempo_sobrevive_a_start_stop() {
         // Regresión: editar el tiempo real y luego dar play reanudaba desde el
         // valor viejo, porque el total se recalculaba desde las entradas.
+        //
+        // La tarea es **de hoy** y eso ahora importa: desde Mej.14 el ajuste
+        // manual se acredita al día de la tarea, y `base_seconds` es el contador
+        // del taxímetro, que mide solo hoy. Con una tarea de otro día el ajuste
+        // queda fuera de ese contador a propósito (lo cubre
+        // `un_ajuste_de_otro_dia_ya_no_cuenta_en_el_contador_del_taximetro`), así
+        // que lo que este caso protege —que el total no se recalcule desde las
+        // entradas— se ve con la tarea en el día en curso.
         let c = conn();
-        let t = create_task(&c, new_task("larga", Some("2026-08-10"))).unwrap();
+        let hoy = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+        let t = create_task(&c, new_task("larga", Some(&hoy))).unwrap();
 
         // Simula 2h ya trabajadas.
         set_actual_seconds(&c, t.id, 2 * 3600).unwrap();
@@ -3596,5 +3661,100 @@ mod tests {
         assert_eq!(r.days[0].date, "2026-08-10");
         assert_eq!(r.days[6].date, "2026-08-16");
         assert_eq!(r.total_seconds, 0);
+    }
+    // --- Ajuste manual de tiempo: a qué día se acredita (Mej.14) -------------
+
+    #[test]
+    fn un_ajuste_manual_se_acredita_al_dia_de_la_tarea_y_no_a_hoy() {
+        // El caso del reporte: el lunes corriges las horas de una reunión del
+        // sábado. Antes esas horas entraban en el lunes, así que el rail del
+        // sábado no las veía y el rollup las contaba en la otra semana.
+        let c = conn();
+        let sabado = hace(3);
+        let t = create_task(&c, new_task("reunión del sábado", Some(&sabado))).unwrap();
+
+        set_actual_seconds(&c, t.id, 1800).unwrap();
+
+        let ese_dia = day_work(&c, &sabado).unwrap();
+        assert_eq!(ese_dia.len(), 1);
+        assert_eq!(ese_dia[0].seconds, 1800);
+        let hoy = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+        assert!(
+            day_work(&c, &hoy).unwrap().is_empty(),
+            "el día en que se escribió el ajuste no debería registrar trabajo"
+        );
+    }
+
+    #[test]
+    fn el_ajuste_cae_en_la_hora_de_la_tarea_cuando_la_tiene() {
+        // Una reunión tiene hora, así que el bloque del rail puede caer donde
+        // ocurrió en vez de a mediodía.
+        let c = conn();
+        let dia = hace(2);
+        let mut input = new_task("reunión de las 15:30", Some(&dia));
+        input.scheduled_time = Some("15:30".into());
+        let t = create_task(&c, input).unwrap();
+
+        set_actual_seconds(&c, t.id, 600).unwrap();
+
+        let filas = day_work(&c, &dia).unwrap();
+        let local = chrono::DateTime::parse_from_rfc3339(&filas[0].started_at)
+            .unwrap()
+            .with_timezone(&chrono::Local);
+        assert_eq!((local.hour(), local.minute()), (15, 30));
+    }
+
+    #[test]
+    fn sin_hora_el_ajuste_cae_al_mediodia_de_ese_dia() {
+        // Mediodía y no medianoche: en el salto de primavera la medianoche local
+        // no existe y la conversión se queda sin respuesta.
+        let c = conn();
+        let dia = hace(4);
+        let t = create_task(&c, new_task("sin hora", Some(&dia))).unwrap();
+
+        set_actual_seconds(&c, t.id, 300).unwrap();
+
+        let filas = day_work(&c, &dia).unwrap();
+        let local = chrono::DateTime::parse_from_rfc3339(&filas[0].started_at)
+            .unwrap()
+            .with_timezone(&chrono::Local);
+        assert_eq!(local.hour(), 12);
+        assert_eq!(local.date_naive().format("%Y-%m-%d").to_string(), dia);
+    }
+
+    #[test]
+    fn una_tarea_del_backlog_o_futura_se_acredita_a_hoy() {
+        // Sin fecha no hay día al que acreditar, y mañana no se trabajó: fechar
+        // ahí dejaría horas adelante del reloj sumando en un rollup futuro.
+        let c = conn();
+        let hoy = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+        let manana = (chrono::Local::now().date_naive() + chrono::Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string();
+
+        let bl = create_task(&c, new_task("del backlog", None)).unwrap();
+        let fut = create_task(&c, new_task("de mañana", Some(&manana))).unwrap();
+        set_actual_seconds(&c, bl.id, 60).unwrap();
+        set_actual_seconds(&c, fut.id, 120).unwrap();
+
+        let de_hoy = day_work(&c, &hoy).unwrap();
+        assert_eq!(de_hoy.len(), 2);
+        assert!(day_work(&c, &manana).unwrap().is_empty());
+    }
+
+    #[test]
+    fn un_ajuste_de_otro_dia_ya_no_cuenta_en_el_contador_del_taximetro() {
+        // Consecuencia asumida del cambio, no un descuido: `seconds_today` mide
+        // la sesión de hoy (`started_at >= start_of_today`), y un ajuste fechado
+        // en otro día queda fuera. Antes aparecía ahí, que era justamente el bug.
+        let c = conn();
+        let ayer = hace(1);
+        let t = create_task(&c, new_task("de ayer", Some(&ayer))).unwrap();
+
+        set_actual_seconds(&c, t.id, 900).unwrap();
+
+        assert_eq!(seconds_today(&c, t.id).unwrap(), 0);
+        // Pero el total de la tarea sí lo tiene: no se perdió, cambió de día.
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 900);
     }
 }

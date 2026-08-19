@@ -514,9 +514,9 @@ medianoche local desde el timer (I3), así que agrupar por día fue solo agrupar
 Se sumó el **objetivo semanal** (era carry de 3.4): la review muestra cuántos se
 cumplieron y cuáles.
 
-Queda en pie **Mej.14** como salvedad: el ajuste manual de tiempo se acredita al
-día en que lo escribes, no al de la tarea (D8). La review agrupa bien; la fila
-nace con la fecha errada.
+Quedó en pie **Mej.14** como salvedad —el ajuste manual de tiempo se acreditaba al
+día en que lo escribías, no al de la tarea (D8)— y **ya está cerrada**: la fila
+nace con el día de la tarea, así que la Regla 2 vale también en la escritura.
 
 ### 3.6 ✅ Daily highlights / shutdown — hecho
 
@@ -655,10 +655,11 @@ veces para fijarlo.
 selector nativo de carpeta y de archivo (`open`). **Los diálogos de confirmación
 son React**, como el de ⌘Q: el plugin no se usa para eso.
 
-> **Falta verificarlo dentro de Tauri**, y son cuatro cosas: que el selector abra
-> el Finder (el permiso `dialog:allow-open` puede no alcanzar para `open()` en
-> Tauri v2), que el respaldo aparezca en un Drive real, una restauración de verdad,
-> y que el automático se dispare a la hora. El mock no tiene base que reemplazar.
+> **Verificado en la app**: el selector abre el Finder (el permiso
+> `dialog:allow-open` alcanzaba) y **restaurar funciona de verdad**, que son las
+> dos que podían salir mal en silencio. Siguen sin comprobar las dos que dependen
+> de esperar: que el respaldo aparezca en un Drive real y que el automático se
+> dispare a la hora.
 
 ### 4.2 ✅ Marca e inicio automático — hecho
 
@@ -704,10 +705,11 @@ SPECS, que seguía diciendo "cuatro secciones" desde que Respaldo la hizo cinco.
 Tests: `SunriseMark.test.tsx` (3) y dos en `SettingsView.test.tsx`. Total
 **344 front (40 archivos) y 136 Rust**.
 
-> **Falta verificar dentro de `pnpm tauri dev`**: que el icono aparezca de verdad
-> en el Dock y en el cambiador de apps, y que la casilla registre el LaunchAgent
-> —ojo que en dev registra `target/debug/sunrise`, así que hay que apagarla antes
-> de salir. El mock no tiene sistema operativo al que registrarse.
+> **Verificado**: el icono aparece en el Dock y se ve bien al tamaño en que se usa.
+> **Falta la casilla de inicio automático**: que registre el LaunchAgent y la app
+> abra al reiniciar sesión —ojo que en dev registra `target/debug/sunrise`, así que
+> hay que apagarla antes de salir—. El mock no tiene sistema operativo al que
+> registrarse.
 
 ### 4.3 ✅ Empaque `.dmg` — hecho
 
@@ -738,9 +740,9 @@ Detalle en [SPECS §4.19](SPECS.md#419-empaque-dmg). Lo que vale contar:
 - Se agregaron `category`, `shortDescription`, `longDescription`, `copyright` y
   `minimumSystemVersion` (11.0), y `targets` pasó de `"all"` a `["app", "dmg"]`.
 
-> **Falta que lo instales**: arrastrar el `.app` a Aplicaciones y abrirlo desde ahí.
-> No lo hice yo a propósito — abrir el paquete escribe en tu base de datos real, no
-> en una copia.
+> **Instalado y abierto desde Aplicaciones**, y de ahí salieron dos cosas que solo
+> se ven así: que el `.dmg` bajado del navegador se reportaba como dañado (5.6) y
+> que dev y producción compartían base (5.1).
 
 ---
 
@@ -891,8 +893,8 @@ es el que exige que la versión de `package.json` tenga su sección: es el modo 
 falla que abre esta feature —subir la versión y olvidar la entrada— y sin él no se
 pone rojo nada.
 
-> **Falta verlo en la app**: el modal solo aparece cuando la versión cambia, así
-> que se prueba de verdad recién con la 0.2.0 instalada sobre la 0.1.0.
+> **Visto en la app**, actualizando de una versión a la siguiente: el modal "Lo
+> nuevo" aparece con el texto del changelog.
 
 ---
 
@@ -1554,21 +1556,51 @@ Tests: seis nuevos —cuatro del colapso en `Sidebar.test.tsx` y dos de
 > `color-scheme` de las tres ramas, los dos anchos del rail, que la franja no tape
 > nada y que el aviso del updater sobreviva al colapso.
 
-### Mej.14 🔵 El ajuste manual de tiempo se acredita al día en que lo escribes
+### Mej.14 ✅ El ajuste manual de tiempo se acredita al día en que lo escribes — hecho
 
-`repo::set_actual_seconds` guarda el delta como una entrada con
-`started_at = now()`. Si el lunes corriges las horas de una reunión del sábado, ese
-tiempo queda contado en **lunes**: el rail del sábado no lo ve, y el rollup semanal
-lo atribuye a la semana equivocada si el ajuste cruza el domingo (Regla 2, §4.15).
+`repo::set_actual_seconds` guardaba el delta como una entrada con
+`started_at = now()`. Si el lunes corregías las horas de una reunión del sábado,
+ese tiempo quedaba contado en **lunes**: el rail del sábado no lo veía y el rollup
+lo atribuía a la semana equivocada si el ajuste cruzaba el domingo. Era la Regla 2
+(§4.15) rota en la escritura — la review agrupaba bien, la fila nacía con la fecha
+errada. Última salvedad conocida que había dejado M3.5 (D8).
 
-**M3.5 ya está entregado y esto quedó como su única salvedad conocida** (D8): la
-review agrupa bien, pero la fila nace con la fecha errada, así que el arreglo se
-paga una sola vez y acá.
+Ahora la entrada se sella con el día de la tarea. Tres decisiones que el ítem no
+tenía:
 
-Lo natural sería sellarlo con el `scheduled_date` de la tarea. Ojo con dos cosas
-antes de tocarlo: `seconds_today` compara `started_at >= start_of_today()` para el
-contador del taxímetro, y un ajuste fechado en el pasado dejaría de contar ahí —que
-puede ser justamente lo correcto, pero hay que decidirlo, no descubrirlo.
+1. **Con la hora de la tarea si la tiene, mediodía si no.** Lo primero es por el
+   caso que motiva todo esto —una reunión—: así el bloque del rail cae donde
+   ocurrió en vez de a mediodía. Y **mediodía y no medianoche** porque Chile cambia
+   la hora: en el salto de primavera la medianoche local **no existe** y la
+   conversión se queda sin respuesta. El mediodía existe todos los días del año.
+2. **Una tarea futura se acredita a hoy**, igual que una sin fecha. Mañana no se
+   trabajó, y fechar ahí dejaría horas "trabajadas" adelante del reloj sumando en
+   un rollup futuro.
+3. **La consecuencia en `seconds_today` se aceptó, no se esquivó.** El ítem la
+   anotaba como algo que había que decidir: un ajuste fechado en otro día **sale
+   del contador del taxímetro**, que mide `started_at >= medianoche local`. Es lo
+   correcto —ese contador es la sesión de hoy, y el total de la tarea sigue
+   completo— pero antes sí aparecía ahí. Un test lo fija para que nadie lo
+   "arregle" de vuelta.
+
+Eso último puso rojo un test que existía (`ajuste_manual_del_tiempo_sobrevive_a_start_stop`):
+usaba una tarea con fecha fija de agosto, o sea del pasado, y esperaba ver el
+ajuste en `base_seconds`. Lo que ese caso protege —que el total no se recalcule
+desde las entradas— sigue valiendo; lo que cambió es que ahora hay que pedirlo con
+una tarea **de hoy**. Quedó anotado en el propio test.
+
+**Lo que ya está mal en tu base sigue mal**, y es a propósito: no hay migración que
+re-feche los ajustes viejos. Se podrían reconocer —una entrada de ajuste es la que
+tiene `started_at = ended_at`— pero reescribir historial sobre esa deducción es
+justo el tipo de cosa que se equivoca en silencio, y el dato correcto (a qué día
+quisiste acreditarlo) no está en ninguna parte. Si algún rollup pasado se ve raro,
+la causa es esta.
+
+Tests: cinco en `repo.rs` (el día de la tarea y no hoy, la hora de la reunión, el
+mediodía sin hora, backlog y futura a hoy, y el contador del taxímetro) y dos en
+`mockDb.test.ts`, porque el mock estampaba `now()` igual y el browser habría
+seguido contando en el día equivocado. Mutation-checked los dos lados, y las dos
+suites corridas también con `TZ=UTC` — que en un cambio de fechas no es opcional.
 
 ### Mej.15 🔵 Los objetivos necesitan detalle, reparto de horas e histórico
 
@@ -1839,6 +1871,12 @@ publicar nada.
 ## Verificación end-to-end (del plan original)
 
 Los pasos 1–5 ya deberían pasar; 6–10 son de M3/M4.
+
+**Confirmado por el dev en la app instalada** (agosto 2026): el selector de carpeta
+del respaldo, una restauración de verdad, el icono en el Dock, la instalación del
+`.dmg` y el modal "Lo nuevo" al actualizar. Queda sin comprobar lo que exige
+esperar o mirar otra máquina: el respaldo automático a su hora, el zip en un Drive
+real, y la casilla de inicio automático registrando el LaunchAgent.
 
 1. `pnpm tauri dev` levanta app + flotante; `pnpm test:all` en verde.
 2. Categorías de 2 niveles con color pastel; planned/actual; DnD; anidar en

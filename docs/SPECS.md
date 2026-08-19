@@ -1054,10 +1054,12 @@ donut tiene su propio test de geometría: al dibujarlo a mano, que las porciones
 sean contiguas y cubran la vuelta es responsabilidad nuestra, y un test de
 agregación no lo ve.
 
-> **Deuda conocida (Mej.14):** `set_actual_seconds` estampa su entrada de delta
-> con `now()`, así que ajustar a mano el tiempo de una tarea de la semana pasada
-> le acredita las horas a **hoy**. Es la Regla 2 rota en el origen, no en la
-> review.
+> **Regla 2 también en la escritura (Mej.14).** `set_actual_seconds` estampa su
+> entrada de delta en **el día de la tarea**, no en el día en que la corregiste:
+> su `scheduled_date` con su `scheduled_time` si la tiene, mediodía local si no.
+> Antes usaba `now()`, y ajustar a mano una tarea de la semana pasada le acreditaba
+> las horas a hoy — la Regla 2 rota en el origen, no en la review. Sin fecha
+> (backlog) o con fecha futura sigue siendo hoy: mañana no se trabajó.
 
 ### 4.16 Bitácora y cierre del día (`DailyHighlightsView` / `DailyShutdownView`)
 
@@ -2369,10 +2371,9 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 - **D6. `SettingsView` no observa `dataVersion`**: solo recarga con su propio
   `load`.
 - **D7. Warning de `act()`** en el test del `Sidebar` (pasa, pero ensucia).
-- **D8. El ajuste manual de tiempo se acredita al día equivocado** (Mej.14).
-  `set_actual_seconds` estampa su entrada de delta con `now()`, así que corregir
-  a mano las horas de una tarea de la semana pasada se las suma a hoy. Rompe la
-  Regla 2 (§4.15) en la escritura: la review las agrupa bien, pero la fila ya
-  nació con la fecha errada. El arreglo es chico —estampar el mediodía local de
-  su `scheduled_date`, con `now()` de respaldo cuando no tiene día—, y hasta que
-  llegue el rollup carga esa salvedad.
+- ~~**D8. El ajuste manual de tiempo se acredita al día equivocado**~~ —
+  **resuelto** (Mej.14). `set_actual_seconds` estampa el día de la tarea
+  (`scheduled_date` + `scheduled_time`, o mediodía local), y hoy solo cuando no
+  tiene fecha o es futura. La consecuencia buscada tiene su otra cara: un ajuste
+  sobre una tarea de otro día **ya no aparece en el contador del taxímetro**, que
+  mide solo hoy. Detalle en §4.15.

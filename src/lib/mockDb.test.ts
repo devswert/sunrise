@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { api } from "./ipc";
+import { toISODate, todayISO } from "./date";
 
 /**
  * El mock tiene que comportarse como Rust, o los tests pasan contra una realidad
@@ -42,5 +43,36 @@ describe("mockDb.moveTask", () => {
     // desempate y el arrastre siguiente vuelve a salir corrido.
     const posiciones = (await api.listTasksForDate(DIA)).map((t) => t.position);
     expect(posiciones).toEqual([0, 1, 2, 3]);
+  });
+});
+
+/**
+ * El otro punto donde el mock tiene que decir lo mismo que Rust: **a qué día se
+ * acredita un ajuste manual de tiempo** (Mej.14). El gemelo es
+ * `un_ajuste_manual_se_acredita_al_dia_de_la_tarea_y_no_a_hoy` en `repo.rs`.
+ */
+describe("mockDb.setActualSeconds", () => {
+  it("el ajuste se acredita al día de la tarea, no al día en que se escribe", async () => {
+    const ayer = new Date();
+    ayer.setDate(ayer.getDate() - 1);
+    const dia = toISODate(ayer);
+    const hoy = todayISO();
+
+    const antesHoy = (await api.dayWork(hoy)).length;
+    const t = await api.createTask({ title: "reunión de ayer", scheduledDate: dia });
+    await api.setActualSeconds(t.id, 1800);
+
+    const deEseDia = (await api.dayWork(dia)).find((f) => f.taskId === t.id);
+    expect(deEseDia?.seconds).toBe(1800);
+    // Y el día en que se escribió no registra nada nuevo.
+    expect((await api.dayWork(hoy)).length).toBe(antesHoy);
+  });
+
+  it("sin fecha se acredita a hoy, porque no hay otro día al que mandarlo", async () => {
+    const hoy = todayISO();
+    const t = await api.createTask({ title: "del backlog", scheduledDate: null });
+    await api.setActualSeconds(t.id, 600);
+
+    expect((await api.dayWork(hoy)).find((f) => f.taskId === t.id)?.seconds).toBe(600);
   });
 });

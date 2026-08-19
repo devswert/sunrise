@@ -245,6 +245,25 @@ function logEvent(
   }
 })();
 
+
+/**
+ * Espeja `repo::adjustment_stamp`: un ajuste manual de tiempo se acredita **al
+ * día de la tarea**, no al día en que se escribe. Con la hora de la tarea si la
+ * tiene, mediodía si no, y hoy cuando la tarea no tiene fecha o es futura.
+ *
+ * Si esto se separa de Rust, el rail y el rollup del browser cuentan las horas en
+ * otro día que la app, y ningún test lo nota.
+ */
+function selloDeAjuste(t: Task): string {
+  const date = t.scheduledDate;
+  if (!date || date > todayISO()) return nowISO();
+  const [h, m] = (t.scheduledTime ?? "12:00").split(":").map(Number);
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return nowISO();
+  d.setHours(Number.isFinite(h) ? h : 12, Number.isFinite(m) ? m : 0, 0, 0);
+  return d.toISOString();
+}
+
 export const mock = {
   ping: async () => "pong",
 
@@ -419,7 +438,7 @@ export const mock = {
     const value = Math.max(0, seconds);
     const delta = value - t.actualSeconds;
     if (delta !== 0) {
-      const ts = nowISO();
+      const ts = selloDeAjuste(t);
       entries.push({ id: nextId(), taskId, startedAt: ts, endedAt: ts, seconds: delta });
     }
     t.actualSeconds = value;

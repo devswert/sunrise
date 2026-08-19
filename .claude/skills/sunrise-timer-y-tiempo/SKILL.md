@@ -30,7 +30,7 @@ escribió a mano. Si necesitas el total, lee la columna.
 
 **Los ajustes manuales pasan por `set_actual_seconds`, no por `update_task`.**
 Esa función, además de guardar el total, inserta una **entrada cerrada con el
-delta** (`started_at = ended_at = ahora`). Es lo que permite que el rollup
+delta** (`started_at = ended_at`, fechada en el día de la tarea — ver más abajo). Es lo que permite que el rollup
 semanal siga cuadrando cuando alguien corrige un tiempo porque se le olvidó
 encender el taxímetro. Por eso `update_task` detecta `actual_seconds` en el
 patch y **desvía** la escritura a `set_actual_seconds` en vez de escribir la
@@ -179,9 +179,18 @@ Y un detalle que parece cosmético: **el piso en 0 va por tarea y por día**
 (un ajuste manual negativo, ver arriba). Más arriba, los segmentos de una barra
 dejan de sumar su total.
 
-**Deuda viva**: `set_actual_seconds` estampa su delta con `now()`, así que
-corregir a mano el tiempo de una tarea de la semana pasada se lo acredita a hoy
-(Mej.14 / SPECS D8). Es la primera regla rota en la escritura.
+**El ajuste manual se acredita al día de la tarea, no al día en que lo escribes.**
+`set_actual_seconds` estampa su entrada con el `scheduled_date` de la tarea y su
+`scheduled_time` si la tiene (mediodía local si no; hoy si la tarea no tiene fecha
+o es futura). Estampaba `now()`, y corregir el lunes las horas de una reunión del
+sábado se las acreditaba al lunes: la Regla 2 rota en la escritura. **Mediodía y no
+medianoche** porque en el salto de DST la medianoche local no existe.
+
+Su otra cara es intencional: un ajuste sobre una tarea de otro día **no aparece en
+el contador del taxímetro**, que mide `started_at >= medianoche local`. Ese
+contador es la sesión de hoy; el total de la tarea sigue completo en la columna.
+Ojo con esto al escribir tests: un caso que ajuste tiempo y espere verlo en
+`base_seconds` necesita que la tarea sea **de hoy**.
 
 ## Completar desde el taxímetro
 
