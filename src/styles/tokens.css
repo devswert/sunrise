@@ -54,11 +54,29 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
+
+  /* --- Marco de la ventana ---
+   * La ventana no tiene barra de título (`titleBarStyle: "Overlay"`), así que los
+   * botones nativos de macOS flotan sobre el contenido. `--titlebar-h` es el alto
+   * que hay que dejarles libre arriba, y va como token porque lo reservan dos
+   * columnas distintas —el sidebar y el main— más la zona de arrastre: si fueran
+   * tres números sueltos, cambiar uno desalinearía los otros dos en silencio. */
+  --titlebar-h: 28px;
+
+  /* El ancho del sidebar **no vive acá**, y no por descuido: se anima, y una
+   * transición cuyo valor viene de una custom property no corre (detalle en
+   * `global.css`, sobre `.sidebar`). Los dos anchos están escritos ahí, literales. */
 }
+
 
 /* --- Tema claro (default) --- */
 :root,
 :root[data-theme="light"] {
+  /* El webview no entiende `data-theme`, que es convención nuestra: sin
+   * `color-scheme` dibuja sus controles nativos —scrollbars, selects, el caret—
+   * siempre en variante clara, y sobre el tema oscuro eso desafina. Va en las
+   * tres ramas de tokens porque sigue al tema, igual que los colores. */
+  color-scheme: light;
   --ink: #3a3a44;
   --muted: #8a8a99;
   --faint: #b8b8c4;
@@ -74,6 +92,7 @@
 /* --- Tema oscuro --- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --ink: #ecebe6;
     --muted: #9a9aa6;
     --faint: #6a6a76;
@@ -88,6 +107,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --ink: #ecebe6;
   --muted: #9a9aa6;
   --faint: #6a6a76;

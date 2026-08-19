@@ -229,6 +229,32 @@ Fuentes **Sora** (títulos) y **Manrope/Inter** (cuerpo), auto-hospedadas vía
 El tema se persiste en `localStorage` (`sunrise-theme`) y la ventana flotante lo
 sigue escuchando ese `storage`.
 
+**Cada rama de tema declara también `color-scheme`.** Son tres: `:root`, el
+`@media (prefers-color-scheme: dark)` y `:root[data-theme="dark"]`. No es
+redundante con los tokens: `data-theme` es una convención **nuestra** y el webview
+no la entiende, así que sin `color-scheme` dibuja sus controles nativos
+—scrollbars, `<select>`, el caret— siempre en variante clara, y sobre el tema
+oscuro desafinan. Si agregas una rama de tema, declárala ahí también; hay un test
+(`tokens.test.ts`) que cuenta las ramas oscuras y exige las dos.
+
+**Las barras de scroll se dibujan a mano** (`::-webkit-scrollbar` en
+`global.css`), y `color-scheme` **no** es una alternativa a eso: pinta la barra
+nativa del color del tema pero no cambia su forma. WebKit en macOS dibuja barras
+*overlay* —finas, superpuestas, que se esconden solas— y el navegador dibuja las
+clásicas; son dos implementaciones y ninguna propiedad salta de una a la otra. Se
+probó en ese orden y no alcanzó.
+
+Consecuencia que hay que tener presente al tocar layout: **la barra dibujada ocupa
+12px permanentes y de un solo lado**. Si un contenedor nuevo hace scroll y su ancho
+está calzado a mano, le faltan esos 12px; y si su contenido tiene que quedar
+centrado, la barra lo corre.
+
+**`scrollbar-gutter` no es la salida**, aunque lo parezca: `stable both-edges`
+reserva a los dos lados y en el navegador funciona, pero el webview de macOS no lo
+honra y reserva solo a la derecha. Se probó. La salida cuando el centrado importa
+es esconder la barra de ese contenedor (`.sidebar::-webkit-scrollbar { width: 0 }`),
+y decidir a conciencia que se puede vivir sin ella.
+
 **Los gráficos se dibujan con CSS, no con una librería** (weekly review, §4.15:
 divs para las barras, un `<svg>` con `stroke-dasharray` para el donut).
 `recharts` está instalado y sin uso: el color de un channel es un token de la

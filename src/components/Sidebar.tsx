@@ -8,12 +8,15 @@ import {
   Home,
   Inbox,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   PieChart,
   Settings as SettingsIcon,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { useProfile } from "../lib/profile";
+import { useSidebarCollapsed } from "../lib/sidebar";
 import { useTheme } from "../lib/theme";
 import { SunriseMark } from "./SunriseMark";
 import { ThemeToggle } from "./ThemeToggle";
@@ -64,7 +67,7 @@ function useShortcutFor(path: string): string | null {
   return action ? resolved[action.id] : null;
 }
 
-function NavRow({ item }: { item: NavItem }) {
+function NavRow({ item, collapsed }: { item: NavItem; collapsed?: boolean }) {
   const Icon = item.icon;
   const shortcut = useShortcutFor(item.to);
   return (
@@ -72,11 +75,17 @@ function NavRow({ item }: { item: NavItem }) {
       to={item.to}
       end={item.to === "/"}
       aria-keyshortcuts={shortcut ? ariaKeyshortcuts(shortcut) : undefined}
+      /* Colapsado el nombre no se ve, así que el tooltip nativo es lo único que
+         queda para distinguir nueve iconos. Expandido estorbaría: el nombre ya
+         está ahí, escrito. */
+      title={collapsed ? item.label : undefined}
       className={({ isActive }) =>
         isActive ? "sidebar__link is-active" : "sidebar__link"
       }
     >
-      <Icon className="sidebar__icon" size={16} strokeWidth={2} aria-hidden />
+      {/* Sin `size`: el tamaño lo pone el CSS, porque colapsado los iconos crecen
+          y un prop no sabe en qué estado está el sidebar. */}
+      <Icon className="sidebar__icon" strokeWidth={2} aria-hidden />
       <span className="sidebar__label">{item.label}</span>
       {/* Decorativo: el nombre accesible del link es solo la etiqueta. */}
       {shortcut && (
@@ -124,46 +133,81 @@ function useBacklogFolders() {
 
 export function Sidebar() {
   const { theme, toggle } = useTheme();
+  const { collapsed, toggle: toggleCollapsed } = useSidebarCollapsed();
   const backlogFolders = useBacklogFolders();
   const profile = useProfile();
 
   return (
-    <nav className="sidebar" aria-label="Navegación principal">
-      <div className="sidebar__brand">
-        <SunriseMark className="sidebar__brand-mark" />
-        sunrise
-        {/* Dev y la versión instalada se ven idénticas y usan bases distintas
-            (§4.20). Sin esto, con las dos abiertas no sabes en cuál estás. */}
-        {profile?.dev && (
-          <span className="sidebar__perfil" title={`Base en uso: ${profile.dbFile}`}>
-            dev
-          </span>
-        )}
+    <nav
+      className={`sidebar${collapsed ? " is-collapsed" : ""}`}
+      aria-label="Navegación principal"
+    >
+      {/* La marca arranca bajo los botones nativos de macOS, que flotan sobre el
+        * contenido desde que la ventana no tiene barra de título. El espacio lo
+        * pone el padding del sidebar (`--titlebar-h`), no un hueco acá.
+        *
+        * El botón de colapsar va acá y no al final de la columna: es un ajuste
+        * del marco, y el marco se maneja arriba, donde uno ya está mirando por
+        * los botones de la ventana. Abajo quedaba entre los items de navegación,
+        * pareciendo uno más. */}
+      <div className="sidebar__top">
+        <div className="sidebar__brand">
+          <SunriseMark className="sidebar__brand-mark" />
+          <span className="sidebar__brand-text">sunrise</span>
+          {/* Dev y la versión instalada se ven idénticas y usan bases distintas
+              (§4.20). Sin esto, con las dos abiertas no sabes en cuál estás. */}
+          {profile?.dev && (
+            <span className="sidebar__perfil" title={`Base en uso: ${profile.dbFile}`}>
+              dev
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          className="sidebar__collapse"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expandir" : "Colapsar"}
+          title={collapsed ? "Expandir el sidebar" : "Colapsar el sidebar"}
+          onClick={toggleCollapsed}
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="sidebar__icon" aria-hidden />
+          ) : (
+            <PanelLeftClose className="sidebar__icon" aria-hidden />
+          )}
+        </button>
       </div>
 
       <div className="sidebar__group">
         {TOP.map((it) => (
-          <NavRow key={it.to} item={it} />
+          <NavRow key={it.to} item={it} collapsed={collapsed} />
         ))}
       </div>
 
       <div className="sidebar__group">
         <div className="sidebar__section-label">Daily rituals</div>
         {DAILY.map((it) => (
-          <NavRow key={it.to} item={it} />
+          <NavRow key={it.to} item={it} collapsed={collapsed} />
         ))}
       </div>
 
       <div className="sidebar__group">
         <div className="sidebar__section-label">Weekly rituals</div>
         {WEEKLY.map((it) => (
-          <NavRow key={it.to} item={it} />
+          <NavRow key={it.to} item={it} collapsed={collapsed} />
         ))}
       </div>
 
       <div className="sidebar__group">
-        <NavRow item={{ to: "/backlog", label: "Backlog", icon: Inbox }} />
-        {backlogFolders.map(({ cat, count }) => (
+        <NavRow
+          item={{ to: "/backlog", label: "Backlog", icon: Inbox }}
+          collapsed={collapsed}
+        />
+        {/* Los contextos del backlog no se renderizan colapsado: un punto de
+          * color sin su nombre no dice cuál es, y son los únicos items cuya
+          * identidad **es** el texto. */}
+        {!collapsed &&
+          backlogFolders.map(({ cat, count }) => (
           <NavLink
             key={cat.id}
             to="/backlog"
@@ -186,7 +230,10 @@ export function Sidebar() {
           <span className="sidebar__theme-label">Tema</span>
           <ThemeToggle theme={theme} onToggle={toggle} />
         </div>
-        <NavRow item={{ to: "/settings", label: "Configs", icon: SettingsIcon }} />
+        <NavRow
+          item={{ to: "/settings", label: "Configs", icon: SettingsIcon }}
+          collapsed={collapsed}
+        />
       </div>
     </nav>
   );

@@ -50,35 +50,212 @@ a {
   color: var(--peach-ink);
 }
 
+/* --- Barras de scroll propias ---
+ * `color-scheme` (tokens.css) hace que las nativas se pinten del color del tema,
+ * y eso resolvió los `<select>` y el caret, pero **no la forma**: WebKit en macOS
+ * dibuja barras *overlay* —finas, superpuestas, que se esconden solas—, y eso no
+ * se cambia con ninguna propiedad. La barra ancha y siempre visible que se ve en
+ * el navegador es otra implementación, así que para tenerla hay que dibujarla.
+ *
+ * El precio está pagado a conciencia: una barra dibujada **ocupa ancho
+ * permanente** y corre el contenido de su contenedor. Son 12px en los cinco que
+ * hacen scroll. Se aceptó porque una barra que aparece y desaparece sobre las
+ * columnas de la semana tapa el borde de las cards justo cuando estás mirando.
+ *
+ * El pulgar se dibuja con `border` transparente y `background-clip: content-box`:
+ * así la pastilla mide 6px pero su zona de agarre mide 12, que es lo que hace que
+ * no haya que apuntarle. */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--faint);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
+}
+
+/* El cuadradito donde se cruzan las dos barras: sin esto queda del gris del
+ * sistema, que no es de la paleta. */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* --- Ventana flotante del timer: fondo transparente, arrastrable --- */
 .timer-body {
   background: transparent;
   overflow: hidden;
   user-select: none;
+  /* Se sale del `color-scheme` que declaran los tokens, y es la única parte de la
+   * app que lo hace. Esta ventana es `transparent: true` y su fondo lo tiene que
+   * poner el taxímetro, no el motor: con un esquema declarado, el canvas raíz
+   * deja de ser transparente y aparecería un recuadro detrás. No pierde nada a
+   * cambio — acá no hay scrollbars (`overflow: hidden`) ni controles nativos, que
+   * es todo lo que `color-scheme` afecta. */
+  color-scheme: normal;
 }
 
 /* --- App shell --- */
+/* Flex y no grid, y el motivo es la animación del sidebar. Con grid el ancho vivía
+ * en la pista (`grid-template-columns: var(--sidebar-w) 1fr`) y **animar eso no
+ * interpola**: medido en el navegador, la columna se quedaba en 232px casi un
+ * segundo y después saltaba a 78, que se sentía como un click perdido. En flex el
+ * ancho es del elemento y nada más lo mide, que es el caso normal de una
+ * transición.
+ *
+ * El precio es que la segunda columna necesita `min-width: 0` a mano; ver abajo. */
 .app-shell {
-  display: grid;
-  grid-template-columns: 232px 1fr;
+  display: flex;
   height: 100vh;
   overflow: hidden;
 }
 
 .app-main {
+  /* `min-width: 0` no es decorativo: sin él un item de flex no baja de su
+   * min-content, y las columnas de la semana dejarían de encoger al expandir el
+   * sidebar. */
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-y: auto;
-  padding: var(--space-3) var(--space-5) var(--space-5);
+  /* El `--titlebar-h` de más arriba no es simetría: es el hueco de los botones
+   * nativos. Sin él los títulos de las vistas arrancarían pegados al borde. */
+  padding: calc(var(--space-3) + var(--titlebar-h)) var(--space-5) var(--space-5);
+}
+
+/* Zona de arrastre de la ventana. `position: fixed` y no un elemento en el flujo:
+ * ocupa el alto que las dos columnas ya dejaron libre, así que no empuja nada.
+ * **Sin `z-index` propio**, y eso es deliberado: siendo `fixed` ya queda sobre el
+ * contenido estático, y sin declararlo cualquier elemento posicionado que venga
+ * después en el DOM le gana. Eso es lo que se quiere, porque hay cosas que sí
+ * suben hasta acá arriba —las tabs de Configs son `sticky` a 16px, y los modales
+ * y popovers se abren encima de todo—: con un `z-index: 1` la franja les comería
+ * los clicks de su borde superior y el usuario vería una tab que no responde. */
+.app-dragbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-h);
 }
 
 /* --- Sidebar --- */
 .sidebar {
   background: var(--surface-sunken);
   border-right: 1px solid var(--border);
-  padding: var(--space-4) var(--space-3);
+  padding: calc(var(--space-4) + var(--titlebar-h)) var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   overflow-y: auto;
+  flex: 0 0 auto;
+  width: 232px;
+  /* El texto aparece y desaparece de golpe (`display: none`, que no se puede
+   * animar) y solo el ancho se desliza. Es a propósito: con las etiquetas
+   * atenuándose sobre una columna que se angosta, la palabra se apretuja contra el
+   * icono antes de irse. */
+  transition: width 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* El rail. El piso duro son 68px, que es hasta dónde llegan los botones nativos de
+ * la ventana: más angosto y quedan montados sobre el borde del sidebar. Los 10px
+ * de más son el aire de los botones, que son cuadrados centrados. */
+.sidebar.is-collapsed {
+  width: 78px;
+}
+
+/* El sidebar no muestra barra, y es lo único de la app que se exceptúa.
+ *
+ * Una barra dibujada ocupa ancho **de un solo lado**, y en el rail colapsado eso
+ * corre los iconos a la izquierda: la columna deja de verse centrada. Se intentó
+ * primero con `scrollbar-gutter: stable both-edges`, que reserva a los dos lados y
+ * en el navegador funciona — pero el webview de macOS no lo honra y reservaba solo
+ * a la derecha, con el rail torcido igual. Verificado en la app, no en el browser.
+ *
+ * Se pierde poco: son diez items que rara vez pasan del alto de la ventana, la
+ * rueda y el trackpad siguen desplazando, y expandido una barra de 12px comiéndose
+ * el ancho de la navegación tampoco se quería. */
+.sidebar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* --- Sidebar colapsado: rail de iconos ---
+ * Se esconde el texto y se centran los iconos. Lo que **no** se esconde es el
+ * aviso del updater: es la única señal de que hay una versión nueva (Mej.18), y
+ * apagarla al colapsar la dejaría muda justo para quien trabaja con más ancho.
+ * Queda como su icono, sin las dos líneas de texto. */
+.sidebar.is-collapsed {
+  /* El mismo padding lateral que expandido: el rail es la misma columna angosta,
+   * no otra cosa. */
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
+  align-items: stretch;
+}
+
+/* Los botones del rail son cuadrados de ancho fijo, centrados en la columna, y no
+ * cajas que se estiran de borde a borde. Estirados quedaban con el recuadro de
+ * hover pegado a los dos bordes y sin aire, que es lo que se veía torcido aunque
+ * midiera simétrico. */
+.sidebar.is-collapsed .sidebar__link,
+.sidebar.is-collapsed .sidebar__theme-row,
+.sidebar.is-collapsed .upd-banner {
+  width: 38px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.sidebar.is-collapsed .sidebar__label,
+.sidebar.is-collapsed .sidebar__key,
+.sidebar.is-collapsed .sidebar__section-label,
+.sidebar.is-collapsed .sidebar__theme-label,
+.sidebar.is-collapsed .sidebar__brand-text,
+.sidebar.is-collapsed .sidebar__perfil,
+.sidebar.is-collapsed .upd-banner__texto {
+  display: none;
+}
+
+.sidebar.is-collapsed .sidebar__link,
+.sidebar.is-collapsed .sidebar__brand,
+.sidebar.is-collapsed .sidebar__top,
+.sidebar.is-collapsed .sidebar__theme-row,
+.sidebar.is-collapsed .upd-banner {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+  gap: 0;
+}
+
+/* El switch de tema mide 60px y el rail tiene 72 menos padding: no cabe. En su
+ * lugar va el mismo botón hecho círculo —sigue siendo un switch, con su
+ * `role` y su `aria-checked` intactos—, así que no hay que mantener dos
+ * controles para lo mismo. */
+.sidebar.is-collapsed .theme-switch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+.sidebar.is-collapsed .theme-switch__corner {
+  display: none;
+}
+.sidebar.is-collapsed .theme-switch__knob {
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+}
+.sidebar.is-collapsed .theme-switch.is-dark .theme-switch__knob {
+  transform: translateX(0);
 }
 
 .sidebar__group {
@@ -96,9 +273,24 @@ a {
   border-top: 1px solid var(--border);
 }
 
+/* El tamaño va acá y no como prop de lucide: colapsado los iconos son lo único
+ * que queda —no hay texto que los acompañe— y tienen que pesar más. Las reglas de
+ * CSS le ganan a los atributos `width`/`height` del `<svg>`. */
 .sidebar__icon {
   flex-shrink: 0;
   opacity: 0.85;
+  width: 19px;
+  height: 19px;
+}
+
+.sidebar.is-collapsed .sidebar__icon {
+  width: 22px;
+  height: 22px;
+}
+
+.sidebar.is-collapsed .sidebar__brand-mark {
+  width: 26px;
+  height: 26px;
 }
 
 .sidebar__folder {
@@ -132,6 +324,54 @@ a {
   color: var(--faint);
 }
 
+/* Marca y botón de colapsar, arriba. Expandido van en fila con el botón a la
+ * derecha; colapsado se apilan centrados, porque en un rail angosto no caben lado
+ * a lado y el botón tiene que seguir estando donde uno lo dejó. */
+.sidebar__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sidebar.is-collapsed .sidebar__top {
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* El botón de colapsar: cuadrado, del alto de una fila de navegación, y sin el
+ * padding lateral de `.sidebar__link` porque acá adentro solo hay un icono. */
+.sidebar__collapse {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+}
+
+.sidebar__collapse:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+/* Colapsado el botón queda solo en su fila, así que el `margin-left: auto` que lo
+ * empujaba a la derecha ahora lo descentraría. */
+.sidebar.is-collapsed .sidebar__collapse {
+  margin-left: 0;
+}
+
+.sidebar__brand-text {
+  /* Un span y no texto pelado dentro de `.sidebar__brand`, porque colapsado hay
+   * que esconder la palabra y dejar la marca. */
+  white-space: nowrap;
+}
+
 .sidebar__brand {
   font-family: var(--font-title);
   font-weight: 700;
@@ -148,6 +388,11 @@ a {
    con no pisarle el `color`. */
 .sidebar__brand-mark {
   flex: 0 0 auto;
+  /* Como en `.sidebar__icon`, el tamaño se pone acá y no con el prop `size`: es
+   * un atributo del `<svg>` y no sabe si el sidebar está colapsado. Un pelo más
+   * grande que los iconos de navegación —es la marca, no un item más. */
+  width: 21px;
+  height: 21px;
   /* El sol arranca a media altura del cuadro, así que ópticamente la marca
      queda alta respecto de la palabra. Un pelo abajo y se sientan juntas. */
   margin-bottom: -1px;
@@ -211,9 +456,12 @@ a {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  /* Sin padding derecho: así el borde del switch coincide con el borde
-   * del recuadro activo de los items (cuyo fondo llega hasta el content-edge). */
-  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  /* Padding igual a los dos lados. Antes el derecho era 0, para que el borde del
+   * switch coincidiera con el del recuadro activo de los items —que llega hasta el
+   * content-edge—, y esa alineación se cambió por esta: una fila con aire de un
+   * solo lado se lee torcida, y eso se nota más que un borde que calza con otro
+   * que casi nunca está encendido al mismo tiempo. */
+  padding: var(--space-1) var(--space-3);
 }
 
 .sidebar__theme-label {
@@ -362,6 +610,9 @@ html.theme-transition *::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
   .theme-switch__knob {
     transition: none;
   }

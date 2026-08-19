@@ -76,6 +76,12 @@ export default function App() {
   return (
     <HashRouter>
       <Shell>
+      {/* Sin barra de título, mover la ventana necesita una zona declarada.
+        * Cruza todo el borde superior y no solo el sidebar, porque el gesto de
+        * arrastrar una ventana se hace donde sea que esté vacío arriba. Tapa
+        * exactamente el alto que ya es padding en las dos columnas, así que no
+        * se come ningún click. */}
+      <div className="app-dragbar" data-tauri-drag-region />
       <div className="app-shell">
         <Sidebar />
         <main className="app-main">

@@ -44,6 +44,7 @@ describe("Sidebar", () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-sidebar");
   });
 
   it("renderiza la marca y los links de navegación clave", () => {
@@ -86,5 +87,83 @@ describe("Sidebar", () => {
       name: "Cambiar a modo claro",
     });
     expect(switched).toHaveAttribute("aria-checked", "true");
+  });
+});
+
+describe("Sidebar · colapsar", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute("data-sidebar");
+  });
+
+  it("arranca expandido y colapsa al apretar el botón", async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    const boton = screen.getByRole("button", { name: "Colapsar" });
+    expect(boton).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(boton);
+
+    // El ancho lo define un token en `:root`, no una clase del shell: si el
+    // atributo no se estampa, el sidebar se ve angosto por dentro pero su
+    // columna sigue midiendo 232px y queda una franja vacía al lado.
+    expect(document.documentElement.getAttribute("data-sidebar")).toBe(
+      "collapsed",
+    );
+    expect(screen.getByRole("button", { name: "Expandir" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("recuerda la elección entre sesiones", async () => {
+    localStorage.setItem("sunrise-sidebar-collapsed", "1");
+    renderSidebar();
+    // `find…` y no `get…`: el sidebar carga los contextos del backlog en un
+    // efecto asíncrono, y salir del test antes deja el aviso de `act`.
+    expect(
+      await screen.findByRole("button", { name: "Expandir" }),
+    ).toBeInTheDocument();
+    expect(document.documentElement.getAttribute("data-sidebar")).toBe(
+      "collapsed",
+    );
+  });
+
+  /**
+   * Colapsado quedan nueve iconos sin una sola palabra. El `title` es lo único
+   * que distingue "Daily planning" de "Daily shutdown", así que sin él el rail
+   * se vuelve un juego de adivinanzas. Expandido estorba: el nombre ya está
+   * escrito al lado.
+   */
+  it("colapsado los ítems llevan tooltip, y expandido no", async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    expect(screen.getByRole("link", { name: "Focus" })).not.toHaveAttribute(
+      "title",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Colapsar" }));
+
+    expect(screen.getByRole("link", { name: "Focus" })).toHaveAttribute(
+      "title",
+      "Focus",
+    );
+  });
+
+  /**
+   * Colapsado el switch no cabe —mide 60px y el rail tiene 72 menos padding—, así
+   * que se encoge a un círculo por CSS. Lo que **no** se hace es reemplazarlo por
+   * otro control: sigue siendo el mismo botón, con su `role` y su `aria-checked`,
+   * porque dos controles para lo mismo son dos cosas que mantener sincronizadas.
+   */
+  it("el switch de tema sigue siendo el mismo control al colapsar", async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+    await user.click(screen.getByRole("button", { name: "Colapsar" }));
+    expect(
+      screen.getByRole("switch", { name: "Cambiar a modo oscuro" }),
+    ).toBeInTheDocument();
   });
 });

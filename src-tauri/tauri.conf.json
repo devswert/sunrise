@@ -16,6 +16,8 @@
       {
         "label": "main",
         "title": "sunrise",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
         "url": "index.html",
         "width": 1200,
         "height": 800,

@@ -13,7 +13,7 @@ fuera de git y quedó reemplazado por él.
 | M2 | Timer + Focus (taxímetro, `time_entries`, campana, Focus Mode) | ✅ `1175035` |
 | M3 | Calendar + review + resúmenes | ✅ 3.1 a 3.6 hechos |
 | M4 | Durabilidad, branding, empaque | ✅ 4.1 a 4.3 hechos |
-| M5 | Compartir con el equipo | ✅ 5.1 a 5.5 hechos; falta publicar la primera versión |
+| M5 | Compartir con el equipo | ✅ 5.1 a 5.6 hechos; `v0.1.0` y `v0.1.1` publicadas |
 
 ---
 
@@ -915,6 +915,43 @@ Deja dos cosas escritas para la próxima: que **CI en UTC es una ventaja** y no 
 estorbo, y que un test de zonas horarias con fixtures en tu propia zona no prueba
 nada. Total **367 front y 140 Rust**.
 
+### 5.6 ✅ La primera instalación decía que la app estaba dañada — hecho
+
+La `v0.1.0` se publicó con sus cuatro artefactos y se instaló mal: al abrir el
+`.dmg` bajado del navegador, macOS decía **`"sunrise" is damaged and can't be
+opened. You should eject the disk image.`** El clic derecho → Abrir no servía,
+porque ese camino existe para apps sin firmar y esta no era ese caso.
+
+**Le faltaba firma al bundle, no al binario.** Sin
+`bundle.macOS.signingIdentity`, Tauri no firma el `.app`; el único firmado queda
+siendo el ejecutable Mach-O, porque el linker de Apple Silicon lo firma solo —un
+binario sin firma no corre—. Esa firma a medias promete recursos sellados que
+nadie selló (`Sealed Resources=none`, `Info.plist=not bound`), y ante la
+contradicción Gatekeeper no reporta "desarrollador no verificado": reporta daño.
+**Un estado a medias resultó peor que ninguno.**
+
+El arreglo es `"signingIdentity": "-"` — firma ad-hoc, sin cuenta de Apple. Eso no
+evita el bloqueo (ad-hoc no es notarizado, `spctl` sigue rechazando) pero lo deja
+en el bloqueo que sí se levanta: la primera instalación pide
+`xattr -cr /Applications/sunrise.app`, y eso ahora está en el README **como paso
+numerado**, no como advertencia al margen. Detalle en
+[SPECS §4.19](SPECS.md#419-empaque-dmg).
+
+Dos cosas que dejó de regalo:
+
+- **Los docs afirmaban el síntoma equivocado.** SPECS §4.19 y la skill de release
+  decían que la primera instalación mostraría el aviso de desarrollador y se
+  resolvería con clic derecho. Nadie lo había comprobado bajando el `.dmg`.
+  Corregido en los dos lados.
+- **Verificar el fix necesitaba un build, y un tag no se mueve.** Se corrió
+  `pnpm dmg` local antes de taguear, para confirmar que las tres líneas rotas
+  cambiaran (`Identifier`, `Info.plist`, `Sealed Resources`) y que
+  `codesign --verify --deep --strict` pasara. El `.dmg` local no llegó a armarse
+  —`bundle_dmg.sh` usa AppleScript y el shell no tenía permiso de Automatización—
+  pero eso no toca la firma del `.app`, que era lo que había que comprobar. La
+  misma verificación se repitió sobre el `.dmg` que publicó CI, bajándolo y
+  montándolo: el runner no se da por supuesto.
+
 ---
 
 ## Mejoras (no bloqueantes)
@@ -1307,7 +1344,7 @@ Lo primero es un test: `move_task` dentro del mismo día, moviendo de índice 3 
 1 y de 1 a 3, comprobando las `position` resultantes. Hoy los tests de `move_task`
 cubren el cruce entre días, no el reordenamiento dentro de uno.
 
-### Mej.13 🔵 Ajustar el marco de la app: sidebar colapsable y sin barra de título
+### Mej.13 ✅ Ajustar el marco de la app: sidebar colapsable y sin barra de título — hecho
 
 Dos cambios que van juntos porque tocan el mismo marco:
 
@@ -1323,6 +1360,62 @@ para no quedar debajo de los botones nativos, y el panel de la derecha de la
 semana (la tira de `SideDock` y el rail superpuesto) empieza en el borde
 superior real de la ventana. Hay que revisar las tres vistas y el panel juntos, no
 por separado.
+
+Salió como estaba escrito, y el hueco de arriba resultó ser **un token y no un
+ajuste por vista**: `--titlebar-h` lo reservan el padding del sidebar y el de
+`.app-main`, así que las tres vistas y el rail se corrieron solos y no hubo que
+tocar `rail.css`. Detalle en [SPECS §7](SPECS.md#7-convenciones-de-ui-pedidas-explícitamente).
+
+Cuatro cosas que el plan no tenía y que salieron de mirarlo funcionando:
+
+- **El rail colapsado mide 84px, no 56.** Hay un mínimo duro en 68px, que es hasta
+  dónde llegan los botones nativos: más angosto y quedaban montados sobre el borde
+  del sidebar. O sea que el ancho mínimo lo fija la ventana, no la legibilidad de
+  los iconos. Los 16px por encima de ese mínimo son aire: quedaron cuando los
+  botones del rail pasaron a ser cuadrados de 44px centrados en vez de cajas
+  estiradas de borde a borde, que se veían pegadas a los dos lados.
+- **La franja de arrastre no declara `z-index`.** Con uno propio le comía los
+  clicks del borde superior a las tabs `sticky` de Configs y a los modales.
+  Dejándolo sin declarar, cualquier elemento posicionado posterior le gana, que es
+  exactamente lo que se quiere. Comprobado en el navegador: ningún interactivo
+  queda tapado en los primeros 28px.
+- **El colapso no se anima**, y no por falta de ganas: `transition` sobre
+  `grid-template-columns` con el valor viniendo de una custom property **no
+  interpola**. Medido — el ancho se queda en 232px casi un segundo y después salta
+  a 72. La animación "suave" se sentía como un click que no respondió.
+- **El aviso del updater se queda visible colapsado**, como icono. Esconderlo era
+  lo cómodo y habría dejado muda la única señal de que hay versión nueva (Mej.18)
+  justo para quien colapsa el sidebar para ganar ancho. Los contextos del backlog
+  sí se dejan de renderizar: un punto de color sin su nombre no dice cuál es.
+
+Tres ajustes más, ya mirándolo funcionando:
+
+- **El botón de colapsar se fue al top**, al lado de la marca. Abajo quedaba entre
+  los items de navegación y se leía como uno más, cuando es un ajuste del marco —y
+  el marco se maneja arriba, donde uno ya está mirando por los botones de la
+  ventana. Colapsado marca y botón se apilan centrados: en un rail angosto no
+  caben lado a lado.
+- **El tamaño de los iconos se movió al CSS** (19px expandido, 22px colapsado). Era
+  un prop `size` de lucide, que es un atributo del `<svg>` y no sabe en qué estado
+  está el sidebar; colapsado los iconos son lo único que queda y tienen que pesar
+  más. La marca (`SunriseMark`) necesitó su propia regla —21/26px— porque tiene su
+  propio prop `size` y no se enteraba del cambio: el primer intento dejó el logo
+  chico al lado de iconos que habían crecido.
+- **La fila de Tema quedó simétrica.** Tenía el padding derecho en 0 a propósito,
+  para que el borde del switch calzara con el del recuadro activo de los items. Se
+  cambió esa alineación por la otra: una fila con aire de un solo lado se lee
+  torcida, y eso se nota más que un borde que calza con otro que casi nunca está
+  encendido al mismo tiempo.
+
+Tests: seis nuevos —cuatro del colapso en `Sidebar.test.tsx` y dos de
+`color-scheme`—, total **373 front (44 archivos) y 140 Rust**.
+
+> **La barra de título solo se puede ver con `pnpm tauri dev` o con el `.dmg`.**
+> `titleBarStyle` es config de la ventana nativa: en el navegador no existe, así
+> que ni los tests ni el preview web dicen nada sobre cómo quedaron los botones de
+> macOS sobre el sidebar. Lo verificado en navegador es todo lo demás: el
+> `color-scheme` de las tres ramas, los dos anchos del rail, que la franja no tape
+> nada y que el aviso del updater sobreviva al colapso.
 
 ### Mej.14 🔵 El ajuste manual de tiempo se acredita al día en que lo escribes
 
@@ -1382,6 +1475,83 @@ siguiente es tentador y es exactamente el error que se cometió con el carry-ove
 de tareas (§4.2) — decidir por el usuario antes de que mire. Si se hace, que sea
 un gesto explícito desde el planning.
 
+### Mej.19 ✅ Las barras de scroll del tema oscuro son las nativas, y desafinan — hecho
+
+Detectado mirando la app instalada al lado de una en dev: en la app clara las
+barras se ven finas y discretas, y en la oscura aparece una barra gruesa y clara
+que no pertenece a la paleta.
+
+**No es una diferencia entre dev y producción, es entre los dos temas.** El
+proyecto no tiene **ninguna** regla de scrollbar (ni `::-webkit-scrollbar`, ni
+`scrollbar-width`), así que las dos apps muestran la barra nativa del webview. Lo
+que falta es que el webview sepa en qué tema está: el tema se estampa como
+`data-theme` en `<html>` (`src/lib/theme.ts`), que es una convención **nuestra**,
+y WebKit no la entiende. Sin la propiedad `color-scheme`, dibuja sus controles en
+la variante clara siempre — sobre fondo oscuro eso es justamente la barra gruesa y
+clara.
+
+Es decir: la del tema claro "se ve bien" porque el default coincide con el tema por
+casualidad, no porque esté resuelto.
+
+Dos pasos, y el primero puede alcanzar solo:
+
+- **Declarar `color-scheme`** junto a los tokens, en las tres ramas que ya existen
+  en `src/styles/tokens.css` (`:root`, el `@media (prefers-color-scheme: dark)` y
+  `:root[data-theme="dark"]`). Con eso la barra nativa se dibuja oscura sin
+  escribir un solo estilo propio, y de paso se arreglan los otros controles
+  nativos que hoy salen claros —los `<select>`, el caret de los inputs— aunque no
+  se hayan reportado.
+- **Recién si sigue desafinando, estilizarlas** con `::-webkit-scrollbar` sobre los
+  tokens de la paleta (`--border` para el pulgar, transparente para la pista). Ojo
+  con dos costos que esto tiene y `color-scheme` no: una barra estilizada deja de
+  ser *overlay*, así que **ocupa ancho permanente** y puede correr el contenido de
+  las columnas —que en este proyecto son slots de altura y ancho calzados (SPECS
+  §7)—, y hay que cubrir los cinco contenedores con scroll de `global.css`, no solo
+  el que se notó.
+
+Verificar en la app instalada, no solo en el browser: el scrollbar nativo depende
+del ajuste "Mostrar barras de desplazamiento" del sistema, y en el webview de
+Tauri no siempre se comporta igual que en Chrome.
+
+**Hubo que hacer los dos pasos, y el diagnóstico de arriba estaba a medias.**
+`color-scheme` se hizo primero y sirve —arregla los `<select>` y el caret, que
+salían claros y nadie había reportado, y pinta la barra nativa del color del
+tema—, pero **no cambia su forma**, y probándolo en la app instalada en tema claro
+la barra seguía siendo la nativa. Ahí estaba el error de lectura: no era un tema
+mal aplicado. WebKit en macOS dibuja barras **overlay** —finas, superpuestas, que
+se esconden solas— y el navegador dibuja las clásicas, anchas y siempre visibles.
+Son dos implementaciones distintas, y no hay propiedad que cambie de una a la
+otra: la que se quería había que dibujarla.
+
+Así que se hizo el segundo paso: `::-webkit-scrollbar` sobre los tokens, pulgar de
+6px con zona de agarre de 12 (`border` transparente más
+`background-clip: content-box`), pista y esquina transparentes. **El costo previsto
+se pagó**: la barra ocupa 12px permanentes en los contenedores que hacen scroll. Se
+aceptó porque una barra que aparece y desaparece sobre las columnas de la semana
+tapa el borde de las cards justo cuando estás mirándolas.
+
+Y trajo una consecuencia que el plan no anticipaba: **el rail colapsado del sidebar
+quedó torcido**, porque el ancho de la barra se reserva de un solo lado. El primer
+arreglo fue `scrollbar-gutter: stable both-edges`, que reserva a los dos y **en el
+navegador se midió simétrico** — pero en la app seguía corrido: el webview de macOS
+no honra `both-edges`. Quedó escondiéndole la barra al sidebar, que es un contenedor
+de diez items que rara vez pasa del alto de la ventana.
+
+Es el caso de manual de por qué esto se mira en la app: dos arreglos seguidos se
+veían bien en el browser y solo uno lo estaba.
+
+Comprobado en el navegador que las tres ramas de `color-scheme` resuelven lo que
+dicen (`light` con `data-theme="light"`, `dark` con `data-theme="dark"`, y `dark`
+heredado del sistema sin atributo). El test (`src/styles/tokens.test.ts`) lee el
+CSS como texto y no como estilo aplicado, a propósito: jsdom no dibuja controles
+nativos, así que lo único vigilable desde ahí es que la declaración exista en las
+tres ramas —que es justo el error que se comete, agregar una rama y olvidarla, con
+el síntoma apareciendo recién en la app instalada.
+
+> **La forma de la barra solo se comprueba en la app.** El navegador ya dibujaba la
+> clásica antes del cambio, así que ahí no distingue nada: el punto era igualar el
+> webview de Tauri, y eso se mira con `pnpm tauri dev` o con el `.dmg`.
+
 ## Post-MVP (decidido: fuera de alcance)
 
 - Recurrentes / rituales auto-generados.
@@ -1424,11 +1594,14 @@ Rust**.
 del webview finge el update, la instalación y la llegada. Verificado así, en los dos
 temas, incluido el modal.
 
-> **Falta verlo con un Release de verdad**: la franja "versión nueva" necesita un
-> Release más nuevo que el instalado, y "Estás al día" necesita haber actualizado de
-> verdad. Las dos se estrenan con la 0.2.0 sobre la 0.1.0. Lo que el banco de
-> pruebas no cubre es justamente lo que no se puede fingir: que la descarga, la
-> firma y el reinicio funcionen.
+**Visto con un Release de verdad**, actualizando de `v0.1.0` a `v0.1.1`: la franja
+de versión nueva apareció, la descarga y la verificación de firma pasaron, la app
+se reinició sola y volvió mostrando "Estás al día · Mira lo nuevo en la 0.1.1".
+Queda comprobado de paso lo que era un supuesto y no una observación: que
+`sunrise-seen-version` en `localStorage` **sobrevive al reemplazo del `.app`**, que
+es de lo que depende que el modal "Lo nuevo" aparezca. El banco de pruebas
+(`sunriseDev.flujoCompleto()`) sigue sirviendo para mirar los componentes sin
+publicar nada.
 
 ---
 

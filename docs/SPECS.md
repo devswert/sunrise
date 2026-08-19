@@ -1343,13 +1343,17 @@ Verificado en el paquete que sale: versión `0.1.0`, identifier
 §4.17), `tauri.conf.json` (con la que Tauri nombra el `.dmg`) y `package.json`.
 Subir una y olvidar otra deja los respaldos mintiendo sobre de qué build salieron.
 
-> **I** — **El `.app` de release y `pnpm tauri dev` comparten la base de datos.**
-> El identifier es el mismo, así que `app_data_dir()` resuelve al mismo
-> `~/Library/Application Support/app.sunrise.desktop` en los dos. Para una app
-> personal es justo lo que se quiere —instalas el `.dmg` y tus datos están ahí, sin
-> migrar nada— pero **probar el paquete toca tus datos de verdad, no una copia**.
-> Si alguna vez hace falta aislarlos, es cambiando el identifier del build de dev,
-> y eso deja la base vieja donde estaba.
+> **I** — **Probar el `.app` de release toca tus datos de verdad, no una copia.**
+> El identifier es el mismo en los dos, así que `app_data_dir()` resuelve a la
+> misma carpeta (`~/Library/Application Support/app.sunrise.desktop`); lo que ya
+> **no** comparten es el archivo, desde que dev y producción tienen bases separadas
+> (§4.20): `db::file_name()` decide por `debug_assertions`, así que un `tauri build`
+> abre `sunrise.sqlite` —la real— y `tauri dev` abre `sunrise-dev.sqlite`.
+>
+> La consecuencia práctica no cambió: **un build de release compilado para mirar
+> algo escribe en tus datos**. Para probar sin riesgo, respalda antes desde la app;
+> y ojo con que `tauri build --debug` cae del lado de dev, que a veces es lo que se
+> quiere y a veces no.
 
 **Sin firma de desarrollador, pero el bundle sí se firma ad-hoc.**
 `bundle.macOS.signingIdentity` vale `"-"`, y eso **no es cosmético**: sin esa
@@ -1883,6 +1887,89 @@ En `useFloatingWindow.ts`, ya pagadas:
 > Lo que **sí** es chileno y se usa: "acá", "recién", "de una". Lo que no: el
 > "che", los diminutivos en -ito de relleno, y el "ojo que" en la UI (en
 > comentarios de código está bien).
+
+> **La ventana no tiene barra de título, y eso reparte responsabilidades.**
+> `titleBarStyle: "Overlay"` deja los botones nativos de macOS flotando sobre el
+> contenido, así que **el hueco de arriba lo tiene que dejar el CSS**: el token
+> `--titlebar-h` (28px) lo reservan el padding del sidebar y el de `.app-main`.
+> Bajarlo en un solo lado deja el título de una vista debajo de los botones. Es un
+> número fijo y Tauri avisa que **el alto real de la barra cambia entre versiones
+> de macOS**: si algún día los botones se ven pegados o sobrados, se ajusta acá y
+> las dos columnas se corrigen juntas.
+>
+> Tauri documenta además una limitación del modo `Overlay` que no es nuestra y no
+> tiene arreglo desde acá: **con la ventana sin foco, arrastrarla no funciona** al
+> primer click. Hay que activarla y después moverla.
+>
+> Sin barra de título tampoco hay de dónde tomar la ventana para moverla: eso lo
+> da `.app-dragbar`, un `div` fijo con `data-tauri-drag-region` que cruza todo el
+> borde superior. **No declara `z-index` a propósito** — siendo `fixed` ya queda
+> sobre el contenido estático, y sin declararlo cualquier elemento posicionado
+> que venga después en el DOM le gana. Eso importa porque las tabs de Configs son
+> `sticky` y los modales se abren encima de todo: con un `z-index` propio, la
+> franja les comería los clicks del borde superior y se vería como un control que
+> no responde.
+>
+> **El sidebar se colapsa a un rail de 84px**, y ese número tampoco es estético:
+> tiene un piso en 68px, que es hasta dónde llegan los botones nativos —un rail más
+> angosto los dejaría montados sobre su borde—, y por encima de ese piso manda el
+> aire. Los botones del rail son **cuadrados de 44px centrados**, no cajas
+> estiradas de borde a borde: estiradas, el recuadro de hover llegaba a los dos
+> bordes y se leía torcido aunque midiera simétrico. El estado vive en `localStorage`
+> (`sunrise-sidebar-collapsed`), se estampa como `data-sidebar` en `<html>` para
+> que cualquier vista pueda consultarlo, y dibuja con la clase `is-collapsed`.
+> **Los dos anchos son literales en `global.css`, no tokens**, y el shell es flex y
+> no grid: el ancho se anima, y en grid vivía en la pista, que no interpola —medido,
+> la columna se quedaba quieta casi un segundo y después saltaba—. En flex el ancho
+> es del elemento, que es el caso normal de una transición; a cambio hay que darle
+> `min-width: 0` a `.app-main` o las columnas de la semana dejan de encoger.
+> La ventana flotante del taxímetro **se sale del `color-scheme`** (`normal` en
+> `.timer-body`): es `transparent: true` y un esquema declarado le pinta el canvas
+> raíz, que es justo lo que no puede tener. No pierde nada — ahí no hay scrollbars
+> ni controles nativos.
+>
+> Colapsado se esconde el texto por CSS, con dos excepciones que sí cambian el
+> render: **los contextos del backlog no se dibujan** (un punto de color sin su
+> nombre no dice cuál es) y **el aviso del updater sí se mantiene**, como icono,
+> porque es la única señal de que hay una versión nueva (§4.23).
+>
+> El colapso **no se anima**. Animar `grid-template-columns` cuando el valor viene
+> de una custom property no interpola: medido en el navegador, el ancho se queda
+> quieto casi un segundo y después salta, que se siente como un click perdido.
+>
+> El **botón de colapsar vive arriba**, al lado de la marca, y colapsado se apila
+> bajo ella. Abajo se leía como un item de navegación más. El **tamaño de los
+> iconos lo pone el CSS** y no el prop `size` de lucide (19px expandido, 22px
+> colapsado): el prop es un atributo del `<svg>` y no sabe en qué estado está el
+> sidebar. Lo mismo vale para `SunriseMark` (21/26px), que va un pelo más grande
+> que los iconos porque es la marca y no un item más — y por la misma razón hay que
+> acordarse de ella al cambiar los tamaños: tiene su propio prop `size` y no se
+> entera.
+
+> **Las barras de scroll se dibujan a mano, y `color-scheme` no reemplaza eso.**
+> `color-scheme` (§7, tokens) pinta la barra nativa del color del tema y arregla
+> los `<select>` y el caret, pero **no cambia su forma**: WebKit en macOS dibuja
+> barras *overlay* —finas, superpuestas, que se esconden solas— y el navegador
+> dibuja las clásicas, anchas y siempre visibles. Son dos implementaciones y no hay
+> propiedad que salte de una a la otra, así que la que se quería hubo que dibujarla
+> con `::-webkit-scrollbar` (pulgar de 6px con zona de agarre de 12, vía `border`
+> transparente más `background-clip: content-box`).
+>
+> **El precio es 12px permanentes** en cada contenedor que hace scroll: una barra
+> dibujada deja de ser overlay. Se aceptó porque una barra que aparece y desaparece
+> sobre las columnas de la semana tapa el borde de las cards justo cuando las estás
+> mirando. Ojo con dos consecuencias al agregar un contenedor con scroll: si su
+> ancho está calzado a mano, ahora le faltan 12px; y **si su contenido tiene que
+> quedar centrado, la barra lo corre**, porque ocupa de un solo lado.
+>
+> **El sidebar es la excepción: no muestra barra** (`.sidebar::-webkit-scrollbar`
+> en 0). Sin eso el rail colapsado se ve torcido, que fue el síntoma reportado. El
+> primer intento fue `scrollbar-gutter: stable both-edges`, que reserva a los dos
+> lados y **en el navegador funciona** —medido, simétrico— pero **el webview de
+> macOS no lo honra**: reserva solo a la derecha y el rail queda corrido igual. Es
+> el caso de manual de por qué esto se verifica en la app y no en el browser. Se
+> pierde poco: son diez items que rara vez pasan del alto de la ventana, y la rueda
+> y el trackpad siguen desplazando.
 
 > **Hay clases compartidas entre features, y eso es intencional.** `shutdown.css`
 > usa `.review__panel`, `.review__h2`, `.review__head`, `.review__cifras`,
