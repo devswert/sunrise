@@ -49,6 +49,15 @@ Ojo con el caso menos obvio: **completar una tarea puede detener el timer**
 `setTaskStatus` hay que hacer `bumpData()` aunque tu vista ya se haya recargado
 sola.
 
+**"Toda mutación" incluye borrar, y ahí el callback de la vista no alcanza.** El
+`onChanged` que recibe `TaskModal` recarga lo que esa vista considera suyo y nada
+más: en el ritual diario es `useBoard` con el día de hoy, mientras el repaso del
+día anterior, la columna del backlog y el mapa de rescates son estado aparte que
+solo se refresca con el aviso. Sin `bumpData()`, borrar escribía en la base y
+dejaba la card en pantalla —el gesto se sentía muerto y el click siguiente abría
+el detalle de algo que ya no existía—. Regla práctica: **si una vista tiene listas
+además de las del board, cualquier mutación necesita el aviso, no el callback.**
+
 ## El canal entre ventanas: `localStorage`
 
 Los eventos `storage` **no se disparan en el documento que los origina**. Por eso

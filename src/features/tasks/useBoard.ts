@@ -132,14 +132,6 @@ export function useBoard(start: string, end: string) {
     [reload],
   );
 
-  const removeTask = useCallback(
-    async (id: number) => {
-      await api.deleteTask(id);
-      await reload();
-    },
-    [reload],
-  );
-
   // --- acciones de objetivos ---
   const addObjective = useCallback(
     async (title: string) => {
@@ -178,7 +170,6 @@ export function useBoard(start: string, end: string) {
     toggleTask,
     moveTask,
     patchTask,
-    removeTask,
     addObjective,
     toggleObjective,
     removeObjective,

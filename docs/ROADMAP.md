@@ -1689,29 +1689,34 @@ el síntoma apareciendo recién en la app instalada.
 > clásica antes del cambio, así que ahí no distingue nada: el punto era igualar el
 > webview de Tauri, y eso se mira con `pnpm tauri dev` o con el `.dmg`.
 
-### Mej.20 🔵 Borrar una tarea desde el daily planning no saca la card
+### Mej.20 ✅ Borrar una tarea desde el daily planning no saca la card — hecho
 
-Reportado desde la app: en `/daily-planning` se abre una tarea, se aprieta
-Eliminar, se confirma, y **no pasa nada visible**. La tarea sí se borra —el
-comando corre—, pero la card se queda en pantalla hasta recargar la vista.
+Reportado desde la app: se abre una tarea en `/daily-planning`, se aprieta
+Eliminar, se confirma, y no pasa nada visible. La tarea sí se borraba; la card se
+quedaba en pantalla hasta recargar la vista, así que el gesto se sentía muerto y
+el click siguiente abría el detalle de algo que ya no existía.
 
-Causa sospechada, leída del código y **no reproducida todavía**: la vista tiene
-dos fuentes de datos y el borrado solo refresca una. `TaskModal` llama a
-`onChanged`, que acá es `board.reload` (`DailyPlanningView.tsx:431`), y
-`useBoard` recarga **solo el día que le pidieron** —hoy— sin tocar
-`dataVersion` (`useBoard.ts:49` y `:125`). Pero las tres listas que el ritual usa de
-verdad en el paso 1 y en la columna del backlog —`previas`, `backlog`,
-`rescued`— se cargan aparte y su efecto depende de `[load, dataVersion]`
-(`DailyPlanningView.tsx:88-100`). O sea: borrar una card de **hoy** debería
-verse, y borrar una del día anterior o del backlog no. Eso encaja con "no
-reacciona", pero hay que confirmar en la app cuál de los dos casos falla.
+La sospecha del reporte era correcta pero apuntaba al lugar equivocado. No es que
+`board.reload` no alcance: es que **`TaskModal.remove` era la única mutación del
+modal que no avisaba**. Guardar un campo llama `bumpData()`, completar también;
+borrar solo llamaba al `onChanged` de la vista. Y ese callback recarga lo que la
+vista considera suyo —en el ritual, `useBoard` con el día de hoy— mientras el
+repaso del día anterior, la columna del backlog y el mapa de rescates son estado
+propio que depende de `dataVersion`.
 
-El arreglo obvio —que `remove()` llame a `bumpData()` en vez de depender del
-`onChanged` de cada vista— **no es de una línea**: `TaskModal` se monta desde
-siete vistas y `bumpData` avisa además a la otra ventana, así que hay que
-decidir si borrar es un cambio "de datos" (lo es) o si el problema real es que
-`removeTask` no bumpea mientras `toggleTask` sí lo hace
-(`useBoard.ts:105`). Esa asimetría es probablemente el bug de fondo.
+Reproducido en la app antes de tocar nada: borrando una card del backlog en el
+paso 2, la cabecera seguía diciendo "2 pendientes" con la card borrada ahí. Y
+verificado después, con la página recién cargada: la columna queda en cero al
+instante.
+
+Se aprovechó de sacar `useBoard.removeTask`, que **no tenía ningún llamador**: era
+un borrado que tampoco avisaba, esperando al lado de un `toggleTask` que sí lo
+hace. Esa asimetría es justo la trampa que produjo este bug.
+
+Test: `borrar una tarea del día anterior la saca de la vista` en
+`DailyPlanningView.test.tsx` — el caso usa una tarea de un día pasado a propósito,
+porque ahí la lista es `previas` y el callback de la vista no la toca. Visto rojo
+con el `expected <div class="tc__title"></div> to be null` antes del arreglo.
 
 ### Mej.21 🔵 El "viene desde" de las tareas rescatadas se lee mal
 

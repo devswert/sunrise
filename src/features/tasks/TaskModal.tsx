@@ -216,9 +216,19 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
     return () => window.removeEventListener("keydown", onKey);
   }, [picker, quitOpen, onClose, flush]);
 
+  /**
+   * Borrar es una mutación como cualquier otra, así que **también avisa**
+   * (`bumpData`). El `onChanged` de la vista que monta el modal recarga lo suyo y
+   * nada más: en el ritual diario, por ejemplo, es el board de hoy, mientras el
+   * repaso del día anterior y la columna del backlog son estado aparte que se
+   * refresca con el aviso. Sin él la tarea se borraba de la base y la card se
+   * quedaba en pantalla; el gesto se sentía muerto y el click siguiente abría el
+   * detalle de algo que ya no existía.
+   */
   async function remove() {
     await api.deleteTask(task.id);
     await onChanged();
+    bumpData();
     onClose();
   }
 

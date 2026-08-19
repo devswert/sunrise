@@ -119,6 +119,23 @@ describe("DailyPlanningView", () => {
     expect(await screen.findByRole("dialog", { name: "Detalle de tarea" })).toBeInTheDocument();
   });
 
+  it("borrar una tarea del día anterior la saca de la vista", async () => {
+    // El paso 1 lee `previas`, que es estado propio de la vista: sin un aviso de
+    // datos, borrar escribía en la base y dejaba la card en pantalla — el gesto
+    // se sentía muerto y el siguiente click abría el detalle de algo que ya no
+    // existía.
+    await limpiarDiasPasados();
+    await api.createTask({ title: "Se va a borrar", scheduledDate: hace(2) });
+    mount();
+
+    await userEvent.click(await screen.findByText("Se va a borrar"));
+    const detalle = await screen.findByRole("dialog", { name: "Detalle de tarea" });
+    await userEvent.click(within(detalle).getByRole("button", { name: "Eliminar tarea" }));
+    await userEvent.click(within(detalle).getByRole("button", { name: /Sí, eliminar/ }));
+
+    await waitFor(() => expect(screen.queryByText("Se va a borrar")).toBeNull());
+  });
+
   it("lo pendiente de días anteriores al repasado ya está en el backlog", async () => {
     // Ya no se arrastra nada a hoy: la degradación diaria lo baja al backlog en
     // primera posición, y el ritual repasa el último día, que queda intacto.

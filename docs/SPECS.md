@@ -260,6 +260,11 @@ siguiente corrida.
   Feedback = el flash "Guardado". **No agregues un botón Guardar.**
 - Channel, objetivo y fecha van en popovers; channel y objetivo usan
   `SearchSelect` (búsqueda local).
+- **Todas las mutaciones del modal avisan** (`bumpData()`, §5.3), borrar incluido.
+  El `onChanged` de la vista que lo monta recarga solo lo que esa vista considera
+  suyo: en el ritual diario es `useBoard` con hoy, mientras el repaso del día
+  anterior y la columna del backlog dependen de `dataVersion`. Borrar era la única
+  que no avisaba, y la card se quedaba en pantalla después de borrarse (Mej.20).
 - Notas en markdown (`react-markdown` + `remark-gfm`), click para editar.
   Los links se extraen del texto con `extractLinks` y se listan aparte.
 - **El tiempo trabajado ("Real" en la UI, `actual_seconds` en la DB) es siempre
