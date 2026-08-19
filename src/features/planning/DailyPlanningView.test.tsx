@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { DailyPlanningView } from "./DailyPlanningView";
 import { api } from "../../lib/ipc";
-import { toISODate, todayISO } from "../../lib/date";
+import { shortDate, toISODate, todayISO } from "../../lib/date";
 import { SettingKey, useSettingsStore } from "../../lib/settings";
 
 // El canvas de jsdom no implementa `getContext`: la llamada real reventaría en
@@ -152,7 +152,11 @@ describe("DailyPlanningView", () => {
     await waitFor(() =>
       expect(within(cols[1]).getByText("Del lunes lejano")).toBeInTheDocument(),
     );
-    expect(within(cols[1]).getByText(/venían de un día/i)).toBeInTheDocument();
+    // El rótulo del grupo lleva **la fecha del día del que se cayó**, una sola vez
+    // para todas las de ese día (Mej.21). Se lee del `.col-grupo` y no con
+    // `getByText` porque el icono parte el texto en dos nodos.
+    const rotulos = [...cols[1].querySelectorAll(".col-grupo")].map((e) => e.textContent!.trim());
+    expect(rotulos).toContain(`Desde el ${shortDate(hace(6))}`);
   });
 
   it("el peso del día se ve en los dos pasos, no en una card aparte", async () => {

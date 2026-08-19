@@ -914,10 +914,18 @@ cual quedó. Quien planifica decide si la tarea va a hoy, al backlog o se queda.
   calendario, así que una reunión sin cerrar se queda en su día para siempre y
   ninguna vista de hoy la vuelve a mostrar; el botón "A hoy" del paso 1 es la
   única salida.
-- **El backlog del paso 2 abre con "venían de un día"**, y debajo "guardadas".
-  Los rótulos van **dentro** del `SortableContext`: partirlo en dos rompería el
-  arrastre entre grupos, y como todo lo que baja al backlog entra en posición 0,
-  los rescates ya vienen juntos al principio.
+- **En el backlog del paso 2, las rescatadas se agrupan por día**: el rótulo dice
+  "Desde el 18 ago" una sola vez para todas las de ese día, y las que guardaste a
+  propósito quedan abajo bajo "Guardadas". La fecha **no** se repite bajo cada
+  card —era lo que se leía mal (Mej.21): con tareas de días distintos eran N
+  fechas sueltas colgando entre las cards, y la fecha es justamente lo que uno
+  compara.
+  Los rótulos van **dentro** del `SortableContext`: partirlo en uno por día
+  rompería el arrastre entre grupos. Por lo mismo **el orden sigue siendo el de
+  `position`, no la fecha**: si el orden intercala dos días, el rótulo del primero
+  se repite más abajo, y eso es preferible a reordenar por debajo lo que acabas de
+  mover a mano. Como lo que baja al backlog entra en posición 0, en el caso normal
+  cada día sale una sola vez.
 - **El semáforo pesa el día entero, no solo lo pendiente.** Completar tareas no
   puede ir apagando la alarma de un día sobrecargado: el día siguió siendo igual
   de largo, y si la carga se repite hay que verla. Lo pendiente se muestra

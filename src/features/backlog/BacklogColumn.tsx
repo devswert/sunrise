@@ -1,5 +1,8 @@
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CalendarClock, Inbox, Plus } from "lucide-react";
 import { shortDate } from "../../lib/date";
 import type { Category, Task, TaskPatch } from "../../lib/types";
@@ -18,14 +21,18 @@ interface Props {
 }
 
 /**
- * Si esa tarea (existe y) viene de un día. Tolera el `tasks[i - 1]` del borde.
+ * El día del que vino esa tarea, o `null` si la guardaste a propósito. Tolera el
+ * `tasks[i - 1]` del borde.
  *
- * Mira el **valor**, no la clave: un mapa con la clave puesta y la fecha en
- * `undefined` hacía que `has()` dijera que sí y que el formateo de fecha recibiera
- * nada, y eso tumbaba la vista entera (pantalla en blanco).
+ * Devuelve el **valor** y no un booleano de la clave: un mapa con la clave puesta
+ * y la fecha en `undefined` hacía que `has()` dijera que sí y que el formateo de
+ * fecha recibiera nada, y eso tumbaba la vista entera (pantalla en blanco).
  */
-function vieneDeUnDia(rescued: Map<number, string> | undefined, t: Task | undefined): boolean {
-  return t != null && !!rescued?.get(t.id);
+function diaDeOrigen(
+  rescued: Map<number, string> | undefined,
+  t: Task | undefined,
+): string | null {
+  return (t != null && rescued?.get(t.id)) || null;
 }
 
 /**
@@ -56,10 +63,14 @@ export function BacklogColumn({
   // acá, o reordenar dentro del backlog prende y apaga el marco sin que nada se
   // esté moviendo de lista.
   const yaEstaAca =
-    ((active?.data.current as { date?: string | null } | undefined)?.date ?? null) === null;
+    ((active?.data.current as { date?: string | null } | undefined)?.date ??
+      null) === null;
 
   return (
-    <section ref={setNodeRef} className={`day-col${isOver && !yaEstaAca ? " is-over" : ""}`}>
+    <section
+      ref={setNodeRef}
+      className={`day-col${isOver && !yaEstaAca ? " is-over" : ""}`}
+    >
       {/* Mismo slot vacío que las columnas del día: sin él las listas de al lado
        * arrancan a distinta altura. */}
       <div className="day-progress-slot" />
@@ -74,7 +85,10 @@ export function BacklogColumn({
       </header>
 
       <div className="day-col__actions">
-        <button className="add-task" onClick={() => openCompose({ date: null })}>
+        <button
+          className="add-task"
+          onClick={() => openCompose({ date: null })}
+        >
           <Plus size={14} aria-hidden />
           <span className="add-task__label">Agregar al backlog</span>
         </button>
@@ -85,33 +99,44 @@ export function BacklogColumn({
           items={tasks.map((t) => `task-${t.id}`)}
           strategy={verticalListSortingStrategy}
         >
-          {tasks.map((t, i) => (
-            <div key={t.id}>
-              {/* El rótulo va **dentro** de la lista y no arriba: partir el
-               * `SortableContext` en dos rompería el arrastre entre grupos, y
-               * mandar algo al backlog lo pone en primera posición, así que los
-               * rescates ya vienen juntos al principio. */}
-              {vieneDeUnDia(rescued, t) && !vieneDeUnDia(rescued, tasks[i - 1]) && (
-                <div className="col-grupo">
-                  <CalendarClock size={12} aria-hidden /> Venían de un día
-                </div>
-              )}
-              {!vieneDeUnDia(rescued, t) && vieneDeUnDia(rescued, tasks[i - 1]) && (
-                <div className="col-grupo">Guardadas</div>
-              )}
-              <TaskCard
-                task={t}
-                category={t.categoryId != null ? categoryMap.get(t.categoryId) : null}
-                categories={categories}
-                onToggle={onToggle}
-                onOpen={onOpen}
-                onPatch={onPatch}
-              />
-              {vieneDeUnDia(rescued, t) && (
-                <span className="col-desde">desde el {shortDate(rescued!.get(t.id)!)}</span>
-              )}
-            </div>
-          ))}
+          {tasks.map((t, i) => {
+            const desde = diaDeOrigen(rescued, t);
+            const desdeAnterior = diaDeOrigen(rescued, tasks[i - 1]);
+            return (
+              <div key={t.id}>
+                {/* La fecha va **una vez, en el rótulo del grupo**, y no repetida
+                 * bajo cada card: es lo que uno compara, y con varias tareas de
+                 * días distintos eran N fechas sueltas colgando entre las cards.
+                 *
+                 * El rótulo va **dentro** de la lista y no arriba: partir el
+                 * `SortableContext` en uno por día rompería el arrastre entre
+                 * grupos. Y por lo mismo el orden sigue siendo el de `position`,
+                 * no la fecha: un día vuelve a rotular si el orden lo intercala,
+                 * y eso es mejor que reordenar por debajo lo que acabas de mover
+                 * a mano. Mandar algo al backlog lo pone primero, así que en el
+                 * caso normal cada día sale una sola vez. */}
+                {desde && desde !== desdeAnterior && (
+                  <div className="col-grupo">
+                    <CalendarClock size={12} aria-hidden /> Desde el{" "}
+                    {shortDate(desde)}
+                  </div>
+                )}
+                {!desde && desdeAnterior && (
+                  <div className="col-grupo">Guardadas</div>
+                )}
+                <TaskCard
+                  task={t}
+                  category={
+                    t.categoryId != null ? categoryMap.get(t.categoryId) : null
+                  }
+                  categories={categories}
+                  onToggle={onToggle}
+                  onOpen={onOpen}
+                  onPatch={onPatch}
+                />
+              </div>
+            );
+          })}
         </SortableContext>
       </div>
     </section>

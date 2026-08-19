@@ -17,11 +17,11 @@ function tarea(id: number, title: string): Task {
   } as Task;
 }
 
-function pintar(rescued: Map<number, string>) {
+function pintar(tasks: Task[], rescued: Map<number, string>) {
   return render(
     <DndContext>
       <BacklogColumn
-        tasks={[tarea(1, "rescatada"), tarea(2, "guardada")]}
+        tasks={tasks}
         rescued={rescued}
         categoryMap={new Map()}
         categories={[]}
@@ -31,11 +31,60 @@ function pintar(rescued: Map<number, string>) {
   );
 }
 
+const rotulos = () =>
+  [...document.querySelectorAll(".col-grupo")].map((e) => e.textContent!.trim());
+
 describe("BacklogColumn · el grupo de las rescatadas", () => {
-  it("una tarea que vino de un día muestra su fecha", () => {
-    pintar(new Map([[1, "2026-08-19"]]));
-    expect(screen.getByText("Venían de un día")).toBeInTheDocument();
-    expect(screen.getByText(/desde el 19 ago/)).toBeInTheDocument();
+  it("la fecha va una vez en el rótulo, no repetida bajo cada card", () => {
+    pintar(
+      [tarea(1, "una"), tarea(2, "otra"), tarea(3, "guardada")],
+      new Map([
+        [1, "2026-08-18"],
+        [2, "2026-08-18"],
+      ]),
+    );
+
+    // Un solo rótulo para las dos del mismo día, y el de las guardadas después.
+    expect(rotulos()).toEqual(["Desde el 18 ago", "Guardadas"]);
+    // Y ninguna etiqueta suelta debajo de las cards, que es lo que se leía mal.
+    expect(document.querySelectorAll(".col-desde")).toHaveLength(0);
+  });
+
+  it("dos días distintos son dos grupos", () => {
+    pintar(
+      [tarea(1, "del 18"), tarea(2, "del 17")],
+      new Map([
+        [1, "2026-08-18"],
+        [2, "2026-08-17"],
+      ]),
+    );
+
+    expect(rotulos()).toEqual(["Desde el 18 ago", "Desde el 17 ago"]);
+  });
+
+  /**
+   * El orden es el de `position` y no la fecha, a propósito: reordenar por debajo
+   * lo que acabás de mover a mano sería peor. Si el orden intercala, el día
+   * vuelve a rotular — y el rótulo repetido es más honesto que una lista que
+   * salta.
+   */
+  it("si el orden intercala los días, el rótulo se repite en vez de reordenar", () => {
+    pintar(
+      [tarea(1, "a"), tarea(2, "b"), tarea(3, "c")],
+      new Map([
+        [1, "2026-08-18"],
+        [2, "2026-08-17"],
+        [3, "2026-08-18"],
+      ]),
+    );
+
+    expect(rotulos()).toEqual(["Desde el 18 ago", "Desde el 17 ago", "Desde el 18 ago"]);
+    // El orden de las cards no se toca.
+    expect([...document.querySelectorAll(".tc__title")].map((e) => e.textContent)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
   });
 
   /**
@@ -46,9 +95,8 @@ describe("BacklogColumn · el grupo de las rescatadas", () => {
    */
   it("una clave sin fecha no rompe la vista: se ignora", () => {
     const roto = new Map([[1, undefined]]) as unknown as Map<number, string>;
-    expect(() => pintar(roto)).not.toThrow();
-    expect(screen.queryByText("Venían de un día")).not.toBeInTheDocument();
-    expect(screen.queryByText(/desde el/)).not.toBeInTheDocument();
+    expect(() => pintar([tarea(1, "rescatada"), tarea(2, "guardada")], roto)).not.toThrow();
+    expect(rotulos()).toEqual([]);
     expect(screen.getByText("rescatada")).toBeInTheDocument();
   });
 });

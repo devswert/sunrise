@@ -1718,26 +1718,34 @@ Test: `borrar una tarea del día anterior la saca de la vista` en
 porque ahí la lista es `previas` y el callback de la vista no la toca. Visto rojo
 con el `expected <div class="tc__title"></div> to be null` antes del arreglo.
 
-### Mej.21 🔵 El "viene desde" de las tareas rescatadas se lee mal
+### Mej.21 ✅ El "viene desde" de las tareas rescatadas se lee mal — hecho
 
-En la columna del backlog, una tarea que bajó de un día lleva **dos marcas**: un
-rótulo de grupo `Venían de un día` arriba del primero, y debajo de cada card un
-`desde el <fecha>` (`BacklogColumn.tsx:82-100`). Con varias tareas de días
-distintos eso son N fechas sueltas colgando entre las cards, y la fecha —lo que
-uno quiere comparar— queda repetida en vez de agrupada.
+En la columna del backlog, una tarea que bajó de un día llevaba **dos marcas**: un
+rótulo de grupo "Venían de un día" arriba del primero, y debajo de cada card un
+"desde el <fecha>". Con varias tareas de días distintos eran N fechas sueltas
+colgando entre las cards, y la fecha —lo que uno quiere comparar— quedaba repetida
+en vez de agrupada.
 
-La idea del pedido: **agruparlas por día**, con la fecha una sola vez como
-encabezado del grupo y las cards debajo, en vez de una etiqueta por card.
+Ahora la fecha va **una sola vez, en el rótulo del grupo** ("Desde el 18 ago") y la
+etiqueta por card no existe. "Guardadas" sigue separando lo que guardaste a
+propósito.
 
-Antes de tocarlo, la restricción que está escrita en el comentario de la línea
-78 y que es la razón de que hoy esté así: los rótulos van **dentro** de la lista
-porque partir el `SortableContext` en varios rompe el arrastre entre grupos. O
-sea que agrupar no puede ser "un `<section>` por día"; tiene que seguir siendo
-una sola lista ordenada con separadores intercalados, igual que ahora pero con
-la fecha en el separador. El orden también importa: hoy los rescates vienen
-juntos al principio porque mandar algo al backlog lo pone en primera posición, y
-un agrupado por día necesita que ese orden se respete o las cards van a saltar
-de grupo al arrastrarlas.
+**Lo que había que decidir era el orden, y se decidió no tocarlo.** La restricción
+está en el comentario que ya estaba ahí: los rótulos van dentro del
+`SortableContext` porque partirlo en uno por día rompería el arrastre entre grupos.
+Así que el agrupado son separadores intercalados en **una sola lista**, y esa lista
+sigue ordenada por `position`. La consecuencia asumida: si el orden intercala dos
+días, el rótulo del primero se repite más abajo. Se eligió eso antes que reordenar
+por fecha, porque reordenar significa mover por debajo lo que acabas de arrastrar a
+mano — y como lo que baja al backlog entra en posición 0, en el caso normal cada
+día sale una sola vez igual.
+
+Tests: cuatro en `BacklogColumn.test.tsx` —un grupo para dos tareas del mismo día
+y ninguna etiqueta suelta, dos días son dos grupos, el orden intercalado repite el
+rótulo sin reordenar las cards, y la clave sin fecha de Mej.22— y el caso del
+ritual que miraba el rótulo viejo ahora exige la fecha del día del que se cayó.
+Verificado en la app: el grupo aparece con su fecha y no quedan etiquetas debajo de
+las cards.
 
 ### Mej.22 ✅ El ritual se iba a pantalla en blanco — hecho
 
