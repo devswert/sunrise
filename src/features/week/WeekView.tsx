@@ -100,7 +100,12 @@ export function WeekView() {
 
     if (overData?.type === "column") {
       targetDate = overData.date;
-      index = targetDate ? (board.tasksByDate[targetDate]?.length ?? 0) : 0;
+      const list = targetDate ? (board.tasksByDate[targetDate] ?? []) : [];
+      // Al final de la columna destino, salvo que la card ya esté en ella: la
+      // cascada de colisión resuelve la columna en vez de una card al pasar por
+      // el header o los márgenes, y ahí "al final" era un movimiento inventado.
+      const propio = list.findIndex((t) => t.id === activeIdNum);
+      index = propio >= 0 ? propio : list.length;
     } else if (overData?.type === "task") {
       targetDate = overData.date;
       const list = targetDate ? (board.tasksByDate[targetDate] ?? []) : [];

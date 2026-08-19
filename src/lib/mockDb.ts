@@ -322,13 +322,37 @@ export const mock = {
     if (old !== date) {
       logEvent(t.id, old === null ? "START_DATE_SET" : "MOVED", old, date);
     }
-    for (const other of tasks) {
-      if (other.id !== id && other.scheduledDate === date && other.position >= position) {
-        other.position += 1;
+    // Misma semántica que `repo::move_task_as`: se renumera el destino entero en
+    // vez de correr +1 las de abajo. `position` es el índice **final**, contando
+    // que la tarea ya salió de la lista, así que reordenar dentro de un mismo día
+    // sale donde se soltó y no un lugar antes.
+    // Se renumera con las `ORPHANED` incluidas —si no, quedan dos con la misma
+    // posición— pero el índice que llega se cuenta contra la lista que se ve,
+    // que las filtra: `at` es el primer punto que deja `position` visibles atrás.
+    const orden = tasks
+      .filter((x) => x.id !== id && x.scheduledDate === date)
+      .sort((a, b) => a.position - b.position || a.id - b.id);
+    const visibles = orden.filter((x) => x.sourceState === "ACTIVE").length;
+    const delante = Math.min(Math.max(position, 0), visibles);
+    let at = orden.length;
+    if (delante === 0) {
+      at = 0;
+    } else {
+      let vistas = 0;
+      for (let i = 0; i < orden.length; i++) {
+        if (orden[i].sourceState !== "ACTIVE") continue;
+        vistas += 1;
+        if (vistas === delante) {
+          at = i + 1;
+          break;
+        }
       }
     }
+    orden.forEach((otra, i) => {
+      otra.position = i < at ? i : i + 1;
+    });
     t.scheduledDate = date;
-    t.position = position;
+    t.position = at;
     t.updatedAt = nowISO();
     return t;
   },

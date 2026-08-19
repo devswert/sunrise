@@ -13,7 +13,7 @@ fuera de git y quedó reemplazado por él.
 | M2 | Timer + Focus (taxímetro, `time_entries`, campana, Focus Mode) | ✅ `1175035` |
 | M3 | Calendar + review + resúmenes | ✅ 3.1 a 3.6 hechos |
 | M4 | Durabilidad, branding, empaque | ✅ 4.1 a 4.3 hechos |
-| M5 | Compartir con el equipo | ✅ 5.1 a 5.7 hechos; `v0.1.0` y `v0.1.1` publicadas |
+| M5 | Compartir con el equipo | ✅ 5.1 a 5.8 hechos; `v0.1.0`, `v0.1.1` y `v0.2.0` publicadas |
 
 ---
 
@@ -996,6 +996,37 @@ Dos cosas que dejó de regalo:
 
 ---
 
+### 5.8 ✅ Los tests corren en cada push, no solo al taguear — hecho
+
+`.github/workflows/tests.yml`: `pnpm test:all` en cada push a `main` y en cada
+pull request. Detalle en [SPECS §4.19](SPECS.md#419-empaque-dmg).
+
+Hasta acá la suite en CI vivía dentro de `release.yml`, o sea que corría **al
+empujar un tag**. Nunca se publicó un `.dmg` con tests rojos —ese paso hace su
+trabajo—, pero el rojo aparecía en el peor momento: con el número de versión ya
+commiteado y el changelog escrito. Pasó dos veces, y las dos por lo mismo, que
+es justamente lo que hace que valga la pena: **CI corre en UTC y la máquina del
+dev no** (5.5 y 5.7).
+
+Dos decisiones:
+
+- **Archivo aparte y no un job más.** `release.yml` necesita `contents: write`
+  para crear el Release y recibe la llave privada del updater por env. Un
+  workflow que se dispara con cada PR es el último lugar donde se quiere
+  cualquiera de las dos, así que éste corre con `contents: read` y nada más.
+- **`macos-26` también, pero por otra razón.** Copiar el runner sin copiar el
+  motivo era la trampa: allá manda el SDK, que decide la apariencia de la
+  ventana; acá es que `pnpm test:rust` compila el crate de Tauri entero y en
+  Linux eso arrastra las dependencias de webkit2gtk. Está escrito así en el
+  comentario del YAML.
+
+De paso se corrigió un texto obsoleto que no tenía que ver con esto: el cuerpo
+del Release seguía diciendo que macOS iba a avisar de un "desarrollador no
+verificado" y que había que abrir con clic derecho. Eso quedó desmentido en 5.6
+—lo que dice es que la app está **dañada**, y se arregla con `xattr -cr`— y se
+había arreglado en el README, pero no en el workflow, que es donde lo lee el que
+descarga.
+
 ## Mejoras (no bloqueantes)
 
 Cosas que valen la pena pero que no bloquean ningún milestone. Se pueden tomar
@@ -1364,27 +1395,91 @@ Lo que hay que resolver antes de escribirlo:
 El segundo icono (objetivos de la semana con su avance) no lleva entrada propia:
 sale junto con **M3.5**, que ya calcula ese avance para la review.
 
-### Mej.12 🔵 El DnD de la semana reordena mal
+### Mej.12 ✅ El DnD de la semana reordena mal — hecho
 
-Al ordenar las cards de un día, mover una card la deja **en una posición que no
-es donde se soltó**, o vuelve sola al orden anterior. Reproducible arrastrando
-dentro de un mismo día; no hace falta cruzar columnas.
+Arrastrar una card **hacia abajo dentro de un mismo día** la dejaba un lugar
+antes de donde se soltó, y al recargar parecía que había vuelto sola. Hacia
+arriba andaba bien, que es lo que hacía difícil verlo: la mitad de los arrastres
+funcionaba.
 
-Dos sospechosos, y conviene descartar uno antes de tocar nada:
+De los dos sospechosos anotados, **`boardCollision` quedó absuelto**: el índice
+que manda la vista es correcto. El error estaba en la renumeración de
+`repo::move_task`, que corría +1 todas las tareas `>= position` del día destino.
+Ese atajo vale mientras la tarea venga de **otro** día; dentro del mismo, la
+tarea que se mueve deja libre su lugar, así que las de abajo no tienen que
+correrse todas. Con `a,b,c,d`, mover `b` al índice 3 daba `a,c,b,d`.
 
-- **`boardCollision`** (`src/features/week/collision.ts`): la cascada
-  `pointerWithin → rectIntersection → closestCorners` puede estar devolviendo
-  como `over` una card distinta de la que está bajo el cursor, y entonces el
-  índice que calcula `onDragEnd` no es el que se ve.
-- **La renumeración de `position` en `repo::move_task`**, que corre +1 las tareas
-  `>= position` del día destino. Si el índice que llega ya cuenta a la card que
-  se está moviendo (que sigue en la lista mientras se arrastra), el resultado
-  queda corrido en uno — y "vuelve al estado anterior" es exactamente lo que se
-  vería al recargar si lo guardado no es lo que se soltó.
+Ahora el destino se **renumera entero** —lista ordenada sin la tarea, inserción
+en el índice, posiciones 0..n— y `position` significa **el índice final**,
+contando que la tarea ya salió de la lista. Eso es exactamente lo que dnd-kit
+dibuja mientras arrastras, que es con lo que el resultado tiene que coincidir.
+De paso el día queda sin huecos ni empates: dos tareas con la misma `position`
+ordenan por el desempate de `id` y el arrastre siguiente vuelve a salir corrido.
+Un índice fuera de rango es "al final", porque la vista manda el largo de una
+lista que filtra completadas y `ORPHANED`.
 
-Lo primero es un test: `move_task` dentro del mismo día, moviendo de índice 3 a
-1 y de 1 a 3, comprobando las `position` resultantes. Hoy los tests de `move_task`
-cubren el cruce entre días, no el reordenamiento dentro de uno.
+Eso último abrió un caso que el reporte no mencionaba y que estaba mal igual: el
+índice llega contado contra la lista **visible**, así que una reunión `ORPHANED`
+escondida en medio del día corría la card un lugar. La renumeración las incluye
+—si no, dos filas terminan con la misma posición— pero las saltea al ubicar. Y
+como ahora son N escrituras donde antes eran dos, van en una transacción: a la
+mitad, el día quedaría con posiciones repetidas.
+
+Detalle en [SPECS §4.1](SPECS.md) y §4.3.
+
+Tests: `reordenar_dentro_del_mismo_dia_respeta_el_indice_final` en `repo.rs`
+—escrito primero y visto rojo con el `a,b,d,c` exacto del reporte—,
+`una_orphaned_en_el_medio_no_corre_el_indice` para lo de arriba, y el gemelo
+`src/lib/mockDb.test.ts`, porque el mock tenía la misma aritmética y los tests
+del front habrían seguido pasando contra el comportamiento viejo. Los tres se
+verificaron mutando el código de vuelta.
+
+**Verificado arrastrando de verdad**, en la app corriendo en el browser (`pnpm
+dev`, o sea contra el mock): una card del índice 0 soltada sobre la del 2 queda
+en el 2, y devuelta hacia arriba vuelve al 0. Contra la base real —el mismo
+front, pero con `repo.rs` del otro lado— **falta mirarlo en `pnpm tauri dev`**;
+esa mitad la cubre el test de Rust.
+
+**Segunda pasada** (con el orden ya andando, probando el gesto): el arrastre
+hacía tres cosas raras, las tres de presentación, y una de ellas tapaba un
+movimiento inventado.
+
+1. **El preview cambiaba de ancho al levantar la card.** `.task-card.is-overlay`
+   tenía `width: 236px`, que es el **mínimo** de la columna: en una columna más
+   ancha el preview salía más angosto que la card, el título se reacomodaba en
+   otra cantidad de líneas y la caja cambiaba de alto justo al agarrarla. Se
+   borró la regla: `<DragOverlay>` ya dimensiona su envoltorio con el rect medido
+   de la card. La inclinación de 3° se queda, que es a propósito.
+2. **La columna se iluminaba estando ya en ella.** La cascada de colisión
+   resuelve a veces la columna en vez de una card —pasa sobre el header y los
+   márgenes— y el marco damasco prendía y apagaba anunciando un cambio de día que
+   no estaba pasando. Ahora se ilumina solo si la card viene de otro día (o de
+   fuera del backlog, en su columna).
+   **Y ahí abajo había un bug de verdad, no solo el parpadeo**: soltar sobre la
+   columna significaba "al final del día", así que si soltabas en uno de esos
+   momentos la tarea se iba al fondo. Cuando la card ya está en esa columna,
+   ahora se mantiene su índice.
+3. **Al soltar, la card volvía a su lugar viejo y entraba deslizándose desde
+   arriba.** No era una animación de más: el overlay desaparece al instante
+   (`dropAnimation={null}`), pero la lista solo se reordenaba cuando volvía la
+   escritura, así que en el medio se veía el orden anterior y después la
+   transición de `useSortable` movía la card. Ahora el reorden es **optimista**
+   —`reorderLocal`, la misma aritmética que Rust— y pasa en el mismo frame en que
+   sueltas.
+
+Medido en la app, no mirado: el overlay mide lo mismo que la card de origen
+(199px los dos, descontando que el rect de una caja rotada es 3px más ancho),
+`.day-col.is-over` se queda en cero durante 15 muestras de un arrastre dentro del
+mismo día y sigue apareciendo en uno entre columnas, y la `y` de la card movida es
+la misma justo después de soltar y 800ms después — o sea, no entra desde ninguna
+parte.
+
+`collision.ts` no se tocó: esa cascada es la que hace que toda la columna acepte
+el drop.
+
+Tests nuevos: `reorder.test.ts` (6 casos, espejo del de Rust) y uno en
+`useBoard.test.tsx` que deja la escritura colgada a propósito para comprobar que
+la lista ya está reordenada antes de que responda — mutation-checked los dos.
 
 ### Mej.13 ✅ Ajustar el marco de la app: sidebar colapsable y sin barra de título — hecho
 
@@ -1593,6 +1688,51 @@ el síntoma apareciendo recién en la app instalada.
 > **La forma de la barra solo se comprueba en la app.** El navegador ya dibujaba la
 > clásica antes del cambio, así que ahí no distingue nada: el punto era igualar el
 > webview de Tauri, y eso se mira con `pnpm tauri dev` o con el `.dmg`.
+
+### Mej.20 🔵 Borrar una tarea desde el daily planning no saca la card
+
+Reportado desde la app: en `/daily-planning` se abre una tarea, se aprieta
+Eliminar, se confirma, y **no pasa nada visible**. La tarea sí se borra —el
+comando corre—, pero la card se queda en pantalla hasta recargar la vista.
+
+Causa sospechada, leída del código y **no reproducida todavía**: la vista tiene
+dos fuentes de datos y el borrado solo refresca una. `TaskModal` llama a
+`onChanged`, que acá es `board.reload` (`DailyPlanningView.tsx:431`), y
+`useBoard` recarga **solo el día que le pidieron** —hoy— sin tocar
+`dataVersion` (`useBoard.ts:49` y `:125`). Pero las tres listas que el ritual usa de
+verdad en el paso 1 y en la columna del backlog —`previas`, `backlog`,
+`rescued`— se cargan aparte y su efecto depende de `[load, dataVersion]`
+(`DailyPlanningView.tsx:88-100`). O sea: borrar una card de **hoy** debería
+verse, y borrar una del día anterior o del backlog no. Eso encaja con "no
+reacciona", pero hay que confirmar en la app cuál de los dos casos falla.
+
+El arreglo obvio —que `remove()` llame a `bumpData()` en vez de depender del
+`onChanged` de cada vista— **no es de una línea**: `TaskModal` se monta desde
+siete vistas y `bumpData` avisa además a la otra ventana, así que hay que
+decidir si borrar es un cambio "de datos" (lo es) o si el problema real es que
+`removeTask` no bumpea mientras `toggleTask` sí lo hace
+(`useBoard.ts:105`). Esa asimetría es probablemente el bug de fondo.
+
+### Mej.21 🔵 El "viene desde" de las tareas rescatadas se lee mal
+
+En la columna del backlog, una tarea que bajó de un día lleva **dos marcas**: un
+rótulo de grupo `Venían de un día` arriba del primero, y debajo de cada card un
+`desde el <fecha>` (`BacklogColumn.tsx:82-100`). Con varias tareas de días
+distintos eso son N fechas sueltas colgando entre las cards, y la fecha —lo que
+uno quiere comparar— queda repetida en vez de agrupada.
+
+La idea del pedido: **agruparlas por día**, con la fecha una sola vez como
+encabezado del grupo y las cards debajo, en vez de una etiqueta por card.
+
+Antes de tocarlo, la restricción que está escrita en el comentario de la línea
+78 y que es la razón de que hoy esté así: los rótulos van **dentro** de la lista
+porque partir el `SortableContext` en varios rompe el arrastre entre grupos. O
+sea que agrupar no puede ser "un `<section>` por día"; tiene que seguir siendo
+una sola lista ordenada con separadores intercalados, igual que ahora pero con
+la fecha en el separador. El orden también importa: hoy los rescates vienen
+juntos al principio porque mandar algo al backlog lo pone en primera posición, y
+un agrupado por día necesita que ese orden se respete o las cards van a saltar
+de grupo al arrastrarlas.
 
 ## Post-MVP (decidido: fuera de alcance)
 

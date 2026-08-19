@@ -41,13 +41,19 @@ export function BacklogColumn({
   onPatch,
 }: Props) {
   const openCompose = useAppStore((s) => s.openCompose);
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef, isOver, active } = useDroppable({
     id: "col-backlog",
     data: { type: "column", date: null },
   });
 
+  // Misma regla que las columnas de día: no se ilumina cuando la card ya está
+  // acá, o reordenar dentro del backlog prende y apaga el marco sin que nada se
+  // esté moviendo de lista.
+  const yaEstaAca =
+    ((active?.data.current as { date?: string | null } | undefined)?.date ?? null) === null;
+
   return (
-    <section ref={setNodeRef} className={`day-col${isOver ? " is-over" : ""}`}>
+    <section ref={setNodeRef} className={`day-col${isOver && !yaEstaAca ? " is-over" : ""}`}>
       {/* Mismo slot vacío que las columnas del día: sin él las listas de al lado
        * arrancan a distinta altura. */}
       <div className="day-progress-slot" />

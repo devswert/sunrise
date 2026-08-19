@@ -3,7 +3,16 @@ import { act, render, waitFor } from "@testing-library/react";
 import { todayISO } from "../../lib/date";
 
 const demote = vi.fn(async () => 0);
-const listTasksForRange = vi.fn(async () => []);
+let rango: unknown[] = [];
+const listTasksForRange = vi.fn(async () => rango);
+/** Se resuelve a mano: es lo que deja mirar el board **antes** de la escritura. */
+let soltarMove: (() => void) | null = null;
+const moveTask = vi.fn(
+  () =>
+    new Promise<void>((resolve) => {
+      soltarMove = () => resolve();
+    }),
+);
 
 vi.mock("../../lib/ipc", () => ({
   isTauri: () => false,
@@ -12,6 +21,7 @@ vi.mock("../../lib/ipc", () => ({
     listTasksForRange: () => listTasksForRange(),
     listCategories: vi.fn(async () => []),
     listObjectives: vi.fn(async () => []),
+    moveTask: () => moveTask(),
   },
 }));
 
@@ -27,11 +37,12 @@ async function freshBoard() {
   vi.resetModules();
   const { useBoard } = await import("./useBoard");
   const { useAppStore } = await import("../../lib/store");
+  let board: ReturnType<typeof useBoard> | null = null;
   function Probe() {
-    useBoard(todayISO(), todayISO());
+    board = useBoard(todayISO(), todayISO());
     return null;
   }
-  return { Probe, useAppStore };
+  return { Probe, useAppStore, verBoard: () => board! };
 }
 
 describe("useBoard · degradación", () => {
@@ -78,5 +89,56 @@ describe("useBoard · degradación", () => {
 
     await waitFor(() => expect(listTasksForRange).toHaveBeenCalledTimes(2));
     expect(demote).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * El reorden es **optimista**: el board se reordena antes de que la escritura
+ * responda. Es lo que hace que la card se quede donde la soltaste en vez de
+ * volver a su lugar viejo y entrar deslizándose cuando llegan los datos.
+ */
+describe("useBoard · reorden optimista", () => {
+  const hoy = todayISO();
+  const tarea = (id: number, position: number) => ({
+    id,
+    title: `t${id}`,
+    status: "TODO",
+    source: "MANUAL",
+    sourceState: "ACTIVE",
+    scheduledDate: hoy,
+    position,
+    actualSeconds: 0,
+  });
+
+  beforeEach(() => {
+    demote.mockClear();
+    listTasksForRange.mockClear();
+    moveTask.mockClear();
+    soltarMove = null;
+    rango = [tarea(1, 0), tarea(2, 1), tarea(3, 2)];
+  });
+
+  it("la lista se reordena antes de que la escritura responda", async () => {
+    const { Probe, verBoard } = await freshBoard();
+    render(<Probe />);
+    await waitFor(() => expect(verBoard().tasksByDate[hoy]?.length).toBe(3));
+
+    // La primera al índice 2, que es el caso que se veía mal: hacia abajo.
+    act(() => {
+      void verBoard().moveTask(1, hoy, 2);
+    });
+
+    await waitFor(() =>
+      expect(verBoard().tasksByDate[hoy].map((t) => t.id)).toEqual([2, 3, 1]),
+    );
+    // Todavía sin responder: el orden de arriba no vino de una recarga.
+    expect(moveTask).toHaveBeenCalledTimes(1);
+    expect(listTasksForRange).toHaveBeenCalledTimes(1);
+
+    // Y al responder, la recarga trae lo mismo (el mock devuelve el orden viejo,
+    // así que acá solo se comprueba que no se quede colgado).
+    await act(async () => {
+      soltarMove?.();
+    });
   });
 });

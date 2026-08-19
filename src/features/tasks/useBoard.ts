@@ -3,6 +3,7 @@ import { api } from "../../lib/ipc";
 import type { Category, Objective, Task, NewTaskInput, TaskPatch } from "../../lib/types";
 import { isoWeekId, parseISODate, todayISO } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
+import { reorderLocal } from "./reorder";
 
 /**
  * La degradación es una **mutación**, no una lectura: manda al backlog lo
@@ -109,6 +110,14 @@ export function useBoard(start: string, end: string) {
 
   const moveTask = useCallback(
     async (id: number, date: string | null, position: number) => {
+      // Optimista **antes** de escribir: la lista tiene que quedar reordenada en
+      // el mismo frame en que se suelta la card. Si se espera la escritura, el
+      // overlay desaparece con la card todavía en su lugar viejo y después entra
+      // deslizándose desde arriba (ver `reorderLocal`).
+      setTasks((actuales) => {
+        const task = actuales.find((t) => t.id === id);
+        return task ? reorderLocal(actuales, task, date, position) : actuales;
+      });
       await api.moveTask(id, date, position);
       await reload();
     },

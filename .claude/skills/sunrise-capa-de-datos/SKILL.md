@@ -119,8 +119,18 @@ ausente = no tocar · `null` = poner a NULL · valor = escribir. Si aplanas eso 
 `set_actual_seconds` a propósito. Ver la skill `sunrise-timer-y-tiempo` antes de
 tocar cualquier cosa de tiempo.
 
-**`position`** es el orden dentro del día (o del backlog). `move_task` corre +1
-las tareas `>= position` del día destino; `next_position` calcula el final.
+**`position`** es el orden dentro del día (o del backlog). `next_position`
+calcula el final.
+
+**El `position` que recibe `move_task` es el índice final**, contando que la
+tarea ya salió de la lista: es lo que dnd-kit muestra mientras arrastras. El día
+destino se **renumera entero** (0..n, sin huecos ni empates); antes corría +1 las
+tareas `>= position`, que se equivoca en uno al reordenar dentro del mismo día
+—la tarea que se mueve deja libre su lugar— y ese era el bug de Mej.12. El índice
+se cuenta contra la lista **visible**, así que la renumeración incluye a las
+`ORPHANED` (para no empatar posiciones) pero las saltea al ubicar. Fuera de rango
+es "al final". `mockDb.moveTask` hace exactamente lo mismo, y hay un test a cada
+lado.
 
 **Historial.** `move_task` registra `MOVED`, o `START_DATE_SET` si la tarea venía
 del backlog. Un `MOVED` con `to_date` nulo es "se fue al backlog", y de ahí sale

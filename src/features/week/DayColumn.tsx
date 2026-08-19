@@ -46,10 +46,17 @@ export function DayColumn({
   const openCompose = useAppStore((s) => s.openCompose);
   // Toda la columna es zona de drop (no solo la lista), para que el arrastre
   // funcione igual en la mitad superior.
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef, isOver, active } = useDroppable({
     id: `day-${date}`,
     data: { type: "column", date },
   });
+
+  // La columna se ilumina solo si la card viene de **otro** día. Reordenando
+  // dentro del mismo, la cascada de colisión resuelve a veces la columna en vez
+  // de una card, y el marco prendía y apagaba anunciando un movimiento que no
+  // estaba pasando.
+  const deOtroDia = (active?.data.current as { date?: string | null } | undefined)?.date !== date;
+  const resaltar = isOver && deOtroDia;
 
   const plannedTotal = tasks.reduce((s, t) => s + (t.estimatedMinutes ?? 0), 0);
   const level = computeCapacityLevel(plannedTotal, capacityTarget, capacityWarnRatio);
@@ -68,7 +75,7 @@ export function DayColumn({
   return (
     <section
       ref={setNodeRef}
-      className={`day-col${today ? " is-today" : ""}${isOver ? " is-over" : ""}`}
+      className={`day-col${today ? " is-today" : ""}${resaltar ? " is-over" : ""}`}
     >
       {/* Slot de altura fija en todas las columnas (va ARRIBA del nombre del día):
        * mantiene las listas alineadas aunque la barra solo se pinte en hoy. */}

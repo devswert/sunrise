@@ -1,0 +1,61 @@
+# Corre las dos suites en cada push a `main` y en cada pull request.
+#
+# Es un workflow aparte de `release.yml` a propósito: ese publica —tiene permiso
+# de escritura sobre el repo y toca la llave del updater— y se dispara solo con un
+# tag. Éste no publica nada y corre todo el tiempo. Meterlos en el mismo archivo
+# significaría darle permiso de escritura a cada PR.
+#
+# **Lo que agrega de verdad es que CI corre en UTC y la máquina del dev no.** Eso
+# ya encontró dos bugs de fecha que en Santiago pasaban por casualidad (ROADMAP
+# 5.5 y 5.7), pero los encontró al empujar el tag: con el release ya en marcha y
+# el número de versión ya commiteado. Acá el mismo hallazgo llega en el push que
+# lo introdujo.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Solo leer. `release.yml` necesita `contents: write` para crear el Release; acá
+# escribir no hace falta y un workflow que corre con cada PR es el último lugar
+# donde se quiere ese permiso.
+permissions:
+  contents: read
+
+# Un push encima de otro cancela la corrida anterior: los runners de macOS son
+# lentos y una fila de rojos ya superados no le sirve a nadie.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suites:
+    # macOS y no `ubuntu-latest`, y la razón **no** es la del runner de
+    # `release.yml` (allá manda el SDK, que decide la apariencia de la ventana).
+    # Acá es más simple: `pnpm test:rust` compila el crate de Tauri entero, y en
+    # Linux eso arrastra las dependencias de sistema de webkit2gtk. Además es la
+    # plataforma en la que la app corre; probar en otra sería probar otra cosa.
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sin `version:`, igual que en release.yml: `action-setup` lee
+      # `packageManager` de package.json y así CI no puede divergir de local.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm test:all

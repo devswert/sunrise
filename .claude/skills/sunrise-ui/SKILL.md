@@ -302,6 +302,23 @@ Detalles que ya están resueltos y conviene mantener:
 - La card seleccionada se deriva de los datos frescos del board
   (`board.tasks.find(...)`), no de una copia en estado local: así el modal
   refleja al instante lo que se guardó.
+- **El reorden es optimista.** `useBoard.moveTask` reordena su estado con
+  `reorderLocal` antes de escribir, porque el overlay desaparece al instante:
+  esperar la escritura deja ver el orden viejo y después la transición de
+  `useSortable` mete la card deslizándose desde arriba. `reorderLocal` copia la
+  aritmética de `repo::move_task` a propósito —si se separan, la recarga corrige
+  la lista a la vista y se ve un salto—, y hay un test a cada lado. Si una vista
+  tiene su propia lista además del board (el backlog del ritual), tiene que
+  actualizarla igual.
+- **El preview del `DragOverlay` no lleva `width`**: ya se dimensiona con el rect
+  medido de la card. Un ancho fijo hace que el título se reacomode en otra
+  cantidad de líneas al levantarla y la caja cambie de alto. La inclinación de 3°
+  sí es querida.
+- **Una columna no se ilumina si la card ya está en ella.** La cascada de colisión
+  resuelve la columna en vez de una card al pasar por el header o los márgenes, y
+  eso hacía parpadear el marco anunciando un cambio de día que no pasaba. El mismo
+  caso tenía debajo un bug real: soltar sobre la columna significaba "al final",
+  así que soltar en uno de esos momentos mandaba la tarea al fondo del día.
 
 ## Interacciones ya definidas
 

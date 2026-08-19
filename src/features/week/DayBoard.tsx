@@ -90,6 +90,14 @@ export function DayBoard({
       const encima = Number(String(over.id).replace("task-", ""));
       const found = list.findIndex((t) => t.id === encima);
       if (found >= 0) indice = found;
+    } else {
+      // Soltar sobre la columna es "al final", pero **solo si la card viene de
+      // otra**. Reordenando dentro de la misma, la cascada de colisión resuelve a
+      // veces la columna en vez de una card —pasa sobre el header y los
+      // márgenes—, y ahí "al final" mandaba la tarea al fondo del día sin que
+      // nadie lo hubiera pedido.
+      const propio = list.findIndex((t) => t.id === carriedOver);
+      if (propio >= 0) indice = propio;
     }
     onMove(carriedOver, destino.date, indice);
   }

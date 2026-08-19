@@ -230,24 +230,83 @@ fn move_task_as(
         log_event(conn, id, kind, old.as_deref(), date)?;
     }
 
-    // Hace espacio en el día destino (>= position se corren +1).
-    match date {
-        Some(d) => conn.execute(
-            "UPDATE tasks SET position = position + 1
-             WHERE scheduled_date = ?1 AND position >= ?2 AND id <> ?3",
-            params![d, position, id],
-        )?,
-        None => conn.execute(
-            "UPDATE tasks SET position = position + 1
-             WHERE scheduled_date IS NULL AND position >= ?1 AND id <> ?2",
-            params![position, id],
-        )?,
+    // El destino se **renumera entero**, en vez de correr +1 las que están de
+    // `position` para abajo. Ese atajo funcionaba mientras la tarea viniera de
+    // otro día, y se equivocaba en uno al reordenar dentro del mismo: la tarea
+    // que se mueve deja libre su lugar, así que las de abajo no tienen que
+    // correrse todas. Arrastrar una card hacia abajo la dejaba un lugar antes de
+    // donde se soltó, y al recargar parecía que había vuelto sola.
+    //
+    // `position` es **el índice final**, contando que la tarea ya salió de la
+    // lista. Es lo que se ve mientras se arrastra, que es con lo que el
+    // resultado tiene que coincidir.
+    //
+    // La renumeración toma **todas** las filas del destino, incluidas las
+    // `ORPHANED`, para que no queden dos con la misma `position`. Pero el índice
+    // que llega se cuenta contra la lista que se ve, que sí las filtra (§4.1),
+    // así que hay que traducirlo: `at` es el primer punto que deja `position`
+    // filas visibles detrás.
+    let orden: Vec<(i64, bool)> = {
+        let mapa = |r: &rusqlite::Row| -> rusqlite::Result<(i64, bool)> {
+            Ok((r.get(0)?, r.get::<_, String>(1)? == "ACTIVE"))
+        };
+        match date {
+            Some(d) => conn
+                .prepare(
+                    "SELECT id, source_state FROM tasks
+                     WHERE scheduled_date = ?1 AND id <> ?2 ORDER BY position, id",
+                )?
+                .query_map(params![d, id], mapa)?
+                .collect::<Result<Vec<_>>>()?,
+            None => conn
+                .prepare(
+                    "SELECT id, source_state FROM tasks
+                     WHERE scheduled_date IS NULL AND id <> ?1 ORDER BY position, id",
+                )?
+                .query_map(params![id], mapa)?
+                .collect::<Result<Vec<_>>>()?,
+        }
     };
 
-    conn.execute(
+    // Un índice fuera de rango es "al final", y uno negativo no significa nada:
+    // la vista manda el largo de su propia lista cuando sueltas en la columna.
+    let visibles = orden.iter().filter(|(_, activa)| *activa).count();
+    let delante = position.clamp(0, visibles as i64) as usize;
+    let mut at = orden.len();
+    if delante == 0 {
+        at = 0;
+    } else {
+        let mut vistas = 0usize;
+        for (i, (_, activa)) in orden.iter().enumerate() {
+            if *activa {
+                vistas += 1;
+                if vistas == delante {
+                    at = i + 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    // En una sola transacción: son N escrituras donde antes eran dos, y a la
+    // mitad el día quedaría con posiciones repetidas.
+    let tx = conn.unchecked_transaction()?;
+
+    // Se escribe solo lo que cambia (`position <> ?2`): renumerar el día entero
+    // en cada arrastre marcaría como tocadas filas que nadie movió.
+    for (i, (otra, _)) in orden.iter().enumerate() {
+        let nueva = if i < at { i } else { i + 1 } as i64;
+        tx.execute(
+            "UPDATE tasks SET position = ?2 WHERE id = ?1 AND position <> ?2",
+            params![otra, nueva],
+        )?;
+    }
+
+    tx.execute(
         "UPDATE tasks SET scheduled_date=?2, position=?3, updated_at=?4 WHERE id=?1",
-        params![id, date, position, now()],
+        params![id, date, at as i64, now()],
     )?;
+    tx.commit()?;
     get_task(conn, id)
 }
 
@@ -1918,6 +1977,97 @@ mod tests {
         assert!(ev.iter().any(|e| e.type_field() == "MOVED"));
         // b conserva su relación pero corrió de posición
         assert!(day.iter().find(|t| t.title == "b").unwrap().position >= 1);
+    }
+
+    /// El caso que faltaba: reordenar **dentro de un mismo día**. Los tests de
+    /// `move_task` cubrían el cruce entre días, donde el destino no contiene a la
+    /// tarea que se mueve y por eso la aritmética es más fácil.
+    #[test]
+    fn reordenar_dentro_del_mismo_dia_respeta_el_indice_final() {
+        let c = conn();
+        let dia = "2026-08-10";
+        let a = create_task(&c, new_task("a", Some(dia))).unwrap();
+        let b = create_task(&c, new_task("b", Some(dia))).unwrap();
+        let _c2 = create_task(&c, new_task("c", Some(dia))).unwrap();
+        let d = create_task(&c, new_task("d", Some(dia))).unwrap();
+
+        let orden = |c: &Connection| -> Vec<String> {
+            list_tasks_for_date(c, dia)
+                .unwrap()
+                .iter()
+                .map(|t| t.title.clone())
+                .collect()
+        };
+        assert_eq!(orden(&c), vec!["a", "b", "c", "d"]);
+
+        // Hacia arriba: 'd' del índice 3 al 1.
+        move_task(&c, d.id, Some(dia), 1).unwrap();
+        assert_eq!(orden(&c), vec!["a", "d", "b", "c"]);
+
+        // Y hacia abajo, que es donde el índice significa otra cosa: 'd' vuelve
+        // del 1 al 3. La posición que llega es la **final**, contando que la
+        // tarea ya salió de la lista, así que 'd' tiene que quedar última.
+        move_task(&c, d.id, Some(dia), 3).unwrap();
+        assert_eq!(orden(&c), vec!["a", "b", "c", "d"]);
+
+        // Y un caso corto que no toca los bordes: 'b' del 1 al 2.
+        move_task(&c, b.id, Some(dia), 2).unwrap();
+        assert_eq!(orden(&c), vec!["a", "c", "b", "d"]);
+
+        // Las posiciones quedan sin huecos ni empates: dos tareas con la misma
+        // `position` ordenan por el desempate y el arrastre siguiente vuelve a
+        // salir corrido.
+        let posiciones: Vec<i64> = list_tasks_for_date(&c, dia)
+            .unwrap()
+            .iter()
+            .map(|t| t.position)
+            .collect();
+        assert_eq!(posiciones, vec![0, 1, 2, 3]);
+        let _ = a;
+    }
+
+    /// Las `ORPHANED` no salen en los listados (I7) pero siguen ocupando su fila
+    /// en el día. El índice que manda la vista cuenta contra lo que se ve, así
+    /// que una escondida en el medio no puede correr la card de lugar.
+    #[test]
+    fn una_orphaned_en_el_medio_no_corre_el_indice() {
+        let c = conn();
+        let dia = "2026-08-10";
+        let a = create_task(&c, new_task("a", Some(dia))).unwrap();
+        let x = create_task(&c, new_task("x", Some(dia))).unwrap();
+        let _b = create_task(&c, new_task("b", Some(dia))).unwrap();
+        let _cc = create_task(&c, new_task("c", Some(dia))).unwrap();
+        c.execute(
+            "UPDATE tasks SET source_state = 'ORPHANED' WHERE id = ?1",
+            params![x.id],
+        )
+        .unwrap();
+
+        let visible = |c: &Connection| -> Vec<String> {
+            list_tasks_for_date(c, dia)
+                .unwrap()
+                .iter()
+                .map(|t| t.title.clone())
+                .collect()
+        };
+        assert_eq!(visible(&c), vec!["a", "b", "c"]);
+
+        // 'a' al final de lo visible: el índice 2 lo manda una lista de tres que
+        // no cuenta a 'x'.
+        move_task(&c, a.id, Some(dia), 2).unwrap();
+        assert_eq!(visible(&c), vec!["b", "c", "a"]);
+
+        // Y la escondida sigue ahí, con su lugar propio y sin empatar con nadie.
+        let todas: Vec<(String, i64)> = c
+            .prepare("SELECT title, position FROM tasks WHERE scheduled_date = ?1 ORDER BY position")
+            .unwrap()
+            .query_map(params![dia], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let posiciones: Vec<i64> = todas.iter().map(|(_, p)| *p).collect();
+        assert_eq!(posiciones, vec![0, 1, 2, 3]);
+        assert!(todas.iter().any(|(t, _)| t == "x"));
     }
 
     #[test]

@@ -273,11 +273,15 @@
   text-decoration: line-through;
   color: var(--muted);
 }
+/* Sin `width`: `<DragOverlay>` ya dimensiona su envoltorio con el rect medido de
+   la card que se levantó. Estuvo clavado en 236px —el mínimo de la columna— así
+   que en una columna más ancha el preview era más angosto que la card, el título
+   se reacomodaba en otra cantidad de líneas y la caja cambiaba de alto al
+   levantarla. La inclinación sí es a propósito. */
 .task-card.is-overlay {
   cursor: grabbing;
   transform: rotate(3deg);
   box-shadow: var(--shadow-lg);
-  width: 236px;
   opacity: 0.97;
 }
 

@@ -4,6 +4,7 @@ import { ArrowRight, CalendarCheck, Check, History, Inbox, Sunrise } from "lucid
 import { DayBoard } from "../week/DayBoard";
 import { TaskCardStatic } from "../week/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
+import { reorderLocal } from "../tasks/reorder";
 import { useBoard } from "../tasks/useBoard";
 import { CalendarRail } from "../calendar/CalendarRail";
 import { useDayWork } from "../calendar/useTrabajoDelDia";
@@ -138,6 +139,19 @@ export function DailyPlanningView() {
       : null;
 
   const move = async (id: number, date: string | null, position: number) => {
+    // `board.moveTask` ya es optimista para la columna del día, pero el backlog
+    // de acá es estado propio: sin esto la card cruzaba de columna recién cuando
+    // volvía la escritura, y el salto se veía.
+    const task = [...board.tasks, ...backlog].find((t) => t.id === id);
+    if (task) {
+      setBacklog((actual) =>
+        date === null
+          ? reorderLocal(actual, task, null, position).filter(
+              (t) => (t.scheduledDate ?? null) === null,
+            )
+          : actual.filter((t) => t.id !== id),
+      );
+    }
     await board.moveTask(id, date, position);
     await load();
   };

@@ -148,9 +148,18 @@ Objetivo/ritual semanal, agrupado por `iso_week` en formato `2026-W32`
 - **Editar** (`update_task` + `TaskPatch`): patch parcial. `None`/ausente =
   no tocar. Los campos anidados (`Option<Option<i64>>` en Rust,
   `number | null` en TS) distinguen "no tocar" de "poner a NULL".
-- **Mover** (`move_task`): cambia día y posición, corre +1 las tareas
-  `>= position` del día destino, y registra `MOVED` (o `START_DATE_SET` si
-  venía del backlog). `date = null` ⇒ manda al backlog.
+- **Mover** (`move_task`): cambia día y posición y registra `MOVED` (o
+  `START_DATE_SET` si venía del backlog). `date = null` ⇒ manda al backlog.
+  **`position` es el índice final**, contando que la tarea ya salió de la lista,
+  y el día destino se **renumera entero** (0..n, sin huecos ni empates). Un
+  índice fuera de rango es "al final". Antes corría +1 las tareas
+  `>= position`, que se equivoca en uno al reordenar dentro del mismo día: la
+  tarea que se mueve deja libre su lugar. Lo mismo hace `mockDb.moveTask`.
+  El índice se cuenta contra la lista **visible**: la renumeración incluye a las
+  `ORPHANED` —si no, dos filas quedarían con la misma posición— pero las saltea
+  al ubicar la tarea. La salvedad es el backlog, que `list_backlog` ordena por
+  `category_id, position, id`: ahí el índice de la vista nunca coincidió con el
+  orden de `position`, ni antes ni ahora.
 - **Estado** (`set_task_status`): sella/limpia `completed_at`. Ver Invariante I5.
 - **Borrar** (`delete_task`): borrado real. `ON DELETE CASCADE` limpia
   `task_events` y `time_entries`.
@@ -211,6 +220,28 @@ siguiente corrida.
   `closestCorners`. Esa cascada existe para que **toda la columna** acepte el
   drop (incluida la mitad superior con el header y "Agregar tarea") y para que la
   card nunca se pierda entre columnas. No la simplifiques a un solo detector.
+  El índice que se manda al soltar es **el de la card sobre la que se soltó, en
+  la lista tal como está antes de mover** — que es justo lo que dnd-kit muestra
+  como previsualización. Con la semántica de `move_task` de §4.1 eso cae donde
+  se ve, en los dos sentidos. Soltar sobre la **columna** es "al final", salvo
+  que la card ya esté en ella: la cascada resuelve la columna al pasar por el
+  header o los márgenes, y ahí "al final" mandaba la tarea al fondo del día sin
+  que nadie lo pidiera.
+- **El reorden es optimista.** `useBoard.moveTask` reordena su estado con
+  `reorderLocal` —la misma aritmética que `repo::move_task`— **antes** de
+  escribir. No es una optimización: el overlay desaparece al instante, así que
+  esperar la escritura deja ver el orden viejo y después la transición de
+  `useSortable` mete la card deslizándose desde arriba. Si las dos aritméticas se
+  separan, la recarga corrige la lista a la vista y se ve un salto; hay un test a
+  cada lado.
+- **El preview no lleva `width`.** `<DragOverlay>` dimensiona su envoltorio con el
+  rect medido de la card. Un ancho fijo en `.task-card.is-overlay` (estuvo en
+  236px, el mínimo de la columna) hace que el título se reacomode en otra cantidad
+  de líneas al levantarla y la caja cambie de alto.
+- **La columna no se ilumina si la card ya está en ella.** El `is-over` de
+  `DayColumn` y de `BacklogColumn` compara el día de `active` con el propio: sin
+  eso, reordenar dentro de un día prende y apaga el marco damasco anunciando un
+  cambio que no está pasando.
 - **Contador de capacidad** por día: suma de `estimatedMinutes` vs objetivo
   (de `settings`, default 480), semáforo por `computeCapacityLevel`:
   `> target` ⇒ `OVER` (rojo); `>= target * 0.85` ⇒ `WARN` (amarillo); resto
@@ -1431,9 +1462,33 @@ que los tres archivos coincidan **entre sí**, pero no sabe nada del tag, así q
 `pnpm test:all` antes de empaquetar: un `.dmg` publicado con tests rojos es peor
 que no publicar, porque alguien lo instala.
 
-> **El workflow no está ejercitado**: cuando se escribió, el repo no tenía remoto.
-> El YAML está validado y la lógica del paso de versión se probó en local, pero la
-> primera corrida de verdad es la primera vez que se empuje un tag.
+Está ejercitado desde la `v0.1.0`, y las tres versiones publicadas salieron por
+ahí. La primera corrida falló, y no por el workflow: encontró un bug de zona
+horaria que en Santiago pasaba por casualidad (ROADMAP 5.5).
+
+#### Los tests corren en cada push
+
+`.github/workflows/tests.yml` corre `pnpm test:all` **en cada push a `main` y en
+cada pull request**. Es un archivo aparte y no un job más de `release.yml`, por
+dos razones: ese workflow necesita `contents: write` para crear el Release y toca
+la llave del updater, y ninguna de las dos cosas tiene por qué estar al alcance de
+un PR. Éste corre con `contents: read` y no publica nada.
+
+**Lo que agrega es el reloj, no la suite.** `pnpm test:all` ya corría antes de
+empaquetar, así que un tag nunca publicó tests rojos. Lo que faltaba es que
+corrieran **antes**: CI trabaja en UTC y la máquina del dev no, y esa diferencia
+ya encontró dos bugs de fecha (ROADMAP 5.5 y 5.7) —las dos veces al empujar el
+tag, con el número de versión ya commiteado y el release a medio camino. Ahora el
+mismo hallazgo llega en el push que lo introdujo.
+
+Corre en `macos-26` como el de release, pero **por otro motivo**: allá manda el
+SDK, que decide la apariencia de la ventana; acá es que `pnpm test:rust` compila
+el crate de Tauri entero, y en Linux eso arrastra las dependencias de sistema de
+webkit2gtk. Además es la plataforma donde la app corre.
+
+Tiene `concurrency` con `cancel-in-progress`: un push encima de otro cancela la
+corrida anterior, porque los runners de macOS son lentos y una fila de rojos ya
+superados no le sirve a nadie.
 
 ### 4.20 Dev y producción conviviendo
 
