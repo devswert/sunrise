@@ -1326,19 +1326,24 @@ de `bell_dir` para que el usuario copie el archivo ahí a mano. Con el picker pu
 **elegir el archivo y que la app lo copie**, que es lo que uno espera. Cuando se
 tome Mej.1, hacerlo así.
 
-### Mej.5 🔵 Quitar el corrector ortográfico de los campos que no son prosa
+### Mej.5 ✅ Quitar el corrector ortográfico de los campos que no son prosa — hecho
 
-En macOS el webview corrige y subraya en rojo **todos** los `input`, y en los
-campos de Configs eso es puro estorbo: nombres de contextos y canales, nombres de
-calendarios, y los buscadores de los dropdowns (`SearchSelect`, `TimePicker`).
-Ninguno es texto en prosa, y el autocorrector llega a **cambiar lo escrito** al
-salir del campo.
+En macOS el webview corrige, subraya en rojo y **capitaliza al salir del campo**
+todos los `input`, y llegaba a cambiar lo escrito en nombres de contextos, de
+canales y de calendarios, y en los buscadores de los dropdowns.
 
-Es `spellCheck={false}` más `autoCorrect="off"` y `autoCapitalize="off"` en esos
-inputs. Conviene hacerlo de una vez en los cuatro lugares —`SettingsView`,
-`FeedsCard`, `SearchSelect`, `TimePicker`— y dejar la regla escrita en la skill
-`sunrise-ui`: el corrector se deja **solo** en el título y las notas de una
-tarea, que sí son prosa.
+Los tres atributos (`spellCheck`, `autoCorrect`, `autoCapitalize`) viven ahora en
+una constante, `PLAIN_INPUT` (`src/components/plainInput.ts`), que se spreadea en
+el campo. No es cosmética: repetidos a mano, el cuarto campo se olvida y nadie lo
+nota hasta que el corrector le cambia un nombre. Están cubiertos los diez campos
+que no son prosa —capacidad, las dos horas de jornada, la fila de alta y los dos
+de renombre de Canales, el buscador de `SearchSelect`, el de `TimePicker` y los de
+Calendarios—, y **el corrector se queda donde sí hay prosa**: el título y las
+notas de una tarea.
+
+La regla quedó escrita en la skill `sunrise-ui`, con el criterio para un campo
+nuevo: la pregunta no es si molesta el subrayado, es si alguien escribiría ahí una
+frase.
 
 ### Mej.6 🔵 Más colores en la paleta
 
@@ -1357,24 +1362,34 @@ token, no un hex, así que agregar colores es compatible hacia atrás, pero
 **renombrar o quitar uno rompe las categorías existentes** (quedarían con un
 `var(--loquesea)` que no existe).
 
-### Mej.7 🔵 Crear un canal y elegirle el color en el mismo gesto
+### Mej.7 ✅ Crear un canal y elegirle el color en el mismo gesto — hecho
 
-Al agregar un canal de segundo nivel: escribes el nombre, vas a elegirle el
-color, y la fila **salta al final de la lista** perdiendo el color a medio
-elegir.
+La fila de alta ya no salta al final de la lista al ir a elegir el color. El alta
+se confirma **con Enter o al salir de la fila completa**, nunca en el blur de un
+campo suelto: guardar en el blur del nombre destruía la fila a mitad de camino,
+creaba la categoría sin color y la hacía reaparecer al final de su grupo. Es el
+mismo bug que tenía la fila de feeds al pasar de Nombre a URL (SPECS §3.1).
 
-La causa está en `AddRow` (`SettingsView.tsx`): el input guarda con `onBlur`, y
-el `ColorDot` está *fuera* del input. Al hacer click en el punto de color, el
-input pierde el foco, `submit()` crea la categoría y `onCancel()` desmonta la
-fila; la categoría nueva reaparece al final de su grupo —correcto, ahí va la
-posición nueva— pero el color quedó sin elegir.
+**Son dos defensas y las dos hacen falta**, que es lo interesante del cambio. La
+que el ítem proponía —mirar `relatedTarget` para saber si el foco se fue de la
+fila— no alcanza sola: en el webview de macOS un click en un botón **no lo
+enfoca**, pero sí le saca el foco al input, así que el blur del punto de color
+habría llegado con `relatedTarget` en `null`, indistinguible de irse de la fila, y
+el bug sobreviviría con la suite en verde. La que sostiene el caso real es
+`keepFocus` en `ColorDot`: un `preventDefault` en el `mousedown` deja el foco donde
+está. El `relatedTarget` cubre el resto —Tab hacia afuera, un click en cualquier
+otra parte de Configs—.
 
-Es el **mismo bug** que tenía la fila de feeds al pasar de Nombre a URL (ver
-§3.1): guardar en el blur de un campo suelto, cuando la fila tiene varios
-controles, la destruye a mitad de camino. La solución de allá sirve acá: que el
-blur de un campo no cierre la fila, y que el alta se confirme con Enter o al
-salir de la fila completa (mirando `relatedTarget`). Vale también revisar si el
-color elegido antes de escribir el nombre sobrevive.
+`keepFocus` es **opt-in y no el comportamiento por defecto** porque las filas de
+renombre dependen del blur contrario: ahí el click en el punto es justamente lo
+que saca el foco del nombre, y por eso se guarda.
+
+Los dos tests van con `userEvent` y no con `fireEvent`, y se vieron rojos con el
+bug puesto: es el movimiento del foco lo que rompía el alta, y `fireEvent.click`
+no mueve el foco —el test pasaría igual—. Con el bug restaurado, el fallo es el
+síntoma exacto que se reportó: la paleta no llega a abrirse porque la fila ya se
+desmontó. También hay un `ref` que evita el alta doble, porque la fila sigue
+montada mientras se espera el `createCategory`.
 
 ### Mej.8 🔵 Que el calendario se sienta más al día
 
@@ -1964,6 +1979,58 @@ Queda comprobado de paso lo que era un supuesto y no una observación: que
 es de lo que depende que el modal "Lo nuevo" aparezca. El banco de pruebas
 (`sunriseDev.flujoCompleto()`) sigue sirviendo para mirar los componentes sin
 publicar nada.
+
+### Mej.23 🔵 La planificación diaria dice que ya la hiciste, sin poder desmentirla
+
+Reportado por el dev: entra a Planificación diaria un día en que **no pasó por
+ahí**, y el aviso de "ya planificaste este día" salta igual.
+
+Lo comprobado, que es poco y conviene no estirarlo: en la base de dev
+`planned_on` vale el día de hoy, en la de producción la clave no existe, y el
+**único** lugar del código que la escribe es `terminar()` en
+`DailyPlanningView.tsx`. Así que la marca se escribió hoy; con qué gesto, no se
+puede saber desde acá, y por eso no se afirma.
+
+Y ahí está el defecto de verdad, que se puede arreglar sin resolver el misterio:
+**`planned_on` guarda una fecha pelada y el aviso no dice cuándo planificaste**,
+así que la afirmación de la app no se puede desmentir desde la UI ni hay forma de
+borrar la marca. Dos consecuencias concretas:
+
+- Un ritual terminado a las 00:20 marca el día que **acaba de empezar**, que casi
+  nunca es lo que se quiso decir. Guardar un timestamp (`planned_at`) en vez de
+  una fecha deja distinguir los dos casos y permite que el aviso diga "hoy a las
+  00:20" — con eso, cualquier reporte futuro se diagnostica leyendo el diálogo.
+- El aviso no ofrece **"no fui yo, sigamos"**: hoy solo se cierra. Un botón que
+  limpie la marca y siga con el ritual cuesta poco y saca al usuario del callejón.
+
+Candidatos para el cómo, todos sin confirmar: un click en "Empezar el día" al
+navegar; un ritual terminado pasada la medianoche; o la marca escrita en una
+sesión que cruzó la medianoche con `today` ya actualizado. El primer paso es
+hacerlo diagnosticable, no adivinar.
+
+### Mej.24 ✅ Los pickers con búsqueda abrían sin el foco en el buscador — hecho
+
+Cualquier picker donde se puede buscar —canal, objetivo, duración— abría con el
+foco todavía en el botón que lo abrió: había que hacer un click más para escribir,
+y las flechas no navegaban.
+
+Los dos componentes **ya tenían** su `useEffect` de foco al montar, y ahí está lo
+interesante: no servía de nada. El `Popover` monta en el portal con
+`visibility: hidden` mientras mide su posición, y **`focus()` sobre un elemento
+invisible no hace nada**. Comprobado en el webview antes de tocar código: el mismo
+input toma el foco visible y lo rechaza oculto.
+
+Así que el foco pasó a ser responsabilidad del `Popover`, que es quien sabe cuándo
+ya es visible: enfoca el primer `input`/`textarea` que tenga adentro en cuanto hay
+posición. Los popovers sin campo —la paleta de colores, el ánimo, el calendario—
+no cambian el foco, y los efectos muertos de `SearchSelect` y `TimePicker` se
+fueron.
+
+**El test no puede fallar por la causa original y lo dice en su comentario**:
+jsdom no implementa la regla de visibilidad y acepta el foco igual, así que lo que
+sostiene es que *alguien* enfoque el campo. Que sea el `Popover` se verificó en el
+webview con el canal y con la duración: abrir y escribir de una, sin click
+intermedio.
 
 ---
 

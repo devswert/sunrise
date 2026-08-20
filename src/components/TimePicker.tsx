@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { formatMinutes, parseDuration } from "../lib/capacity";
+import { PLAIN_INPUT } from "./plainInput";
 
 const PRESETS = [5, 10, 15, 20, 25, 30, 45, 60, 90, 120, 180, 240];
 
@@ -19,11 +20,10 @@ interface TimePickerProps {
 export function TimePicker({ value, onSelect, clearLabel = "Sin estimar" }: TimePickerProps) {
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  // El foco inicial lo da `Popover`, no este efecto: montado dentro del portal,
+  // el input está `visibility: hidden` mientras se mide la posición y un
+  // `focus()` ahí no hace nada. Ver el comentario en `Popover.tsx`.
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
 
   const typed = useMemo(() => parseDuration(query), [query]);
 
@@ -70,6 +70,7 @@ export function TimePicker({ value, onSelect, clearLabel = "Sin estimar" }: Time
           placeholder="00:22, 45m, 1h30…"
           aria-label="Escribe una duración"
           onChange={(e) => setQuery(e.target.value)}
+          {...PLAIN_INPUT}
         />
       </div>
 

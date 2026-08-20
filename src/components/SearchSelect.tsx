@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, Search } from "lucide-react";
+import { PLAIN_INPUT } from "./plainInput";
 
 export interface SearchOption {
   value: string;
@@ -38,11 +39,10 @@ export function SearchSelect({
 }: SearchSelectProps) {
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  // El foco inicial lo da `Popover`, no este efecto: montado dentro del portal,
+  // el input está `visibility: hidden` mientras se mide la posición y un
+  // `focus()` ahí no hace nada. Ver el comentario en `Popover.tsx`.
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -85,6 +85,7 @@ export function SearchSelect({
           placeholder={placeholder}
           aria-label={placeholder}
           onChange={(e) => setQuery(e.target.value)}
+          {...PLAIN_INPUT}
         />
       </div>
 

@@ -497,6 +497,9 @@ también de donde sale el icono de cada una (§7).
   ISO separados por coma (`"6,7"`).
 - **Abrir sunrise al iniciar sesión** (§4.18): el único control de Configs que
   **no** lee ni escribe la tabla `settings`.
+- **El alta de un contexto o canal se confirma con Enter o al salir de la fila**,
+  no en el blur del nombre: elegir el color primero perdía el alta a medio camino
+  (la regla completa, en §7).
 - Contextos/channels: renombrar en línea, borrar, y el color se elige con un
   **punto que abre la paleta en un popover**. Las ocho muestras solían estar
   visibles en cada fila: con ocho categorías eran 64 puntos compitiendo con los
@@ -2261,6 +2264,25 @@ En `useFloatingWindow.ts`, ya pagadas:
   minúscula, así que `weekdayLabel` capitaliza. Los componentes de terceros
   traen su propio texto: `<DayPicker>` necesita `locale={es}` en cada uso.
 - **Autosave siempre. Nada de formularios planos con botón "Guardar".**
+- **Pero una fila con varios controles no se guarda en el blur de un campo.** El
+  blur del primero confirma la operación y desmonta la fila a mitad de camino.
+  Pasó dos veces: la fila de feeds al pasar de Nombre a URL (§3.1) y la de alta de
+  canales al ir a elegir el color. El patrón es `AddRow` en `SettingsView.tsx`:
+  el `onBlur` va **en la fila** y solo cuenta si `relatedTarget` cayó afuera, y el
+  control que abre el popover hace `preventDefault` en el `mousedown`
+  (`keepFocus` en `ColorDot`). La segunda defensa es la que sostiene el caso real
+  —en el webview de macOS un click en un botón no lo enfoca pero sí saca el foco,
+  así que el blur llega con `relatedTarget` en `null`, indistinguible de irse de la
+  fila— y va **opt-in**, porque las filas de renombre dependen del blur contrario.
+  Se testea con `userEvent`: `fireEvent.click` no mueve el foco y el test pasaría
+  con el bug puesto.
+- **El corrector ortográfico va solo donde hay prosa.** En macOS el webview
+  corrige, subraya y **capitaliza al salir del campo** todos los `input`, y llega a
+  cambiar lo escrito. Un campo que no es prosa spreadea `PLAIN_INPUT`
+  (`src/components/plainInput.ts`), que apaga `spellCheck`, `autoCorrect` y
+  `autoCapitalize`. Queda encendido en el **título y las notas de una tarea**. Para
+  un campo nuevo la pregunta no es si molesta el subrayado, es si alguien
+  escribiría ahí una frase.
 - **El botón de confirmar es salvia, no naranjo** (`.btn-primary`, tokens
   `--sage`/`--sage-ink`). El damasco de la paleta es **el mismo tono** que el
   semáforo de capacidad usa para "te pasaste" (`--cap-over`), así que un botón de
@@ -2270,6 +2292,13 @@ En `useFloatingWindow.ts`, ya pagadas:
 - **Popovers en portal con posición fija** (`src/components/Popover.tsx`). Si no,
   los recorta el `overflow` de columnas y modales, y el ancho queda limitado por
   el contenedor del chip.
+  **El foco inicial lo da el `Popover`, no el picker**: monta
+  `visibility: hidden` mientras mide su posición, y un `focus()` sobre un
+  elemento invisible **no hace nada** —los efectos de mount de `SearchSelect` y
+  `TimePicker` caían justo en ese hueco, así que el picker abría con el foco en el
+  botón que lo abrió y había que hacer un click más para escribir—. Enfoca el
+  primer `input`/`textarea` que tenga adentro cuando ya hay posición; el que no
+  trae campo (la paleta de colores, el ánimo, el calendario) no cambia el foco.
 - **Selects con búsqueda local** vía `src/components/SearchSelect.tsx`
   (componente único reutilizable). Duraciones vía `src/components/TimePicker.tsx`.
 - **Slots de altura fija** en vez de renderizar condicionalmente algo que
@@ -2291,7 +2320,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **417 tests front (48 archivos) y 148 Rust, todos verdes.**
+estado actual: **421 tests front (49 archivos) y 148 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL

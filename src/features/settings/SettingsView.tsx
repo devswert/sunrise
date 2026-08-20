@@ -17,6 +17,7 @@ import {
 } from "../../lib/settings";
 import { isoWeekdayLabel } from "../../lib/date";
 import { minutesFromTime } from "../calendar/railLayout";
+import { PLAIN_INPUT } from "../../components/plainInput";
 import {
   SHORTCUT_ACTIONS,
   type ShortcutId,
@@ -62,9 +63,28 @@ function Card({
  * categorías eran 64 puntos compitiendo por atención con los nombres, que es lo
  * que uno viene a leer.
  */
-function ColorDot({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+function ColorDot({
+  value,
+  onChange,
+  keepFocus,
+}: {
+  value: string;
+  onChange: (c: string) => void;
+  /**
+   * No sacar el foco de donde está al abrir la paleta ni al elegir un color.
+   *
+   * Es opt-in y no el comportamiento por defecto porque las dos cosas dependen
+   * del mismo blur: en las filas de renombre, el click en el punto es lo que
+   * saca el foco del nombre y **por eso** se guarda; en la fila de alta, ese
+   * mismo blur confirmaba el alta a medio camino (Mej.7).
+   */
+  keepFocus?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // `mousedown` y no `click`: el foco se mueve antes de que llegue el click, así
+  // que cancelarlo después no sirve de nada.
+  const holdFocus = keepFocus ? (e: React.MouseEvent) => e.preventDefault() : undefined;
 
   return (
     <div className="chip-wrap" ref={ref}>
@@ -72,6 +92,7 @@ function ColorDot({ value, onChange }: { value: string; onChange: (c: string) =>
         className="color-dot"
         style={{ background: `var(--${value})` }}
         aria-label={`Color: ${value}`}
+        onMouseDown={holdFocus}
         onClick={() => setOpen((v) => !v)}
       />
       {open && (
@@ -83,6 +104,7 @@ function ColorDot({ value, onChange }: { value: string; onChange: (c: string) =>
                 className={`swatch${value === c ? " is-active" : ""}`}
                 style={{ background: `var(--${c})` }}
                 aria-label={`Color ${c}`}
+                onMouseDown={holdFocus}
                 onClick={() => {
                   onChange(c);
                   setOpen(false);
@@ -132,6 +154,7 @@ function GeneralCard() {
           className={`set-input${error ? " is-invalid" : ""}`}
           aria-label="Capacidad diaria"
           value={value}
+          {...PLAIN_INPUT}
           onChange={(e) => {
             setDraft(e.target.value);
             setError(false);
@@ -418,6 +441,7 @@ function JornadaFields() {
         aria-label={label}
         placeholder="09:00"
         value={draft[cual] ?? workday[cual]}
+        {...PLAIN_INPUT}
         onChange={(e) => {
           setDraft((d) => ({ ...d, [cual]: e.target.value }));
           setError(null);
@@ -536,7 +560,25 @@ function ShortcutsCard() {
   );
 }
 
-/** Campo inline para crear un contexto o un canal dentro de uno. */
+/**
+ * Campo inline para crear un contexto o un canal dentro de uno.
+ *
+ * **El alta se confirma con Enter o al salir de la fila completa**, nunca en el
+ * blur de un campo suelto. Guardar en el blur del nombre destruía la fila a
+ * mitad de camino: el click en el punto de color le saca el foco al input, el
+ * alta se creaba sin color y la categoría reaparecía al final de su grupo con el
+ * color a medio elegir (Mej.7). Es el mismo bug que tenía la fila de feeds al
+ * pasar de Nombre a URL (SPECS §3.1).
+ *
+ * Son dos defensas y las dos hacen falta:
+ *
+ * - `keepFocus` en el punto de color, que es la que sostiene el caso real. En el
+ *   webview de macOS un click en un botón **no lo enfoca**, pero sí saca el
+ *   foco del input, así que el blur llegaría con `relatedTarget` en `null` —o
+ *   sea, indistinguible de irse de la fila—.
+ * - El blur a nivel de la fila, que cubre el resto: Tab hacia afuera, o un click
+ *   en cualquier otra parte de Configs.
+ */
 function AddRow({
   placeholder,
   child,
@@ -556,17 +598,35 @@ function AddRow({
     ref.current?.focus();
   }, []);
 
+  // La fila sigue montada mientras se espera el alta, así que un blur que llegue
+  // en ese rato crearía la categoría dos veces.
+  const creating = useRef(false);
+
   async function submit() {
     const n = name.trim();
     if (!n) return onCancel();
-    await onCreate(n, color);
+    if (creating.current) return;
+    creating.current = true;
+    try {
+      await onCreate(n, color);
+    } finally {
+      // En un `finally` para que un alta que falló se pueda reintentar; sin esto
+      // la fila queda muda y la única salida es Escape.
+      creating.current = false;
+    }
     setName("");
     onCancel();
   }
 
+  /** Solo cuando el foco se fue de la fila entera; entre sus controles, no. */
+  function onRowBlur(e: React.FocusEvent<HTMLLIElement>) {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    void submit();
+  }
+
   return (
-    <li className={`set-row is-adding${child ? " is-child" : ""}`}>
-      <ColorDot value={color} onChange={setColor} />
+    <li className={`set-row is-adding${child ? " is-child" : ""}`} onBlur={onRowBlur}>
+      <ColorDot value={color} onChange={setColor} keepFocus />
       <input
         ref={ref}
         className="set-row__input"
@@ -574,7 +634,7 @@ function AddRow({
         aria-label={placeholder}
         value={name}
         onChange={(e) => setName(e.target.value)}
-        onBlur={submit}
+        {...PLAIN_INPUT}
         onKeyDown={(e) => {
           if (e.key === "Enter") submit();
           if (e.key === "Escape") onCancel();
@@ -659,6 +719,7 @@ function ChannelsCard() {
                     }
                   }}
                   aria-label={`Nombre de ${p.name}`}
+                  {...PLAIN_INPUT}
                 />
                 <button
                   className="set-row__icon"
@@ -698,6 +759,7 @@ function ChannelsCard() {
                       }
                     }}
                     aria-label={`Nombre de ${ch.name}`}
+                    {...PLAIN_INPUT}
                   />
                   <button
                     className="set-row__icon is-danger"

@@ -53,6 +53,26 @@ export function Popover({
     setPos({ top, left });
   }, [anchorRef, align]);
 
+  /**
+   * El foco al primer campo de búsqueda, cuando ya se puede.
+   *
+   * Lo hace el popover y no cada picker por una razón medida: el portal monta
+   * `visibility: hidden` mientras mide su posición, y **`focus()` sobre un
+   * elemento invisible no hace nada** (comprobado en el webview: el mismo input
+   * toma el foco visible y lo rechaza oculto). Los `useEffect` de mount de
+   * `SearchSelect` y `TimePicker` caían justo en ese hueco, así que el picker
+   * abría con el foco todavía en el botón que lo abrió: había que hacer un click
+   * más para poder escribir, y las flechas tampoco navegaban.
+   *
+   * Depende de `pos`, que es la señal de "ya soy visible". Si el popover no trae
+   * campo —la paleta de colores, el selector de ánimo, el calendario— no hay a
+   * quién enfocar y no pasa nada.
+   */
+  useEffect(() => {
+    if (!pos) return;
+    ref.current?.querySelector<HTMLElement>("input, textarea")?.focus();
+  }, [pos]);
+
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;

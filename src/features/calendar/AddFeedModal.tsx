@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
+import { PLAIN_INPUT } from "../../components/plainInput";
 
 /** Mismo piso que `POLL_MINIMO` en `repo.rs`. */
 export const POLL_MINIMO = 2;
@@ -110,8 +111,7 @@ export function AddFeedModal({
               aria-label="Nombre del calendario"
               value={name}
               autoFocus
-              spellCheck={false}
-              autoCorrect="off"
+              {...PLAIN_INPUT}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") urlRef.current?.focus();
@@ -131,8 +131,7 @@ export function AddFeedModal({
               placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
               aria-label="URL del calendario"
               value={icsUrl}
-              spellCheck={false}
-              autoCorrect="off"
+              {...PLAIN_INPUT}
               onChange={(e) => setIcsUrl(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void save();
@@ -178,7 +177,7 @@ export function AddFeedModal({
                 className="set-input"
                 aria-label="Minutos entre sincronizaciones"
                 value={pollMinutes}
-                spellCheck={false}
+                {...PLAIN_INPUT}
                 onChange={(e) => setPollMinutes(e.target.value)}
                 onBlur={() =>
                   setPollMinutes(

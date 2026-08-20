@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingsView } from "./SettingsView";
 import { api } from "../../lib/ipc";
@@ -225,5 +225,66 @@ describe("SettingsView · actualizaciones", () => {
 
     expect(await screen.findByText(/No se pudo preguntar por versiones nuevas/)).toBeInTheDocument();
     expect(screen.queryByText(/Estás en la última versión/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Guardar en el blur de un campo suelto destruye una fila que tiene varios
+ * controles. Los dos tests van con `userEvent` y no con `fireEvent`: es el
+ * movimiento del foco lo que rompía el alta, y `fireEvent.click` no mueve el
+ * foco —el test pasaría igual con el bug puesto—.
+ */
+describe("SettingsView · alta de un canal", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("elegir el color no confirma el alta a medio camino", async () => {
+    const create = vi.spyOn(api, "createCategory");
+    render(<SettingsView />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Agregar contexto" }));
+    const input = screen.getByLabelText("Nombre del contexto");
+    await userEvent.type(input, "Investigación");
+
+    // El punto abre la paleta sin sacarle el foco al nombre. Se busca dentro de
+    // la fila: hay una categoría sembrada que también arranca en lavender.
+    const row = within(input.closest("li")!);
+    await userEvent.click(row.getByRole("button", { name: "Color: lavender" }));
+    await userEvent.click(screen.getByRole("button", { name: "Color mint" }));
+    expect(create).not.toHaveBeenCalled();
+
+    await userEvent.keyboard("{Enter}");
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledWith(null, "Investigación", "mint");
+  });
+
+  it("salir de la fila entera lo confirma, igual que Enter", async () => {
+    const create = vi.spyOn(api, "createCategory");
+    render(<SettingsView />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Agregar contexto" }));
+    await userEvent.type(screen.getByLabelText("Nombre del contexto"), "Lecturas");
+    await userEvent.tab();
+
+    expect(create).toHaveBeenCalledWith(null, "Lecturas", "lavender");
+  });
+});
+
+/**
+ * El corrector del webview no solo subraya: capitaliza y cambia lo escrito al
+ * salir del campo, y ninguno de estos campos es prosa (Mej.5).
+ */
+describe("SettingsView · campos que no son prosa", () => {
+  it("apaga el corrector en los nombres y en los números", async () => {
+    render(<SettingsView />);
+    for (const campo of [
+      await screen.findByDisplayValue("Thinking"),
+      screen.getByLabelText("Capacidad diaria"),
+      screen.getByLabelText("Inicio"),
+    ]) {
+      expect(campo).toHaveAttribute("spellcheck", "false");
+      expect(campo).toHaveAttribute("autocorrect", "off");
+    }
   });
 });

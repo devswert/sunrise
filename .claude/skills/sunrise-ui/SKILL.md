@@ -114,6 +114,48 @@ conviertas en un save ni lo borres por inútil: nómbralo como lo que hace (SPEC
 Después de guardar, llama **`bumpData()`** para que el resto de la app (incluido
 el taxímetro) se entere. Ver la skill `sunrise-sync-ventanas`.
 
+### Una fila con varios controles no se guarda en el blur de un campo
+
+El autosave por `onBlur` es correcto para un campo suelto, y **destruye una fila
+que tiene varios controles**: al pasar del nombre al segundo control, el blur del
+primero confirma el alta y desmonta la fila a mitad de camino. Pasó dos veces —la
+fila de feeds al pasar de Nombre a URL (SPECS §3.1) y la de alta de canales al ir
+a elegir el color (Mej.7)—, y el síntoma no se lee como un bug de foco: la fila
+"salta" y lo que estabas eligiendo se pierde.
+
+El patrón, en `AddRow` de `SettingsView.tsx`, son **dos defensas**:
+
+1. **`onBlur` en la fila, no en el campo**, y solo si el foco se fue de verdad:
+   `if (e.currentTarget.contains(e.relatedTarget)) return;`. Cubre Tab hacia
+   afuera y el click en otra parte.
+2. **`preventDefault` en el `mousedown`** del control que abre un popover
+   (`keepFocus` en `ColorDot`), que es la que sostiene el caso real: en el webview
+   de macOS un click en un botón **no lo enfoca**, pero sí le saca el foco al
+   input, así que el blur llega con `relatedTarget` en `null` — indistinguible de
+   irse de la fila. Con solo la defensa 1, el bug sigue vivo y la suite verde.
+
+Va como **opt-in**, no por defecto: las filas de *renombre* dependen del blur
+contrario —el click en el punto de color es lo que saca el foco del nombre, y por
+eso se guarda—.
+
+Y si la fila puede esperar un `await` para crearse, guarda un `ref` que impida el
+alta doble: sigue montada mientras espera.
+
+**Testéalo con `userEvent`, nunca con `fireEvent`.** Lo que rompe el alta es el
+movimiento del foco, y `fireEvent.click` no mueve el foco: el test pasa igual con
+el bug puesto. Míralo rojo antes de arreglarlo.
+
+### El corrector ortográfico va solo donde hay prosa
+
+En macOS el webview corrige, subraya en rojo y **capitaliza al salir del campo**
+todos los `input`, y llega a cambiar lo escrito. Un campo que no es prosa spreadea
+`PLAIN_INPUT` (`src/components/plainInput.ts`), que apaga los tres:
+`spellCheck`, `autoCorrect`, `autoCapitalize`.
+
+Se deja el corrector **solo en el título y las notas de una tarea**. Para un campo
+nuevo, la pregunta no es si molesta el subrayado: es si alguien escribiría ahí una
+frase. Nombres, horas, números, URLs y los buscadores de los dropdowns no.
+
 ## Los atajos de un modal van en `window`, no en su `onKeyDown`
 
 Un `onKeyDown` en el div del modal solo se dispara si el `target` del evento está
@@ -148,6 +190,16 @@ resuelves con posicionamiento relativo dentro de la card o del modal:
 
 Ambas cosas ya pasaron. Pásale el `anchorRef` y usa `align="right"` cuando el
 ancla esté pegada al borde derecho.
+
+**El foco inicial lo da el `Popover`, no el picker.** El portal monta
+`visibility: hidden` mientras mide su posición, y **`focus()` sobre un elemento
+invisible no hace nada**: los `useEffect` de mount de `SearchSelect` y
+`TimePicker` corrían exactamente en ese hueco, así que cualquier picker con
+búsqueda abría con el foco en el botón que lo abrió —un click más para escribir, y
+las flechas sin efecto—. `Popover` enfoca el primer `input`/`textarea` que tenga
+adentro cuando ya tiene posición; si no trae campo, no toca el foco. Si escribes
+un picker nuevo, **no le pongas su propio efecto de foco**: no va a funcionar y
+parece que sí (jsdom acepta el foco en un elemento oculto, así que el test pasa).
 
 ## Slots de altura fija para no desalinear columnas
 

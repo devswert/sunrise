@@ -9,6 +9,7 @@ import { useCalendarSync } from "../../lib/calendarSync";
 import { sectionIcon } from "../settings/secciones";
 import { AddFeedModal, POLL_DEFAULT, POLL_MINIMO } from "./AddFeedModal";
 import { SyncButton } from "./SyncButton";
+import { PLAIN_INPUT } from "../../components/plainInput";
 
 interface Props {
   categories: Category[];
@@ -185,8 +186,7 @@ function FeedItem({
           className="feed__nombre"
           aria-label={`Nombre de ${feed.name}`}
           value={name}
-          spellCheck={false}
-          autoCorrect="off"
+          {...PLAIN_INPUT}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => {
             const v = name.trim();
@@ -261,7 +261,7 @@ function FeedItem({
             className="feed__poll-input"
             aria-label={`Minutos entre sincronizaciones de ${feed.name}`}
             value={poll}
-            spellCheck={false}
+            {...PLAIN_INPUT}
             onChange={(e) => setPoll(e.target.value)}
             onBlur={() => {
               const v = Math.max(POLL_MINIMO, Number.parseInt(poll, 10) || POLL_DEFAULT);
