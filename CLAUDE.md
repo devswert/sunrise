@@ -17,6 +17,10 @@ solas cuando el tema aparece — no hace falta leerlas todas por adelantado:
 | `sunrise-tests` | Vitest/RTL, `cargo test`, por qué el mock es obligatorio |
 | `sunrise-release` | publicar: changelog, versión en tres archivos, tag |
 
+Y una que no es de reglas sino de consulta, para invocar como comando:
+**`/sunrise-backlog`** responde qué queda por hacer, leyendo el ROADMAP y
+devolviéndolo en tablas por categoría con una recomendación al final.
+
 **Si tu cambio no cae limpio en ninguna de esas seis, lee `docs/SPECS.md` antes
 de tocar código** — las skills cubren los dominios más frágiles, no todo el
 proyecto (por ejemplo el reconciler ICS de M3 no tiene skill todavía).
