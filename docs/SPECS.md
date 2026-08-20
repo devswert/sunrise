@@ -255,8 +255,18 @@ siguiente corrida.
   busca por `data-date` y no con un ref, porque la `<section>` ya tiene el del
   droppable de dnd-kit. El botón "Hoy" lleva además un contador: sin él, apretarlo
   estando ya en la semana de hoy no reposicionaba nada, porque el ancla no
-  cambiaba. Dejar **hoy al centro** —y no el lunes al borde— es Mej.9, todavía
-  abierta.
+  cambiaba.
+- **El scroll deja hoy al centro**, y solo cuando hoy cae en la semana del ancla;
+  si no, pega el lunes de esa semana al borde izquierdo. La condición va contra la
+  **semana del ancla y no contra las 21 fechas**, y ahí está el detalle que se
+  rompe fácil: al apretar "semana siguiente" hoy sigue estando en la ventana —pasa
+  a ser la semana anterior—, así que centrarlo scrollearía de vuelta y la flecha no
+  haría nada. La aritmética vive en `scrollDelta` (`anchor.ts`) porque es la única
+  parte testeable: jsdom no implementa `scrollLeft` ni devuelve rectángulos, así
+  que la medición y la asignación se quedan en el componente y se verifican en el
+  browser. Corre **al montar, al cambiar de semana y al cambiar el día**, nunca con
+  una invalidación de datos: recolocar la vista al guardar una tarea sería pelear
+  con quien ya scrolleó a propósito.
 - **Los días anteriores a hoy sí reciben cards**, y van con menos contraste
   (`.day-col.is-past`) solo como información: el pasado es pasado. Se evaluó
   bloquearlos y **se decidió no hacerlo**, porque bloquear costaba más de lo que
@@ -2281,7 +2291,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **411 tests front (48 archivos) y 148 Rust, todos verdes.**
+estado actual: **417 tests front (48 archivos) y 148 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -2304,6 +2314,11 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 - **Front**: `capacity` (semáforo + parseo), `date`, `history`, `useTimer`,
   `useDragOrClick`, `TaskCard`, `TaskModal`, `Sidebar`, `FocusView`,
   `SettingsView`.
+- **El posicionamiento del scroll**: `src/features/week/anchor.test.ts`
+  (`scrollDelta`: pegado a la izquierda, centrado, una columna ya centrada que no
+  mueve nada, el negativo sin acotar y el board más angosto que la columna). Solo
+  la aritmética; que hoy quede efectivamente al centro y que la flecha no rebote se
+  verificó en el browser.
 - **La ventana de la vista semana**: `src/lib/date.test.ts` (`threeWeeks`: tres
   semanas de siete, la del ancla al medio, cada una arrancando en lunes, cortes de
   mes y de año) y `WeekView.test.tsx` (las 21 columnas en orden, un rótulo por

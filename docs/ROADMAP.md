@@ -1197,8 +1197,8 @@ capa de ajustes: **ausente y vacío no significan lo mismo** en esta clave, que 
 lo que hace expresable "ningún día plegado" y la razón de que la migración 9
 siembre la fila.
 
-Lo que queda es **Mej.9**: dejar hoy **al centro** y no el lunes al borde
-izquierdo.
+Con eso **Mej.9** quedó a un paso, y se cerró enseguida: centrar hoy en vez de
+pegar el lunes al borde.
 
 ### Mej.3 ⬛ Avisar cuándo una tarea lleva días arrastrándose — retirada
 
@@ -1421,27 +1421,34 @@ Lo que **no** es una opción: tiempo real de verdad requeriría la API de Google
 `watch` (webhooks), y eso necesita un endpoint HTTPS público — un servidor, que
 este proyecto no tiene ni quiere.
 
-### Mej.9 🔵 Al entrar a la semana, centrar el día de hoy
+### Mej.9 ✅ Al entrar a la semana, centrar el día de hoy — hecho
 
-**Ya no está bloqueada**: Mej.2 dejó las tres semanas y el andamio del scroll.
-Lo que falta es el centrado en sí. Hoy la vista aterriza en el **lunes de la
-semana del ancla**, que es lo que resolvía el síntoma grueso —abrirse mirando la
-semana pasada—, pero con ~4,7 columnas visibles eso deja hoy en algún lugar de la
-mitad izquierda, no al centro.
+El scroll deja hoy al centro en vez del lunes pegado al borde izquierdo. Con ~4,7
+columnas visibles, alinear el lunes dejaba a hoy en la mitad izquierda y media
+pantalla se la llevaba la semana que ya pasó. Detalle en
+[SPECS §4.3](SPECS.md#43-vista-semana-weekview-y-today-todayview).
 
-Cosas a resolver:
+**Lo que casi se rompe, y es lo único interesante de este cambio:** la condición
+de cuándo centrar. Lo natural es "si hoy está en la ventana", y eso deja la flecha
+de "semana siguiente" sin efecto — hoy sigue estando en la ventana, pasa a ser la
+semana anterior, así que el scroll lo volvía a centrar y la vista no se movía. La
+condición correcta es **si hoy está en la semana del ancla**; si no, se pega el
+lunes de esa semana al borde. Se verificó en el browser el circuito completo:
+entrar centra hoy, la flecha navega y se queda, "Hoy" vuelve y centra.
 
-- **Centrar, no solo hacer visible.** El cálculo a mano contra los rectángulos ya
-  está escrito en `WeekView` (y el scroll suave nativo quedó descartado: no está
-  en todos los webviews, ya pasó con las tabs de Configs). Lo que cambia es el
-  objetivo: en vez de alinear el lunes con el borde izquierdo, restar media
-  diferencia entre el ancho del contenedor y el de la columna de hoy.
-- **Al montar y al cambiar el día.** El día ya es estado observable
-  (`useToday`), así que una sesión que cruza la medianoche debería recentrar
-  igual que reancla la semana.
-- **Sin pelear con el usuario.** Si ya scrolleó a propósito, recentrar en cada
-  recarga de datos sería molesto: solo al montar y al cambiar el día, no con
-  cada `dataVersion`.
+La aritmética se sacó a `scrollDelta` (`anchor.ts`) para poder testearla: jsdom no
+implementa `scrollLeft` ni devuelve rectángulos, así que la medición y la
+asignación se quedan en el componente. Cinco casos, incluido el board más angosto
+que la columna. Y el efecto corre solo **al montar, al cambiar de semana y al
+cambiar el día** —el día es estado observable (`useToday`), así que una sesión que
+cruza la medianoche recentra igual que reancla la semana—, nunca con una
+invalidación de datos: recolocar la vista al guardar una tarea sería pelear con
+quien ya scrolleó a propósito.
+
+Un detalle del método, por si vuelve a pasar: **el panel del browser oculto
+devuelve rectángulos en cero**, así que la primera medición del centrado dio
+`clientWidth: 0` y números sin sentido. Lo que sirvió fue el click real más el
+pantallazo.
 
 ### Mej.10 ✅ `ORPHANED` escondía las reuniones ya trabajadas — hecho
 

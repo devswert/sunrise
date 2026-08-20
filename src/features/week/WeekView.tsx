@@ -27,7 +27,7 @@ import {
 } from "../../lib/date";
 import { useToday } from "../../lib/day";
 import { useCapacitySettings, useCollapsedWeekdays, useWorkHours } from "../../lib/settings";
-import { anchorAfterDayChange } from "./anchor";
+import { anchorAfterDayChange, scrollDelta } from "./anchor";
 import { SyncButton } from "../calendar/SyncButton";
 import { CalendarRail } from "../calendar/CalendarRail";
 import { SideDock } from "./SideDock";
@@ -116,29 +116,47 @@ export function WeekView() {
   }, [railAbierto, selectedId]);
 
   /**
-   * El scroll arranca en la semana del ancla, no en el borde izquierdo de la
-   * ventana: si no, la vista se abre mirando la semana pasada.
+   * Dónde queda parado el scroll. Dos objetivos, y la condición entre ellos es lo
+   * que evita pelearse con la navegación:
    *
-   * Se calcula `scrollLeft` a mano contra los rectángulos y **sin scroll suave**:
-   * el nativo no está disponible en todos los webviews —ya pasó con las tabs de
-   * Configs, que terminaron con animación propia— y acá además no se quiere
-   * animación ninguna, porque esto corre al montar y al cambiar de semana.
+   * - **Hoy al centro**, cuando hoy cae en la semana del ancla. Es lo que se
+   *   quiere al entrar: con el lunes pegado al borde izquierdo, hoy queda en la
+   *   mitad izquierda y media pantalla se la lleva la semana que ya pasó.
+   * - **El lunes del ancla al borde**, cuando no.
    *
-   * `recentrar` es un contador y no un booleano porque "Hoy" tiene que volver a
-   * posicionar aunque el ancla ya sea la de hoy: sin él, apretarlo después de
-   * haber scrolleado a mano no hacía nada.
+   * La condición es contra la semana del ancla y **no contra las 21 fechas**: al
+   * apretar "semana siguiente", hoy sigue estando en la ventana —pasa a ser la
+   * semana anterior—, así que centrarlo scrollearía de vuelta y la flecha no
+   * haría nada.
+   *
+   * Corre **al montar, al cambiar de semana y al cambiar el día**, y no con cada
+   * invalidación de datos: si ya scrolleaste a propósito, que la vista se
+   * recoloque sola al guardar una tarea sería pelear contigo. `recenter` es un
+   * contador y no un booleano porque "Hoy" tiene que reposicionar aunque el ancla
+   * ya sea la de hoy: sin él, apretarlo después de scrollear a mano no hacía nada.
+   *
+   * El cálculo vive en `scrollDelta` porque es la única parte testeable: jsdom no
+   * implementa `scrollLeft` ni devuelve rectángulos.
    */
   const boardRef = useRef<HTMLDivElement | null>(null);
   const [recenter, setRecenter] = useState(0);
   useLayoutEffect(() => {
     const board = boardRef.current;
+    const center = anchorWeek.includes(today);
     // Por `data-date` y no por un ref en la columna: la sección ya tiene el ref
     // del droppable de dnd-kit, y componer dos sobre el mismo nodo se rompe en
     // silencio. Buscar la fecha además dice qué se está buscando.
-    const col = board?.querySelector<HTMLElement>(`[data-date="${start}"]`);
+    const col = board?.querySelector<HTMLElement>(`[data-date="${center ? today : start}"]`);
     if (!board || !col) return;
-    board.scrollLeft += col.getBoundingClientRect().left - board.getBoundingClientRect().left;
-  }, [start, recenter]);
+    const rect = col.getBoundingClientRect();
+    board.scrollLeft += scrollDelta({
+      colLeft: rect.left,
+      colWidth: rect.width,
+      boardLeft: board.getBoundingClientRect().left,
+      boardWidth: board.clientWidth,
+      center,
+    });
+  }, [start, recenter, today, anchorWeek]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),

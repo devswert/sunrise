@@ -333,11 +333,16 @@ Detalles que ya están resueltos y conviene mantener:
   falta —el auto-scroll de dnd-kit ajusta sus rects y la card cae donde quedó el
   puntero— y remedir en cada movimiento del puntero con 21 columnas y todas sus
   cards se paga en la fluidez, que ya costó una tanda entera de arreglos.
-- **El scroll del board se posiciona a mano**, sin `scrollIntoView` ni scroll
-  suave: el nativo no está en todos los webviews (ya pasó con las tabs de Configs).
-  La columna se busca por `data-date`, no con un ref, porque la `<section>` ya
-  tiene el del droppable de dnd-kit y componer dos refs sobre el mismo nodo se
-  rompe en silencio.
+- **El scroll del board se posiciona a mano** (`scrollDelta` en `anchor.ts`), sin
+  `scrollIntoView` ni scroll suave: el nativo no está en todos los webviews (ya
+  pasó con las tabs de Configs). La columna se busca por `data-date`, no con un
+  ref, porque la `<section>` ya tiene el del droppable de dnd-kit y componer dos
+  refs sobre el mismo nodo se rompe en silencio. Deja **hoy al centro**, pero solo
+  si hoy está en la semana del ancla: con las 21 fechas como condición, la flecha
+  de "semana siguiente" no hacía nada, porque hoy seguía en la ventana y el scroll
+  volvía a centrarlo. Y corre solo al montar, al cambiar de semana y al cambiar el
+  día — nunca con una invalidación de datos, o la vista se recolocaría sola cada
+  vez que guardas algo.
 - **Una semana es un bloque, no siete columnas sueltas** (`.board__wk`). Eso es lo
   que le da al rótulo de la semana un contenedor donde pegarse —`sticky left: 0` +
   `align-self: flex-start`, con fondo opaco para que el que entra tape al que
