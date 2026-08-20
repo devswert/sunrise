@@ -29,18 +29,18 @@ import ipcTs from "./ipc.ts?raw";
  * coma adentro se leería como una clave más. El `[^:]` deja pasar el `//` de una
  * URL, que en un comentario de doc sí aparece.
  */
-function sinComentarios(texto: string): string {
-  return texto.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
-const COMMANDS_RS = sinComentarios(commandsRs);
-const LIB_RS = sinComentarios(libRs);
-const IPC_TS = sinComentarios(ipcTs);
+const COMMANDS_RS = stripComments(commandsRs);
+const LIB_RS = stripComments(libRs);
+const IPC_TS = stripComments(ipcTs);
 
 /** `to_date` → `toDate`. Es la conversión que hace Tauri con los argumentos. */
 function camelCase(snake: string): string {
-  const [primera, ...resto] = snake.split("_");
-  return primera + resto.map((p) => p[0].toUpperCase() + p.slice(1)).join("");
+  const [head, ...tail] = snake.split("_");
+  return head + tail.map((part) => part[0].toUpperCase() + part.slice(1)).join("");
 }
 
 /**
@@ -48,40 +48,40 @@ function camelCase(snake: string): string {
  * `<>`, `()` o `{}`. Sin esto, `State<'_, Db>` se parte en dos y cada parámetro
  * queda inventado.
  */
-function topLevelSplit(texto: string): string[] {
-  const partes: string[] = [];
-  let profundidad = 0;
-  let actual = "";
-  for (const ch of texto) {
-    if ("<({[".includes(ch)) profundidad++;
-    else if (">)}]".includes(ch)) profundidad--;
-    if (ch === "," && profundidad === 0) {
-      partes.push(actual);
-      actual = "";
+function topLevelSplit(source: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let buffer = "";
+  for (const char of source) {
+    if ("<({[".includes(char)) depth++;
+    else if (">)}]".includes(char)) depth--;
+    if (char === "," && depth === 0) {
+      parts.push(buffer);
+      buffer = "";
       continue;
     }
-    actual += ch;
+    buffer += char;
   }
-  partes.push(actual);
-  return partes.map((p) => p.trim()).filter(Boolean);
+  parts.push(buffer);
+  return parts.map((part) => part.trim()).filter(Boolean);
 }
 
 /**
- * El bloque balanceado que arranca en el primer `apertura` desde `desde`, o
- * `null` si no hay ninguno. El cierre se deduce del que abre: el
- * `invoke_handler` usa `![...]` y no `{...}`, y buscar una llave ahí devolvía
- * un bloque de otra parte del archivo — con el test pasando por vacío.
+ * El bloque balanceado que arranca en el primer `opener` desde `at`, o `null` si
+ * no hay ninguno. El cierre se deduce del que abre: el `invoke_handler` usa
+ * `![...]` y no `{...}`, y buscar una llave ahí devolvía un bloque de otra parte
+ * del archivo — con el test pasando por vacío.
  */
-function bloque(texto: string, desde: number, apertura: "{" | "[" = "{"): string | null {
-  const cierre = apertura === "{" ? "}" : "]";
-  const abre = texto.indexOf(apertura, desde);
-  if (abre === -1) return null;
-  let profundidad = 0;
-  for (let i = abre; i < texto.length; i++) {
-    if (texto[i] === apertura) profundidad++;
-    else if (texto[i] === cierre) {
-      profundidad--;
-      if (profundidad === 0) return texto.slice(abre + 1, i);
+function balancedBlock(source: string, at: number, opener: "{" | "[" = "{"): string | null {
+  const closer = opener === "{" ? "}" : "]";
+  const start = source.indexOf(opener, at);
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < source.length; i++) {
+    if (source[i] === opener) depth++;
+    else if (source[i] === closer) {
+      depth--;
+      if (depth === 0) return source.slice(start + 1, i);
     }
   }
   return null;
@@ -93,87 +93,83 @@ function bloque(texto: string, desde: number, apertura: "{" | "[" = "{"): string
  * `State<'_, Db>`, `AppHandle` y `Window` los inyecta Tauri: no son argumentos
  * que mande el front, y contarlos daría un desacuerdo en los 59 comandos.
  */
-function comandosDeRust(rs: string): Map<string, string[]> {
-  const comandos = new Map<string, string[]>();
+function rustCommands(source: string): Map<string, string[]> {
+  const commands = new Map<string, string[]>();
   const re = /#\[tauri::command\][^\n]*\s*pub (?:async )?fn (\w+)\s*\(/g;
-  for (let m = re.exec(rs); m; m = re.exec(rs)) {
-    const abre = rs.indexOf("(", m.index + m[0].length - 1);
-    let profundidad = 0;
-    let cierra = abre;
-    for (let i = abre; i < rs.length; i++) {
-      if (rs[i] === "(") profundidad++;
-      else if (rs[i] === ")") {
-        profundidad--;
-        if (profundidad === 0) {
-          cierra = i;
+  for (let match = re.exec(source); match; match = re.exec(source)) {
+    const open = source.indexOf("(", match.index + match[0].length - 1);
+    let depth = 0;
+    let close = open;
+    for (let i = open; i < source.length; i++) {
+      if (source[i] === "(") depth++;
+      else if (source[i] === ")") {
+        depth--;
+        if (depth === 0) {
+          close = i;
           break;
         }
       }
     }
-    const params = topLevelSplit(rs.slice(abre + 1, cierra))
-      .map((p) => {
-        const dosPuntos = p.indexOf(":");
-        return { nombre: p.slice(0, dosPuntos).trim(), tipo: p.slice(dosPuntos + 1) };
+    const params = topLevelSplit(source.slice(open + 1, close))
+      .map((param) => {
+        const colon = param.indexOf(":");
+        return { name: param.slice(0, colon).trim(), type: param.slice(colon + 1) };
       })
-      .filter(({ tipo }) => !/State<|AppHandle|Window/.test(tipo))
-      .map(({ nombre }) => nombre);
-    comandos.set(m[1], params);
+      .filter(({ type }) => !/State<|AppHandle|Window/.test(type))
+      .map(({ name }) => name);
+    commands.set(match[1], params);
   }
-  return comandos;
+  return commands;
 }
 
 /** Las llamadas de `ipc.ts`: nombre del comando y claves que le manda. */
-function invocacionesDelFront(limpio: string): Map<string, string[]> {
-  const llamadas = new Map<string, string[]>();
+function frontInvocations(source: string): Map<string, string[]> {
+  const calls = new Map<string, string[]>();
   const re = /invoke<[^>]*>\(\s*"(\w+)"\s*(,?)/g;
-  for (let m = re.exec(limpio); m; m = re.exec(limpio)) {
-    const [, comando, coma] = m;
-    if (!coma) {
-      llamadas.set(comando, []);
+  for (let match = re.exec(source); match; match = re.exec(source)) {
+    const [, command, comma] = match;
+    if (!comma) {
+      calls.set(command, []);
       continue;
     }
-    const args = bloque(limpio, re.lastIndex);
-    const claves = args
-      ? topLevelSplit(args).map((p) => p.split(":")[0].trim())
-      : [];
-    llamadas.set(comando, claves);
+    const args = balancedBlock(source, re.lastIndex);
+    const keys = args ? topLevelSplit(args).map((part) => part.split(":")[0].trim()) : [];
+    calls.set(command, keys);
   }
-  return llamadas;
+  return calls;
 }
 
 describe("el contrato del puente IPC", () => {
-  const comandos = comandosDeRust(COMMANDS_RS);
-  const llamadas = invocacionesDelFront(IPC_TS);
+  const commands = rustCommands(COMMANDS_RS);
+  const calls = frontInvocations(IPC_TS);
 
   // Si el parseo se rompe con un cambio de formato, el resto de los asserts
   // pasarían por vacíos en vez de fallar.
   it("encuentra comandos y llamadas en los archivos", () => {
-    expect(comandos.size).toBeGreaterThan(40);
-    expect(llamadas.size).toBeGreaterThan(40);
-    expect(comandos.get("daily_log")).toEqual(["to_date", "days"]);
+    expect(commands.size).toBeGreaterThan(40);
+    expect(calls.size).toBeGreaterThan(40);
+    expect(commands.get("daily_log")).toEqual(["to_date", "days"]);
   });
 
   it("cada invoke le manda al comando las claves que Rust espera, en camelCase", () => {
-    for (const [comando, claves] of llamadas) {
-      const params = comandos.get(comando);
-      expect(params, `ipc.ts llama "${comando}", que no existe en commands.rs`).toBeDefined();
+    for (const [command, keys] of calls) {
+      const params = commands.get(command);
+      expect(params, `ipc.ts llama "${command}", que no existe en commands.rs`).toBeDefined();
       expect(
-        [...claves].sort(),
-        `las claves de "${comando}" no son los parámetros de Rust en camelCase`,
+        [...keys].sort(),
+        `las claves de "${command}" no son los parámetros de Rust en camelCase`,
       ).toEqual(params!.map(camelCase).sort());
     }
   });
 
   it("todos los comandos están registrados en el invoke_handler de lib.rs", () => {
-    const handler = bloque(LIB_RS, LIB_RS.indexOf("generate_handler!"), "[") ?? "";
+    const handler = balancedBlock(LIB_RS, LIB_RS.indexOf("generate_handler!"), "[") ?? "";
     expect(handler, "no se encontró el invoke_handler![] en lib.rs").not.toBe("");
-    const registrados = new Set(
-      [...handler.matchAll(/commands::(\w+)/g)].map((m) => m[1]),
-    );
-    for (const comando of comandos.keys()) {
+    const registered = new Set([...handler.matchAll(/commands::(\w+)/g)].map((m) => m[1]));
+    for (const command of commands.keys()) {
       expect(
-        registrados.has(comando),
-        `"${comando}" no está en el invoke_handler![] de lib.rs: falla en runtime, no al compilar`,
+        registered.has(command),
+        `"${command}" no está en el invoke_handler![] de lib.rs: falla en runtime, no al compilar`,
       ).toBe(true);
     }
   });

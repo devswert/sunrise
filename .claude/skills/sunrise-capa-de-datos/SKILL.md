@@ -222,6 +222,15 @@ Tabla plana `key TEXT PRIMARY KEY, value TEXT`, sembrada por la migración 2
 (upsert). En el front vive en `src/lib/settings.ts`: `useSettingsStore` la carga
 desde `Shell` y la relee con cada invalidación.
 
+**Ojo con una clave donde ausente y vacío NO significan lo mismo.** Es el caso de
+`collapsed_weekdays` (los días plegados de la vista semana): ausente es "nunca se
+configuró" y toma el default, presente y vacío es "ninguno", que es una elección
+legítima. Si las dos cayeran al mismo fallback, destildar todo en Configs
+rebotaría al default y el estado vacío sería inexpresable. Cuando pase eso, **la
+migración tiene que sembrar la fila** —la 9 lo hace, al revés que `planned_on`— y
+el parser distinguir `raw == null` de `raw === ""`. Y hay un test de Rust que
+cuenta las filas sembradas: si agregas una, se pone rojo.
+
 **Todo valor es TEXT, así que toda lectura necesita un parser con fallback.** La
 clave puede faltar, venir vacía o traer basura editada a mano. Ojo con los
 números: un `NaN` no explota, se propaga en silencio —toda comparación con `NaN`

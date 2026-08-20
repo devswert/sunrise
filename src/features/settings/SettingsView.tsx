@@ -11,9 +11,11 @@ import { TABS, type TabId, sectionIcon } from "./secciones";
 import {
   SettingKey,
   useCapacitySettings,
+  useCollapsedWeekdays,
   useSettingsStore,
   useWorkHours,
 } from "../../lib/settings";
+import { isoWeekdayLabel } from "../../lib/date";
 import { minutesFromTime } from "../calendar/railLayout";
 import {
   SHORTCUT_ACTIONS,
@@ -151,9 +153,63 @@ function GeneralCard() {
       </div>
 
       <JornadaFields />
+      <CollapsedDaysField />
       <InicioAutomatico />
       <Actualizaciones />
     </Card>
+  );
+}
+
+const ISO_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
+
+/**
+ * Qué días se dibujan plegados en la vista semana.
+ *
+ * Siete botones y no siete switches: la pregunta es "cuáles", y una fila de días
+ * se lee de un vistazo, mientras siete filas con su interruptor ocuparían la card
+ * entera para un ajuste que se toca una vez.
+ *
+ * **Destildar los siete es una elección válida**, no un valor vacío que haya que
+ * corregir: se guarda un string vacío y `collapsedWeekdays` lo distingue de la
+ * clave ausente. Ahí está la razón de que la migración 9 siembre la fila.
+ */
+function CollapsedDaysField() {
+  const collapsed = useCollapsedWeekdays();
+  const setSetting = useSettingsStore((s) => s.set);
+
+  const toggle = async (day: number) => {
+    const next = collapsed.includes(day)
+      ? collapsed.filter((d) => d !== day)
+      : [...collapsed, day].sort((a, b) => a - b);
+    await setSetting(SettingKey.COLLAPSED_WEEKDAYS, next.join(","));
+  };
+
+  return (
+    <div className="set-field">
+      <span className="set-field__label">Días plegados</span>
+      <div className="set-weekdays" role="group" aria-label="Días plegados">
+        {ISO_WEEKDAYS.map((day) => {
+          const on = collapsed.includes(day);
+          return (
+            <button
+              key={day}
+              type="button"
+              className={`set-weekday${on ? " is-on" : ""}`}
+              aria-pressed={on}
+              onClick={() => void toggle(day)}
+            >
+              {isoWeekdayLabel(day)}
+            </button>
+          );
+        })}
+      </div>
+      <span className="set-note">
+        En la vista semana se dibujan como una tira angosta con el día en vertical, y
+        no reciben tareas arrastradas. Si un día plegado tiene tareas se muestra
+        cuántas, y un click lo abre. <strong>Hoy nunca se pliega</strong>, aunque esté
+        marcado.
+      </span>
+    </div>
   );
 }
 

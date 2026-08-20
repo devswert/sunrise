@@ -3,7 +3,12 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingsView } from "./SettingsView";
 import { api } from "../../lib/ipc";
-import { SettingKey, useSettingsStore, workHours } from "../../lib/settings";
+import {
+  SettingKey,
+  collapsedWeekdays,
+  useSettingsStore,
+  workHours,
+} from "../../lib/settings";
 
 describe("SettingsView", () => {
   it("lista las categorías sembradas (mock)", async () => {
@@ -69,6 +74,43 @@ describe("SettingsView · jornada", () => {
  * tabla `settings` "por consistencia", el ajuste empieza a viajar dentro de los
  * respaldos y restaurar un zip viejo prende o apaga el arranque de esta máquina.
  */
+/**
+ * Los siete días del plegado. Lo que se prueba acá es el ida y vuelta del ajuste,
+ * porque el string que se guarda tiene una regla propia: **vacío significa
+ * ninguno**, no "sin configurar".
+ */
+describe("SettingsView · días plegados", () => {
+  beforeEach(async () => {
+    await useSettingsStore.getState().set(SettingKey.COLLAPSED_WEEKDAYS, "6,7");
+  });
+
+  const saved = () => collapsedWeekdays(useSettingsStore.getState().values);
+
+  it("arranca con el fin de semana marcado", async () => {
+    render(<SettingsView />);
+    expect(await screen.findByRole("button", { name: "Sáb", pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dom", pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lun", pressed: false })).toBeInTheDocument();
+  });
+
+  it("marcar un día lo agrega a la lista, ordenada", async () => {
+    render(<SettingsView />);
+    await userEvent.click(await screen.findByRole("button", { name: "Mié" }));
+    expect(saved()).toEqual([3, 6, 7]);
+  });
+
+  it("destildar los siete guarda 'ninguno', no el default", async () => {
+    render(<SettingsView />);
+    await userEvent.click(await screen.findByRole("button", { name: "Sáb" }));
+    await userEvent.click(screen.getByRole("button", { name: "Dom" }));
+
+    expect(saved()).toEqual([]);
+    // La clave queda presente y vacía: es lo que distingue "ninguno" de "sin
+    // configurar", y por eso la migración 9 siembra la fila.
+    expect(useSettingsStore.getState().values[SettingKey.COLLAPSED_WEEKDAYS]).toBe("");
+  });
+});
+
 describe("SettingsView · inicio automático", () => {
   const claves = () => Object.keys(useSettingsStore.getState().values);
 

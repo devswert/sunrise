@@ -20,6 +20,7 @@ export const SettingKey = {
   WORK_START: "work_start",
   WORK_END: "work_end",
   PLANNED_ON: "planned_on",
+  COLLAPSED_WEEKDAYS: "collapsed_weekdays",
   SHUTDOWN_NOTIFIED_ON: "shutdown_notified_on",
   // Respaldo. `BACKUP_DIR` y `BACKUP_KEEP` los lee **también Rust**
   // (`commands.rs`): si cambian de nombre, cambian en los dos lados.
@@ -48,6 +49,8 @@ export const SETTING_DEFAULTS = {
   workEnd: "18:00",
   backupTime: "20:00",
   backupKeep: 2,
+  /** El fin de semana, en números ISO. Espeja la migración 9. */
+  collapsedWeekdays: [6, 7] as readonly number[],
 } as const;
 
 export type SettingsMap = Record<string, string>;
@@ -109,6 +112,31 @@ export function workHours(values: SettingsMap): { start: string; end: string } {
  */
 export function alreadyPlanned(values: SettingsMap, date: string): boolean {
   return values[SettingKey.PLANNED_ON]?.trim() === date;
+}
+
+/**
+ * Qué días de la semana se dibujan colapsados, como números ISO (lunes = 1 …
+ * domingo = 7).
+ *
+ * **La clave ausente y la lista vacía no significan lo mismo**, y es la única
+ * lectura de este módulo donde eso pasa: ausente es "nunca se configuró" y toma
+ * el default (el fin de semana), mientras un valor presente y vacío es
+ * "ninguno colapsado", que es una elección legítima. Si las dos cayeran al
+ * default, destildar los siete días rebotaría a sábado y domingo y la semana
+ * completa sería inexpresable. Por eso la migración 9 siembra la fila.
+ *
+ * Basura tolerada como basura: se queda con los números 1..7 y descarta el
+ * resto, sin volver al default. Un `"6,ocho"` editado a mano colapsa el sábado y
+ * no promete nada sobre lo que no entendió.
+ */
+export function collapsedWeekdays(values: SettingsMap): number[] {
+  const raw = values[SettingKey.COLLAPSED_WEEKDAYS];
+  if (raw == null) return [...SETTING_DEFAULTS.collapsedWeekdays];
+  const days = raw
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 7);
+  return [...new Set(days)].sort((a, b) => a - b);
 }
 
 /** Los ajustes de respaldo, ya interpretados. */
@@ -185,6 +213,12 @@ export function useSettingsRuntime() {
 export function useWorkHours(): { start: string; end: string } {
   const values = useSettingsStore((s) => s.values);
   return workHours(values);
+}
+
+/** Atajo para el board: los días colapsados, ya interpretados. */
+export function useCollapsedWeekdays(): number[] {
+  const values = useSettingsStore((s) => s.values);
+  return collapsedWeekdays(values);
 }
 
 /** Atajo para las vistas: capacidad y umbral ya interpretados. */

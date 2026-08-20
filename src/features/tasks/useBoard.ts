@@ -34,16 +34,23 @@ function degradarUnaVez(today: string): Promise<void> {
 
 /**
  * Estado y acciones compartidas por Today, la vista semana y el modal.
- * Carga categorías, tareas del rango [start, end] y objetivos de la semana
- * que contiene `start`; corre la degradación una vez al día (ver arriba).
+ * Carga categorías, tareas del rango [start, end] y objetivos de una semana ISO;
+ * corre la degradación una vez al día (ver arriba).
+ *
+ * **`weekOf` existe porque el rango y la semana dejaron de coincidir.** La vista
+ * semana dibuja tres semanas (21 columnas), así que su `start` es un lunes de
+ * *dos semanas atrás*: deducir la semana ISO de ahí —como se hacía— le daría los
+ * objetivos de la semana anterior sin decir nada, y con ellos el selector de
+ * objetivo del modal. Por defecto sigue siendo la de `start`, que es lo correcto
+ * para las vistas de un día.
  */
-export function useBoard(start: string, end: string) {
+export function useBoard(start: string, end: string, weekOf: string = start) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const isoWeek = useMemo(() => isoWeekId(parseISODate(start)), [start]);
+  const isoWeek = useMemo(() => isoWeekId(parseISODate(weekOf)), [weekOf]);
   const dataVersion = useAppStore((s) => s.dataVersion);
   const bumpData = useAppStore((s) => s.bumpData);
 

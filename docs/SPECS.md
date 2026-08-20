@@ -221,10 +221,87 @@ siguiente corrida.
 
 ### 4.3 Vista semana (`WeekView`) y Today (`TodayView`)
 
-- 7 columnas lunes→domingo de la semana ISO del ancla; navegación ± semana.
+- **21 columnas: la semana ISO del ancla, la anterior y la siguiente**
+  (`threeWeekDates`), en un contenedor con scroll horizontal; navegación ±
+  semana, que desliza la ventana entera. Existe para poder **reprogramar un
+  viernes** sin cambiar de vista: se arrastra a la semana que viene y se suelta.
   `TodayView` reutiliza `DayColumn` con un solo día, y a su derecha monta el
   **rail de calendario** (§4.13), que en `WeekView` es un panel superpuesto que
   se abre con un botón.
+- **Cada semana es un bloque con su propio rótulo**, no 21 columnas sueltas
+  (`.board__wk` → `.board__wk-head` + `.board__wk-dias`). El rótulo lleva el rango
+  y el número de esa semana, y va **`sticky left: 0` dentro de su bloque**: entra
+  pegado al borde izquierdo mientras la semana esté en pantalla y lo empuja el de
+  la siguiente cuando el bloque se termina. `align-self: flex-start` es lo que
+  hace que pueda pegarse —un rótulo del ancho del bloque ya estaría en el borde y
+  no tendría a dónde desplazarse— y el fondo opaco (`--surface`) es lo que hace
+  que el que entra tape al que sale. Un solo rótulo fijo en la barra de arriba
+  nombraría una semana que puede no estar en pantalla, y por eso el rango **salió
+  de la barra**: arriba queda solo la navegación.
+- **La semana del ancla y la ventana son dos cosas distintas, y confundirlas es
+  el error fácil.** `WeekView` mantiene `semana` (7 fechas), `semanas` (3 × 7,
+  para los bloques) y `dates` (las 21 planas). `dates[0]` es un lunes de **dos
+  semanas atrás**, así que todo lo que signifique "la semana en que estoy" va
+  contra `semana`: el día por defecto del rail, `anchorAfterDayChange` —si
+  comparara contra las 21, despertar el lunes siguiente caería "dentro de lo
+  visible" y el ancla no se movería— y sobre todo **la semana de los objetivos**:
+  `useBoard` recibe la semana como tercer argumento (`weekOf`) en vez de deducirla
+  del inicio del rango, que daría los de dos semanas atrás sin que nada se vea
+  roto.
+- **El scroll se posiciona en la semana del ancla**, al montar y con cada cambio
+  de semana; si no, la vista se abre mirando la semana pasada. Se calcula
+  `scrollLeft` a mano contra los rectángulos y **sin scroll suave** (el nativo no
+  está en todos los webviews; ya pasó con las tabs de Configs). La columna se
+  busca por `data-date` y no con un ref, porque la `<section>` ya tiene el del
+  droppable de dnd-kit. El botón "Hoy" lleva además un contador: sin él, apretarlo
+  estando ya en la semana de hoy no reposicionaba nada, porque el ancla no
+  cambiaba. Dejar **hoy al centro** —y no el lunes al borde— es Mej.9, todavía
+  abierta.
+- **Los días anteriores a hoy sí reciben cards**, y van con menos contraste
+  (`.day-col.is-past`) solo como información: el pasado es pasado. Se evaluó
+  bloquearlos y **se decidió no hacerlo**, porque bloquear costaba más de lo que
+  evitaba. Lo que evita: una tarea pendiente con fecha anterior al último día con
+  actividad la manda al backlog la degradación diaria (§4.2), así que soltarla muy
+  atrás se ve aterrizar y al día siguiente se va sola de la columna. Lo que
+  costaba: el gesto ya existía —antes de la ventana de tres semanas, navegar a la
+  semana anterior con la flecha dejaba esas siete columnas recibiendo drops—, y el
+  riesgo real es más angosto de lo que parece: una pendiente soltada en **ayer**
+  (si ayer es el último día con actividad) sobrevive, y una **cerrada** no se toca
+  nunca, porque la degradación solo mira `status = 'TODO'`. Mover una cerrada
+  tampoco reescribe sus horas: el tiempo se atribuye por `started_at` (Regla 2,
+  §4.15). Y cuando la degradación se la lleva, la tarea aparece en el backlog con
+  su rótulo "Desde el X" (§4.14): es visible, no una desaparición.
+- **El auto-scroll de dnd-kit funciona y los rects se ajustan al scroll**: se
+  verificó arrastrando contra el borde derecho —el contenedor avanzó y la card
+  cayó en la columna que quedó bajo el puntero **después** de desplazarse—, así
+  que **no** hace falta `MeasuringStrategy.Always`. Con 21 columnas y todas sus
+  cards, remedir en cada movimiento del puntero se paga en la fluidez del arrastre,
+  que ya costó una tanda de arreglos (Mej.12).
+- **El corte entre semanas es un canal con una línea punteada**
+  (`.board__wk + .board__wk`): 21 columnas seguidas se leen como 21 días sueltos.
+  Punteada y no sólida porque el board ya tiene una línea vertical por columna en
+  `--border`, y otra igual se leería como una columna más en vez del domingo dando
+  paso al lunes. El último día de cada semana entrega su borde derecho al canal.
+- **Días plegados** (`collapsed_weekdays` en `settings`, §4.8; por defecto sábado y
+  domingo). Se dibujan como una tira de 34px con el día en vertical
+  (`writing-mode: vertical-rl`, no un `rotate`: el texto rotado a mano no reserva
+  su alto y se salía de la tira). Con el fin de semana plegado una semana entera
+  mide **1248px en vez de 1652**: dos días menos de scroll por semana. Tres
+  reglas:
+  - **No reciben drops** —no se les pone el ref del droppable— y `onDragEnd` lo
+    verifica igual, por el fallback de la cascada de colisión.
+  - **Hoy nunca se pliega**, aunque el ajuste lo marque: si es sábado y el sábado
+    está plegado, la vista esconde el día en el que estás trabajando. El ajuste
+    dice qué días suelen estar vacíos, no que hoy no importe.
+  - **No se esconde trabajo**: si el día plegado tiene tareas se dibuja su cuenta,
+    y un click lo abre **por la sesión** (no se guarda: es una ojeada, no un
+    cambio de configuración). Sin esa salida, plegar un día con tres cosas adentro
+    sería perderlas de vista sin manera de recuperarlas desde acá. Abierto lleva un
+    botón para **volver a plegarlo**, y ese botón existe **solo ahí**: en un día
+    normal no hay nada que plegar —plegar es del ajuste, no de la columna— y uno
+    que apareciera en las siete prometería otra cosa. Va agrupado con la fecha a
+    la derecha de la cabecera y no como un tercer hijo del `space-between`, que
+    corría la fecha al centro al aparecer.
 - **DnD** con `@dnd-kit`. La detección de colisión es custom
   (`src/features/week/collision.ts`): `pointerWithin` → `rectIntersection` →
   `closestCorners`. Esa cascada existe para que **toda la columna** acepte el
@@ -403,6 +480,11 @@ también de donde sale el icono de cada una (§7).
   avisan— aunque `workHours()` ya caiga al default: ese fallback protege la
   lectura de la base, pero si el campo se tragara un `25:00` en silencio, el rail
   no cambiaría y nada explicaría por qué.
+- **Días plegados** (`collapsed_weekdays`): siete botones con los días de la
+  semana, marcados los que se dibujan como tira angosta en la vista semana (§4.3).
+  Por defecto sábado y domingo. Siete botones y no siete interruptores porque la
+  pregunta es "cuáles", y una fila se lee de un vistazo. Se guarda como números
+  ISO separados por coma (`"6,7"`).
 - **Abrir sunrise al iniciar sesión** (§4.18): el único control de Configs que
   **no** lee ni escribe la tabla `settings`.
 - Contextos/channels: renombrar en línea, borrar, y el color se elige con un
@@ -414,7 +496,7 @@ Los ajustes viven en la tabla `settings` (TEXT/TEXT) y se leen vía
 `src/lib/settings.ts`: `useSettingsStore` los carga desde `Shell` y los relee con
 cada invalidación, así un cambio en una ventana llega a la otra.
 **Toda lectura pasa por un parser con fallback** (`dailyCapacityMinutes`,
-`capacityWarnRatio`, `workHours`, `alreadyPlanned`): la clave puede faltar, venir vacía o traer basura editada a
+`capacityWarnRatio`, `workHours`, `alreadyPlanned`, `collapsedWeekdays`): la clave puede faltar, venir vacía o traer basura editada a
 mano, y un `NaN` suelto dejaría el semáforo en OK para siempre sin error visible,
 porque toda comparación con `NaN` es false.
 
@@ -422,6 +504,16 @@ porque toda comparación con `NaN` es false.
 está bien: `set_setting` es un upsert y la lectura ya tiene fallback. Guarda una
 sola fecha, no un historial — la pregunta es "¿ya planifiqué hoy?"; llevar la
 cuenta de qué días planificaste es materia de la review.
+
+**`collapsed_weekdays` es el caso contrario, y es la única clave donde la ausencia
+y el vacío no significan lo mismo**: ausente es "nunca se configuró" y toma el
+default (el fin de semana); presente y vacío es "ningún día plegado", que es una
+elección legítima. Si las dos cayeran al default, destildar los siete días en
+Configs rebotaría a sábado y domingo y la semana completa sería inexpresable. **Por
+eso la migración 9 siembra la fila**, al revés que `planned_on`. La basura se
+tolera como basura: se queda con los números 1..7 y descarta el resto sin volver
+al default, así un `"6,ocho"` editado a mano pliega el sábado y no promete nada
+sobre lo que no entendió.
 
 ### 4.9 Atajos de teclado
 
@@ -2189,7 +2281,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **391 tests front (48 archivos) y 148 Rust, todos verdes.**
+estado actual: **411 tests front (48 archivos) y 148 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -2212,6 +2304,19 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 - **Front**: `capacity` (semáforo + parseo), `date`, `history`, `useTimer`,
   `useDragOrClick`, `TaskCard`, `TaskModal`, `Sidebar`, `FocusView`,
   `SettingsView`.
+- **La ventana de la vista semana**: `src/lib/date.test.ts` (`threeWeeks`: tres
+  semanas de siete, la del ancla al medio, cada una arrancando en lunes, cortes de
+  mes y de año) y `WeekView.test.tsx` (las 21 columnas en orden, un rótulo por
+  semana con números consecutivos, los días de atrás apagados, los del ajuste
+  plegados salvo hoy, y el click que abre uno plegado). El **scroll y el pegado del
+  rótulo no se testean en jsdom**: no implementa `scrollLeft`, no devuelve
+  rectángulos y no resuelve `position: sticky`, así que un assert sobre la posición
+  pasaría o fallaría por el motivo equivocado. Eso se verificó en el browser, igual
+  que el arrastre.
+- **El ajuste de días plegados**: `src/lib/settings.test.ts` (ausente ⇒ el fin de
+  semana, **vacío ⇒ ninguno**, orden y duplicados, basura descartada sin volver al
+  default) y `SettingsView.test.tsx` (el ida y vuelta por los siete botones, y que
+  destildarlos todos guarde la clave presente y vacía).
 - **El contrato del puente IPC**: `src/lib/ipcContract.test.ts` lee `ipc.ts`,
   `commands.rs` y `lib.rs` **como texto** y compara los dos lados: que la clave de
   cada argumento del `invoke` sea el parámetro de Rust en camelCase, y que todo

@@ -3,6 +3,7 @@ import {
   SETTING_DEFAULTS,
   SettingKey,
   capacityWarnRatio,
+  collapsedWeekdays,
   dailyCapacityMinutes,
   workHours,
 } from "./settings";
@@ -92,6 +93,33 @@ describe("workHours", () => {
       start: SETTING_DEFAULTS.workStart,
       end: SETTING_DEFAULTS.workEnd,
     });
+  });
+});
+
+/**
+ * El único parser del módulo donde **clave ausente y valor vacío no significan
+ * lo mismo**. Si los dos cayeran al default, destildar los siete días en Configs
+ * rebotaría a sábado y domingo y la semana completa sería inexpresable.
+ */
+describe("collapsedWeekdays", () => {
+  it("sin la clave, el fin de semana", () => {
+    expect(collapsedWeekdays({})).toEqual([6, 7]);
+  });
+
+  it("vacío significa ninguno, y NO el default", () => {
+    expect(collapsedWeekdays({ [SettingKey.COLLAPSED_WEEKDAYS]: "" })).toEqual([]);
+    expect(collapsedWeekdays({ [SettingKey.COLLAPSED_WEEKDAYS]: "   " })).toEqual([]);
+  });
+
+  it("lee la lista guardada, ordenada y sin repetidos", () => {
+    expect(collapsedWeekdays({ [SettingKey.COLLAPSED_WEEKDAYS]: "7, 3 ,3" })).toEqual([3, 7]);
+  });
+
+  it("descarta lo que no entiende sin volver al default", () => {
+    // Un valor editado a mano pliega lo que se pudo leer y no promete nada más.
+    expect(collapsedWeekdays({ [SettingKey.COLLAPSED_WEEKDAYS]: "6,ocho,0,9,-2,3.5" })).toEqual([
+      6,
+    ]);
   });
 });
 

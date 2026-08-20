@@ -1118,31 +1118,87 @@ Notas de implementación:
 - Todas siguen la regla de `settings`: parser con fallback al default, porque el
   valor puede faltar o venir con basura.
 
-### Mej.2 🔵 Ver tres semanas con scroll horizontal en la vista semana
+### Mej.2 ✅ Ver tres semanas con scroll horizontal en la vista semana — hecho
 
-Hoy `WeekView` muestra 7 columnas —la semana ISO del ancla— y se navega de a una
-semana con las flechas. El caso real que lo pide: **reprogramar un viernes**.
-Al mover tareas a la semana siguiente hay que cambiar de semana, soltar la
-tarea, y volver; no se puede arrastrar directo.
+`WeekView` dibuja **21 columnas** —la semana ISO del ancla, la anterior y la
+siguiente (`threeWeekDates`)— en el contenedor con scroll horizontal que ya
+tenía. El caso que lo pedía: **reprogramar un viernes** sin cambiar de semana,
+soltar y volver. Detalle en [SPECS §4.3](SPECS.md#43-vista-semana-weekview-y-today-todayview).
 
-Propuesta: renderizar **semana anterior + actual + siguiente** (21 columnas) en
-un contenedor con scroll horizontal, posicionado en la semana actual al montar.
-Las flechas siguen sirviendo para desplazarse más lejos.
+Las dos cosas que el plan marcaba como no obvias resultaron ser las dos que
+importaban, y hubo una tercera que apareció al implementar:
 
-Dos cosas a resolver, que no son obvias:
+- **La semana de los objetivos.** `useBoard` deducía la semana ISO del inicio del
+  rango, y el rango ahora arranca **dos semanas atrás**: los objetivos —y con
+  ellos el selector del modal— habrían pasado a ser los de otra semana sin que
+  nada se viera roto. Ahora la semana va como tercer argumento (`weekOf`), con
+  `start` por defecto para las vistas de un día. Dos tests, uno por rama, y
+  comprobado en pantalla: con la ventana arrancando el 2026-08-10 (semana **33**),
+  el selector del modal ofrece los objetivos de la **34**, que es la del ancla.
+- **El DnD a través del scroll no necesitó nada.** El auto-scroll de dnd-kit
+  funciona y sus rects se ajustan al desplazamiento: arrastrando contra el borde
+  derecho el contenedor avanzó y la card cayó en la columna que quedó bajo el
+  puntero **después** de moverse. Se dejó `MeasuringStrategy` en su default a
+  propósito: con 21 columnas y todas sus cards, remedir en cada movimiento del
+  puntero se paga en la fluidez del arrastre, que ya costó una tanda entera
+  (Mej.12).
+- **Lo que no estaba en el plan: la semana anterior en pantalla vuelve al pasado
+  una zona de drop.** Antes no se podía soltar en un día pasado desde la vista
+  semana, porque no había ninguno visible. Y una tarea pendiente con fecha
+  anterior al último día con actividad la manda al backlog la **degradación
+  diaria** (§4.2): soltarla ahí se ve aterrizar y al día siguiente se va sola de la
+  columna. Se bloqueó el drop al pasado por eso, y **se revirtió**: el dev preguntó
+  por qué y la respuesta no aguantó. Bloquear sacaba algo que ya se podía hacer
+  —navegar a la semana anterior con la flecha dejaba esas columnas recibiendo
+  drops— y la regla era más gruesa que el problema: una pendiente soltada en ayer
+  sobrevive, una cerrada no se toca nunca (la degradación solo mira `TODO`), y
+  cuando se la lleva aparece en el backlog con su rótulo "Desde el X", que es
+  visible y no una desaparición. Queda el atenuado de la columna como información.
 
-- **Los objetivos son por semana ISO, y `useBoard` la deduce del inicio del
-  rango** (`isoWeekId(parseISODate(start))`). Si el rango se ensancha hacia
-  atrás, la barra de objetivos pasaría a mostrar en silencio los de la semana
-  **anterior**. Hay que pasarle la semana "actual" aparte del rango, no
-  derivarla del `start`.
-- **DnD a través del scroll**: `@dnd-kit` tiene auto-scroll, pero conviene
-  verificar que arrastrar hacia el borde desplace el contenedor y que la
-  detección de colisión custom (`collision.ts`) siga acertando con el
-  contenedor desplazado.
+Dos detalles que se verificaron en el browser porque jsdom no los puede ver
+(no implementa `scrollLeft` ni devuelve rectángulos): el scroll aterriza en el
+lunes del ancla al montar y con cada cambio de semana, y **"Hoy" reposiciona
+aunque el ancla ya sea la de hoy** — para eso lleva un contador y no un booleano;
+sin él, apretarlo después de haber scrolleado a mano no hacía nada.
 
-Lo demás sale gratis: `useBoard` ya recibe un rango `[start, end]` arbitrario, y
-la capacidad por día se calcula por columna.
+Un hallazgo lateral: con `min-width: 236px` por columna, **siete ya no cabían** en
+el preview a 1512px de ancho (1110px de board, ~4,7 columnas), así que la vista
+semana venía scrolleando desde antes. Las columnas no se angostaron con este
+cambio; el scroll se hizo más largo. En la ventana real de Tauri no está medido.
+
+**Tres ajustes pedidos al ver la ventana funcionando**, que cambiaron la forma
+del board más que la ventana en sí:
+
+1. **Un rótulo por semana, pegado a la izquierda.** El rango y el número salieron
+   de la barra de arriba y ahora cada semana lleva el suyo, `sticky left: 0` dentro
+   de su bloque: entra pegado al borde mientras esa semana esté en pantalla y lo
+   empuja el de la siguiente cuando el bloque se termina — la "muralla" del corte.
+   Eso obligó a **agrupar las columnas por semana** (`.board__wk`) en vez de
+   dibujar 21 sueltas: el pegado necesita que la semana sea un contenedor. Un
+   rótulo fijo arriba nombraba una semana que podía no estar en pantalla.
+2. **El corte entre semanas es un canal con línea punteada**, no el borde más
+   marcado que tenía. Sólida se leía como una columna más, porque el board ya usa
+   una línea vertical por columna.
+3. **Días plegados, configurables** (`collapsed_weekdays`, migración 9, por defecto
+   sábado y domingo): una tira de 34px con el día en vertical, que no recibe
+   arrastres. Con el fin de semana plegado una semana entera mide **1248px en vez
+   de 1652**: dos días menos de scroll por semana. Sigue sin caber entera en la
+   ventana del dev (el board ahí ronda los 840px), así que el beneficio es scroll
+   más corto, no una semana completa de un vistazo.
+
+Tres decisiones dentro del plegado que no estaban en el pedido y que conviene
+recordar: **hoy nunca se pliega** (si es sábado y el sábado está plegado, la vista
+esconde el día en el que estás trabajando), **un día plegado con tareas dibuja su
+cuenta** y **un click lo abre por la sesión**, con un botón para volver a plegarlo
+que existe solo en esos días — sin esa salida, plegar sería esconder trabajo sin
+manera de llegar a él desde la vista, y sin la vuelta el día quedaba abierto hasta
+recargar. Y una regla nueva de la
+capa de ajustes: **ausente y vacío no significan lo mismo** en esta clave, que es
+lo que hace expresable "ningún día plegado" y la razón de que la migración 9
+siembre la fila.
+
+Lo que queda es **Mej.9**: dejar hoy **al centro** y no el lunes al borde
+izquierdo.
 
 ### Mej.3 ⬛ Avisar cuándo una tarea lleva días arrastrándose — retirada
 
@@ -1367,17 +1423,19 @@ este proyecto no tiene ni quiere.
 
 ### Mej.9 🔵 Al entrar a la semana, centrar el día de hoy
 
-Cuando la vista semana muestre más de una semana (Mej.2, tres semanas con scroll
-horizontal), entrar tiene que dejar **el día de hoy al centro**, no el borde
-izquierdo del rango: si no, se abre mirando la semana pasada y hay que
-scrollear en cada visita.
+**Ya no está bloqueada**: Mej.2 dejó las tres semanas y el andamio del scroll.
+Lo que falta es el centrado en sí. Hoy la vista aterriza en el **lunes de la
+semana del ancla**, que es lo que resolvía el síntoma grueso —abrirse mirando la
+semana pasada—, pero con ~4,7 columnas visibles eso deja hoy en algún lugar de la
+mitad izquierda, no al centro.
 
 Cosas a resolver:
 
-- **Centrar, no solo hacer visible.** `scrollIntoView({ inline: "center" })` es
-  lo directo, pero el scroll suave nativo no está disponible en todos los
-  webviews —ya pasó con las tabs de Configs, que terminaron con animación
-  propia—. Conviene calcular `scrollLeft` a mano contra el ancho del contenedor.
+- **Centrar, no solo hacer visible.** El cálculo a mano contra los rectángulos ya
+  está escrito en `WeekView` (y el scroll suave nativo quedó descartado: no está
+  en todos los webviews, ya pasó con las tabs de Configs). Lo que cambia es el
+  objetivo: en vez de alinear el lunes con el borde izquierdo, restar media
+  diferencia entre el ancho del contenedor y el de la columna de hoy.
 - **Al montar y al cambiar el día.** El día ya es estado observable
   (`useToday`), así que una sesión que cruza la medianoche debería recentrar
   igual que reancla la semana.

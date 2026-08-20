@@ -1,6 +1,7 @@
 import {
   addDays,
   format,
+  getISODay,
   getISOWeek,
   getISOWeekYear,
   parseISO,
@@ -45,6 +46,35 @@ export function isoWeekId(d: Date): string {
 export function weekDates(anchor: Date): string[] {
   const monday = startOfISOWeek(anchor);
   return Array.from({ length: 7 }, (_, i) => toISODate(addDays(monday, i)));
+}
+
+/**
+ * La ventana de la vista semana: **tres semanas** —la anterior, la del ancla y la
+ * siguiente—, cada una con sus 7 fechas.
+ *
+ * Existe para poder arrastrar un viernes a la semana que viene sin cambiar de
+ * vista, soltar, y volver. Devuelve las semanas **agrupadas** y no una lista
+ * plana porque el board las dibuja como tres bloques: cada uno lleva su rótulo
+ * pegado a la izquierda, y ese rótulo necesita que la semana sea un contenedor.
+ * La del ancla es siempre `[1]`.
+ */
+export function threeWeeks(anchor: Date): string[][] {
+  return [-1, 0, 1].map((delta) => weekDates(shiftWeeks(anchor, delta)));
+}
+
+/** Día de la semana ISO: lunes = 1 … domingo = 7. */
+export function isoWeekday(dateStr: string): number {
+  return getISODay(parseISODate(dateStr));
+}
+
+/**
+ * `1` → `'Lun'`. Sale del locale y no de una lista escrita a mano, por lo mismo
+ * que `shortWeekday`: una lista paralela se desincroniza del resto de la app.
+ * La referencia es un lunes conocido.
+ */
+export function isoWeekdayLabel(isoDay: number): string {
+  const monday = parseISODate("2026-08-10");
+  return capitalizar(format(addDays(monday, isoDay - 1), "EEE", LOCALE)).replace(".", "");
 }
 
 /** 'YYYY-MM-DD' → Date (medianoche local). */

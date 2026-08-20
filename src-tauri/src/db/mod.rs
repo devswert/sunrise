@@ -101,7 +101,7 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 8, "debe quedar en la última versión de migración");
+        assert_eq!(version, 9, "debe quedar en la última versión de migración");
     }
 
     /// La migración 6 rescata lo que quedó escondido antes del cambio de regla.
@@ -181,7 +181,10 @@ mod tests {
         let settings_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM settings", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(settings_count, 5);
+        // Cinco de la migración 2, más `collapsed_weekdays` de la 9. Esa fila se
+        // siembra a propósito: es lo que hace expresable "ningún día plegado",
+        // porque el front distingue la clave ausente de una lista vacía.
+        assert_eq!(settings_count, 6);
     }
 
     #[test]

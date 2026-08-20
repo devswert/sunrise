@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -16,9 +16,17 @@ import { boardCollision } from "./collision";
 import { TaskCardOverlay } from "./TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
 import { useBoard } from "../tasks/useBoard";
-import { dateLabel, isoWeekId, parseISODate, shiftWeeks, weekDates } from "../../lib/date";
+import {
+  dateLabel,
+  isoWeekday,
+  isoWeekId,
+  parseISODate,
+  shiftWeeks,
+  threeWeeks,
+  weekDates,
+} from "../../lib/date";
 import { useToday } from "../../lib/day";
-import { useCapacitySettings, useWorkHours } from "../../lib/settings";
+import { useCapacitySettings, useCollapsedWeekdays, useWorkHours } from "../../lib/settings";
 import { anchorAfterDayChange } from "./anchor";
 import { SyncButton } from "../calendar/SyncButton";
 import { CalendarRail } from "../calendar/CalendarRail";
@@ -30,7 +38,20 @@ export function WeekView() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [railAbierto, setRailAbierto] = useState(false);
-  const dates = useMemo(() => weekDates(anchor), [anchor]);
+  /**
+   * Dos arreglos y no uno, porque el board dejó de ser una semana:
+   *
+   * - `anchorWeek` son los 7 días del ancla. Es la semana **de referencia**: la que
+   *   nombra la barra de arriba, la que es dueña de los objetivos, y donde se
+   *   posiciona el scroll.
+   * - `weeks` son los tres bloques, y `dates` las 21 columnas planas.
+   *
+   * Confundirlos es el error fácil: `dates[0]` es un lunes de dos semanas atrás,
+   * así que todo lo que signifique "la semana en que estoy" va contra `anchorWeek`.
+   */
+  const anchorWeek = useMemo(() => weekDates(anchor), [anchor]);
+  const weeks = useMemo(() => threeWeeks(anchor), [anchor]);
+  const dates = useMemo(() => weeks.flat(), [weeks]);
 
   // El ancla se fija al montar, así que una sesión abierta que cruza un domingo
   // seguía mostrando la semana pasada. Sigue al día solo si corresponde: ver
@@ -41,25 +62,46 @@ export function WeekView() {
     if (hoyPrevio.current === today) return;
     const previo = hoyPrevio.current;
     hoyPrevio.current = today;
-    const fresh = anchorAfterDayChange(dates, previo, today);
+    // Contra `anchorWeek` y no contra `dates`: la pregunta es si el día nuevo salió
+    // de la semana de referencia. Con las 21 fechas, despertar el lunes
+    // siguiente caería "dentro de lo visible" y el ancla no se movería — los
+    // objetivos y el scroll seguirían en la semana pasada.
+    const fresh = anchorAfterDayChange(anchorWeek, previo, today);
     if (fresh) setAnchor(fresh);
-  }, [today, dates]);
-  const start = dates[0];
-  const end = dates[6];
+  }, [today, anchorWeek]);
+  // El lunes del ancla: la semana de los objetivos y la columna donde aterriza
+  // el scroll. El domingo ya no hace falta acá, el rótulo lo saca de su semana.
+  const start = anchorWeek[0];
 
-  const board = useBoard(start, end);
+  const board = useBoard(dates[0], dates[dates.length - 1], start);
   const capacity = useCapacitySettings();
   const workday = useWorkHours();
 
   // El rail muestra un día, y de fábrica es hoy —o el lunes, si la semana que
   // miras no lo contiene—. Clickear la cabecera de otra columna lo cambia, que
   // es lo que permite proyectar el trabajo de un día que todavía no llega.
-  const porDefecto = dates.includes(today) ? today : dates[0];
+  const porDefecto = anchorWeek.includes(today) ? today : start;
   const [diaElegido, setDiaElegido] = useState<string | null>(null);
   // Al cambiar de semana la elección deja de tener sentido: el día elegido ya no
   // está en pantalla y el rail mostraría algo que no se ve en ninguna columna.
   const diaDelRail = diaElegido != null && dates.includes(diaElegido) ? diaElegido : porDefecto;
   const { work, segundosEnCurso } = useDayWork(diaDelRail);
+
+  /**
+   * Los días plegados salen de Configs (números ISO), con dos excepciones:
+   *
+   * - **Hoy nunca se pliega.** Si el ajuste trae el sábado y hoy es sábado, la
+   *   vista esconde el día en el que estás trabajando. El ajuste dice qué días
+   *   suelen estar vacíos, no que hoy no importe.
+   * - **Lo que abriste a mano queda abierto** mientras dure la sesión. Es la
+   *   salida para el día plegado que sí tiene tareas; no se guarda, porque es una
+   *   ojeada y no un cambio de configuración.
+   */
+  const collapsedWeekdays = useCollapsedWeekdays();
+  const [unfolded, setUnfolded] = useState<Set<string>>(new Set());
+  /** El ajuste lo pliega, así que la columna puede ofrecer abrir y volver a plegar. */
+  const isFoldable = (d: string) => collapsedWeekdays.includes(isoWeekday(d)) && d !== today;
+  const isCollapsed = (d: string) => isFoldable(d) && !unfolded.has(d);
 
   // Escape cierra el rail, pero **no si hay un modal abierto**: el de `TaskModal`
   // escucha en `window` igual que este, y `preventDefault()` no frena a los
@@ -72,6 +114,31 @@ export function WeekView() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [railAbierto, selectedId]);
+
+  /**
+   * El scroll arranca en la semana del ancla, no en el borde izquierdo de la
+   * ventana: si no, la vista se abre mirando la semana pasada.
+   *
+   * Se calcula `scrollLeft` a mano contra los rectángulos y **sin scroll suave**:
+   * el nativo no está disponible en todos los webviews —ya pasó con las tabs de
+   * Configs, que terminaron con animación propia— y acá además no se quiere
+   * animación ninguna, porque esto corre al montar y al cambiar de semana.
+   *
+   * `recentrar` es un contador y no un booleano porque "Hoy" tiene que volver a
+   * posicionar aunque el ancla ya sea la de hoy: sin él, apretarlo después de
+   * haber scrolleado a mano no hacía nada.
+   */
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const [recenter, setRecenter] = useState(0);
+  useLayoutEffect(() => {
+    const board = boardRef.current;
+    // Por `data-date` y no por un ref en la columna: la sección ya tiene el ref
+    // del droppable de dnd-kit, y componer dos sobre el mismo nodo se rompe en
+    // silencio. Buscar la fecha además dice qué se está buscando.
+    const col = board?.querySelector<HTMLElement>(`[data-date="${start}"]`);
+    if (!board || !col) return;
+    board.scrollLeft += col.getBoundingClientRect().left - board.getBoundingClientRect().left;
+  }, [start, recenter]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -117,19 +184,20 @@ export function WeekView() {
     }
 
     if (targetDate == null) return;
+    // A un día plegado no: no tiene ref de droppable, así que no debería llegar,
+    // pero la cascada de colisión tiene un fallback por esquina más cercana que
+    // no distingue. **A un día pasado sí** — ver el comentario del `useDroppable`
+    // en `DayColumn`.
+    if (isCollapsed(targetDate)) return;
     board.moveTask(activeIdNum, targetDate, index);
   }
 
   return (
     <div className="week">
+      {/* El rango ya no vive acá: cada semana lleva el suyo pegado a la
+       * izquierda, dentro del board (ver `.board__wk-head`). Un rótulo fijo
+       * arriba nombraría una semana que puede no estar en pantalla. */}
       <header className="week__toolbar">
-        <div className="week__range">
-          {dateLabel(start)} – {dateLabel(end)}
-          <span className="week__isoweek">
-            Semana {isoWeekId(parseISODate(start)).split("-W")[1]} ·{" "}
-            {isoWeekId(parseISODate(start)).split("-W")[0]}
-          </span>
-        </div>
         <div className="week__nav">
           {/* Comparte estado con el de Configs: si uno corre, el otro se
            * bloquea y los dos muestran la misma antigüedad. */}
@@ -141,7 +209,13 @@ export function WeekView() {
           >
             <ChevronLeft size={16} />
           </button>
-          <button className="btn-ghost" onClick={() => setAnchor(new Date())}>
+          <button
+            className="btn-ghost"
+            onClick={() => {
+              setAnchor(new Date());
+              setRecenter((n) => n + 1);
+            }}
+          >
             Hoy
           </button>
           <button
@@ -166,25 +240,59 @@ export function WeekView() {
           onDragEnd={onDragEnd}
           onDragCancel={() => setActiveId(null)}
         >
-          <div className="board">
-            {dates.map((d) => (
-              <DayColumn
-                key={d}
-                date={d}
-                tasks={board.tasksByDate[d] ?? []}
-                categoryMap={board.categoryMap}
-                categories={board.categories}
-                capacityTarget={capacity.target}
-                capacityWarnRatio={capacity.warnRatio}
-                onToggle={board.toggleTask}
-                onOpen={(t) => setSelectedId(t.id)}
-                onPatch={board.patchTask}
-                onPickDay={(d) => {
-                  setDiaElegido(d);
-                  setRailAbierto(true);
-                }}
-                isPicked={railAbierto && d === diaDelRail}
-              />
+          {/* Una semana es un bloque, no siete columnas sueltas: es lo que le
+           * da al rótulo un contenedor donde pegarse —entra a la izquierda y lo
+           * empuja el que sigue— y lo que pone el corte de semana en un solo
+           * lugar en vez de en la primera columna de cada tanda. */}
+          <div className="board" ref={boardRef}>
+            {weeks.map((week) => (
+              <section className="board__wk" key={week[0]}>
+                <header className="board__wk-head">
+                  <span className="board__wk-range">
+                    {dateLabel(week[0])} – {dateLabel(week[6])}
+                  </span>
+                  <span className="week__isoweek">
+                    Semana {isoWeekId(parseISODate(week[0])).split("-W")[1]} ·{" "}
+                    {isoWeekId(parseISODate(week[0])).split("-W")[0]}
+                  </span>
+                </header>
+                <div className="board__wk-days">
+                  {week.map((d) => (
+                    <DayColumn
+                      key={d}
+                      date={d}
+                      isPast={d < today}
+                      collapsed={isCollapsed(d)}
+                      onExpand={(day) => setUnfolded((prev) => new Set(prev).add(day))}
+                      // Solo en un día plegable que está abierto a mano: en el
+                      // resto no hay nada que plegar y el botón sobraría.
+                      onCollapse={
+                        isFoldable(d) && unfolded.has(d)
+                          ? (day) =>
+                              setUnfolded((prev) => {
+                                const next = new Set(prev);
+                                next.delete(day);
+                                return next;
+                              })
+                          : undefined
+                      }
+                      tasks={board.tasksByDate[d] ?? []}
+                      categoryMap={board.categoryMap}
+                      categories={board.categories}
+                      capacityTarget={capacity.target}
+                      capacityWarnRatio={capacity.warnRatio}
+                      onToggle={board.toggleTask}
+                      onOpen={(t) => setSelectedId(t.id)}
+                      onPatch={board.patchTask}
+                      onPickDay={(day) => {
+                        setDiaElegido(day);
+                        setRailAbierto(true);
+                      }}
+                      isPicked={railAbierto && d === diaDelRail}
+                    />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
           <DragOverlay dropAnimation={null}>

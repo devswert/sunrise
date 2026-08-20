@@ -11,7 +11,9 @@
 .week__toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* La semana dejó su rango dentro del board (`.board__wk-head`), así que acá
+     queda sola la navegación: al final. Today sí conserva su rango centrado. */
+  justify-content: flex-end;
 }
 
 .week__range {
@@ -143,13 +145,138 @@
   border-right: 1px solid var(--border);
   min-height: 0;
 }
-.board .day-col:first-child {
+/* Solo la primera columna de la ventana pega a la izquierda. Con las semanas
+   agrupadas, `.board .day-col:first-child` valía para la primera de cada bloque
+   y el lunes de cada semana perdía su sangría. */
+.board__wk:first-child .day-col:first-child {
   padding-left: 0;
 }
 .today__col .day-col {
   border-right: none;
   padding: 0;
 }
+/* --- La ventana de tres semanas ---------------------------------------------
+
+   Cada semana es un bloque con su rótulo arriba y sus siete días abajo. El
+   rótulo va `sticky left: 0` dentro del bloque, así que entra pegado al borde
+   izquierdo mientras esa semana esté en pantalla y lo empuja el de la siguiente
+   cuando el bloque se termina: la "muralla" del corte. `align-self: flex-start`
+   es lo que hace que pueda pegarse — un rótulo del ancho del bloque ya estaría
+   en el borde y no tendría a dónde desplazarse. */
+.board__wk {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+.board__wk-head {
+  position: sticky;
+  left: 0;
+  align-self: flex-start;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-2) 0;
+  /* Opaco: al desplazarse, el rótulo que entra tapa al que sale, y las cards de
+     la columna que pasa por detrás no se leen a través suyo. `--surface` es el
+     fondo del cuerpo de la app (`global.css`); no existe ningún `--bg`. */
+  background: var(--surface);
+}
+.board__wk-range {
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.board__wk-days {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* La transición entre semanas: un canal con una línea **de puntos** al medio.
+   Punteada y no sólida a propósito: el board ya tiene una línea vertical por
+   columna en `--border`, y otra igual se leería como una columna más en vez del
+   domingo dando paso al lunes. El canal es ancho porque el corte se tiene que
+   notar de reojo mientras se scrollea, no al buscarlo. */
+.board__wk + .board__wk {
+  margin-left: 30px;
+}
+.board__wk + .board__wk::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: var(--space-3);
+  left: -16px;
+  width: 0;
+  border-left: 2px dashed var(--faint);
+  opacity: 0.5;
+}
+.board__wk-days .day-col:last-child {
+  border-right: none;
+}
+
+/* --- Día plegado ------------------------------------------------------------
+
+   Una tira con el nombre del día en vertical. No es zona de drop (`DayColumn` no
+   le pone el ref del droppable), y su ancho es lo que justifica plegar: el fin
+   de semana suele no tener nada y se llevaba dos columnas enteras. */
+.day-col--collapsed {
+  min-width: 34px;
+  flex: 0 0 34px;
+  padding: 0;
+  align-items: stretch;
+}
+.day-col__unfold {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border: none;
+  background: var(--surface-sunken);
+  cursor: pointer;
+  color: var(--faint);
+}
+.day-col__unfold:hover {
+  color: var(--muted);
+}
+.day-col__unfold-countame {
+  /* `vertical-rl` y no un `rotate`: el texto rotado a mano no reserva su alto y
+     la tira quedaba con el nombre saliéndose por abajo. */
+  writing-mode: vertical-rl;
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+/* Cuántas tareas quedaron adentro. Sin esto, plegar un día con trabajo sería
+   esconderlo. */
+.day-col__unfold-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--apricot-ink);
+  /* Sobre el hundido de la tira, así que el contador va en el fondo claro. */
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 1px 5px;
+}
+.day-col--collapsed.is-today .day-col__unfold-countame {
+  color: var(--apricot-ink);
+}
+
+/* Los días de atrás no reciben cards (ver `DayColumn`), y eso tiene que verse
+   antes de intentarlo: la columna entera va apagada. Es el mismo recurso que
+   usa una tarea completada —bajar el contraste, no tachar— porque el pasado no
+   es un error, es pasado. */
+.day-col.is-past {
+  opacity: 0.62;
+}
+
 .day-col.is-over {
   background: color-mix(in srgb, var(--apricot) 12%, transparent);
   border-radius: var(--radius-md);
@@ -187,6 +314,29 @@
 .day-col.is-today .day-col__weekday {
   color: var(--apricot-ink);
 }
+/* La fecha y el botón de plegar, agrupados a la derecha de la cabecera. */
+.day-col__head-end {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+/* Solo aparece en un día plegable abierto a mano. Discreto: es una vuelta atrás
+   de algo que hiciste hace un segundo, no una acción de la columna. */
+.day-col__fold {
+  display: flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.day-col__fold:hover {
+  color: var(--muted);
+  background: var(--surface-sunken);
+}
+
 .day-col__date {
   font-size: 11.5px;
   color: var(--muted);
@@ -1225,6 +1375,34 @@
 }
 .set-input--hora {
   width: 76px;
+}
+
+/* Los siete días del ajuste de plegado. Botones chicos en una fila, con el
+   mismo alto que los campos de la sección. */
+.set-weekdays {
+  display: flex;
+  gap: 4px;
+}
+.set-weekday {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: 6px 9px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.set-weekday:hover {
+  border-color: var(--muted);
+}
+/* Marcado = plegado. Es el mismo damasco que usa el board para "hoy" y para el
+   destino de un arrastre: acá dice "este día está tomado por el ajuste". */
+.set-weekday.is-on {
+  background: color-mix(in srgb, var(--apricot) 22%, transparent);
+  border-color: var(--apricot-ink);
+  color: var(--apricot-ink);
 }
 
 .set-note {

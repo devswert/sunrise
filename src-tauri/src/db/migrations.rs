@@ -211,6 +211,21 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         ALTER TABLE day_entries ADD COLUMN mood TEXT;
         "#,
     ),
+    (
+        9,
+        r#"
+        -- Qué días de la semana se dibujan colapsados en la vista semana, como
+        -- números ISO (lunes = 1 … domingo = 7). El fin de semana por defecto:
+        -- ocupa dos columnas de las que casi nunca cuelga trabajo.
+        --
+        -- **La fila se siembra a propósito, aunque toda lectura tenga fallback.**
+        -- Es lo que hace expresable "ninguno colapsado": si la ausencia de la
+        -- clave y una lista vacía significaran lo mismo, destildar los siete días
+        -- volvería al default y no habría forma de tener la semana completa.
+        -- Ausente ⇒ el default; presente ⇒ lo que diga, incluso vacío.
+        INSERT INTO settings (key, value) VALUES ('collapsed_weekdays', '6,7');
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.

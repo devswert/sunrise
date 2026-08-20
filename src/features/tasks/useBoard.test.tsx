@@ -3,6 +3,7 @@ import { act, render, waitFor } from "@testing-library/react";
 import { todayISO } from "../../lib/date";
 
 const demote = vi.fn(async () => 0);
+const listObjectives = vi.fn(async () => []);
 let rango: unknown[] = [];
 const listTasksForRange = vi.fn(async () => rango);
 /** Se resuelve a mano: es lo que deja mirar el board **antes** de la escritura. */
@@ -20,7 +21,7 @@ vi.mock("../../lib/ipc", () => ({
     demotePending: (...a: unknown[]) => demote(...(a as [])),
     listTasksForRange: () => listTasksForRange(),
     listCategories: vi.fn(async () => []),
-    listObjectives: vi.fn(async () => []),
+    listObjectives: (...a: unknown[]) => listObjectives(...(a as [])),
     moveTask: () => moveTask(),
   },
 }));
@@ -33,13 +34,14 @@ vi.mock("../../lib/ipc", () => ({
  * recrea `useAppStore`, y una referencia importada arriba apuntaría a otra
  * instancia, sobre la que el componente no está suscrito.
  */
-async function freshBoard() {
+async function freshBoard(range?: [string, string, string?]) {
   vi.resetModules();
   const { useBoard } = await import("./useBoard");
   const { useAppStore } = await import("../../lib/store");
   let board: ReturnType<typeof useBoard> | null = null;
   function Probe() {
-    board = useBoard(todayISO(), todayISO());
+    const [start, end, weekOf] = range ?? [todayISO(), todayISO()];
+    board = useBoard(start, end, weekOf);
     return null;
   }
   return { Probe, useAppStore, verBoard: () => board! };
@@ -89,6 +91,38 @@ describe("useBoard · degradación", () => {
 
     await waitFor(() => expect(listTasksForRange).toHaveBeenCalledTimes(2));
     expect(demote).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * La vista semana pide 21 días y **una** semana de objetivos. Si la semana se
+ * dedujera del inicio del rango —como se hacía cuando el rango era la semana—,
+ * la ventana de tres le daría los objetivos de dos semanas atrás, y con ellos el
+ * selector de objetivo del modal, sin que nada se vea roto.
+ */
+describe("useBoard · la semana de los objetivos", () => {
+  beforeEach(() => {
+    demote.mockClear();
+    listObjectives.mockClear();
+    listTasksForRange.mockClear();
+    rango = [];
+  });
+
+  it("pide la semana que le pasan, no la del inicio del rango", async () => {
+    // Ventana de tres semanas alrededor del lunes 2026-08-10 (semana 33).
+    const { Probe } = await freshBoard(["2026-08-03", "2026-08-23", "2026-08-10"]);
+    render(<Probe />);
+
+    await waitFor(() => expect(listObjectives).toHaveBeenCalled());
+    expect(listObjectives).toHaveBeenCalledWith("2026-W33");
+  });
+
+  it("sin tercer argumento sigue siendo la del inicio del rango", async () => {
+    const { Probe } = await freshBoard(["2026-08-03", "2026-08-09"]);
+    render(<Probe />);
+
+    await waitFor(() => expect(listObjectives).toHaveBeenCalled());
+    expect(listObjectives).toHaveBeenCalledWith("2026-W32");
   });
 });
 

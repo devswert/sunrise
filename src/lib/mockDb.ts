@@ -57,6 +57,9 @@ const settings = new Map<string, string>([
   ["bell_sound", "bell"],
   ["work_start", "09:00"],
   ["work_end", "18:00"],
+  // Espeja la migración 9. La fila existe para que "ninguno colapsado" se pueda
+  // expresar: ausente ⇒ el default, presente ⇒ lo que diga, incluso vacío.
+  ["collapsed_weekdays", "6,7"],
 ]);
 
 /**

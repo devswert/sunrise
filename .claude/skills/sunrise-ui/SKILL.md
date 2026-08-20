@@ -319,6 +319,38 @@ Detalles que ya están resueltos y conviene mantener:
   eso hacía parpadear el marco anunciando un cambio de día que no pasaba. El mismo
   caso tenía debajo un bug real: soltar sobre la columna significaba "al final",
   así que soltar en uno de esos momentos mandaba la tarea al fondo del día.
+- **Los días anteriores a hoy sí reciben drops**, y el atenuado de la columna
+  (`.day-col.is-past`) es solo información. Se probó bloquearlos —una pendiente con
+  fecha pasada se va al backlog con la degradación diaria, así que se ve aterrizar
+  y al día siguiente no está— y **se revirtió**: el gesto ya se podía hacer
+  navegando a la semana anterior, y la regla era más gruesa que el problema (una
+  cerrada no se degrada nunca, y cuando se degrada una pendiente aparece en el
+  backlog con su fecha de origen). Si vuelves a considerarlo, la lección es esa:
+  antes de apagar un droppable por un efecto indeseado, mira si el efecto ya es
+  visible en otra parte de la app.
+- **`MeasuringStrategy` se queda en su default.** Con el contenedor scrolleando
+  bajo el arrastre, el reflejo es subirlo a `Always`; está verificado que no hace
+  falta —el auto-scroll de dnd-kit ajusta sus rects y la card cae donde quedó el
+  puntero— y remedir en cada movimiento del puntero con 21 columnas y todas sus
+  cards se paga en la fluidez, que ya costó una tanda entera de arreglos.
+- **El scroll del board se posiciona a mano**, sin `scrollIntoView` ni scroll
+  suave: el nativo no está en todos los webviews (ya pasó con las tabs de Configs).
+  La columna se busca por `data-date`, no con un ref, porque la `<section>` ya
+  tiene el del droppable de dnd-kit y componer dos refs sobre el mismo nodo se
+  rompe en silencio.
+- **Una semana es un bloque, no siete columnas sueltas** (`.board__wk`). Eso es lo
+  que le da al rótulo de la semana un contenedor donde pegarse —`sticky left: 0` +
+  `align-self: flex-start`, con fondo opaco para que el que entra tape al que
+  sale— y lo que pone el corte de semana en un solo lugar. Si agrupas o desagrupas
+  columnas, ojo con `.board__wk:first-child .day-col:first-child`: la sangría
+  izquierda es solo de la primera columna de la **ventana**, no de cada bloque.
+- **Los días plegados no reciben drops y hoy nunca se pliega.** El ajuste
+  (`collapsed_weekdays`) dice qué días suelen estar vacíos, no que hoy no importe:
+  plegar hoy esconde el día en el que se está trabajando. Y un día plegado con
+  tareas **dibuja su cuenta** y se abre con un click por la sesión, con su botón
+  para volver a plegarlo — plegar no puede ser una forma de esconder trabajo sin
+  salida, ni abrir una puerta de un solo sentido. Ese botón va **solo** en un día
+  plegable abierto a mano: en los otros seis no hay nada que plegar.
 
 ## Interacciones ya definidas
 

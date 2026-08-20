@@ -1,5 +1,70 @@
 import { describe, expect, it } from "vitest";
-import { dateLabel, isoWeekId, relativeTime, shortDate, weekDates, weekdayLabel } from "./date";
+import {
+  dateLabel,
+  isoWeekId,
+  relativeTime,
+  shortDate,
+  isoWeekday,
+  isoWeekdayLabel,
+  threeWeeks,
+  weekDates,
+  weekdayLabel,
+} from "./date";
+
+describe("threeWeeks", () => {
+  it("son tres semanas de 7, con la del ancla al medio", () => {
+    const anchor = new Date("2026-08-12T12:00:00"); // miércoles
+    const weeks = threeWeeks(anchor);
+
+    expect(weeks).toHaveLength(3);
+    expect(weeks.every((s) => s.length === 7)).toBe(true);
+    // La del ancla es siempre `[1]`: de ahí sale el rótulo del bloque del medio.
+    expect(weeks[1]).toEqual(weekDates(anchor));
+    // El ancla cae el miércoles 12, cuya semana arranca el lunes 10.
+    expect(weeks[0][0]).toBe("2026-08-03"); // lunes de la semana anterior
+    expect(weeks[2][6]).toBe("2026-08-23"); // domingo de la siguiente
+  });
+
+  it("no se salta ni repite ningún día en el corte de mes", () => {
+    const days = threeWeeks(new Date("2026-09-02T12:00:00")).flat();
+    expect(new Set(days).size).toBe(21);
+    for (let i = 1; i < days.length; i++) {
+      const prev = new Date(`${days[i - 1]}T12:00:00`);
+      const current = new Date(`${days[i]}T12:00:00`);
+      expect(Math.round((+current - +prev) / 86_400_000)).toBe(1);
+    }
+    expect(days).toContain("2026-08-31");
+    expect(days).toContain("2026-09-01");
+  });
+
+  it("cruza el año sin inventar fechas", () => {
+    const days = threeWeeks(new Date("2026-12-30T12:00:00")).flat();
+    expect(days).toHaveLength(21);
+    expect(days).toContain("2026-12-31");
+    expect(days).toContain("2027-01-01");
+  });
+
+  it("cada semana arranca en lunes", () => {
+    for (const week of threeWeeks(new Date("2026-08-16T12:00:00"))) {
+      // Un domingo como ancla: `startOfISOWeek` lo mete en la semana que
+      // arrancó el lunes anterior, no en la que empieza mañana.
+      expect(isoWeekday(week[0])).toBe(1);
+      expect(isoWeekday(week[6])).toBe(7);
+    }
+  });
+});
+
+describe("isoWeekday / isoWeekdayLabel", () => {
+  it("lunes es 1 y domingo es 7", () => {
+    expect(isoWeekday("2026-08-17")).toBe(1);
+    expect(isoWeekday("2026-08-23")).toBe(7);
+  });
+
+  it("la etiqueta corta sale del locale", () => {
+    expect(isoWeekdayLabel(1)).toBe("Lun");
+    expect(isoWeekdayLabel(7)).toBe("Dom");
+  });
+});
 
 describe("weekDates", () => {
   it("devuelve lunes→domingo de la semana ISO", () => {
