@@ -1,0 +1,85 @@
+/* El diálogo chico de la app y su overlay: `components/Dialog.tsx`.
+ *
+ * Vivían en `task-modal.css` por dónde nacieron, y de ahí los usaban seis
+ * pantallas de tres features distintas. El overlay se queda acá también porque
+ * lo comparten el `TaskModal` y el `AddFeedModal`, que no son diálogos de
+ * confirmación pero sí se abren encima de todo. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh var(--space-4) var(--space-4);
+  z-index: 50;
+}
+
+.dialog {
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg, 0 18px 48px rgba(0, 0, 0, 0.28));
+}
+.dialog__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-title);
+  font-size: 17px;
+  margin: 0;
+}
+.dialog__body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.dialog__body strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.dialog__hint {
+  font-size: 11.5px;
+  color: var(--faint);
+  text-align: right;
+}
+
+/* Variante con más presencia, para los avisos de ritual: icono en círculo y
+   todo centrado. El de ⌘Q sigue siendo el diálogo seco de siempre. */
+.dialog--hero {
+  align-items: center;
+  text-align: center;
+  padding: var(--space-5) var(--space-4) var(--space-4);
+}
+
+.dialog--hero .dialog__title {
+  justify-content: center;
+  font-size: 19px;
+}
+
+.dialog--hero .dialog__actions {
+  width: 100%;
+  justify-content: center;
+}
+
+.dialog__icono {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--sage);
+  color: var(--sage-ink);
+}

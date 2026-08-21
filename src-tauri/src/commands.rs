@@ -747,6 +747,185 @@ pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
     }
 }
 
+// --- Avisos con botón (alertas) ---
+//
+// El plugin de notificaciones **no puede hacer esto**, y no es una limitación de
+// configuración: manda por `notify-rust`, cuyo backend de macOS pasa título,
+// cuerpo, icono y sonido y nada más. Un aviso sin botón es un *banner*, que se va
+// solo en unos segundos. Lo que lo convierte en *alerta* —queda en pantalla hasta
+// que la saques o la acciones, como el aviso de reunión del Calendario— es tener
+// un botón de acción, así que este camino habla directo con
+// `mac-notification-sys`, que es la misma librería que el plugin usa por abajo.
+
+/// La respuesta del usuario a una alerta. La escucha el front.
+pub const NOTIFICATION_ACTION: &str = "sunrise://notification-action";
+
+/// Identidad con la que salieron los avisos, para poder mostrarla.
+#[cfg(target_os = "macos")]
+static NOTIFICATION_IDENTITY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// De quién son los avisos del sistema, decidido **una vez y al arrancar**.
+///
+/// Se intenta primero el identificador de la app (`app.sunrise.desktop`) y no la
+/// Terminal, incluso en dev, y eso es lo que arregla dos cosas de una: el aviso
+/// sale con el icono de sunrise, y —más importante— hereda **los ajustes de
+/// notificación de sunrise**, que es donde el usuario elige si sus avisos son
+/// alertas (se quedan) o banners (se van solos). Atribuido a la Terminal, el
+/// ajuste que manda es el de la Terminal.
+///
+/// **Solo funciona si la app está instalada**, y no es un supuesto: la librería
+/// hace `LSCopyApplicationURLsForBundleIdentifier` y devuelve `false` si
+/// LaunchServices no conoce ese identificador. Sin `.dmg` instalado —una máquina
+/// que solo corre `pnpm tauri dev`— se cae a la Terminal, que es lo que hace el
+/// plugin de notificaciones por su cuenta.
+///
+/// **El precio, en dev**: el aviso pertenece a la app *instalada*, así que
+/// apretar su botón puede activarla a ella y no a la de desarrollo. Es el
+/// intercambio a cambio de poder probar el aviso de verdad.
+///
+/// Va antes de cualquier envío porque `set_application` es un `Once` de proceso
+/// que el plugin también llama: gana el primero.
+#[cfg(target_os = "macos")]
+pub fn claim_notification_identity(identifier: &str) {
+    let used = match mac_notification_sys::set_application(identifier) {
+        Ok(()) => identifier.to_string(),
+        Err(_) => {
+            eprintln!(
+                "[sunrise] macOS no conoce el identificador {identifier} (¿la app no está                  instalada?): los avisos van a salir como la Terminal"
+            );
+            let fallback = "com.apple.Terminal";
+            let _ = mac_notification_sys::set_application(fallback);
+            fallback.to_string()
+        }
+    };
+    let _ = NOTIFICATION_IDENTITY.set(used);
+}
+
+/// Con qué identidad salen los avisos. Lo muestra Dev Tools: en dev, saber si el
+/// aviso salió como sunrise o como la Terminal explica por qué se queda o no.
+#[tauri::command]
+pub fn notification_identity() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        NOTIFICATION_IDENTITY.get().cloned().unwrap_or_default()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        String::new()
+    }
+}
+
+/// Abre el panel de Notificaciones de Ajustes del sistema.
+///
+/// **Desde Rust y no desde el front**, y eso salió de un incidente: para abrir un
+/// `x-apple.systempreferences:` con el plugin del front hay que sumar ese esquema
+/// a `opener:allow-open-url` en `capabilities/default.json`, y hacerlo dejó a la
+/// app **sin ningún aviso del sistema** —ni banner ni alerta— hasta que se
+/// revirtió. Acá el ACL no aplica (igual que el updater), así que no hay permiso
+/// que tocar ni capability que romper.
+#[tauri::command]
+pub fn open_notification_settings(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(
+            "x-apple.systempreferences:com.apple.preference.notifications",
+            None::<&str>,
+        )
+        .map_err(e)
+}
+
+/// Los sonidos que macOS puede tocar en un aviso, por nombre y sin extensión.
+///
+/// Salen de las dos carpetas que el sistema mira: las del sistema y **las del
+/// usuario** (`~/Library/Sounds`), que es la respuesta a "¿podemos usar uno
+/// propio?": se deja el archivo ahí y aparece en esta lista. El nombre es lo que
+/// viaja en el aviso, así que un `.aiff` llamado `Campana` se pide como
+/// `"Campana"`.
+#[tauri::command]
+pub fn notice_sounds() -> Vec<String> {
+    let mut dirs: Vec<std::path::PathBuf> = vec!["/System/Library/Sounds".into(), "/Library/Sounds".into()];
+    if let Some(home) = std::env::var_os("HOME") {
+        dirs.push(std::path::Path::new(&home).join("Library/Sounds"));
+    }
+
+    let mut names: Vec<String> = dirs
+        .iter()
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flatten()
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            entry
+                .path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(str::to_string)
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// Muestra una alerta con un botón y avisa qué apretó el usuario.
+///
+/// **No espera acá.** `send()` bloquea el hilo hasta que la persona hace algo
+/// —eso es lo que significa que la alerta sea persistente—, así que esperar
+/// dentro del comando congelaría la app hasta que alguien mirara la esquina de la
+/// pantalla. Se manda en un hilo aparte y la respuesta vuelve por
+/// `NOTIFICATION_ACTION`, que es un evento y llega a las dos ventanas.
+#[tauri::command]
+pub fn notify_alert(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+    action: String,
+    sound: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // La identidad ya la fijó el arranque (`claim_notification_identity`).
+
+        std::thread::spawn(move || {
+            use mac_notification_sys::{MainButton, Notification};
+
+            let mut notification = Notification::new();
+            notification
+                .title(&title)
+                .message(&body)
+                .main_button(MainButton::SingleAction(&action))
+                .close_button("Cerrar")
+                .sound(sound.as_str());
+
+            match notification.send() {
+                Ok(response) => {
+                    let _ = app.emit(NOTIFICATION_ACTION, response_label(&response));
+                }
+                Err(err) => eprintln!("[sunrise] no se pudo mostrar la alerta: {err}"),
+            }
+        });
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, title, body, action, sound);
+        Err("las alertas con botón son solo de macOS".into())
+    }
+}
+
+/// Qué apretó el usuario, como texto para el front. `action` es el botón nuestro;
+/// el resto son las formas de sacarla de encima sin accionarla.
+#[cfg(target_os = "macos")]
+fn response_label(response: &mac_notification_sys::NotificationResponse) -> &'static str {
+    use mac_notification_sys::NotificationResponse;
+    match response {
+        NotificationResponse::ActionButton(_) => "action",
+        NotificationResponse::Click => "click",
+        NotificationResponse::CloseButton(_) => "close",
+        NotificationResponse::Reply(_) => "reply",
+        NotificationResponse::None => "none",
+    }
+}
+
 // --- Actualizaciones ---
 //
 // El updater vive **entero acá y no en el front**. El plugin tiene también una

@@ -35,6 +35,13 @@ tempfile = "3.27.0"
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-updater = "2"
 
+# El aviso con botón que queda pegado en pantalla (§4.25). El plugin de
+# notificaciones no sirve para esto: manda por `notify-rust`, cuyo backend de
+# macOS solo pasa título, cuerpo, icono y sonido — nunca un botón de acción, que
+# es justamente lo que hace que macOS muestre una **alerta** en vez de un banner.
+[target.'cfg(target_os = "macos")'.dependencies]
+mac-notification-sys = "0.6"
+
 [features]
 # default Tauri custom-protocol for production bundling
 custom-protocol = ["tauri/custom-protocol"]

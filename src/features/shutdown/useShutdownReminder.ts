@@ -3,6 +3,20 @@ import { api, isTauri } from "../../lib/ipc";
 import { useToday } from "../../lib/day";
 import { SettingKey, useSettingsStore, workHours } from "../../lib/settings";
 import { shouldRemindShutdown } from "./dailyLog";
+import { SHUTDOWN_NOTICE, notify, type NotifyResult } from "../notifications/notify";
+
+/**
+ * Si el día queda marcado como avisado según cómo terminó el intento.
+ *
+ * Se marca cuando **se mandó** y cuando el permiso está **denegado**: sin
+ * permiso, reintentar cada minuto no cambia nada y deja la app pidiendo lo mismo
+ * toda la tarde. No se marca cuando **falló**, porque puede ser pasajero y el
+ * próximo tick lo reintenta. Las tres son políticas distintas, y por eso
+ * `notify` devuelve cuál fue en vez de `void`.
+ */
+export function markAfter(result: NotifyResult): boolean {
+  return result === "sent" || result === "denied";
+}
 
 /** Cada cuánto se mira el reloj. El aviso es de una vez al día, no al segundo. */
 const INTERVALO_MS = 60_000;
@@ -33,8 +47,10 @@ function ahoraHhmm(): string {
  * todavía. Preguntarlo en cada tick sería una consulta por minuto para nada.
  *
  * **Este camino no se puede verificar fuera de Tauri**: en el browser y en jsdom
- * no hay notificaciones nativas. Lo que sí está testeado es la decisión
- * (`shouldRemindShutdown`).
+ * no hay notificaciones nativas. Lo que sí está testeado son las dos decisiones:
+ * si avisar (`shouldRemindShutdown`) y si marcar el día después (`markAfter`).
+ * Y adentro de Tauri ya no hay que esperar la hora: Configs → Notificaciones
+ * prueba el aviso y borra la marca del día (SPECS §4.24).
  */
 export function useShutdownReminder() {
   const values = useSettingsStore((s) => s.values);
@@ -67,26 +83,11 @@ export function useShutdownReminder() {
         return;
       }
 
-      try {
-        const notif = await import("@tauri-apps/plugin-notification");
-        if (!(await notif.isPermissionGranted())) {
-          const permiso = await notif.requestPermission();
-          if (permiso !== "granted") {
-            // Se marca igual: sin permiso, reintentar cada minuto no cambia
-            // nada y deja la app pidiendo lo mismo toda la tarde.
-            await setSetting(SettingKey.SHUTDOWN_NOTIFIED_ON, today);
-            return;
-          }
-        }
-        notif.sendNotification({
-          title: "Hora de cerrar el día",
-          body: "Pasa por el shutdown si quieres dejarlo escrito. Si no, queda como borrador.",
-        });
+      // El texto sale de `notifications/notify`, que es también de donde lo saca
+      // el botón "Probar" de Configs: si cada uno escribiera el suyo, la prueba
+      // diría una cosa y el aviso de verdad otra.
+      if (markAfter(await notify(SHUTDOWN_NOTICE))) {
         await setSetting(SettingKey.SHUTDOWN_NOTIFIED_ON, today);
-      } catch (err) {
-        // Que falle la notificación no puede tumbar la app. Y no se marca la
-        // fecha: si fue algo pasajero, el próximo tick lo vuelve a intentar.
-        console.error("[sunrise] no se pudo avisar el cierre del día", err);
       }
     };
 

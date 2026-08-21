@@ -4,6 +4,7 @@ import { ArrowRight, CalendarCheck, Check, History, Inbox, Sunrise } from "lucid
 import { DayBoard } from "../week/DayBoard";
 import { TaskCardStatic } from "../week/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
+import { Dialog } from "../../components/Dialog";
 import { reorderLocal } from "../tasks/reorder";
 import { useBoard } from "../tasks/useBoard";
 import { CalendarRail } from "../calendar/CalendarRail";
@@ -183,18 +184,6 @@ export function DailyPlanningView() {
     avisadoPara.current = today;
     if (alreadyPlanned(values, today)) setAviso(true);
   }, [ajustesCargados, values, today]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Enter") {
-        e.preventDefault();
-        setAviso(false);
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [notice]);
 
   const cardDe = (t: Task) => (
     <TaskCardStatic
@@ -410,33 +399,29 @@ export function DailyPlanningView() {
       </footer>
 
       {notice && (
-        <div className="modal-overlay" onClick={() => setAviso(false)}>
-          <div
-            className="dialog dialog--hero"
-            role="alertdialog"
-            aria-label="Ya planificaste hoy"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="dialog__icono" aria-hidden>
-              <CalendarCheck size={26} />
-            </div>
-            <h2 className="dialog__title">Ya pasaste por acá</h2>
-            <p className="dialog__body">
-              Hoy ya cerraste la planificación. Puedes revisarla igual —nada se
-              deshace—, pero si venías de paso, la semana te espera.
-            </p>
-            <div className="dialog__actions">
+        <Dialog
+          title="Ya pasaste por acá"
+          label="Ya planificaste hoy"
+          icon={<CalendarCheck size={26} />}
+          hint="Enter o Escape para revisar"
+          onClose={() => setAviso(false)}
+          onEnter={() => setAviso(false)}
+          actions={
+            <>
               <button className="btn-ghost" onClick={() => navigate("/")}>
                 Ir a la semana
               </button>
               <button className="btn-primary" onClick={() => setAviso(false)} autoFocus>
                 <ArrowRight size={14} aria-hidden /> Revisar igual
               </button>
-            </div>
-            <span className="dialog__hint">Enter o Escape para revisar</span>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <p className="dialog__body">
+            Hoy ya cerraste la planificación. Puedes revisarla igual —nada se deshace—,
+            pero si venías de paso, la semana te espera.
+          </p>
+        </Dialog>
       )}
 
       {selectedTask && (

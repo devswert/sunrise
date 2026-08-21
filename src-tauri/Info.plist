@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Tauri **mezcla** este archivo con el Info.plist que genera para el .app: lo
+  busca solo, al lado de tauri.conf.json, así que no hace falta declararlo en
+  ninguna parte. Va acá lo que Tauri no expone como opción de configuración.
+
+  NSUserNotificationAlertStyle=alert pide que los avisos de sunrise sean
+  **alertas** y no banners, o sea que se queden en pantalla hasta que la persona
+  responda. Es solo el valor **por defecto** de la app: manda igual lo que el
+  usuario elija en Ajustes del sistema → Notificaciones, y no hay forma de
+  forzarlo desde el código (SPECS §4.25).
+
+  Sin verificar: es la clave de la API vieja de notificaciones —la que permite
+  botones y la que usamos por abajo—, y no comprobamos que macOS 26 todavía la
+  respete. Se sabrá en la primera instalación de un build que la lleve.
+-->
+<plist version="1.0">
+  <dict>
+    <key>NSUserNotificationAlertStyle</key>
+    <string>alert</string>
+  </dict>
+</plist>

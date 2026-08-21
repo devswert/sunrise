@@ -14,6 +14,7 @@ import { relativeTime } from "../../lib/date";
 import { SETTING_DEFAULTS, SettingKey, backupSettings, useSettingsStore } from "../../lib/settings";
 import { minutesFromTime } from "../calendar/railLayout";
 import { sectionIcon } from "../settings/secciones";
+import { Dialog } from "../../components/Dialog";
 import type { BackupFile, RestoreResult } from "../../lib/types";
 import { readableDate, formatBytes, readableMoment } from "./backup";
 
@@ -39,8 +40,7 @@ async function elegirEnFinder(options: {
 }
 
 /**
- * Confirmación antes de restaurar. Reusa `.modal-overlay` / `.dialog`, las
- * mismas clases del diálogo de salida.
+ * Confirmación antes de restaurar, con el `Dialog` compartido.
  *
  * Dice las tres cosas que el usuario necesita saber y que no son obvias: que se
  * pierde **todo** lo local (no se mezcla nada), que la app guarda igual una
@@ -59,38 +59,23 @@ function ConfirmarRestore({
   restaurando: boolean;
 }) {
   return (
-    <div className="modal-overlay" onClick={restaurando ? undefined : onCancel}>
-      <div
-        className="dialog"
-        role="alertdialog"
-        aria-label="Confirmar restauración"
-        aria-modal="true"
-        onClick={(ev) => ev.stopPropagation()}
-      >
-        <h2 className="dialog__title">¿Restaurar este respaldo?</h2>
-        <p className="dialog__body">
-          Se va a reemplazar <strong>toda</strong> tu información actual por la del respaldo.
-          Las tareas, notas y tiempos que hayas registrado después de{" "}
-          <code>{zip.split("/").pop()}</code> no se pueden recuperar: no se mezcla nada, se
-          escribe encima.
-        </p>
-        <p className="dialog__body">
-          Antes de pisarla, sunrise guarda una copia de tu base actual en la carpeta de
-          respaldos. Si tenías el timer corriendo, va a quedar apuntando a la base nueva.
-          Lo único que se mantiene es esta configuración de respaldo.
-        </p>
-        <div className="dialog__actions">
+    // **Ninguna tecla sola restaura**: no se pasa `onEnter` y el botón destructivo
+    // tampoco lleva `autoFocus`, porque un botón enfocado se activa con Enter y
+    // eso alcanzaba para reemplazar la base. Escape sí cancela, y mientras
+    // restaura no se puede cerrar de ninguna de las dos formas.
+    <Dialog
+      title="¿Restaurar este respaldo?"
+      label="Confirmar restauración"
+      hint={restaurando ? undefined : "Escape para cancelar"}
+      onClose={restaurando ? undefined : onCancel}
+      actions={
+        <>
           <button className="btn-ghost" onClick={onCancel} disabled={restaurando}>
             Cancelar
           </button>
           {/* `is-solid`: es la acción más destructiva de la app y tiene que
               verse como tal, no como un botón secundario más. */}
-          <button
-            className="btn-danger is-solid"
-            onClick={onConfirm}
-            disabled={restaurando}
-            autoFocus
-          >
+          <button className="btn-danger is-solid" onClick={onConfirm} disabled={restaurando}>
             {restaurando ? (
               <Loader2 size={14} className="is-spinning" aria-hidden />
             ) : (
@@ -98,9 +83,21 @@ function ConfirmarRestore({
             )}
             {restaurando ? "Restaurando…" : "Restaurar y reemplazar"}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p className="dialog__body">
+        Se va a reemplazar <strong>toda</strong> tu información actual por la del respaldo.
+        Las tareas, notas y tiempos que hayas registrado después de{" "}
+        <code>{zip.split("/").pop()}</code> no se pueden recuperar: no se mezcla nada, se
+        escribe encima.
+      </p>
+      <p className="dialog__body">
+        Antes de pisarla, sunrise guarda una copia de tu base actual en la carpeta de
+        respaldos. Si tenías el timer corriendo, va a quedar apuntando a la base nueva. Lo
+        único que se mantiene es esta configuración de respaldo.
+      </p>
+    </Dialog>
   );
 }
 
@@ -128,68 +125,66 @@ function RestauracionLista({ r, onClose }: { r: RestoreResult; onClose: () => vo
   const otraVersion = r.backupVersion != null && r.backupVersion !== r.currentVersion;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="dialog"
-        role="alertdialog"
-        aria-label="Respaldo restaurado"
-        aria-modal="true"
-        onClick={(ev) => ev.stopPropagation()}
-      >
-        <h2 className="dialog__title">
+    <Dialog
+      title={
+        <>
           <ShieldCheck size={16} aria-hidden /> Listo, se restauró el respaldo
-        </h2>
-
-        <dl className="resp-resumen">
-          <dt>Del</dt>
-          <dd>
-            {r.createdAt ? (
-              <>
-                {readableMoment(r.createdAt)} <span className="resp-resumen__hace">
-                  ({relativeTime(r.createdAt)})
-                </span>
-              </>
-            ) : (
-              // Un respaldo viejo puede no traer manifest. Se dice, en vez de
-              // mostrar la fecha del archivo como si fuera la del snapshot.
-              <span className="resp-resumen__hace">
-                sin manifest: {r.from.split("/").pop()}
-              </span>
-            )}
-          </dd>
-
-          <dt>Quedó con</dt>
-          <dd>
-            {r.tasks} {r.tasks === 1 ? "tarea" : "tareas"}
-            {r.lastActivity && (
-              <>
-                {" · "}último work {readableMoment(r.lastActivity)}
-              </>
-            )}
-          </dd>
-
-          {otraVersion && (
+        </>
+      }
+      label="Respaldo restaurado"
+      hint="Enter o Escape para cerrar"
+      onClose={onClose}
+      onEnter={onClose}
+      actions={
+        <button className="btn-primary" onClick={onClose} autoFocus>
+          Entendido
+        </button>
+      }
+    >
+      <dl className="resp-resumen">
+        <dt>Del</dt>
+        <dd>
+          {r.createdAt ? (
             <>
-              <dt>Versión</dt>
-              <dd>
-                hecho en {r.backupVersion}, migrado a {r.currentVersion}
-              </dd>
+              {readableMoment(r.createdAt)} <span className="resp-resumen__hace">
+                ({relativeTime(r.createdAt)})
+              </span>
+            </>
+          ) : (
+            // Un respaldo viejo puede no traer manifest. Se dice, en vez de
+            // mostrar la fecha del archivo como si fuera la del snapshot.
+            <span className="resp-resumen__hace">
+              sin manifest: {r.from.split("/").pop()}
+            </span>
+          )}
+        </dd>
+
+        <dt>Quedó con</dt>
+        <dd>
+          {r.tasks} {r.tasks === 1 ? "tarea" : "tareas"}
+          {r.lastActivity && (
+            <>
+              {" · "}último work {readableMoment(r.lastActivity)}
             </>
           )}
+        </dd>
 
-          <dt>Tu base anterior</dt>
-          <dd>
-            <code>{r.backupCopy}</code>
-          </dd>
-        </dl>
+        {otraVersion && (
+          <>
+            <dt>Versión</dt>
+            <dd>
+              hecho en {r.backupVersion}, migrado a {r.currentVersion}
+            </dd>
+          </>
+        )}
 
-        <div className="dialog__actions">
-          <button className="btn-primary" onClick={onClose} autoFocus>
-            Entendido
-          </button>
-        </div>
-      </div>
-    </div>
+        <dt>Tu base anterior</dt>
+        <dd>
+          <code>{r.backupCopy}</code>
+        </dd>
+      </dl>
+
+    </Dialog>
   );
 }
 

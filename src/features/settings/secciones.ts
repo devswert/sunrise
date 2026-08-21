@@ -1,6 +1,7 @@
 import {
   CalendarDays,
   DatabaseBackup,
+  FlaskConical,
   Hash,
   Keyboard,
   SlidersHorizontal,
@@ -32,9 +33,23 @@ export const TABS = [
   // Al final: es la sección que menos se visita y la única que puede destruir
   // datos, así que no debe quedar en el camino de nadie.
   { id: "respaldo", label: "Respaldo", icon: DatabaseBackup },
+  // Después de Respaldo y solo en dev: son herramientas para desarrollar, no
+  // ajustes. Un usuario de la app instalada no la ve nunca.
+  { id: "dev-tools", label: "Dev Tools", icon: FlaskConical, dev: true },
 ] as const;
 
 export type TabId = (typeof TABS)[number]["id"];
+
+/**
+ * Las secciones que se dibujan en este binario.
+ *
+ * Una sección `dev` que aparezca en la lista pero no tenga card —o al revés—
+ * rompe el resaltado, así que **la lista y las cards se filtran con el mismo
+ * booleano**: esta función es el único lugar donde se decide.
+ */
+export function visibleTabs(dev: boolean): readonly (typeof TABS)[number][] {
+  return TABS.filter((t) => dev || !("dev" in t && t.dev));
+}
 
 /** El icono de una sección, para las cards que viven en otros módulos. */
 export function sectionIcon(id: TabId): LucideIcon {

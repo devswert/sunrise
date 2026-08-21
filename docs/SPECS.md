@@ -477,7 +477,8 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
 
 Cinco secciones, cada una con título y bajada propia (`Card` en
 `SettingsView.tsx`), en este orden: **General**, **Calendarios** (§4.12),
-**Canales**, **Atajos de teclado** (§4.9) y **Respaldo** (§4.17). El orden de la
+**Canales**, **Atajos de teclado** (§4.9) y **Respaldo** (§4.17). En dev hay una
+sexta al final, **Dev Tools** (§4.24), que la app instalada no muestra. El orden de la
 lista lateral y el de las cards **tienen que coincidir**: el resaltado lo decide
 un `IntersectionObserver` sobre las secciones, así que si divergen la lista marca
 una y se ve otra. Las dos salen de la misma lista, `settings/secciones.ts`, que es
@@ -1302,10 +1303,19 @@ marca es la fecha (`shutdown_notified_on`) y no un booleano, por lo mismo que
 minuto no cambia nada y deja la app pidiendo lo mismo toda la tarde.
 
 > **Este camino no se puede verificar fuera de Tauri**, como ⌘Q (§4.10): en el
-> browser y en jsdom no hay notificaciones nativas. Lo que sí está cubierto es la
-> decisión (`shouldRemindShutdown`). Y adentro de Tauri **hay que esperar a que pase
-> `work_end`**, así que probar un cambio acá es incómodo a propósito hasta que
-> llegue Mej.16 (un botón "Probar" en Configs y el estado del permiso a la vista).
+> browser y en jsdom no hay notificaciones nativas. Lo que sí está cubierto son las
+> dos decisiones: si avisar (`shouldRemindShutdown`) y **si marcar el día después**
+> (`markAfter`). La segunda es la que se rompe en silencio: `notify` devuelve
+> `sent | denied | failed | unavailable` justamente para que el hook distinga las
+> tres políticas —se marca al mandarlo y también sin permiso, **no** cuando falló,
+> porque eso puede ser pasajero—. Si `notify` devolviera `void`, las tres serían una
+> y un aviso que falló quedaría marcado como dado.
+>
+> **Y ya no hay que esperar la hora**: Configs → Notificaciones prueba cada aviso
+> con su texto real, muestra el estado del permiso y borra la marca del día
+> (§4.24). El texto de cada aviso vive en `features/notifications/notify.ts` y de
+> ahí lo toman los dos —el botón y el aviso de verdad—, o la prueba diría una cosa
+> y el real otra.
 
 **El rollup lo comparte con la weekly review.** `work_by_day` es el único
 lugar donde viven la atribución por día local, la Regla 2, la Regla 3, el
@@ -1870,6 +1880,162 @@ sobre el store y no sobre `mockDb`, que es lo que lo hace servir **dentro de
 > de salida arranca a los 28 y dura 2; el store desmonta a los 30. Si alguien mueve
 > uno sin el otro, el aviso desaparece de golpe o se queda invisible ocupando lugar.
 
+### 4.24 Configs → Dev Tools (solo en dev)
+
+La última sección de Configs, y **la única que depende del binario**: se dibuja
+solo cuando `profile.dev` es `true` (§4.20). No son ajustes — nadie que use la app
+instalada tiene por qué ver un botón que dispara un aviso de mentira—, así que va
+después de Respaldo y con su propio criterio de existencia.
+
+> **I** — **La lista y las cards se filtran con el mismo booleano.** El resaltado
+> de las tabs lo decide un `IntersectionObserver` sobre las secciones (§4.8), así
+> que una tab sin su card marca una y muestra otra. `visibleTabs(dev)` en
+> `settings/secciones.ts` es el único lugar donde se decide, y la card se dibuja
+> con la misma condición. Fuera de Tauri el mock dice `dev: true`, que es lo
+> correcto: en el browser y en jsdom no hay ninguna app instalada.
+
+**Probar las notificaciones** es la primera herramienta que vive ahí (Mej.16).
+Los avisos nativos son el único camino de la app que **no se puede ver ni en el
+browser ni en jsdom** y encima dependen del reloj (§4.16), así que antes cada
+cambio en esa maquinaria se verificaba esperando. Tres controles:
+
+- **Probar cada aviso**, con **el texto de verdad**. Los textos viven en
+  `features/notifications/notify.ts` (`SHUTDOWN_NOTICE`, `nextTaskNotice`) y de
+  ahí los toman los dos consumidores. Es la misma razón que el changelog: si el
+  botón escribiera su propia versión, la prueba diría una cosa y el aviso real
+  otra, y no se notaría hasta que llegue el real.
+- **El estado del permiso a la vista.** Sin permiso el aviso simplemente no llega
+  y nada en pantalla lo dice; peor, el aviso del cierre marca el día igual a
+  propósito. El plugin solo expone `isPermissionGranted()`, un booleano, así que
+  **"denegado" y "nunca se preguntó" no se pueden distinguir** sin pedirlo — y
+  pedirlo al renderizar abriría el diálogo de macOS sin que nadie lo pidiera. Por
+  eso el estado es `granted | unknown | unavailable` y el texto de `unknown` dice
+  las dos posibilidades, con la ruta de Ajustes del sistema para el caso denegado,
+  que ya no se puede volver a pedir desde la app.
+- **Volver a avisar hoy**, que borra `shutdown_notified_on` para probar el camino
+  real sin esperar al día siguiente. Toca **solo** esa clave: `planned_on` se
+  parece pero es de otro ritual.
+
+**El botón lo único que hace es mandar**: no escribe `shutdown_notified_on`. Si lo
+escribiera, probar un aviso con el permiso denegado apagaría el aviso real de ese
+día.
+
+**El aviso de "próxima tarea" existe acá antes que su disparador** (Mej.4 todavía
+no está): hoy el botón es lo único que lo muestra. Cuando se haga, tiene que
+consumir `nextTaskNotice` en vez de escribir su propio texto.
+
+#### Dos cosas de los avisos nativos que no son nuestras
+
+**En dev, el aviso lleva el icono de la Terminal, no el de sunrise.** No es un
+bug de la app ni le falta nada al icon set: el plugin lo hace a propósito, en
+`desktop.rs`, `set_application("com.apple.Terminal")` cuando `tauri::is_dev()`, y
+usa el identificador del bundle (`app.sunrise.desktop`) solo en producción. Un
+proceso sin `.app` no tiene identidad que macOS pueda atribuir. **Se ve bien en la
+app instalada y no hay nada que arreglar en dev.**
+
+**Los avisos suenan, y el de sunrise es `Blow`** (`DEFAULT_SOUND`, probado en la
+app). El sonido se elige por **nombre de archivo sin extensión**, y macOS lo busca
+en las carpetas `Sounds`: las del sistema (los catorce de fábrica — Basso, Blow, Bottle,
+Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine, Tink) y
+**`~/Library/Sounds`**, que es dónde va uno propio. `SYSTEM_SOUND` es la
+alternativa que no es un archivo: el literal `NSUserNotificationDefaultSoundName`,
+o sea "el que use el sistema". `notice_sounds()` lista las dos carpetas, así que un `.aiff` dejado ahí aparece en el selector de Dev Tools con el
+nombre del archivo, sin extensión. La trampa: **un nombre que no existe no suena y
+no falla**, así que un typo deja los avisos mudos sin decir nada.
+
+El selector de Dev Tools **no persiste** la elección: es para escuchar los sonidos.
+Elegir el de verdad es un ajuste, y va con Mej.1.
+
+### 4.25 Alertas: el aviso que se queda hasta que respondas
+
+**El botón es necesario y no es suficiente.** Un aviso con botón de acción puede
+quedarse en pantalla hasta que la saques o la acciones —como el aviso de reunión
+del Calendario—, pero **quién decide si se queda es el estilo de notificación de la
+app**: *Alertas* se queda, *Banners* se va solo, y eso vive en Ajustes del sistema
+→ Notificaciones, por aplicación. Medido: con los botones puestos, el aviso seguía
+yéndose solo, porque en dev se atribuía a la Terminal (ver la invariante de la
+identidad, más abajo) y el ajuste que mandaba era el de la Terminal.
+
+**Comprobado en la máquina del dev**, y es lo que cierra el tema: con
+`Notificaciones → sunrise → Alert Style` en **Persistent**, las dos —la alerta de
+próxima tarea y el banner del cierre— se quedan pegadas hasta que las saques. En
+**Temporary**, que es como estaba, las dos se van solas aunque tengan botones.
+
+> **I** — **No se puede garantizar que quede en Persistent al instalar, y no hay
+> API para intentarlo.** El estilo es del usuario: no se puede leer ni escribir
+> desde la app, y macOS recuerda el ajuste por identificador, así que reinstalar
+> tampoco lo reinicia. `NSUserNotificationAlertStyle=alert` en
+> `src-tauri/Info.plist` —que Tauri mezcla solo con el que genera— pide que el
+> **default** sea alerta, y es lo máximo que se puede hacer: es un default para un
+> registro nuevo, no una imposición, y está **sin verificar** porque es la clave de
+> la API vieja. Así que lo que la app hace es **decirlo**: Dev Tools nombra el
+> ajuste exacto y tiene un botón que abre ese panel
+> (`x-apple.systempreferences:com.apple.preference.notifications`, con su esquema
+> permitido en `capabilities/default.json`). Cuando exista el aviso de próxima
+> tarea de verdad (Mej.4), esto tiene que decírselo al usuario **una vez, en
+> Configs**: una feature que promete avisarte y depende de un switch escondido no
+> puede quedarse callada.
+
+**El plugin de notificaciones no sirve para esto**, y no es cosa de configurarlo:
+manda por `notify-rust`, cuyo backend de macOS pasa título, cuerpo, icono y sonido
+y nada más. Así que las alertas hablan directo con `mac-notification-sys` —la misma
+librería que el plugin usa por abajo— desde el comando `notify_alert`.
+
+Quién es alerta y quién no lo dice **la copia misma**: un `NoticeCopy` con `action`
+viaja por `notify_alert`, uno sin `action` por el plugin. Hoy el de próxima tarea
+lleva botón ("Ir a Focus") y el del cierre del día no, y esa asimetría es la
+decisión: si te pierdes el aviso del cierre, el shutdown sigue ahí; la reunión, no.
+
+> **I** — **El comando no espera la respuesta, y no puede.** El `send()` de
+> `mac-notification-sys` **bloquea el hilo hasta que la persona hace algo** —eso es
+> lo que significa que la alerta sea persistente—, así que esperar dentro del
+> comando congelaría la app hasta que alguien mirara la esquina de la pantalla. Se
+> manda en un hilo aparte y la respuesta vuelve por el evento
+> `sunrise://notification-action` (`useNotificationActions`), con cinco valores:
+> `action | click | close | reply | none`.
+
+> **I** — **La identidad se reclama al arrancar, y con el identificador de
+> sunrise incluso en dev.** `set_application` de `mac-notification-sys` es un
+> `Once` de proceso que el plugin de notificaciones también llama —con la Terminal
+> cuando `tauri::is_dev()`—, así que gana el primero:
+> `claim_notification_identity` corre en el `setup` de `lib.rs`, antes de que se
+> mande ningún aviso. No es cosmético: **el estilo del aviso lo decide el ajuste
+> de notificaciones de la app a la que se atribuye**, así que atribuido a la
+> Terminal manda el ajuste de la Terminal y poner sunrise en "Alertas" no hace
+> nada.
+>
+> **Depende de que la app esté instalada**, y no es un supuesto: la librería hace
+> `LSCopyApplicationURLsForBundleIdentifier` y devuelve `false` si LaunchServices
+> no conoce el identificador. En una máquina que solo corre `pnpm tauri dev` se
+> cae a `com.apple.Terminal` —el mismo lugar donde estaba antes— y Dev Tools lo
+> **muestra**, porque es la explicación de por qué un aviso no se queda. Si no se
+> fijara ninguna, la librería resuelve `use_default` y termina en
+> `com.apple.Finder`: funcionaría igual, con otro icono prestado y sin que nadie
+> lo dijera.
+>
+> **El precio en dev**: el aviso pertenece a la app *instalada*, así que apretar su
+> botón puede activarla a ella y no a la de desarrollo.
+
+> **I** — **No le agregues esquemas raros a `opener:allow-open-url`.** Sumar
+> `x-apple.systempreferences:*` a esa entrada de `capabilities/default.json` dejó
+> la app **sin ningún aviso del sistema** —ni banner ni alerta, las dos rutas
+> muertas— y volvió todo a la normalidad al revertirlo. Se comprobó por
+> eliminación, con el sonido descartado por separado: **con la entrada no salen,
+> sin la entrada salen**. El mecanismo **no está explicado** (el glob es válido y
+> el `ScopeObject` deserializa bien, así que no es un error de parseo evidente), y
+> por eso queda como una regla y no como una teoría. Lo que sí está claro es dónde
+> aparece el síntoma: en la consola del webview, no en la terminal, y a varios
+> metros de lo que se tocó.
+>
+> Por eso **abrir el panel de Ajustes del sistema va por un comando de Rust**
+> (`open_notification_settings`, que usa la API Rust del plugin `opener`): desde
+> Rust el ACL no aplica, igual que el updater, así que no hay capability que tocar.
+
+Falta el consumidor de verdad: **que apretar "Ir a Focus" navegue a Focus es de
+Mej.4**, y tiene que engancharse en `useNotificationActions` en vez de abrir otro
+camino. Hoy el único que escucha es la card de Dev Tools, que muestra qué volvió —
+que es lo que hace verificable todo esto sin esperar una reunión.
+
 ---
 
 ## 5. Sincronización de estado — LEER ANTES DE TOCAR
@@ -2271,9 +2437,10 @@ En `useFloatingWindow.ts`, ya pagadas:
   el `onBlur` va **en la fila** y solo cuenta si `relatedTarget` cayó afuera, y el
   control que abre el popover hace `preventDefault` en el `mousedown`
   (`keepFocus` en `ColorDot`). La segunda defensa es la que sostiene el caso real
-  —en el webview de macOS un click en un botón no lo enfoca pero sí saca el foco,
-  así que el blur llega con `relatedTarget` en `null`, indistinguible de irse de la
-  fila— y va **opt-in**, porque las filas de renombre dependen del blur contrario.
+  —si el click en el botón no lo enfoca (se reporta de WebKit y no está verificado
+  acá) el foco se va al `body` y el blur llega con `relatedTarget` en `null`,
+  indistinguible de irse de la fila; el `preventDefault` no depende del motor— y va
+  **opt-in**, porque las filas de renombre dependen del blur contrario.
   Se testea con `userEvent`: `fireEvent.click` no mueve el foco y el test pasaría
   con el bug puesto.
 - **El corrector ortográfico va solo donde hay prosa.** En macOS el webview
@@ -2289,6 +2456,27 @@ En `useFloatingWindow.ts`, ya pagadas:
   aceptar en naranjo se lee como una advertencia. El naranjo queda para lo que
   avisa. Y todo botón de acción lleva **su icono** (`lucide-react`) además del
   texto.
+- **Los diálogos chicos son un componente, no un patrón copiado**
+  (`src/components/Dialog.tsx`): confirmar salida (⌘Q), el aviso de "ya
+  planificaste", "Lo nuevo", y los dos de Respaldo. Él es dueño del overlay, de
+  `role="alertdialog"` + `aria-modal`, del `stopPropagation`, del foco inicial y
+  —lo que importa— **de las teclas en `window` con `capture`**. Estaba copiado
+  cinco veces y **faltaba en dos**: la confirmación de restaurar, la acción más
+  destructiva de la app, no se cerraba con Escape.
+  - `onClose` ausente = no se cierra ni con Escape ni con el click afuera, que es
+    lo que necesita un diálogo a mitad de una operación irreversible
+    (`restaurando`).
+  - **`onEnter` va aparte del botón primario a propósito.** En la confirmación de
+    restaurar no se pasa, **y el botón destructivo tampoco lleva `autoFocus`**:
+    un botón enfocado se activa con Enter, así que el `autoFocus` que estaba ahí
+    alcanzaba para reemplazar la base con una tecla. Ahí Escape cancela y confirmar
+    es un click.
+  - No lo usan `TaskModal` ni `AddFeedModal`: no son confirmaciones sino una vista
+    y un formulario, con su propio teclado (⌘Enter, Enter por campo). Comparten el
+    `.modal-overlay` y nada más. Las confirmaciones **en línea** de dos pasos
+    (borrar tarea, quitar feed) tampoco: no son modales.
+  - Los estilos se mudaron de `task-modal.css` a `src/components/dialog.css`, que
+    es donde se los busca ahora.
 - **Popovers en portal con posición fija** (`src/components/Popover.tsx`). Si no,
   los recorta el `overflow` de columnas y modales, y el ancho queda limitado por
   el contenedor del chip.
@@ -2320,7 +2508,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **421 tests front (49 archivos) y 148 Rust, todos verdes.**
+estado actual: **440 tests front (54 archivos) y 148 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -2545,6 +2733,18 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 - **D6. `SettingsView` no observa `dataVersion`**: solo recarga con su propio
   `load`.
 - **D7. Warning de `act()`** en el test del `Sidebar` (pasa, pero ensucia).
+- **D10. Por qué un esquema nuevo en `opener:allow-open-url` mata los avisos del
+  sistema.** Está comprobado que lo hace y revertirlo lo arregla (§4.25), pero el
+  mecanismo no: el glob es válido y el `ScopeObject` del plugin deserializa sin
+  error, así que no es un fallo de parseo a la vista. Mientras no se entienda, la
+  regla es no tocar esa entrada y abrir URLs de esquema propio desde Rust.
+- **D9. El error de reemplazo en la restauración se muestra en un webview que
+  quizá ya no puede leer su base.** Si `db::open` falla después de copiar
+  (§4.17), el mensaje va a la card de Configs como cualquier otro. Un `message()`
+  nativo del plugin de diálogo llegaría igual. Es el peor caso de un camino que
+  además tiene vuelta atrás (el archivo previo queda al lado), así que es de baja
+  prioridad; queda anotado porque es el único lugar donde lo nativo le gana a
+  nuestro propio estilo. Sale de Mej.17.
 - ~~**D8. El ajuste manual de tiempo se acredita al día equivocado**~~ —
   **resuelto** (Mej.14). `set_actual_seconds` estampa el día de la tarea
   (`scheduled_date` + `scheduled_time`, o mediodía local), y hoy solo cuando no

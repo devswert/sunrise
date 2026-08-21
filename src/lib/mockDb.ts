@@ -861,6 +861,41 @@ export const mock = {
     /* en browser no hay campana nativa; M2 la toca vía Rust */
   },
 
+  notifyAlert: async (
+    _title: string,
+    _body: string,
+    _action: string,
+    _sound: string,
+  ): Promise<void> => {
+    /* fuera de Tauri no hay avisos del sistema; los manda macOS vía Rust */
+  },
+
+  // Los catorce de `/System/Library/Sounds` en un macOS de fábrica. Fuera de
+  // Tauri no se puede leer la carpeta, y una lista vacía dejaría el selector
+  // mudo sin explicar por qué.
+  noticeSounds: async (): Promise<string[]> => [
+    "Basso",
+    "Blow",
+    "Bottle",
+    "Frog",
+    "Funk",
+    "Glass",
+    "Hero",
+    "Morse",
+    "Ping",
+    "Pop",
+    "Purr",
+    "Sosumi",
+    "Submarine",
+    "Tink",
+  ],
+
+  notificationIdentity: async (): Promise<string> => "",
+
+  openNotificationSettings: async (): Promise<void> => {
+    /* fuera de Tauri no hay Ajustes del sistema que abrir */
+  },
+
   createObjective: async (isoWeek: string, title: string): Promise<Objective> => {
     const o: Objective = {
       id: nextId(),
@@ -982,6 +1017,11 @@ export const mock = {
       bytes: 64 * 1024,
       createdAt: d.toISOString(),
     };
+    // Un respaldo del mismo segundo **reemplaza** al anterior, que es lo que hace
+    // el disco: mismo nombre de archivo, mismo archivo. Sin esto la lista quedaba
+    // con dos rutas idénticas y React se queja de las keys repetidas.
+    const same = backups.findIndex((b) => b.path === hecho.path);
+    if (same !== -1) backups.splice(same, 1);
     // Al principio: la lista va del más nuevo al más viejo, como en Rust.
     backups.unshift(hecho);
 

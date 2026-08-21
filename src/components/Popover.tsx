@@ -58,7 +58,7 @@ export function Popover({
    *
    * Lo hace el popover y no cada picker por una razón medida: el portal monta
    * `visibility: hidden` mientras mide su posición, y **`focus()` sobre un
-   * elemento invisible no hace nada** (comprobado en el webview: el mismo input
+   * elemento invisible no hace nada** (medido en el navegador: el mismo input
    * toma el foco visible y lo rechaza oculto). Los `useEffect` de mount de
    * `SearchSelect` y `TimePicker` caían justo en ese hueco, así que el picker
    * abría con el foco todavía en el botón que lo abrió: había que hacer un click

@@ -159,6 +159,25 @@ describe("BackupCard · restaurar", () => {
   });
 
   /**
+   * Estuvo sin teclado hasta que el diálogo pasó a ser un componente
+   * compartido: el más destructivo de la app era el único del que no se podía
+   * salir con Escape. Enter **sigue sin confirmar**, y eso es a propósito.
+   */
+  it("se sale con Escape, y Enter no restaura", async () => {
+    render(<BackupCard />);
+    await openNewest();
+    await screen.findByRole("alertdialog", { name: "Confirmar restauración" });
+
+    await userEvent.keyboard("{Enter}");
+    expect(
+      await screen.findByRole("alertdialog", { name: "Confirmar restauración" }),
+    ).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  /**
    * El resultado va en su propio diálogo y no en un aviso que se va solo: es la
    * única acción de la app que no se puede deshacer desde la app.
    */

@@ -66,6 +66,7 @@ texto — `react-day-picker` necesita `locale={es}` en cada `<DayPicker>`.
 
 | Componente | Para qué |
 |---|---|
+| `src/components/Dialog.tsx` | todo diálogo chico de confirmar o avisar |
 | `src/components/Popover.tsx` | todo popover flotante |
 | `src/components/SearchSelect.tsx` | todo select con búsqueda (channel, objetivo) |
 | `src/components/TimePicker.tsx` | elegir duraciones (planned / actual) |
@@ -129,10 +130,12 @@ El patrón, en `AddRow` de `SettingsView.tsx`, son **dos defensas**:
    `if (e.currentTarget.contains(e.relatedTarget)) return;`. Cubre Tab hacia
    afuera y el click en otra parte.
 2. **`preventDefault` en el `mousedown`** del control que abre un popover
-   (`keepFocus` en `ColorDot`), que es la que sostiene el caso real: en el webview
-   de macOS un click en un botón **no lo enfoca**, pero sí le saca el foco al
-   input, así que el blur llega con `relatedTarget` en `null` — indistinguible de
-   irse de la fila. Con solo la defensa 1, el bug sigue vivo y la suite verde.
+   (`keepFocus` en `ColorDot`), que es la que sostiene el caso real: **si el click
+   en el botón no lo enfoca** —se reporta de WebKit y no está verificado acá— el
+   foco se va al `body` y el blur llega con `relatedTarget` en `null`,
+   indistinguible de irse de la fila. El `preventDefault` no depende del motor: en
+   cualquiera deja el foco donde está, y con solo la defensa 1 el bug puede seguir
+   vivo con la suite en verde.
 
 Va como **opt-in**, no por defecto: las filas de *renombre* dependen del blur
 contrario —el click en el punto de color es lo que saca el foco del nombre, y por
@@ -155,6 +158,32 @@ todos los `input`, y llega a cambiar lo escrito. Un campo que no es prosa spread
 Se deja el corrector **solo en el título y las notas de una tarea**. Para un campo
 nuevo, la pregunta no es si molesta el subrayado: es si alguien escribiría ahí una
 frase. Nombres, horas, números, URLs y los buscadores de los dropdowns no.
+
+## El diálogo chico es `Dialog`, no un patrón para copiar
+
+`Dialog.tsx` es dueño del overlay, de `role="alertdialog"` + `aria-modal`, del
+`stopPropagation`, del foco inicial y **de las teclas** (en `window`, con
+`capture`, por lo que dice la sección de acá abajo). Le pasas `title`, `label`,
+`actions`, el cuerpo como children, y opcionalmente `hint` e `icon` —con `icon`
+sale la variante hero, centrada, de los avisos de ritual—.
+
+Existe porque estaba copiado cinco veces **y faltaba en dos**: la confirmación de
+restaurar un respaldo, la acción más destructiva de la app, no se cerraba con
+Escape. Eso es lo que pasa con un patrón que se copia en vez de compartirse.
+
+Dos props que son decisiones, no configuración:
+
+- **`onClose` ausente = no se puede cerrar**, ni con Escape ni con el click
+  afuera. Es lo que necesita un diálogo a mitad de algo irreversible.
+- **`onEnter` va aparte del botón primario.** En un diálogo destructivo no se pasa
+  —y el botón destructivo **tampoco lleva `autoFocus`**, porque un botón enfocado
+  se activa con Enter y eso alcanzaba para reemplazar la base de datos con una
+  tecla—. Ahí Escape cancela y confirmar es un click.
+
+**No lo uses para un modal que no es una confirmación.** `TaskModal` es una vista
+y `AddFeedModal` un formulario: tienen su propio teclado (⌘Enter, Enter por campo)
+y solo comparten el `.modal-overlay`. Las confirmaciones **en línea** de dos pasos
+—borrar una tarea, quitar un feed— no son modales y se quedan como están.
 
 ## Los atajos de un modal van en `window`, no en su `onKeyDown`
 

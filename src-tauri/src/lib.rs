@@ -97,6 +97,12 @@ pub fn run() {
                 }
             }
 
+            // De quién son los avisos del sistema. Va **antes** de que se mande
+            // ninguno: la librería lo fija con un `Once` de proceso y gana el
+            // primero que llame (§4.25).
+            #[cfg(target_os = "macos")]
+            commands::claim_notification_identity(&app.config().identifier);
+
             // Poller de calendario. Va después de la DB porque la necesita.
             calendar::start_poller(app.handle().clone());
 
@@ -173,6 +179,11 @@ pub fn run() {
             commands::delete_calendar_feed,
             commands::sync_calendar_feed,
             commands::sync_calendar_feeds,
+            // avisos del sistema con botón (el resto los manda el plugin)
+            commands::notify_alert,
+            commands::notification_identity,
+            commands::notice_sounds,
+            commands::open_notification_settings,
             // ciclo de vida
             commands::confirm_quit,
         ])

@@ -1,6 +1,6 @@
-import { useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Sparkles } from "lucide-react";
+import { Dialog } from "../../components/Dialog";
 import { announcementFor } from "../../lib/changelog";
 import { useUpdateStore } from "./updateStore";
 
@@ -21,47 +21,30 @@ export function WhatsNew() {
   const setOpen = useUpdateStore((s) => s.setWhatsNewOpen);
   const version = useUpdateStore((s) => s.updatedTo);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Enter") {
-        e.preventDefault();
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, setOpen]);
-
   if (!open || !version) return null;
   const anuncio = announcementFor(version);
   if (!anuncio) return null;
 
   return (
-    <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div
-        className="dialog"
-        role="alertdialog"
-        aria-label={`Lo nuevo en la ${version}`}
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="dialog__title">
+    <Dialog
+      title={
+        <>
           <Sparkles size={16} aria-hidden /> Lo nuevo en la {version}
-        </h2>
-
-        <div className="dialog__body nuevo__texto">
-          <ReactMarkdown>{anuncio}</ReactMarkdown>
-        </div>
-
-        <div className="dialog__actions">
-          <button className="btn-primary" onClick={() => setOpen(false)} autoFocus>
-            Entendido
-          </button>
-        </div>
-
-        <span className="dialog__hint">Enter o Escape para cerrar</span>
+        </>
+      }
+      label={`Lo nuevo en la ${version}`}
+      hint="Enter o Escape para cerrar"
+      onClose={() => setOpen(false)}
+      onEnter={() => setOpen(false)}
+      actions={
+        <button className="btn-primary" onClick={() => setOpen(false)} autoFocus>
+          Entendido
+        </button>
+      }
+    >
+      <div className="dialog__body nuevo__texto">
+        <ReactMarkdown>{anuncio}</ReactMarkdown>
       </div>
-    </div>
+    </Dialog>
   );
 }

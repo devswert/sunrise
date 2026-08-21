@@ -165,6 +165,40 @@ export const api = {
 
   playBell: () => (isTauri() ? invoke<void>("play_bell") : mock.playBell()),
 
+  /**
+   * Un aviso del sistema **con botón**, que en macOS es lo que lo vuelve una
+   * alerta: queda en pantalla hasta que la saques o la acciones. No devuelve qué
+   * apretó el usuario —esperarlo bloquearía— : eso llega por el evento
+   * `sunrise://notification-action`. El resto de los avisos los manda el plugin
+   * de notificaciones desde el front (`features/notifications/notify.ts`).
+   */
+  notifyAlert: (title: string, body: string, action: string, sound: string) =>
+    isTauri()
+      ? invoke<void>("notify_alert", { title, body, action, sound })
+      : mock.notifyAlert(title, body, action, sound),
+
+  /** Los sonidos que macOS puede tocar, del sistema y de `~/Library/Sounds`. */
+  noticeSounds: () => (isTauri() ? invoke<string[]>("notice_sounds") : mock.noticeSounds()),
+
+  /**
+   * Con qué identidad salen los avisos (`app.sunrise.desktop`, o la Terminal si
+   * la app no está instalada). En dev explica por qué un aviso se queda o no: los
+   * ajustes de notificación que manda son los de **esa** app.
+   */
+  notificationIdentity: () =>
+    isTauri() ? invoke<string>("notification_identity") : mock.notificationIdentity(),
+
+  /**
+   * Abre el panel de Notificaciones de Ajustes del sistema, que es el único lugar
+   * donde se decide si un aviso se queda en pantalla. Va por Rust y no por el
+   * plugin `opener` del front: sumarle el esquema `x-apple.systempreferences:` a
+   * las capabilities dejó la app sin avisos (SPECS §4.25).
+   */
+  openNotificationSettings: () =>
+    isTauri()
+      ? invoke<void>("open_notification_settings")
+      : mock.openNotificationSettings(),
+
   // --- categories ---
   listCategories: () => (isTauri() ? invoke<Category[]>("list_categories") : mock.listCategories()),
 

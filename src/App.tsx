@@ -31,6 +31,7 @@ import "./features/updates/updates.css";
 import "./features/tasks/task-modal.css";
 import "./features/tasks/add-task-modal.css";
 import "./components/search-select.css";
+import "./components/dialog.css";
 import "./features/focus/focus.css";
 import "./features/calendar/rail.css";
 import "./features/backup/backup.css";

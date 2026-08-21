@@ -1107,8 +1107,10 @@ Notas de implementación:
   "probar" en Settings, o se elige a ciegas). Para el audio propio, `find_bell_file`
   ya lo busca en el directorio de datos y `bell_dir` ya expone la ruta, pero **no
   hace falta pedirle al usuario que copie el archivo a mano**: desde M4.1 está
-  `tauri-plugin-dialog`, así que puede elegirlo con el Finder y la app lo copia
-  (ver Mej.17).
+  `tauri-plugin-dialog`, así que puede elegirlo con el Finder y la app lo copia.
+  Hacerlo así cuando se tome este ítem —el diseño original era mostrar la ruta de
+  `bell_dir` para que la copiara a mano, y con el picker instalado eso ya no tiene
+  sentido—. `BackupCard` tiene el patrón de la llamada (`open` con `directory`).
 - **Tipografía**: las fuentes van **auto-hospedadas** vía `@fontsource`, sin CDN,
   para que la app siga funcionando offline. Eso significa que el selector no
   puede ofrecer "cualquier fuente del sistema": es una lista corta de fuentes
@@ -1265,32 +1267,146 @@ Cosas a resolver, que no son obvias:
 - **El click tiene que llevar a Focus.** Eso no lo cubre M3.6: el aviso del cierre
   no navega a ninguna parte. Hace falta escuchar la acción de la notificación desde
   Rust y emitir un evento como el de `goto` del taxímetro.
+- **El aviso ya está construido: falta el disparador y la navegación.** El
+  mecanismo se hizo junto con Mej.16 (SPECS §4.25): `nextTaskNotice` tiene el
+  texto, lleva botón —"Ir a Focus"— y por eso **queda pegado en pantalla** como el
+  aviso de reunión del Calendario; suena; y viaja por `notify_alert`, no por el
+  plugin, que no sabe mandar botones. Este ítem tiene que **consumir eso**, no
+  reescribirlo: si escribe su propio texto, el botón de prueba de Dev Tools queda
+  probando un aviso que no existe.
+- **El click ya tiene por dónde llegar**: la respuesta vuelve por
+  `useNotificationActions` con `action | click | close | reply | none`. Lo que
+  falta es que `action` navegue a Focus con esa tarea. **Engánchate ahí**, no abras
+  otro camino.
+- Y de paso: con Mej.16 hecha, esto ya no se prueba esperando una reunión.
 
-### Mej.16 🔵 No hay forma de probar las notificaciones sin esperar la hora
+### Mej.16 ✅ No había forma de probar las notificaciones sin esperar la hora — hecho
 
-Los avisos nativos son el único camino de la app que **no se puede verificar ni en
-el browser ni en jsdom** (SPECS §4.16), y encima dependen del reloj: para ver el
-aviso de cierre hay que esperar a que pase `work_end`, y para el de Mej.4 hay que
-tener una reunión a cinco minutos. Eso deja dos features que solo se prueban a
-ciegas o cambiando la hora del sistema.
+Configs → **Dev Tools**, la última sección y **solo visible en dev**. Tres
+controles: probar cada aviso, el estado del permiso a la vista, y borrar la marca
+del día para volver a probar el camino real. Detalle en
+[SPECS §4.24](SPECS.md#424-configs--dev-tools-solo-en-dev).
 
-Propuesta: una sección en **Configs → Notificaciones** con:
+Terminó en Dev Tools y no en una sección propia por pedido del dev, y el lugar es
+mejor: un botón que dispara un aviso de mentira no es un ajuste, y la sección queda
+para lo que venga —hoy la habita una sola herramienta—. Lo que hay que respetar es
+que **la lista de tabs y las cards se filtran con el mismo booleano**
+(`visibleTabs`): una tab sin su card rompe el resaltado.
 
-- **Un botón "Probar" por cada tipo de aviso** (cierre del día, próxima tarea), que
-  lo dispare al toque con datos de ejemplo. Es el equivalente de lo que ya hace el
-  botón de la campana con el sonido.
-- **El estado del permiso**, visible. Hoy si el permiso está denegado el aviso
-  simplemente no llega y no hay nada en pantalla que lo diga —y peor: la app marca
-  `shutdown_notified_on` igual, a propósito, para no quedar pidiendo permiso toda
-  la tarde—. Mostrar "permiso denegado" con el link a Ajustes del sistema convierte
-  un silencio en un dato.
-- **Un botón para reiniciar la marca del día** (`shutdown_notified_on`), para poder
-  volver a probar el camino real sin esperar al día siguiente.
+**El texto de los avisos se mudó a `features/notifications/notify.ts`**, y eso es
+lo que hace que la sección sirva de algo: si el botón "Probar" escribiera su propia
+versión, la prueba diría una cosa y el aviso de verdad otra, y no se notaría hasta
+que llegue el real. Es la misma razón por la que el changelog se escribe una vez y
+se lee en tres lugares.
 
-Chico y de alto retorno: sin esto, cada cambio en la maquinaria de avisos se
-verifica esperando.
+**El refactor casi se lleva el aviso del cierre por delante**, y ahí estuvo el
+cuidado. El hook distingue tres finales con tres políticas distintas: se marca el
+día cuando el aviso salió y **también cuando el permiso está denegado** —reintentar
+cada minuto no cambia nada—, pero **no** cuando falló, porque eso puede ser
+pasajero. Un `notify` que devolviera `void` las habría colapsado en una, y el modo
+de falla sería silencioso: un aviso que falló quedaría marcado como dado y no
+llegaría nunca. Así que `notify` devuelve `sent | denied | failed | unavailable` y
+la política se quedó en el hook, en `markAfter`, que ahora tiene sus cuatro tests —
+`shouldRemindShutdown` decidía si avisar, no qué hacer después, así que esa mitad
+no estaba cubierta por nadie.
 
-### Mej.17 🔵 ¿Usar `plugin-dialog` en otros lados?
+Dos cosas que el ítem daba por sentadas y no eran así:
+
+- **No existe ningún "botón de la campana" que probar el sonido**, que era el
+  precedente que el ítem citaba: `play_bell` solo se llama desde `timerStore`. El
+  patrón que se siguió es el de Actualizaciones, que ya tiene el botón, el estado y
+  la nota en la misma fila.
+- **"Denegado" y "nunca se preguntó" no se pueden distinguir.** El plugin solo
+  expone `isPermissionGranted()`, un booleano, y averiguar la diferencia significa
+  pedir el permiso — abrir el diálogo de macOS al renderizar una card es
+  exactamente lo que no se puede hacer. Así que el estado es `unknown` y el texto
+  dice las dos posibilidades, con la ruta de Ajustes del sistema para el caso que ya
+  no se puede pedir de nuevo.
+
+El botón de "próxima tarea" prueba un aviso **cuyo disparador todavía no existe**
+(Mej.4). Es deliberado y está anotado en el código: cuando se haga, tiene que
+consumir `nextTaskNotice` en vez de escribir su texto, o el botón vuelve a mentir.
+
+Y probándolo aparecieron dos cosas que **no son nuestras**, las dos anotadas en
+SPECS §4.24 para no volver a investigarlas:
+
+- **En dev el aviso lleva el icono de la Terminal.** Lo hace el plugin a propósito
+  (`desktop.rs`: `set_application("com.apple.Terminal")` cuando `tauri::is_dev()`),
+  porque un proceso sin `.app` no tiene identidad que macOS pueda atribuir. En la
+  app instalada usa el identificador del bundle. No hay nada que arreglar.
+- **Que un aviso quede pegado en pantalla no depende de una bandera**: depende de
+  que tenga un botón. Un aviso sin botón es un banner y se va solo; con botón de
+  acción macOS lo muestra como alerta, igual que el aviso de reunión del
+  Calendario. Y el plugin no sabe mandar botones —`notify-rust` pasa título,
+  cuerpo, icono y sonido y nada más—, así que las alertas salieron por un comando
+  propio contra `mac-notification-sys`, la misma librería que el plugin usa por
+  abajo. Eso llegó después, pedido por el dev, y está en SPECS §4.25 con sus dos
+  invariantes: el comando **no puede esperar** la respuesta (el `send()` bloquea
+  hasta que la persona responde, que es justamente el punto) y la identidad de la
+  app es un `Once` global compartido con el plugin.
+- **Los avisos suenan, y el de sunrise es `Blow`** (elegido por el dev, probado en
+  la app). El sonido se pide por nombre de archivo sin extensión: los catorce del
+  sistema más lo que haya en `~/Library/Sounds`, que es la forma de usar uno propio
+  —se deja el archivo ahí y aparece en el selector—. Ojo con la trampa: un nombre
+  que no existe **no suena y no falla**. El selector de Dev Tools no guarda la
+  elección: escuchar es una cosa y elegir el sonido de la app es un ajuste, que va
+  con Mej.1.
+- **Un esquema nuevo en las capabilities dejó la app sin avisos, y el susto vale
+  la anécdota.** Para que un botón abriera Ajustes del sistema se sumó
+  `x-apple.systempreferences:*` a `opener:allow-open-url`, y con eso **dejaron de
+  salir todos los avisos** —banner y alerta— sin un solo error en la terminal: el
+  síntoma aparecía en la consola del webview, lejos de lo que se había tocado. Se
+  aisló revirtiendo los dos cambios de esa tanda y probándolos de a uno: el sonido
+  quedó absuelto, la capability confirmada. **El mecanismo no está explicado** (el
+  glob es válido y el scope deserializa bien) y quedó como D10 en SPECS §9. La
+  salida fue mover el botón a un comando de Rust, donde el ACL no aplica. La
+  lección del método: dos cambios sin verificar entremedio convierten una
+  regresión de un minuto en una de veinte.
+- **El botón no alcanza para que el aviso se quede, y esto es lo que se aprendió
+  midiendo.** Primero se atribuyó el aviso a sunrise y no a la Terminal —la
+  identidad se reclama al arrancar, lo que además trae el icono—, porque **el
+  estilo lo decide el ajuste de la app a la que se atribuye**. Eso depende de que
+  la app esté instalada: si LaunchServices no conoce el identificador, se cae a la
+  Terminal y Dev Tools lo dice, porque es la explicación de por qué el aviso no se
+  queda. Pero el que decide de verdad es un switch del usuario:
+  **`Notificaciones → sunrise → Alert Style`**. Comprobado por el dev: en
+  `Persistent` se quedan las dos, la alerta y el banner; en `Temporary` se van las
+  dos. **No hay API para leerlo ni para cambiarlo**, y macOS lo recuerda por
+  identificador, así que reinstalar no lo reinicia. Lo único que se puede hacer
+  desde el código es pedir el default con `NSUserNotificationAlertStyle` en el
+  `Info.plist` (sin verificar) y **decirlo**: Dev Tools nombra el ajuste y abre el
+  panel. Cuando este ítem se haga, tiene que decírselo al usuario **una vez, en
+  Configs**: una feature que promete avisarte y depende de un switch escondido no
+  puede quedarse callada.
+
+### Mej.17 ⬛ ¿Usar `plugin-dialog` en otros lados? — retirada
+
+**Se cierra leyéndola: su propio texto ya respondía la pregunta.** No, los
+diálogos de confirmación no se convierten a nativos — un `ask()` es un título y
+un texto plano con dos botones, y se perdería el nombre de la tarea con su `hms`
+corriendo, el resumen en `<dl>` de la restauración y el Enter/Escape propio.
+
+Las tres cosas que sí quedaban vivas se mudaron a donde se van a mirar, que es el
+punto de retirar el ítem y no dejarlo abierto de adorno:
+
+| Qué | Dónde quedó |
+|---|---|
+| ⌘Q con la ventana no visible | **Mej.25**, con su paso de reproducción |
+| El error de reemplazo en la restauración | [SPECS §9](SPECS.md#9-deuda-técnica-conocida), como D9 |
+| Elegir el archivo de la campana con el picker | dentro de **Mej.1**, que es quien va a hacerlo |
+
+**Y faltaba la otra mitad de la respuesta, que el dev preguntó y este ítem no
+decía**: si los diálogos no se convierten a nativos, entonces el diálogo propio
+tiene que ser **un componente**, como `Popover` o `SearchSelect`. No lo era: seis
+pantallas compartían las clases CSS y cada una rearmaba el overlay, los roles y su
+propio listener de teclado — y dos de ellas se habían quedado **sin teclado**, así
+que la confirmación de restaurar un respaldo no se cerraba con Escape. Salió
+`components/Dialog.tsx`, con los cinco diálogos de confirmación migrados y sus
+estilos mudados a `components/dialog.css`. Detalle y las dos decisiones que
+esconde —`onClose` ausente = no se puede cerrar; `onEnter` aparte del botón
+primario, y sin `autoFocus` en el destructivo— en [SPECS §7](SPECS.md#7-convenciones-de-ui-pedidas-explícitamente).
+
+<details><summary>Texto original</summary>
 
 M4.1 sumó `tauri-plugin-dialog`, y vale preguntarse dónde más sirve ahora que está
 instalado. La respuesta corta: **en los diálogos de confirmación, no.**
@@ -1325,6 +1441,8 @@ campana. Hoy `bell_sound` no tiene UI (ver Mej.1) y el diseño era mostrar la ru
 de `bell_dir` para que el usuario copie el archivo ahí a mano. Con el picker puede
 **elegir el archivo y que la app lo copie**, que es lo que uno espera. Cuando se
 tome Mej.1, hacerlo así.
+
+</details>
 
 ### Mej.5 ✅ Quitar el corrector ortográfico de los campos que no son prosa — hecho
 
@@ -1372,10 +1490,12 @@ mismo bug que tenía la fila de feeds al pasar de Nombre a URL (SPECS §3.1).
 
 **Son dos defensas y las dos hacen falta**, que es lo interesante del cambio. La
 que el ítem proponía —mirar `relatedTarget` para saber si el foco se fue de la
-fila— no alcanza sola: en el webview de macOS un click en un botón **no lo
-enfoca**, pero sí le saca el foco al input, así que el blur del punto de color
-habría llegado con `relatedTarget` en `null`, indistinguible de irse de la fila, y
-el bug sobreviviría con la suite en verde. La que sostiene el caso real es
+fila— no alcanza sola: **si un click en el botón no lo enfoca** —se reporta de
+WebKit, y hay que decirlo: no lo verificamos, la medición fue en el panel del
+browser, que es Chromium— el foco se va al `body` y el blur del punto de color
+llega con `relatedTarget` en `null`, indistinguible de irse de la fila. El
+`preventDefault` en el `mousedown` no depende de eso: en cualquier motor deja el
+foco donde está. La que sostiene el caso real es
 `keepFocus` en `ColorDot`: un `preventDefault` en el `mousedown` deja el foco donde
 está. El `relatedTarget` cubre el resto —Tab hacia afuera, un click en cualquier
 otra parte de Configs—.
@@ -2008,6 +2128,22 @@ navegar; un ritual terminado pasada la medianoche; o la marca escrita en una
 sesión que cruzó la medianoche con `today` ya actualizado. El primer paso es
 hacerlo diagnosticable, no adivinar.
 
+### Mej.25 🔵 ⌘Q con la ventana principal no visible
+
+Sale de Mej.17. El diálogo de salida (§4.10) vive **dentro** de la ventana
+principal: si está minimizada —o si algún día se puede cerrar dejando solo el
+taxímetro— el usuario aprieta ⌘Q, no ve nada y la app parece colgada, con el
+timer corriendo.
+
+**El primer paso es reproducirlo, no arreglarlo**: puede que macOS levante la
+ventana al llegar el `MenuEvent`, y en ese caso no hay nada que hacer. Minimiza la
+ventana, aprieta ⌘Q y mira si aparece.
+
+Si pasa, la salida **no** es convertir el diálogo a un `ask()` nativo —eso ya se
+decidió que no, y es el motivo por el que Mej.17 se retiró— sino **mostrar la
+ventana antes de pedir la confirmación**: un `show()` + `set_focus()` desde el
+handler del menú, que es una línea y conserva el diálogo propio.
+
 ### Mej.24 ✅ Los pickers con búsqueda abrían sin el foco en el buscador — hecho
 
 Cualquier picker donde se puede buscar —canal, objetivo, duración— abría con el
@@ -2017,7 +2153,8 @@ y las flechas no navegaban.
 Los dos componentes **ya tenían** su `useEffect` de foco al montar, y ahí está lo
 interesante: no servía de nada. El `Popover` monta en el portal con
 `visibility: hidden` mientras mide su posición, y **`focus()` sobre un elemento
-invisible no hace nada**. Comprobado en el webview antes de tocar código: el mismo
+invisible no hace nada** —es la especificación, no una rareza de un motor—.
+Medido en el navegador antes de tocar código: el mismo
 input toma el foco visible y lo rechaza oculto.
 
 Así que el foco pasó a ser responsabilidad del `Popover`, que es quien sabe cuándo

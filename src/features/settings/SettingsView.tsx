@@ -7,7 +7,8 @@ import { Popover } from "../../components/Popover";
 import { Switch } from "../../components/Switch";
 import { FeedsCard } from "../calendar/FeedsCard";
 import { BackupCard } from "../backup/BackupCard";
-import { TABS, type TabId, sectionIcon } from "./secciones";
+import { DevToolsCard } from "../devtools/DevToolsCard";
+import { TABS, type TabId, sectionIcon, visibleTabs } from "./secciones";
 import {
   SettingKey,
   useCapacitySettings,
@@ -18,6 +19,7 @@ import {
 import { isoWeekdayLabel } from "../../lib/date";
 import { minutesFromTime } from "../calendar/railLayout";
 import { PLAIN_INPUT } from "../../components/plainInput";
+import { useProfile } from "../../lib/profile";
 import {
   SHORTCUT_ACTIONS,
   type ShortcutId,
@@ -572,10 +574,11 @@ function ShortcutsCard() {
  *
  * Son dos defensas y las dos hacen falta:
  *
- * - `keepFocus` en el punto de color, que es la que sostiene el caso real. En el
- *   webview de macOS un click en un botón **no lo enfoca**, pero sí saca el
- *   foco del input, así que el blur llegaría con `relatedTarget` en `null` —o
- *   sea, indistinguible de irse de la fila—.
+ * - `keepFocus` en el punto de color, que es la que sostiene el caso real: si el
+ *   click en el botón no lo enfoca —se reporta de WebKit y **no lo verificamos
+ *   acá**— el foco se va al `body` y el blur llega con `relatedTarget` en `null`,
+ *   indistinguible de irse de la fila. El `preventDefault` no depende de eso: en
+ *   cualquier motor deja el foco donde está.
  * - El blur a nivel de la fila, que cubre el resto: Tab hacia afuera, o un click
  *   en cualquier otra parte de Configs.
  */
@@ -885,13 +888,15 @@ function useActiveTab(): [TabId, (id: TabId) => void] {
 
 export function SettingsView() {
   const [active, goTo] = useActiveTab();
+  const profile = useProfile();
+  const tabs = visibleTabs(profile?.dev === true);
 
   return (
     <div className="settings">
       <h1 className="settings__title">Configs</h1>
 
       <nav className="set-tabs" aria-label="Secciones de ajustes">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             className={`set-tab${active === t.id ? " is-active" : ""}`}
@@ -909,6 +914,8 @@ export function SettingsView() {
         <ChannelsCard />
         <ShortcutsCard />
         <BackupCard />
+        {/* Solo en dev, y con la misma condición que filtra su tab. */}
+        {profile?.dev && <DevToolsCard />}
       </div>
     </div>
   );

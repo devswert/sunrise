@@ -4321,6 +4321,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "icalendar",
+ "mac-notification-sys",
  "reqwest",
  "rodio",
  "rusqlite",
