@@ -128,9 +128,12 @@ a {
   flex: 1 1 auto;
   min-width: 0;
   overflow-y: auto;
-  /* El `--titlebar-h` de más arriba no es simetría: es el hueco de los botones
-   * nativos. Sin él los títulos de las vistas arrancarían pegados al borde. */
-  padding: calc(var(--space-3) + var(--titlebar-h)) var(--space-5) var(--space-5);
+  /* El `--titlebar-h` de arriba **no es el hueco de los botones nativos** —esos
+   * quedan sobre el sidebar, nunca acá— sino el de la zona de arrastre, que es
+   * `fixed` y se comería los clicks del contenido que quedara debajo. Por eso el
+   * reserve es exactamente su alto y el respiro es el mínimo: sin barra de título
+   * que llenar, cualquier cosa más grande es aire. */
+  padding: calc(var(--space-1) + var(--titlebar-h)) var(--space-5) var(--space-5);
 }
 
 /* Zona de arrastre de la ventana. `position: fixed` y no un elemento en el flujo:
@@ -153,7 +156,11 @@ a {
 .sidebar {
   background: var(--surface-sunken);
   border-right: 1px solid var(--border);
-  padding: calc(var(--space-4) + var(--titlebar-h)) var(--space-3) var(--space-4);
+  /* Acá el `--titlebar-h` sí es por los botones nativos: flotan sobre esta
+   * columna. El respiro que se le suma es el mínimo —la marca queda justo debajo
+   * de los botones, no a media pantalla— y **no puede bajar de `--titlebar-h`**,
+   * o el logo se mete abajo del semáforo. */
+  padding: calc(var(--space-1) + var(--titlebar-h)) var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

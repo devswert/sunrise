@@ -2322,6 +2322,15 @@ En `useFloatingWindow.ts`, ya pagadas:
 > de macOS**: si algún día los botones se ven pegados o sobrados, se ajusta acá y
 > las dos columnas se corrigen juntas.
 >
+> **Las dos columnas reservan el mismo alto por razones distintas**, y por eso el
+> respiro que se le suma es el mínimo (`--space-1`) en las dos: en el sidebar es
+> por los botones nativos, que flotan sobre esa columna y **obligan** a no bajar de
+> `--titlebar-h` —menos que eso mete la marca abajo del semáforo—; en `.app-main`
+> los botones no llegan nunca, y lo que hay que despejar es la zona de arrastre,
+> que es `fixed` y se comería los clicks de lo que quedara debajo. Sin barra de
+> título que llenar, un respiro más grande era aire: la primera fila de contenido
+> arranca 4px debajo de la franja, en las dos columnas y por construcción.
+>
 > Tauri documenta además una limitación del modo `Overlay` que no es nuestra y no
 > tiene arreglo desde acá: **con la ventana sin foco, arrastrarla no funciona** al
 > primer click. Hay que activarla y después moverla.
