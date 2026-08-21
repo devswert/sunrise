@@ -794,6 +794,24 @@ gzip, que en el feed de prueba llevó 120 KB a 12 KB.
 hace que se sienta al día: el momento en que importa es cuando te sientas a
 mirarlo, y el poller solo mira el reloj.
 
+**Pero con freno: `syncIfStale` y un mínimo de dos minutos** (`MIN_AUTO_MS`, el
+mismo piso que `poll_minutes`: el intervalo más agresivo que se puede configurar a
+mano es también lo más seguido que tiene sentido pegarle al volver a la ventana). La
+sincronización del front va con `force`, que se saltea el `is_due` de Rust, así
+que sin el freno **cada cambio de foco bajaba todos los feeds enteros** — y sin
+validadores no hay petición condicional que lo abarate. Tres detalles que hacen
+que el freno no se vuelva el problema:
+
+- **El botón no lo mira.** Pedir la sincronización a mano es pedirla ahora.
+- **El reloj es `ultimaSync`, el sello que escribe Rust**, no un contador de la
+  sesión. Así el freno cuenta también el botón y sobrevive a recargar la ventana:
+  abrir una segunda ventana recién sincronizada no vuelve a salir a la red. Por
+  eso, además, en el montaje el `refresh` va **antes** del `syncIfStale`: al revés
+  la marca todavía es `null` y la primera pasada saldría siempre.
+- **Una marca ilegible o en el futuro no frena nada.** El caso raro cae del lado
+  de sincronizar: un freno que se equivoca al revés deja el calendario mudo para
+  siempre y sin ningún síntoma.
+
 **El estado de la sincronización es un store compartido** (`useCalendarSync`),
 no estado local de cada vista, porque hay **dos** botones —vista semana y
 Configs— que tienen que ser el mismo botón: si uno corre, el otro se bloquea y
@@ -2569,7 +2587,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **453 tests front (54 archivos) y 149 Rust, todos verdes.**
+estado actual: **459 tests front (54 archivos) y 149 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL

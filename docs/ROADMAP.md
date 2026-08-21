@@ -1511,50 +1511,46 @@ síntoma exacto que se reportó: la paleta no llega a abrirse porque la fila ya 
 desmontó. También hay un `ref` que evita el alta doble, porque la fila sigue
 montada mientras se espera el `createCategory`.
 
-### Mej.8 🔵 Que el calendario se sienta más al día
+### Mej.8 ✅ Que el calendario se sienta más al día — hecho
 
-Un feed ICS es **solo polling**: el formato no tiene push, ni webhooks, ni nada
-que avise. La app pregunta cada `poll_minutes` y eso es todo lo que hay.
+Un feed ICS es **solo polling**: el formato no tiene push ni webhooks. Y contra el
+endpoint de Google se midió que **no hay margen para hacerlo barato** —no emite
+`ETag` ni `Last-Modified`, ignora un `If-Modified-Since`, y no manda cabeceras de
+rate limit—, así que las peticiones condicionales nunca fueron una opción y bajar
+el mínimo de 5 minutos tampoco. La única palanca real, gzip (120 KB → 12 KB), ya
+estaba puesta.
 
-**Lo que se midió contra el endpoint de Google** (feed público de feriados,
-`calendar.google.com/calendar/ical/…/public/basic.ics`), porque cambia lo que
-vale la pena hacer:
+Quedaba una sola mejora, y **estaba media hecha sin que el ítem lo dijera**:
+sincronizar al abrir la app y al volver a la ventana ya lo hacía
+`useCalendarSyncRuntime`. Lo que faltaba era exactamente la trampa que el ítem
+anticipaba: **no había ningún freno**, y la sincronización del front va con
+`force`, que se saltea el `is_due` de Rust. O sea que cada `focus` y cada
+`visibilitychange` bajaba todos los feeds enteros; una sesión alternando ventanas
+golpeaba el feed sin parar, y sin validadores no hay nada que abarate esa pasada.
 
-| | |
-|---|---|
-| `ETag` | **no lo emite** |
-| `Last-Modified` | **no lo emite** |
-| `If-Modified-Since` | **se ignora** (con fecha futura responde 200, no 304) |
-| `Cache-Control` | `no-cache, no-store, must-revalidate` |
-| gzip | **sí**: 120 KB → 12 KB |
-| cabeceras de rate limit | ninguna |
+El freno es `syncIfStale` con un mínimo de dos minutos —**el mismo piso que
+`poll_minutes`**: el intervalo más agresivo que se puede configurar a mano es
+también lo más seguido que tiene sentido pegarle al volver a la ventana—, y las
+tres decisiones que tiene dentro son lo único interesante:
 
-O sea que **las peticiones condicionales no son una opción**: sin validadores no
-hay 304 que pedir. Eso descarta la idea de "polling barato" y con ella la de
-bajar el mínimo de 5 minutos. Lo único que sí se podía hacer ya está hecho: el
-cliente pide **gzip**, que es 10× menos bytes por pasada.
+- **El botón no lo mira.** Pedir la sincronización a mano es pedirla ahora.
+- **El reloj es `ultimaSync`, el sello que escribe Rust en el feed**, y no un
+  contador de la sesión. Así el freno cuenta también el botón y sobrevive a
+  recargar la ventana: abrir una segunda ventana recién sincronizada no vuelve a
+  salir a la red. Eso obligó a invertir el orden en el montaje —`refresh` y
+  **después** `syncIfStale`—, porque al revés la marca todavía es `null` y la
+  primera pasada sale siempre.
+- **Una marca ilegible o en el futuro no frena nada.** El caso raro cae del lado
+  de sincronizar: con `NaN` toda comparación da false, y un freno que se equivoca
+  al revés deja el calendario mudo para siempre sin ningún síntoma. Es el mismo
+  cuidado que los parsers de `settings`.
 
-Queda entonces una sola mejora que valga la pena:
+Seis tests nuevos en `calendarSync.test.ts`, incluido el del botón que **no** debe
+respetar el freno. Detalle en [SPECS §4.12](SPECS.md#412-feeds-de-calendario-ics).
 
-- **Sincronizar al arrancar la app y al volver a la ventana.** El momento en que
-  a uno le importa que el calendario esté al día es cuando se sienta a mirarlo.
-  Hoy el poller solo mira el reloj, así que volver después de dos horas muestra
-  lo de hace dos horas hasta el siguiente pulso. El patrón ya existe:
-  `useDayWatcher` escucha `focus` y `visibilitychange`. Ojo con no dispararlo en
-  cada cambio de foco sin condición, o una sesión donde alternas ventanas
-  golpearía el feed sin parar: debería respetar un mínimo propio (por ejemplo, no
-  sincronizar si ya se hizo en el último minuto).
-
-Sobre el **rate limit**: Google no publica ninguno para estos endpoints y no manda
-cabeceras al respecto, así que no hay un número que respetar. Se reporta que el
-polling agresivo puede terminar en 403 o en respuestas degradadas, pero no está
-documentado y **no lo verificamos**. Los 15 minutos por defecto y el piso de 5
-están dentro de lo que hacen los clientes de calendario normales, así que no hay
-motivo para acercarse al borde.
-
-Lo que **no** es una opción: tiempo real de verdad requeriría la API de Google con
-`watch` (webhooks), y eso necesita un endpoint HTTPS público — un servidor, que
-este proyecto no tiene ni quiere.
+Lo que **no** es una opción y queda descartado por escrito: tiempo real de verdad
+necesita la API de Google con `watch` (webhooks), y eso pide un endpoint HTTPS
+público — un servidor, que este proyecto no tiene ni quiere.
 
 ### Mej.9 ✅ Al entrar a la semana, centrar el día de hoy — hecho
 

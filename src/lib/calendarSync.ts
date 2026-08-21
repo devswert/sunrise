@@ -3,6 +3,19 @@ import { create } from "zustand";
 import { api, isTauri } from "./ipc";
 import { useAppStore } from "./store";
 
+/**
+ * Cuánto tiene que haber pasado desde la última pasada para que una
+ * sincronización **automática** valga la pena.
+ *
+ * Dos minutos, que es **el mismo piso que `poll_minutes`**: si ese es el intervalo
+ * más agresivo que se puede configurar a mano, volver a la ventana no tiene por
+ * qué pegarle más seguido que eso. Sigue siendo corto para que volver a la app
+ * después de un café traiga lo nuevo, y largo para que alternar ventanas no
+ * golpee el feed sin parar. **El botón no lo mira**: pedirlo a mano es pedirlo
+ * ahora.
+ */
+export const MIN_AUTO_MS = 120_000;
+
 interface CalendarSyncState {
   /** Hay una sincronización en curso. */
   sincronizando: boolean;
@@ -14,6 +27,8 @@ interface CalendarSyncState {
   refresh: () => Promise<void>;
   /** Sincroniza. `id` para uno solo; sin `id`, todos y sin mirar el reloj. */
   sync: (id?: number) => Promise<void>;
+  /** Como `sync()`, pero solo si la última pasada ya tiene su tiempo encima. */
+  syncIfStale: () => Promise<void>;
 }
 
 /**
@@ -65,6 +80,32 @@ export const useCalendarSync = create<CalendarSyncState>((set, get) => ({
       useAppStore.getState().bumpData();
     }
   },
+
+  /**
+   * La versión automática, la que corre al abrir la app y al volver a la ventana.
+   *
+   * **Sin este freno, alternar ventanas es una pasada por cada cambio de foco.**
+   * `sync()` va con `force`, que se saltea el `is_due` de Rust, así que cada
+   * alt-tab bajaba todos los feeds enteros — el feed no emite `ETag` ni
+   * `Last-Modified`, o sea que no hay petición condicional que abarate eso
+   * (SPECS §4.12).
+   *
+   * El reloj que mira es `ultimaSync`, que es el sello que **Rust** escribe en el
+   * feed y no un contador de esta sesión. Por eso cuenta también el botón y
+   * sobrevive a recargar la ventana: abrir una segunda ventana recién sincronizada
+   * no vuelve a salir a la red.
+   *
+   * Una marca ilegible o en el futuro **no frena nada**: el caso raro tiene que
+   * caer del lado de sincronizar, no del de quedarse mudo para siempre.
+   */
+  syncIfStale: async () => {
+    const { feeds, ultimaSync, sincronizando, sync } = get();
+    if (sincronizando || feeds === 0) return;
+    const marca = ultimaSync != null ? Date.parse(ultimaSync) : NaN;
+    const edad = Date.now() - marca;
+    if (Number.isFinite(edad) && edad >= 0 && edad < MIN_AUTO_MS) return;
+    await sync();
+  },
 }));
 
 /**
@@ -80,18 +121,26 @@ export const useCalendarSync = create<CalendarSyncState>((set, get) => ({
  */
 export function useCalendarSyncRuntime(): void {
   const refresh = useCalendarSync((s) => s.refresh);
-  const sync = useCalendarSync((s) => s.sync);
+  const syncIfStale = useCalendarSync((s) => s.syncIfStale);
 
   useEffect(() => {
-    void refresh();
-    if (!isTauri()) return;
+    if (!isTauri()) {
+      void refresh();
+      return;
+    }
 
-    // Al montar. El poller de Rust también corre, pero su primer pulso puede
-    // caer hasta un minuto después de abrir la app.
-    void sync();
+    // Al montar, y **después** del `refresh`: el freno de `syncIfStale` mira
+    // `ultimaSync`, que sale de ahí. Al revés, la marca todavía es `null` y la
+    // primera pasada sale siempre, aunque la app se acabe de cerrar y abrir.
+    // (El poller de Rust también corre, pero su primer pulso puede caer hasta un
+    // minuto después de abrir la app.)
+    void (async () => {
+      await refresh();
+      await syncIfStale();
+    })();
 
     const alVolver = () => {
-      if (document.visibilityState === "visible") void sync();
+      if (document.visibilityState === "visible") void syncIfStale();
     };
     window.addEventListener("focus", alVolver);
     document.addEventListener("visibilitychange", alVolver);
@@ -99,5 +148,5 @@ export function useCalendarSyncRuntime(): void {
       window.removeEventListener("focus", alVolver);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [refresh, sync]);
+  }, [refresh, syncIfStale]);
 }
