@@ -608,6 +608,22 @@ No protege datos —todo se autoguarda—: evita que un ⌘Q accidental baje la 
   contraste evita necesitar un flag global de "ya confirmó".
 - El diálogo se cierra con Escape y confirma con Enter, y **suspende los atajos
   globales** mientras está abierto para que no se navegue por debajo.
+- **Los tres caminos pasan por `request_close`, que levanta `main` antes de
+  preguntar** (`unminimize` + `show` + `set_focus`). El diálogo vive **dentro** de
+  esa ventana, así que con la ventana minimizada el usuario apretaba ⌘Q, no veía
+  nada y la app parecía colgada con el timer corriendo. **macOS no la levanta
+  solo**: con la ventana minimizada y la app al frente, ⌘Q dejaba `AXMinimized` en
+  true y el proceso vivo — o sea el pedido llegaba y la respuesta se dibujaba
+  donde nadie la ve. La alternativa —un `ask()` nativo— se descartó en Mej.17: el
+  diálogo propio es el mismo componente que el resto de la app.
+
+> **Cómo se comprueba esto, que no lo cubre ningún test** (no hay ⌘Q en jsdom ni
+> en el browser). Con `pnpm tauri dev` arriba, desde AppleScript: minimizar
+> `window "sunrise"` del proceso, dejar la app al frente, mandar `keystroke "q"
+> using command down` **al proceso** —nunca a System Events global, que se lo
+> come la app que esté adelante— y leer `AXMinimized` después. `true` es el bug;
+> `false` con el proceso vivo es el arreglo. Un `screencapture` sería la prueba
+> directa, pero necesita permiso de Grabación de pantalla, que no se pide.
 
 **El timer no se detiene al cerrar.** Dejar el taxímetro corriendo entre
 sesiones es el comportamiento esperado: la entrada queda abierta y sigue

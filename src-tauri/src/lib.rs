@@ -22,6 +22,27 @@ const CLOSE_REQUESTED: &str = "sunrise://close-requested";
 /// ventanas para invalidar sus vistas (ver `useCalendarListener` en el front).
 pub const CALENDAR_SYNCED: &str = "sunrise://calendar-synced";
 
+/// Pide la confirmación de salida, **después** de asegurarse de que se pueda
+/// ver.
+///
+/// El diálogo de ⌘Q (§4.10) vive dentro de la ventana `main`, así que si está
+/// minimizada el usuario aprieta ⌘Q, no ve nada y la app parece colgada con el
+/// timer corriendo. **macOS no la levanta solo**: comprobado con la ventana
+/// minimizada y la app al frente, ⌘Q deja `AXMinimized` en true y el proceso
+/// vivo — o sea el pedido llegó y la respuesta se dibujó donde nadie la ve.
+///
+/// Levantar la ventana desde acá y no convertir el diálogo en un `ask()` nativo
+/// es deliberado: el diálogo propio es el mismo componente que el resto de la
+/// app (Mej.17 se retiró por eso).
+fn request_close(app: &tauri::AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.unminimize();
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+    let _ = app.emit(CLOSE_REQUESTED, ());
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -110,7 +131,7 @@ pub fn run() {
         })
         .on_menu_event(|app, event| {
             if event.id() == QUIT_MENU_ID {
-                let _ = app.emit(CLOSE_REQUESTED, ());
+                request_close(app);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -194,7 +215,7 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
-                    let _ = window.app_handle().emit(CLOSE_REQUESTED, ());
+                    request_close(window.app_handle());
                 }
             }
         })
@@ -207,7 +228,7 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
                 if code.is_none() {
                     api.prevent_exit();
-                    let _ = app.emit(CLOSE_REQUESTED, ());
+                    request_close(app);
                 }
             }
         });

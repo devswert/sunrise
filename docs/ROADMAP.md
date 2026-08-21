@@ -2155,21 +2155,38 @@ eran un click en "Empezar el día" al navegar, un ritual cerrado pasada la
 medianoche, o una sesión que cruzó la medianoche con `today` ya actualizado. Si
 vuelve a pasar, el diálogo ahora dice la hora y con eso se elige entre los tres.
 
-### Mej.25 🔵 ⌘Q con la ventana principal no visible
+### Mej.25 ✅ ⌘Q con la ventana principal no visible — hecho
 
-Sale de Mej.17. El diálogo de salida (§4.10) vive **dentro** de la ventana
-principal: si está minimizada —o si algún día se puede cerrar dejando solo el
-taxímetro— el usuario aprieta ⌘Q, no ve nada y la app parece colgada, con el
-timer corriendo.
+Salió de retirar Mej.17. El diálogo de salida (§4.10) vive **dentro** de la
+ventana principal: minimizada, el usuario apretaba ⌘Q, no veía nada y la app
+parecía colgada con el timer corriendo.
 
-**El primer paso es reproducirlo, no arreglarlo**: puede que macOS levante la
-ventana al llegar el `MenuEvent`, y en ese caso no hay nada que hacer. Minimiza la
-ventana, aprieta ⌘Q y mira si aparece.
+**Se reprodujo antes de arreglarlo, que era el punto del ítem**, porque la duda
+era si macOS levantaba la ventana solo. No lo hace: con la ventana minimizada y
+la app al frente, después de ⌘Q `AXMinimized` seguía en `true` y el proceso
+seguía vivo. Las dos mitades importan — el proceso vivo dice que el pedido llegó
+y que `prevent_exit` corrió, así que la confirmación estaba abierta; la ventana
+minimizada dice que se dibujó donde nadie la ve.
 
-Si pasa, la salida **no** es convertir el diálogo a un `ask()` nativo —eso ya se
-decidió que no, y es el motivo por el que Mej.17 se retiró— sino **mostrar la
-ventana antes de pedir la confirmación**: un `show()` + `set_focus()` desde el
-handler del menú, que es una línea y conserva el diálogo propio.
+El arreglo es el que el ítem anticipaba, con una diferencia: no va en el handler
+del menú sino en un `request_close(app)` por el que pasan **los tres** emisores
+—el ítem de menú, `CloseRequested` de `main` y `ExitRequested`—. Levanta `main`
+(`unminimize` + `show` + `set_focus`) y después emite. Tres call sites que emiten
+el mismo evento son tres lugares donde olvidar el `show()`.
+
+Después del arreglo, la misma secuencia deja `AXMinimized` en `false` con el
+proceso vivo. **No hay test**: ⌘Q no existe en jsdom ni en el browser, así que la
+receta de AppleScript quedó escrita en SPECS §4.10 para poder repetirla.
+
+Dos cosas del método que conviene no repetir:
+
+- **La tecla se manda al proceso, nunca a System Events global.** Un
+  `keystroke "q" using command down` sin destino se lo come la app que esté
+  adelante, que durante esta sesión era Slack.
+- **`screencapture` habría sido la prueba directa** —una foto del diálogo que no
+  está—, pero necesita permiso de Grabación de pantalla. No se pidió: es una
+  configuración del sistema y la decide el dev, no la app. La prueba quedó siendo
+  el estado de la ventana, que es inferencia sobre lo que se ve, no una foto.
 
 ### Mej.24 ✅ Los pickers con búsqueda abrían sin el foco en el buscador — hecho
 
