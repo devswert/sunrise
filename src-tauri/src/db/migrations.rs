@@ -226,6 +226,20 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         INSERT INTO settings (key, value) VALUES ('collapsed_weekdays', '6,7');
         "#,
     ),
+    (
+        10,
+        r#"
+        -- La marca del ritual diario pasó de `planned_on` (una fecha pelada) a
+        -- `planned_at` (fecha y hora locales, `YYYY-MM-DDTHH:mm`). La vieja se
+        -- borra en vez de renombrarse a propósito: nadie sabe con qué gesto se
+        -- escribió el valor que había, y moverlo a una clave que ahora promete
+        -- una hora sería inventarle una procedencia. Perderlo es justamente el
+        -- resultado de "no fui yo" que el aviso ya ofrece.
+        --
+        -- No siembra nada: sin marca, no planificaste. Igual que antes.
+        DELETE FROM settings WHERE key = 'planned_on';
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.

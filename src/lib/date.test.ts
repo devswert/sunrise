@@ -7,9 +7,26 @@ import {
   isoWeekday,
   isoWeekdayLabel,
   threeWeeks,
+  toISODate,
+  toISOTimestamp,
   weekDates,
   weekdayLabel,
 } from "./date";
+
+describe("toISOTimestamp", () => {
+  it("fecha y hora locales, sin zona", () => {
+    expect(toISOTimestamp(new Date(2026, 7, 21, 0, 20))).toBe("2026-08-21T00:20");
+    expect(toISOTimestamp(new Date(2026, 7, 21, 23, 59))).toBe("2026-08-21T23:59");
+  });
+
+  it("los primeros diez caracteres son el mismo día que `toISODate`", () => {
+    // Es lo que hace comparable la marca del ritual contra el día de hoy. Con
+    // `toISOString()` la fecha sería la de UTC, y las últimas horas de cada día
+    // en Santiago quedarían marcadas como el día siguiente.
+    const d = new Date(2026, 7, 21, 22, 30);
+    expect(toISOTimestamp(d).slice(0, 10)).toBe(toISODate(d));
+  });
+});
 
 describe("threeWeeks", () => {
   it("son tres semanas de 7, con la del ancla al medio", () => {

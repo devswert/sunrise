@@ -440,7 +440,7 @@ Seis decisiones que el plan no tenía:
    decía "4 arrastres" por haberse caído una vez.
 2. **No hay botón "Guardar"**, porque no hay nada que guardar: autosave es la
    convención del proyecto y todo lo que se toca acá ya persiste. "Empezar el
-   día" es un **terminador de ritual** —sella `planned_on`, confeti, vuelta a la
+   día" es un **terminador de ritual** —sella `planned_at`, confeti, vuelta a la
    semana— y está escrito así en SPECS para que nadie lo "arregle" a un save ni
    lo borre por inútil. Un test cubre justamente que **montar la vista no
    escriba nada**.
@@ -576,7 +576,7 @@ pendiente" en el shutdown es **solo de lectura** — replanificar es del daily
 planning, y el mismo gesto en dos vistas obliga a mantener la regla en dos lados.
 
 Lo que ya estaba: `tasks.objective_id`, el plugin de notificaciones (instalado en
-M2 justamente para esto), `work_end` en `settings`, y el patrón `planned_on` para
+M2 justamente para esto), `work_end` en `settings`, y el patrón `planned_at` para
 avisar una vez al día.
 
 **El aviso nativo de `work_end` solo se puede verificar con `pnpm tauri dev`**: en
@@ -1260,7 +1260,7 @@ Cosas a resolver, que no son obvias:
 - **Una sola vez por tarea, y que reiniciar no vuelva a avisar todas.** La campana
   del estimado guarda `belledEntryId` en memoria; acá hace falta que sobreviva al
   reinicio. Ojo con la tentación de una fila por tarea en `settings`: el patrón de
-  `planned_on` / `shutdown_notified_on` guarda **una** fecha, y para esto haría
+  `planned_at` / `shutdown_notified_on` guarda **una** marca, y para esto haría
   falta un conjunto de ids — probablemente una tabla o una columna en `tasks`.
 - **Una sola ventana avisa** (I6). `useShutdownReminder` lo resuelve montándose en
   `Shell`, que solo existe en `main`; este puede hacer lo mismo.
@@ -2100,33 +2100,60 @@ es de lo que depende que el modal "Lo nuevo" aparezca. El banco de pruebas
 (`sunriseDev.flujoCompleto()`) sigue sirviendo para mirar los componentes sin
 publicar nada.
 
-### Mej.23 🔵 La planificación diaria dice que ya la hiciste, sin poder desmentirla
+### Mej.23 ✅ La planificación diaria decía que ya la hiciste, sin poder desmentirla — hecho
 
-Reportado por el dev: entra a Planificación diaria un día en que **no pasó por
-ahí**, y el aviso de "ya planificaste este día" salta igual.
+Reportado por el dev: entró a Planificación diaria un día en que **no pasó por
+ahí** y el aviso de "ya planificaste este día" saltó igual.
 
-Lo comprobado, que es poco y conviene no estirarlo: en la base de dev
-`planned_on` vale el día de hoy, en la de producción la clave no existe, y el
-**único** lugar del código que la escribe es `terminar()` en
-`DailyPlanningView.tsx`. Así que la marca se escribió hoy; con qué gesto, no se
-puede saber desde acá, y por eso no se afirma.
+**El misterio sigue sin resolverse, y eso era el punto.** No se arregló el gesto
+que escribió la marca —nadie sabe cuál fue— sino la razón por la que no se pudo
+averiguar: la app afirmaba algo que no se podía ni fechar ni desmentir. Ahora las
+dos cosas se pueden.
 
-Y ahí está el defecto de verdad, que se puede arreglar sin resolver el misterio:
-**`planned_on` guarda una fecha pelada y el aviso no dice cuándo planificaste**,
-así que la afirmación de la app no se puede desmentir desde la UI ni hay forma de
-borrar la marca. Dos consecuencias concretas:
+- **La marca guarda hora, no solo fecha.** `planned_on` → `planned_at`, con
+  `'YYYY-MM-DDTHH:mm'` en hora local. Un ritual cerrado a las 00:20 marcaba el día
+  que recién empezaba y el aviso no tenía con qué decirlo; ahora el diálogo dice
+  "hoy a las 00:20", así que **el próximo reporte se diagnostica leyendo la
+  pantalla**.
+- **"Volver a planificar hoy"** borra la marca y sigue el ritual. Antes el
+  aviso solo se podía cerrar: no había forma de sacar al usuario del callejón.
 
-- Un ritual terminado a las 00:20 marca el día que **acaba de empezar**, que casi
-  nunca es lo que se quiso decir. Guardar un timestamp (`planned_at`) en vez de
-  una fecha deja distinguir los dos casos y permite que el aviso diga "hoy a las
-  00:20" — con eso, cualquier reporte futuro se diagnostica leyendo el diálogo.
-- El aviso no ofrece **"no fui yo, sigamos"**: hoy solo se cierra. Un botón que
-  limpie la marca y siga con el ritual cuesta poco y saca al usuario del callejón.
+Tres trampas de zona horaria que hay que respetar, porque las tres reintroducen
+**el mismo error de medianoche** que este ítem vino a hacer visible, movido de
+lugar (detalle en [SPECS §4.8](SPECS.md#48-ajustes)):
 
-Candidatos para el cómo, todos sin confirmar: un click en "Empezar el día" al
-navegar; un ritual terminado pasada la medianoche; o la marca escrita en una
-sesión que cruzó la medianoche con `today` ya actualizado. El primer paso es
-hacerlo diagnosticable, no adivinar.
+1. **Escribir con `toISOTimestamp` y nunca con `toISOString()`.** Los primeros diez
+   caracteres se comparan contra `todayISO()`, así que tienen que ser la fecha
+   local: con la de UTC, las últimas cuatro horas de cada día en Santiago se marcan
+   como el día siguiente.
+2. **Al leer, no pasar el string por `new Date()`.** `new Date('2026-08-21')` es
+   medianoche **UTC**, o sea acá el día anterior a las 20:00. `planMark` corta en la
+   `T` y parsea la hora aparte.
+3. **La hora es opcional al leer.** Una fecha pelada —lo que guardaba la versión
+   anterior, o lo que deja una edición a mano— vale como "ese día", y el aviso dice
+   que la marca no trae hora en vez de inventarle una.
+
+**La migración 10 borra `planned_on` en vez de renombrarla.** Renombrarla habría
+lavado un valor de procedencia desconocida hacia una clave que ahora promete una
+hora. Y de paso, borrarla da el resultado de "no fui yo" gratis en el primer
+arranque.
+
+El aviso creció por dentro y no en la fila de botones: el desmentido es
+`.dialog__deny`, y **se ve como texto**, debajo del cuerpo y arriba de los dos
+botones. Corrige la frase que afirma en vez de sumar una tercera acción, y tres
+botones no caben en 380px sin apilarse.
+
+Dos cosas de método que se cobraron su tiempo: el test que fijaba
+`assert_eq!(version, 9)` se pone rojo con **cualquier** migración nueva, así que
+ahora saca el número de `MIGRATIONS` y dice "se aplicaron todas" en vez de "se
+aplicaron nueve". Y la hora del diálogo sale de la marca guardada, no de
+`new Date()` — un diálogo que muestre la hora actual se ve perfecto justo el día
+en que se prueba.
+
+**Lo que sigue sin saberse**: con qué gesto se escribió la marca. Los candidatos
+eran un click en "Empezar el día" al navegar, un ritual cerrado pasada la
+medianoche, o una sesión que cruzó la medianoche con `today` ya actualizado. Si
+vuelve a pasar, el diálogo ahora dice la hora y con eso se elige entre los tres.
 
 ### Mej.25 🔵 ⌘Q con la ventana principal no visible
 

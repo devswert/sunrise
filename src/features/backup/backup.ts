@@ -17,7 +17,7 @@ import { SettingKey, backupSettings, type SettingsMap } from "../../lib/settings
  * 1. **Sin carpeta configurada no hay respaldo.** No es un error ni algo que
  *    avisar cada minuto: es el estado de fábrica.
  * 2. **Una vez al día.** `backup_ran_on` guarda una fecha y no un booleano —el
- *    mismo patrón de `planned_on`— porque una sesión abierta que cruza la
+ *    mismo patrón de `planned_at`— porque una sesión abierta que cruza la
  *    medianoche tiene que volver a respaldar al día siguiente.
  * 3. **Recién pasada la hora.** La comparación de `HH:mm` como texto es
  *    lexicográfica, y por eso alcanza.

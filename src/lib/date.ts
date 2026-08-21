@@ -35,6 +35,20 @@ export function todayISO(): string {
   return toISODate(new Date());
 }
 
+/**
+ * Fecha y hora locales en `'YYYY-MM-DDTHH:mm'`, para las marcas de "esto pasó".
+ *
+ * **Sin zona y armado con `format`, nunca con `toISOString()`.** Los primeros
+ * diez caracteres tienen que ser exactamente lo que devolvería `todayISO()` en
+ * el mismo instante, porque quien lee la marca compara ese prefijo contra el día
+ * de hoy. `toISOString()` da la fecha **en UTC**, así que en Santiago las cuatro
+ * últimas horas de cada día quedarían marcadas como el día siguiente — el mismo
+ * error de medianoche que la marca existe para poder desmentir.
+ */
+export function toISOTimestamp(d: Date): string {
+  return format(d, "yyyy-MM-dd'T'HH:mm");
+}
+
 /** Identificador de semana ISO, ej. '2026-W32'. */
 export function isoWeekId(d: Date): string {
   const year = getISOWeekYear(d);

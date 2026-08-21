@@ -13,14 +13,15 @@ import { api } from "../../lib/ipc";
 import type { Task, DayWork } from "../../lib/types";
 import { CapacityLevel } from "../../lib/enums";
 import { formatMinutes } from "../../lib/capacity";
-import { dateLabel, parseISODate, toISODate, weekdayLabel } from "../../lib/date";
+import { dateLabel, parseISODate, toISODate, toISOTimestamp, weekdayLabel } from "../../lib/date";
 import { useToday } from "../../lib/day";
 import {
   SettingKey,
   useCapacitySettings,
   useSettingsStore,
   useWorkHours,
-  alreadyPlanned,
+  planMark,
+  type PlanMark,
 } from "../../lib/settings";
 import { useAppStore } from "../../lib/store";
 import { celebrate } from "../../lib/confetti";
@@ -86,7 +87,9 @@ export function DailyPlanningView() {
   const [backlog, setBacklog] = useState<Task[]>([]);
   const [rescued, setRescued] = useState<Map<number, string>>(new Map());
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [notice, setAviso] = useState(false);
+  // Guarda **la marca**, no un booleano: el aviso dice a qué hora planificaste,
+  // y esa hora sale de lo guardado y no del reloj de ahora.
+  const [notice, setAviso] = useState<PlanMark | null>(null);
 
   const load = useCallback(async () => {
     const [atras, bl, rescates] = await Promise.all([
@@ -160,7 +163,10 @@ export function DailyPlanningView() {
   };
 
   const terminar = async () => {
-    await setSetting(SettingKey.PLANNED_ON, today);
+    // Fecha **y hora**: la hora es lo que hace desmentible el aviso de más abajo
+    // (`planMark`). El prefijo del timestamp es, por construcción, el mismo día
+    // que devuelve `todayISO()`, que es contra lo que se compara al leerlo.
+    await setSetting(SettingKey.PLANNED_AT, toISOTimestamp(new Date()));
     // El confeti es imperativo y cuelga de `document.body`: sobrevive al
     // navigate de la línea siguiente (ver `lib/confetti.ts`).
     celebrate();
@@ -182,8 +188,23 @@ export function DailyPlanningView() {
   useEffect(() => {
     if (!ajustesCargados || avisadoPara.current === today) return;
     avisadoPara.current = today;
-    if (alreadyPlanned(values, today)) setAviso(true);
+    const mark = planMark(values);
+    if (mark?.date === today) setAviso(mark);
   }, [ajustesCargados, values, today]);
+
+  /**
+   * "Volver a planificar hoy": borra la marca y sigue el ritual.
+   *
+   * Sin esto el aviso era una afirmación sin salida —solo se podía cerrar—, y la
+   * marca se escribe con gestos que el usuario no reconoce como planificar (un
+   * ritual cerrado pasada la medianoche, por ejemplo). Deja `""` en vez de borrar
+   * la fila: `set_setting` es un upsert y `planMark` trata el vacío como ausente,
+   * que es el mismo gesto que "Volver a avisar hoy" en Dev Tools.
+   */
+  const desmentir = async () => {
+    setAviso(null);
+    await setSetting(SettingKey.PLANNED_AT, "");
+  };
 
   const cardDe = (t: Task) => (
     <TaskCardStatic
@@ -404,23 +425,32 @@ export function DailyPlanningView() {
           label="Ya planificaste hoy"
           icon={<CalendarCheck size={26} />}
           hint="Enter o Escape para revisar"
-          onClose={() => setAviso(false)}
-          onEnter={() => setAviso(false)}
+          onClose={() => setAviso(null)}
+          onEnter={() => setAviso(null)}
           actions={
             <>
               <button className="btn-ghost" onClick={() => navigate("/")}>
                 Ir a la semana
               </button>
-              <button className="btn-primary" onClick={() => setAviso(false)} autoFocus>
+              <button className="btn-primary" onClick={() => setAviso(null)} autoFocus>
                 <ArrowRight size={14} aria-hidden /> Revisar igual
               </button>
             </>
           }
         >
           <p className="dialog__body">
-            Hoy ya cerraste la planificación. Puedes revisarla igual —nada se deshace—,
-            pero si venías de paso, la semana te espera.
+            {notice.time
+              ? `Hoy a las ${notice.time} cerraste la planificación.`
+              : "Hoy ya cerraste la planificación (la marca no dice a qué hora)."}{" "}
+            Puedes revisarla igual —nada se deshace—, pero si venías de paso, la semana te
+            espera.
           </p>
+          {/* El desmentido va pegado a la frase que hace la afirmación, y no en la
+           * fila de botones: corrige el texto en vez de ofrecer una salida más, y
+           * un tercer botón ahí competiría con las dos decisiones de verdad. */}
+          <button className="dialog__deny" onClick={() => void desmentir()}>
+            Volver a planificar hoy
+          </button>
         </Dialog>
       )}
 

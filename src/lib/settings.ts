@@ -19,7 +19,7 @@ export const SettingKey = {
   BELL_SOUND: "bell_sound",
   WORK_START: "work_start",
   WORK_END: "work_end",
-  PLANNED_ON: "planned_on",
+  PLANNED_AT: "planned_at",
   COLLAPSED_WEEKDAYS: "collapsed_weekdays",
   SHUTDOWN_NOTIFIED_ON: "shutdown_notified_on",
   // Respaldo. `BACKUP_DIR` y `BACKUP_KEEP` los lee **también Rust**
@@ -34,7 +34,7 @@ export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
 
 /**
  * Los cuatro primeros coinciden con los que siembra la migración 2. Los de
- * respaldo **no se siembran** —como `planned_on`— porque no hay valor de fábrica
+ * respaldo **no se siembran** —como `planned_at`— porque no hay valor de fábrica
  * razonable para una carpeta: mientras esté vacía, el respaldo está apagado.
  *
  * `backupKeep` espeja `BACKUP_KEEP_DEFAULT` en `commands.rs`: Rust es quien
@@ -102,16 +102,39 @@ export function workHours(values: SettingsMap): { start: string; end: string } {
   return { start, end };
 }
 
+/** Cuándo se cerró el ritual. `time` en `null` = la marca no trae hora. */
+export interface PlanMark {
+  date: string;
+  time: string | null;
+}
+
 /**
- * Si el ritual de planificación diaria ya se cerró para `date`.
+ * Cuándo se cerró el ritual de planificación diaria, según `planned_at`.
  *
- * `planned_on` **no la siembra ninguna migración**, y está bien: `set_setting`
- * es un upsert y toda lectura de esta tabla tiene fallback. Guarda una sola
- * fecha, no un historial: la pregunta es "¿ya planifiqué hoy?", y llevar el
- * registro de qué días planificaste es materia de la review, no de un ajuste.
+ * `planned_at` **no la siembra ninguna migración**, y está bien: `set_setting`
+ * es un upsert y toda lectura de esta tabla tiene fallback. Guarda **una** marca,
+ * no un historial: la pregunta es "¿ya planifiqué hoy?", y llevar el registro de
+ * qué días planificaste es materia de la review, no de un ajuste.
+ *
+ * Guarda fecha **y hora** (`'YYYY-MM-DDTHH:mm'`, hora local) porque con la fecha
+ * pelada la app hacía una afirmación que no se podía desmentir: un ritual cerrado
+ * a las 00:20 marca el día que recién empieza, y el aviso no tenía con qué
+ * decirlo. Con la hora, el próximo reporte se diagnostica leyendo el diálogo.
+ *
+ * **La hora se parsea aparte y el string nunca va a `new Date()`.** Una fecha
+ * pelada (`'2026-08-21'`) la interpreta como medianoche **UTC**, así que en
+ * Santiago se leería como el día anterior a las 20:00 — justo el error que esto
+ * viene a arreglar. Y por eso mismo la hora es opcional en la lectura: una marca
+ * vieja o editada a mano sigue valiendo como "ese día", sin inventarle una hora.
  */
-export function alreadyPlanned(values: SettingsMap, date: string): boolean {
-  return values[SettingKey.PLANNED_ON]?.trim() === date;
+export function planMark(values: SettingsMap): PlanMark | null {
+  const raw = values[SettingKey.PLANNED_AT]?.trim();
+  if (!raw) return null;
+  const [date, rest] = raw.split("T");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(rest ?? "");
+  const valid = m != null && Number(m[1]) <= 23 && Number(m[2]) <= 59;
+  return { date, time: valid ? `${m[1].padStart(2, "0")}:${m[2]}` : null };
 }
 
 /**

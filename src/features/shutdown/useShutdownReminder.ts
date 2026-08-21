@@ -37,7 +37,7 @@ function ahoraHhmm(): string {
  *   taxímetro corre sus propios hooks, y si este viviera en los dos llegarían
  *   dos notificaciones con unos ms de diferencia.
  * - **El guardado es una fecha, no un booleano** (`shutdown_notified_on`), igual
- *   que `planned_on`: una sesión abierta cruzando la medianoche tiene que volver
+ *   que `planned_at`: una sesión abierta cruzando la medianoche tiene que volver
  *   a avisar al día siguiente. `useToday` es lo que hace que este hook se
  *   entere del cambio de día.
  * - **La hora sale de `work_end`**, el mismo ajuste que ya usa el rail. Nunca

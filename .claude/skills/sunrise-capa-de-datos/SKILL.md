@@ -227,7 +227,7 @@ desde `Shell` y la relee con cada invalidación.
 configuró" y toma el default, presente y vacío es "ninguno", que es una elección
 legítima. Si las dos cayeran al mismo fallback, destildar todo en Configs
 rebotaría al default y el estado vacío sería inexpresable. Cuando pase eso, **la
-migración tiene que sembrar la fila** —la 9 lo hace, al revés que `planned_on`— y
+migración tiene que sembrar la fila** —la 9 lo hace, al revés que `planned_at`— y
 el parser distinguir `raw == null` de `raw === ""`. Y hay un test de Rust que
 cuenta las filas sembradas: si agregas una, se pone rojo.
 
@@ -240,8 +240,20 @@ cuando un valor fuera de él no tendría sentido.
 
 **Una clave nueva no necesita migración.** `set_setting` es un upsert y toda
 lectura tiene fallback, así que basta con sumarla a `SettingKey` y darle su
-parser (`planned_on`, del ritual diario, nació así). La migración solo sirve para
-sembrar un valor inicial distinto del default del parser.
+parser (`planned_at`, del ritual diario, nació así). La migración solo sirve para
+sembrar un valor inicial distinto del default del parser — o para **limpiar** una
+clave que dejó de usarse, que es todo lo que hace la 10 con `planned_on`.
+
+**Una marca de "esto pasó" se guarda con fecha y hora locales**
+(`toISOTimestamp`, `'YYYY-MM-DDTHH:mm'`), **nunca con `toISOString()`**. Quien la
+lee compara los primeros diez caracteres contra el día de hoy, así que la fecha
+tiene que ser la local: con la de UTC, en Santiago las últimas cuatro horas de
+cada día se marcan como el día siguiente. Y al leer, **el string no pasa por
+`new Date()`** — una fecha pelada la interpreta como medianoche UTC, o sea el día
+anterior a las 20:00 acá. Se corta en la `T` y la hora se parsea aparte, opcional:
+un valor viejo o editado a mano vale como "ese día" sin que se le invente una
+hora. `planned_at` es el ejemplo, y nació de un reporte que no se pudo diagnosticar
+justamente porque la marca no decía la hora.
 
 **Hay claves que Rust también lee.** `backup_dir` y `backup_keep` las consulta
 `commands.rs` con `repo::get_setting` (que devuelve `None` también cuando el valor

@@ -86,7 +86,7 @@ export function segmentSeconds(
  * - **Ya pasó `work_end`** (la hora de la jornada, de `settings` — nunca una hora
  *   hardcodeada: el rail ya usa ese mismo ajuste).
  * - **No se avisó todavía hoy.** El guardado es una fecha y no un booleano, por lo
- *   mismo que `planned_on`: una sesión abierta cruzando la medianoche tiene que
+ *   mismo que `planned_at`: una sesión abierta cruzando la medianoche tiene que
  *   volver a avisar al día siguiente.
  * - **El día no está cerrado.** Si ya lo cerraste, el aviso llega tarde y de más.
  */

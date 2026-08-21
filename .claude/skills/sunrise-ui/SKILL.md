@@ -107,7 +107,7 @@ naranjo queda para lo que avisa. Todo botón de acción lleva su icono de
 
 **La única excepción no es una excepción**: un ritual puede terminar con un
 botón, pero ese botón **no guarda** —cierra el ritual—. "Empezar el día" en
-`DailyPlanningView` sella `planned_on`, tira confeti y navega a la semana; todo
+`DailyPlanningView` sella `planned_at`, tira confeti y navega a la semana; todo
 lo que se editó ya se había guardado solo. Si te encuentras uno de estos, no lo
 conviertas en un save ni lo borres por inútil: nómbralo como lo que hace (SPECS
 §4.14).
@@ -179,6 +179,17 @@ Dos props que son decisiones, no configuración:
   —y el botón destructivo **tampoco lleva `autoFocus`**, porque un botón enfocado
   se activa con Enter y eso alcanzaba para reemplazar la base de datos con una
   tecla—. Ahí Escape cancela y confirmar es un click.
+
+**Un aviso que afirma algo tiene que poder desmentirse.** El de "ya planificaste
+hoy" decía el día y solo se podía cerrar, y la marca se escribe con gestos que el
+usuario no reconoce como planificar: la app quedaba afirmando algo indiscutible.
+Dos cosas lo arreglan, y las dos son barajables a cualquier aviso parecido — que
+diga **cuándo** (con la hora sacada de lo guardado, no del reloj de ahora) y que
+ofrezca borrar la marca. El desmentido va como children, **debajo del cuerpo y
+arriba de la fila de botones**, y **se ve como texto y no como botón**
+(`.dialog__deny`): corrige la frase que afirma en vez de sumar una tercera acción,
+y un botón más en la fila competiría con las dos decisiones de verdad — además de
+no caber en 380px sin apilarse.
 
 **No lo uses para un modal que no es una confirmación.** `TaskModal` es una vista
 y `AddFeedModal` un formulario: tienen su propio teclado (⌘Enter, Enter por campo)

@@ -101,7 +101,44 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 9, "debe quedar en la última versión de migración");
+        // El número sale de `MIGRATIONS` y no escrito a mano: así el test dice
+        // "se aplicaron todas" en vez de "se aplicaron nueve", que es lo que se
+        // quiere comprobar y lo único que no se rompe al agregar una.
+        let ultima = migrations::MIGRATIONS.last().unwrap().0;
+        assert_eq!(version, ultima, "debe quedar en la última versión de migración");
+    }
+
+    /// La 10 se lleva la marca vieja del ritual diario. Se borra en vez de
+    /// renombrarse a `planned_at` porque nadie sabe con qué gesto se escribió el
+    /// valor que había, y la clave nueva promete una hora que ese valor no tiene.
+    #[test]
+    fn la_migracion_10_borra_la_marca_vieja_del_ritual() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _migrations (version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now')));",
+        )
+        .unwrap();
+        // Se aplica hasta la 9 —el estado en que existía la clave vieja— y recién
+        // ahí corre el resto: aplicando todo de una no habría nada que borrar.
+        for (version, sql) in migrations::MIGRATIONS.iter().filter(|(v, _)| *v <= 9) {
+            conn.execute_batch(sql).unwrap();
+            conn.execute("INSERT INTO _migrations (version) VALUES (?1)", [version])
+                .unwrap();
+        }
+        conn.execute_batch("INSERT INTO settings (key, value) VALUES ('planned_on', '2026-08-20');")
+            .unwrap();
+
+        migrations::run(&conn).unwrap();
+
+        let quedan: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM settings WHERE key = 'planned_on'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(quedan, 0, "la clave vieja no puede sobrevivir a la migración");
     }
 
     /// La migración 6 rescata lo que quedó escondido antes del cambio de regla.

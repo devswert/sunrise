@@ -5,6 +5,7 @@ import {
   capacityWarnRatio,
   collapsedWeekdays,
   dailyCapacityMinutes,
+  planMark,
   workHours,
 } from "./settings";
 import { computeCapacityLevel } from "./capacity";
@@ -120,6 +121,53 @@ describe("collapsedWeekdays", () => {
     expect(collapsedWeekdays({ [SettingKey.COLLAPSED_WEEKDAYS]: "6,ocho,0,9,-2,3.5" })).toEqual([
       6,
     ]);
+  });
+});
+
+/**
+ * La marca del ritual diario. Guarda fecha y hora locales porque la versión con
+ * la fecha pelada hacía una afirmación que no se podía desmentir: un ritual
+ * cerrado a las 00:20 marcaba el día que recién empezaba y el aviso no tenía con
+ * qué decirlo.
+ */
+describe("planMark", () => {
+  const marca = (raw: string) => planMark({ [SettingKey.PLANNED_AT]: raw });
+
+  it("sin la clave no hay marca", () => {
+    expect(planMark({})).toBeNull();
+  });
+
+  it("vacío tampoco: es cómo se borra la marca desde el aviso", () => {
+    expect(marca("")).toBeNull();
+    expect(marca("   ")).toBeNull();
+  });
+
+  it("lee la fecha y la hora de la marca", () => {
+    expect(marca("2026-08-21T00:20")).toEqual({ date: "2026-08-21", time: "00:20" });
+  });
+
+  it("una fecha pelada vale como ese día, sin inventarle hora", () => {
+    // Es lo que guardaba la versión anterior y lo que puede dejar una edición a
+    // mano. La hora en `null` es lo que el aviso muestra como "no dice a qué hora".
+    expect(marca("2026-08-21")).toEqual({ date: "2026-08-21", time: null });
+  });
+
+  it("la fecha no pasa por `new Date()`: el día es el que dice el string", () => {
+    // `new Date("2026-08-21")` es medianoche **UTC**, que en Santiago es el día
+    // anterior a las 20:00. Ese es el error que esta marca viene a arreglar, así
+    // que la lectura no puede reintroducirlo.
+    expect(marca("2026-08-21")?.date).toBe("2026-08-21");
+    expect(marca("2026-08-21T23:59")?.date).toBe("2026-08-21");
+  });
+
+  it("descarta la hora que no entiende y se queda con el día", () => {
+    expect(marca("2026-08-21T99:99")).toEqual({ date: "2026-08-21", time: null });
+    expect(marca("2026-08-21Tayer")).toEqual({ date: "2026-08-21", time: null });
+  });
+
+  it("sin una fecha reconocible no hay marca", () => {
+    expect(marca("ayer")).toBeNull();
+    expect(marca("21-08-2026")).toBeNull();
   });
 });
 

@@ -183,19 +183,19 @@ describe("DailyPlanningView", () => {
 
   it("no guarda nada al entrar: el ritual no es un formulario", async () => {
     // Todo lo que se toca acá ya persiste solo. Si montar la vista escribiera
-    // `planned_on`, el sello del final dejaría de significar algo.
+    // `planned_at`, el sello del final dejaría de significar algo.
     mount();
     await goToToday();
     await waitFor(() => expect(document.querySelector(".cap-line")).not.toBeNull());
 
     const pares = await api.listSettings();
-    expect(pares.find(([k]) => k === SettingKey.PLANNED_ON)).toBeUndefined();
+    expect(pares.find(([k]) => k === SettingKey.PLANNED_AT)).toBeUndefined();
   });
 
   it("entrar a un día ya planificado avisa, y deja revisarlo igual", async () => {
     // El sello en la cabecera se leía como decoración. El ritual está para
     // hacerse una vez y volver a entrar suele ser sin querer.
-    useSettingsStore.setState({ values: { planned_on: todayISO() }, loaded: true });
+    useSettingsStore.setState({ values: { planned_at: `${todayISO()}T00:20` }, loaded: true });
     mount();
 
     const notice = await screen.findByRole("alertdialog", { name: "Ya planificaste hoy" });
@@ -205,14 +205,61 @@ describe("DailyPlanningView", () => {
     expect(screen.queryByText("La semana")).toBeNull();
   });
 
+  it("el aviso dice a qué hora planificaste, que es lo que lo hace desmentible", async () => {
+    // La hora sale de la marca guardada, no del reloj de ahora: un diálogo que
+    // muestre la hora actual se ve perfecto el día que lo pruebas.
+    useSettingsStore.setState({ values: { planned_at: `${todayISO()}T00:20` }, loaded: true });
+    mount();
+
+    const notice = await screen.findByRole("alertdialog");
+    expect(within(notice).getByText(/a las 00:20/)).toBeInTheDocument();
+  });
+
+  it("una marca sin hora avisa igual, sin inventarle una", async () => {
+    // Una fecha pelada es lo que guardaba la versión anterior, y lo que puede
+    // quedar de una edición a mano. Vale como "ese día" y nada más.
+    useSettingsStore.setState({ values: { planned_at: todayISO() }, loaded: true });
+    mount();
+
+    const notice = await screen.findByRole("alertdialog");
+    expect(within(notice).getByText(/no dice a qué hora/)).toBeInTheDocument();
+    expect(within(notice).queryByText(/a las \d/)).toBeNull();
+  });
+
+  it("desmentir el aviso borra la marca y deja seguir el ritual", async () => {
+    await useSettingsStore.getState().set(SettingKey.PLANNED_AT, `${todayISO()}T00:20`);
+    mount();
+
+    const notice = await screen.findByRole("alertdialog");
+    await userEvent.click(within(notice).getByRole("button", { name: /Volver a planificar hoy/ }));
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.queryByText("La semana")).toBeNull();
+    await waitFor(() =>
+      expect(useSettingsStore.getState().values[SettingKey.PLANNED_AT]).toBe(""),
+    );
+  });
+
   it("desde el aviso se puede salir a la semana", async () => {
-    useSettingsStore.setState({ values: { planned_on: todayISO() }, loaded: true });
+    useSettingsStore.setState({ values: { planned_at: `${todayISO()}T09:00` }, loaded: true });
     mount();
 
     const notice = await screen.findByRole("alertdialog");
     await userEvent.click(within(notice).getByRole("button", { name: /Ir a la semana/ }));
 
     expect(await screen.findByText("La semana")).toBeInTheDocument();
+  });
+
+  it("una marca de otro día no avisa: la comparación es contra hoy", async () => {
+    // Nadie limpia la marca al cambiar el día, y no hace falta: caduca sola
+    // porque lo que se compara es su fecha contra `today`. Si esto se rompe, la
+    // app avisa "ya planificaste hoy" con la marca de ayer y no hay forma de
+    // notarlo mirando el código del aviso.
+    useSettingsStore.setState({ values: { planned_at: `${hace(1)}T09:00` }, loaded: true });
+    mount();
+    await waitFor(() => expect(document.querySelector(".cap-line")).not.toBeNull());
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("un día sin planificar no avisa nada", async () => {
@@ -230,6 +277,9 @@ describe("DailyPlanningView", () => {
     expect(await screen.findByText("La semana")).toBeInTheDocument();
     expect(celebrate).toHaveBeenCalledTimes(1);
     const pares = await api.listSettings();
-    expect(pares.find(([k]) => k === SettingKey.PLANNED_ON)?.[1]).toBe(todayISO());
+    // Fecha **y** hora, y el prefijo tiene que ser el día de hoy en hora local:
+    // con la fecha en UTC, las últimas horas del día marcarían el día siguiente.
+    const marca = pares.find(([k]) => k === SettingKey.PLANNED_AT)?.[1];
+    expect(marca).toMatch(new RegExp(`^${todayISO()}T\\d{2}:\\d{2}$`));
   });
 });

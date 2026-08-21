@@ -510,21 +510,44 @@ Los ajustes viven en la tabla `settings` (TEXT/TEXT) y se leen vía
 `src/lib/settings.ts`: `useSettingsStore` los carga desde `Shell` y los relee con
 cada invalidación, así un cambio en una ventana llega a la otra.
 **Toda lectura pasa por un parser con fallback** (`dailyCapacityMinutes`,
-`capacityWarnRatio`, `workHours`, `alreadyPlanned`, `collapsedWeekdays`): la clave puede faltar, venir vacía o traer basura editada a
+`capacityWarnRatio`, `workHours`, `planMark`, `collapsedWeekdays`): la clave puede faltar, venir vacía o traer basura editada a
 mano, y un `NaN` suelto dejaría el semáforo en OK para siempre sin error visible,
 porque toda comparación con `NaN` es false.
 
-`planned_on` (§4.14) es la primera clave que **no siembra ninguna migración**, y
+`planned_at` (§4.14) es la primera clave que **no siembra ninguna migración**, y
 está bien: `set_setting` es un upsert y la lectura ya tiene fallback. Guarda una
-sola fecha, no un historial — la pregunta es "¿ya planifiqué hoy?"; llevar la
+sola marca, no un historial — la pregunta es "¿ya planifiqué hoy?"; llevar la
 cuenta de qué días planificaste es materia de la review.
+
+**Guarda fecha y hora** (`'YYYY-MM-DDTHH:mm'`, hora local), y no la fecha pelada
+con la que nació. Con la fecha sola la app afirmaba algo que no se podía
+desmentir: un ritual cerrado a las 00:20 marca el día que recién empieza, y el
+aviso no tenía con qué decir cuándo fue. Dos reglas que van juntas y se rompen en
+silencio si se separan:
+
+- **Se escribe con `toISOTimestamp`, nunca con `toISOString()`.** Los primeros
+  diez caracteres tienen que ser el mismo día que devolvería `todayISO()` en ese
+  instante, porque es contra ese prefijo que se compara al leer. `toISOString()`
+  da la fecha **en UTC**: en Santiago, las últimas cuatro horas de cada día
+  quedarían marcadas como el día siguiente — el mismo error de medianoche que la
+  hora vino a hacer visible, movido de lugar.
+- **Al leer, el string no pasa por `new Date()`.** `planMark` corta en la `T`:
+  `new Date('2026-08-21')` es medianoche **UTC**, que acá se lee como el día
+  anterior a las 20:00. La hora es opcional en la lectura —una marca sin hora
+  vale como "ese día" y el aviso lo dice así—, porque una fecha pelada es lo que
+  puede quedar de una edición a mano.
+
+La migración 10 **borra** la clave vieja (`planned_on`) en vez de renombrarla:
+nadie sabe con qué gesto se escribió el valor que había (Mej.23 lo dejó anotado
+sin afirmarlo), y moverlo a una clave que ahora promete una hora sería inventarle
+una procedencia.
 
 **`collapsed_weekdays` es el caso contrario, y es la única clave donde la ausencia
 y el vacío no significan lo mismo**: ausente es "nunca se configuró" y toma el
 default (el fin de semana); presente y vacío es "ningún día plegado", que es una
 elección legítima. Si las dos cayeran al default, destildar los siete días en
 Configs rebotaría a sábado y domingo y la semana completa sería inexpresable. **Por
-eso la migración 9 siembra la fila**, al revés que `planned_on`. La basura se
+eso la migración 9 siembra la fila**, al revés que `planned_at`. La basura se
 tolera como basura: se queda con los números 1..7 y descarta el resto sin volver
 al default, así un `"6,ocho"` editado a mano pliega el sábado y no promete nada
 sobre lo que no entendió.
@@ -989,7 +1012,10 @@ arrastraba todo a hoy, esto costó dos parches seguidos y el día igual se veía
 corto y más exitoso de lo que fue.
 
 **Entrar a un día ya planificado abre un aviso** (`role="alertdialog"`), con
-salir a la semana o revisar igual. Era un sello en la cabecera y se leía como
+salir a la semana o revisar igual, y **dice a qué hora planificaste** — o dice que
+la marca no trae hora, que es distinto de callarlo. La hora sale de lo guardado y
+no del reloj de ahora: un diálogo que muestre la hora actual se ve perfecto justo
+el día en que se prueba. Era un sello en la cabecera y se leía como
 decoración: el ritual está para hacerse una vez, y volver a entrar suele ser sin
 querer. Se dispara **una vez por día** —el `ref` guarda para qué fecha se
 decidió, así una sesión que cruza la medianoche vuelve a preguntar— y espera a
@@ -998,10 +1024,19 @@ con la vista ya dibujada. Comparte las clases `.dialog*` con la confirmación de
 ⌘Q (§4.10) y agrega `.dialog--hero` —icono en círculo y todo centrado—: un aviso
 que no pediste tiene que verse como un aviso, no como un formulario.
 
+**Y se puede desmentir.** "Volver a planificar hoy" (`.dialog__deny`) borra
+la marca —deja `""`, que `planMark` lee como ausente— y sigue el ritual. Antes el
+aviso solo se podía cerrar, así que una marca escrita con un gesto que el usuario
+no reconoce como planificar dejaba a la app afirmando algo indiscutible. Va
+**debajo del cuerpo y arriba de la fila de botones**, y **se ve como texto y no
+como botón**: corrige la frase que acaba de afirmar algo en vez de sumar una
+tercera acción, y un botón más en la fila competiría con las dos decisiones de
+verdad (además de no caber en 380px sin apilarse).
+
 **No guarda nada, y el botón del final no es un "Guardar".** Todo lo que se toca
 acá ya persiste solo —autosave es la convención del proyecto (§7)—, así que
-"Empezar el día" es un **terminador de ritual**: sella `planned_on` con la fecha,
-tira confeti y te devuelve a la semana. Si se lee como un save, alguien lo va a
+"Empezar el día" es un **terminador de ritual**: sella `planned_at` con la fecha
+y la hora, tira confeti y te devuelve a la semana. Si se lee como un save, alguien lo va a
 "arreglar" o lo va a borrar por inútil.
 
 **El ritual no mueve nada solo.** La degradación (§4.2) ya corrió al montar
@@ -1299,7 +1334,7 @@ Las reglas que lo sostienen:
 y solo si el día no está cerrado. Va montado en `Shell`, que existe solo en la
 ventana principal: es la misma razón que I6, dos ventanas avisarían dos veces. La
 marca es la fecha (`shutdown_notified_on`) y no un booleano, por lo mismo que
-`planned_on`. Sin permiso de notificaciones **se marca igual**: reintentar cada
+`planned_at`. Sin permiso de notificaciones **se marca igual**: reintentar cada
 minuto no cambia nada y deja la app pidiendo lo mismo toda la tarde.
 
 > **Este camino no se puede verificar fuera de Tauri**, como ⌘Q (§4.10): en el
@@ -1382,7 +1417,7 @@ se abre al otro día, la fecha ya no es hoy y también respalda. Lo único que n
 cubre es un día en que la app no se abrió nunca.
 
 **Carpeta vacía = respaldo apagado.** Es el estado de fábrica: los ajustes de
-respaldo no los siembra ninguna migración, como `planned_on`. Y **la carpeta se
+respaldo no los siembra ninguna migración, como `planned_at`. Y **la carpeta se
 valida al guardarla** con una prueba de escritura real (`test_backup_dir`), no a
 la hora del respaldo: un volumen de solo lectura o un Drive sin sesión es
 perfectamente legible, y un ajuste que se acepta y falla nueve horas después no da
@@ -1913,8 +1948,9 @@ cambio en esa maquinaria se verificaba esperando. Tres controles:
   las dos posibilidades, con la ruta de Ajustes del sistema para el caso denegado,
   que ya no se puede volver a pedir desde la app.
 - **Volver a avisar hoy**, que borra `shutdown_notified_on` para probar el camino
-  real sin esperar al día siguiente. Toca **solo** esa clave: `planned_on` se
-  parece pero es de otro ritual.
+  real sin esperar al día siguiente. Toca **solo** esa clave: `planned_at` se
+  parece pero es de otro ritual, y el suyo se borra desde su propio aviso
+  (§4.14).
 
 **El botón lo único que hace es mandar**: no escribe `shutdown_notified_on`. Si lo
 escribiera, probar un aviso con el permiso denegado apagaría el aviso real de ese
@@ -2508,7 +2544,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **440 tests front (54 archivos) y 148 Rust, todos verdes.**
+estado actual: **453 tests front (54 archivos) y 149 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -2591,7 +2627,11 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
   el repaso, cuenta lo cerrado del último día con actividad, **trae a hoy lo que
   la degradación no toca**, lo anterior ya está en el backlog bajo "venían de un
   día", abre el detalle de una tarea de otro día, **montar la vista no escribe
-  nada**, y terminar sella `planned_on`, tira confeti y navega). El archivo
+  nada**, terminar sella `planned_at` con fecha **y hora local**, el aviso dice a
+  qué hora planificaste —o dice que la marca no la trae—, y desmentirlo la borra).
+  Más `settings.test.ts` sobre `planMark`: la fecha pelada vale como ese día sin
+  hora inventada, una hora imposible se descarta sin perder el día, y la fecha
+  **no** pasa por `new Date()`. El archivo
   depende del orden dos veces y está anotado: los ajustes del mock son de módulo,
   y la degradación corre **una sola vez por archivo** —aislar un caso con `-t` lo
   puede dejar pasar en falso. Más seis en `repo.rs` para
