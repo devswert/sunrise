@@ -163,7 +163,6 @@ export const api = {
   focusQueue: (date: string, nowHhmm: string) =>
     isTauri() ? invoke<Task[]>("focus_queue", { date, nowHhmm }) : mock.focusQueue(date, nowHhmm),
 
-  playBell: () => (isTauri() ? invoke<void>("play_bell") : mock.playBell()),
 
   /**
    * Un aviso del sistema **con botón**, que en macOS es lo que lo vuelve una

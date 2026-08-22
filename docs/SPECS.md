@@ -449,14 +449,66 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   semana, o reanudada), y completarla no debe reprogramarla. Si no tiene fecha
   (backlog), no se mueve. Después salta a la siguiente pendiente de hoy; si no
   queda ninguna, el taxímetro se oculta.
-- **Campana** al alcanzar el estimado: `isOverEstimate(elapsed, planned)`
-  (`planned` null o `<= 0` ⇒ nunca suena). Suena **una sola vez por entrada**
-  (`belledEntryId`) y **solo la ventana dueña** la toca (`setBellOwner`, ver I6).
-  El sonido se sintetiza en Rust con `rodio` (`sound.rs`). **Sin notificación
+- **Campana** al alcanzar el estimado, **decidida y tocada en Rust**
+  (`bell.rs`): sin estimado —`null` o `<= 0`— nunca suena, suena al **alcanzar**
+  el estimado y **una sola vez por (entrada, estimado)**, así que pausar y
+  reanudar la vuelve a armar — y también **subirle el estimado**. El sonido se sintetiza con `rodio` (`sound.rs`). **Sin notificación
   nativa a propósito**: bastan el sonido y el taxímetro cambiando de color; una
   notificación del sistema hay que ir a descartarla y se apila si se pasan
-  varias tareas. El plugin sigue instalado porque el daily shutdown de M3 lo va
-  a usar.
+  varias tareas.
+
+  > **Estaba en el front y ahí no podía funcionar.** La decisión vivía en el
+  > `tick` de 1 s del webview de `main`, con el taxímetro excluido para que no
+  > sonaran dos copias. El problema es cuál de las dos ventanas quedó a cargo:
+  > `main` es la que se tapa o se minimiza, y **un webview que no se ve no corre
+  > sus timers** —macOS los estrangula—, así que en una reunión la campana no
+  > sonaba y recién lo hacía cuando algo despertaba la página, por ejemplo un
+  > evento del poller de calendario: hasta `poll_minutes` de atraso. El taxímetro,
+  > que sí estaba a la vista y contaba bien, era justo el que no tenía permiso
+  > para sonar. Un proceso nativo no se estrangula, y de paso **desaparece la
+  > invariante de "una sola ventana toca la campana"**: no hay ventana que elegir.
+  >
+  > **La llave es el par y no la entrada sola**, y eso salió de un reporte: sonó a
+  > la hora, se le subió el estimado, y esa entrada quedaba muda para siempre
+  > porque "ya había sonado". La campana no promete "te avisé una vez por esta
+  > tarea" sino "te avisé que alcanzaste **este** tiempo"; si el tiempo cambia, la
+  > promesa es otra.
+  >
+  > **El vigilante duerme hasta el momento en que tiene que sonar**
+  > (`next_wake`), con un techo de 30 s, y sin ningún timer corriendo espera el
+  > timbre (`Armed`, que toca `start_timer`) con un techo largo de 5 min. O sea que
+  > no hay pulso fijo: en una tarea de una hora son un par de docenas de
+  > despertadas y no 720, darle play arma la campana en el acto, y mientras no hay
+  > nada que vigilar no mira el reloj.
+  >
+  > **Pero ni el momento calculado ni el timbre son la decisión**: cada vez que
+  > despierta vuelve a leer la base, y los techos son la red. Un `sleep` hasta el
+  > momento justo, disparado y creído, habría que invalidarlo al **bajar** el
+  > estimado, al ajustar el tiempo a mano, al pausar, al cambiar de tarea y **al
+  > volver de dormir la máquina** —los temporizadores no corren mientras duerme, así
+  > que una espera larga despierta tarde en tiempo de reloj—. Validar al despertar
+  > que la hora sea la esperada cubre **solo el último** de esos casos: en los otros
+  > cuatro el problema es que el momento se adelantó y nadie va a despertar a
+  > mirarlo. Con los techos, los cinco llegan con atraso acotado en vez de no
+  > llegar. Es la misma lección que `useDayWatcher`, que compara **fechas** en vez
+  > de contar tiempo transcurrido, y por eso mismo.
+  >
+  > **Y por qué no en el taxímetro, que ya tiene un tick de 1 s**: porque se puede
+  > esconder (el ojo tachado del widget) y porque no existe mientras no haya timer
+  > ni tarea pausada. "Si no hay taxímetro visible no suena" convierte un botón de
+  > la UI en un interruptor silencioso del aviso, que es la misma clase de bug que
+  > este módulo vino a arreglar.
+  >
+  > `isOverEstimate` sigue en el front, pero **solo para pintar**
+  > (rojo del taxímetro, aviso de Focus); la misma regla vive en `bell::is_due`, y
+  > si cambia una cambia la otra. **Fuera de Tauri no hay campana**: en el browser
+  > el tick dibuja y nada más.
+  >
+  > `bell::elapsed_today` espeja `runSeconds` del front, **incluido el recorte a
+  > medianoche**: `base_seconds` son las entradas cerradas **de hoy**, así que una
+  > entrada abierta desde ayer no puede acreditar lo de ayer o la campana sonaría
+  > al arrancar el día. Las dos usan `repo::start_of_today()` para que "hoy"
+  > signifique lo mismo en los dos lados.
 - `last` (última tarea pausada) se persiste en `localStorage` para poder
   reanudar; el taxímetro se muestra mientras haya `active` **o** `last`.
 
@@ -1888,8 +1940,9 @@ Una franja arriba del switch de tema, con **dos estados y ninguno interrumpe**.
 | **Estás al día** | esta sesión viene de un cambio de versión | abre el modal "Lo nuevo" | **30 segundos** |
 
 > **I** — **Se monta una sola vez, en `Shell`** (ventana `main`). Dos ventanas
-> sondeando serían dos consultas por intervalo, por lo mismo que la campana (I6) y
-> el respaldo automático.
+> sondeando serían dos consultas por intervalo, por lo mismo que el aviso de
+> cierre y el respaldo automático (I6). La campana **ya no** es ejemplo de esto:
+> se fue a Rust justamente porque depender de una ventana la dejaba muda (§4.6).
 
 **El aviso reemplazó al modal automático**, que fue la primera versión de esto. Un
 modal encima de la app al abrirla es la interrupción que §4.21 descartó: el aviso
@@ -2300,9 +2353,13 @@ En `useFloatingWindow.ts`, ya pagadas:
   lugares con botón de play. **Corolario: quien llame `setTaskStatus` debe hacer
   `bumpData()` después**, porque el estado del timer pudo cambiar (`start` ya lo
   hace solo).
-- **I6. Una sola ventana toca la campana.** `main` es la dueña
-  (`useTimerRuntime({ bell: true })`); el taxímetro no. Si ambas suenan, se oye
-  doble con desfase de ms y queda "vibrado".
+- **I6. Lo que depende del reloj y tiene que pasar aunque no mires, va en Rust.**
+  La campana del estimado lo aprendió a la mala (§4.6): estaba en el `tick` de un
+  webview, y un webview que no se ve no corre sus timers, así que no sonaba con la
+  ventana tapada. Vive en `bell.rs`. Lo que **sí** puede vivir en el front es lo
+  que solo importa cuando estás mirando —el dibujo del taxímetro— y lo que igual
+  necesita una ventana; eso último, montado en `Shell`, que solo existe en `main`,
+  para que no ocurra dos veces (el aviso de cierre, el respaldo, el updater).
 - **I7. Los listados filtran `source_state = 'ACTIVE'`.** Las `ORPHANED` existen
   solo para el historial y la review. **La única excepción es el tiempo del
   rollup compartido** (`work_by_day`, §4.15 y §4.16), que las cuenta a
@@ -2587,7 +2644,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **459 tests front (54 archivos) y 149 Rust, todos verdes.**
+estado actual: **459 tests front (54 archivos) y 156 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL

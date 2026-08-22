@@ -1,6 +1,7 @@
 //! sunrise — runtime de la app de escritorio (Tauri v2).
 
 mod backup;
+mod bell;
 mod calendar;
 mod commands;
 mod db;
@@ -79,6 +80,7 @@ pub fn run() {
             let conn = db::open(&db_path)?;
             db::migrate(&conn)?;
             app.manage(Db(Mutex::new(conn)));
+            app.manage(bell::Armed::new());
 
             // En macOS el "Quit" del menú por defecto mapea a
             // `NSApplication terminate:`, que mata el proceso **sin pasar por
@@ -127,6 +129,11 @@ pub fn run() {
             // Poller de calendario. Va después de la DB porque la necesita.
             calendar::start_poller(app.handle().clone());
 
+            // La campana del estimado. Va en Rust y no en una ventana porque un
+            // webview que no se ve no corre sus timers (ver `bell.rs`), y también
+            // necesita la DB.
+            bell::start_watcher(app.handle().clone());
+
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -164,7 +171,6 @@ pub fn run() {
             commands::close_day,
             commands::reopen_day,
             commands::focus_queue,
-            commands::play_bell,
             commands::bell_dir,
             commands::set_taximeter_visible,
             commands::get_task,

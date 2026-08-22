@@ -56,7 +56,6 @@ vi.mock("../../lib/ipc", () => ({
     getTask: vi.fn(async () => null),
     startTimer: vi.fn(),
     stopTimer: vi.fn(async () => null),
-    playBell: vi.fn(),
   },
 }));
 

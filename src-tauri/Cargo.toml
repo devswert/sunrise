@@ -25,7 +25,9 @@ thiserror = "2"
 icalendar = { version = "0.17.13", features = ["chrono-tz", "recurrence"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "charset", "http2", "system-proxy", "gzip"] }
 chrono-tz = "0.10.4"
-tokio = { version = "1.53.1", features = ["time"] }
+# `macros` es por el `select!` del vigilante de la campana (`bell.rs`), que espera
+# el momento de sonar o el timbre de "arrancó un timer", lo que llegue primero.
+tokio = { version = "1.53.1", features = ["time", "macros", "sync"] }
 tauri-plugin-opener = "2.5.4"
 # Solo `deflate`: los defaults arrastran zstd, lzma, bzip2 y AES, que son
 # formatos que nunca vamos a escribir ni a leer (el .zip lo hace esta app).

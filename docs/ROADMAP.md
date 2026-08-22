@@ -1103,7 +1103,10 @@ Notas de implementación:
   justamente el consumidor que les faltaba. Dos campos en Configs → General, con
   validación al escribir. Queda pendiente el resto de la tabla.
 - **`bell_sound`** hoy no elige nada: `sound.rs` sintetiza una sola campana con
-  `rodio`. Para que la clave sirva hay que ofrecer variantes ahí (y un botón de
+  `rodio`. Ojo: el botón de "probar" necesita volver a exponer el comando
+  `play_bell`, que se borró al mover la campana a Rust (Mej.26) porque quedó sin
+  llamadores. Es una línea en `ipc.ts`, una en `mockDb.ts` y el `#[tauri::command]`
+  sobre `bell::ring`. Para que la clave sirva hay que ofrecer variantes ahí (y un botón de
   "probar" en Settings, o se elige a ciegas). Para el audio propio, `find_bell_file`
   ya lo busca en el directorio de datos y `bell_dir` ya expone la ruta, pero **no
   hace falta pedirle al usuario que copie el archivo a mano**: desde M4.1 está
@@ -1254,9 +1257,13 @@ el botón de play y el de entrar a la reunión.
 
 Cosas a resolver, que no son obvias:
 
-- **Cuándo dispararlo.** El aviso depende del reloj, no de los datos, así que
-  necesita su propio tick. El patrón ya está: `useShutdownReminder` mira el reloj
-  cada minuto y `useDayWatcher` compara contra la hora local.
+- **Cuándo dispararlo, y ojo dónde.** El aviso depende del reloj, no de los
+  datos, así que necesita su propio tick — pero **no lo cuelgues de un
+  `setInterval` del front**: eso es exactamente lo que falló con la campana
+  (Mej.26). Un webview que no se ve no corre sus timers, y el caso que este aviso
+  quiere cubrir es justamente "estoy en otra ventana". El patrón a copiar es
+  `bell::start_watcher`, en Rust, que además ya resuelve la parte de "una sola
+  vez" sin tocar `settings`.
 - **Una sola vez por tarea, y que reiniciar no vuelva a avisar todas.** La campana
   del estimado guarda `belledEntryId` en memoria; acá hace falta que sobreviva al
   reinicio. Ojo con la tentación de una fila por tarea en `settings`: el patrón de
@@ -2150,6 +2157,67 @@ en que se prueba.
 eran un click en "Empezar el día" al navegar, un ritual cerrado pasada la
 medianoche, o una sesión que cruzó la medianoche con `today` ya actualizado. Si
 vuelve a pasar, el diálogo ahora dice la hora y con eso se elige entre los tres.
+
+### Mej.26 ✅ La campana del estimado no sonaba con la ventana tapada — hecho
+
+Reportado por el dev con el caso exacto: el timer pasó su estimado de 1:00, no
+sonó nada, y **a los 5 minutos sonó**. La primera explicación —"estaba en una
+reunión"— era la pista, no la causa.
+
+**Dónde estaba el bug**: la decisión vivía en el `tick` de 1 s del webview de
+`main`, y el taxímetro estaba explícitamente excluido (`useTimerRuntime({ bell:
+true })` vs `useTimerRuntime()`) para que no sonaran dos copias desfasadas. O sea
+que la ventana con permiso para sonar era **la que se tapa**, y la que estaba a la
+vista contando bien era la que no podía. **Un webview que no se ve no corre sus
+timers**: macOS los estrangula, así que el tick no llegaba a evaluar nada.
+
+**Y los 5 minutos tampoco eran casualidad**: el feed de calendario del dev tiene
+`poll_minutes = 5`. Cada pulso el poller de Rust emite `sunrise://calendar-synced`,
+que llega **desde afuera** del webview, despierta la página y deja correr el tick
+congelado. La campana no esperó cinco minutos: esperó a que algo despertara la
+ventana.
+
+El arreglo es `src-tauri/src/bell.rs`: un vigilante en Rust que lee el timer en
+curso y toca. **Duerme hasta el momento en que la campana tiene que sonar**
+(`next_wake`), con un techo de 30 s, así que en una tarea de una hora despierta un
+par de docenas de veces y no 720 — pero el momento calculado **no es la
+decisión**: cada vuelta relee la base. Un `sleep` de una sola vez habría que
+invalidarlo al editar el estimado, al ajustar tiempo a mano, al pausar, al cambiar
+de tarea y al despertar la máquina, y olvidarse de uno deja la campana muda sin
+síntoma — o sea, el mismo bug otra vez. Un proceso nativo no se estrangula. De paso
+**muere la invariante I6 como estaba escrita** ("una sola ventana toca la
+campana"): no hay ventana que elegir. Quedó reformulada en lo que este bug
+enseñó — lo que depende del reloj y tiene que pasar aunque no mires, va en Rust.
+
+Detalles que había que respetar al mover la regla de lado:
+
+- **El recorte a medianoche.** `bell::elapsed_today` espeja `runSeconds` del
+  front: `base_seconds` son las entradas cerradas **de hoy**, así que una entrada
+  abierta desde ayer no puede acreditar lo de ayer, o la campana suena a las 00:00
+  de cualquier tarea con estimado. Las dos preguntan `repo::start_of_today()`, que
+  pasó a devolver `DateTime<Utc>` para que "hoy" sea un solo cálculo.
+- **`isOverEstimate` se queda en el front, pero solo para pintar.** Son dos copias
+  de la misma condición —el rojo del taxímetro y la campana— y hay que cambiarlas
+  juntas. Está anotado en los dos lados.
+- **La llave de "ya sonó" es el par (entrada, estimado)**, no la entrada sola. Lo
+  destapó el dev en el mismo hilo: sonó a la hora, le subió el tiempo, y no volvió
+  a sonar. Con la entrada como única llave esa entrada quedaba muda para siempre,
+  y está mal de raíz: la campana no promete "te avisé una vez por esta tarea" sino
+  "te avisé que alcanzaste **este** tiempo". (Nota sobre ese reporte puntual: su
+  estimado estaba en 205 min con ~199,5 acumulados, así que esa vez lo más probable
+  es que todavía no tocara. El defecto era real igual y estaba esperando.)
+- **Se fue código muerto**: `setBellOwner`, `belledEntryId`, el parámetro `bell` de
+  `useTimerRuntime`, y el comando `play_bell` con su binding en `ipc.ts` y su
+  gemelo en el mock — nada en el front lo llamaba ya. Cuando Mej.1 haga el botón
+  de probar la campana, vuelve a agregarlo (`bell::ring` ya existe).
+
+Diez tests en `bell.rs`, incluidos el de la entrada abierta desde ayer, el del
+reloj que va para atrás y el de la espera acotada. **Y comprobado tres veces en la
+app**, que era el punto: con una entrada de prueba y **cero ventanas en pantalla**
+sonó en menos de 8 s; subiéndole el estimado a un timer que ya había sonado, volvió
+a sonar; y al final sonó **solo, para el timer real del dev**, al alcanzar sus 205
+minutos. Ese `eprintln!` se queda: una campana que no suena no deja ningún otro
+síntoma, y es lo único con lo que se pudo comprobar todo esto.
 
 ### Mej.25 ✅ ⌘Q con la ventana principal no visible — hecho
 

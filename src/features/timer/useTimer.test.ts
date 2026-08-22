@@ -7,7 +7,7 @@ describe("isOverEstimate", () => {
     expect(isOverEstimate(29 * 60, 30)).toBe(false);
   });
 
-  it("es verdadero al alcanzar exactamente el estimado (dispara la campana)", () => {
+  it("es verdadero al alcanzar exactamente el estimado", () => {
     expect(isOverEstimate(30 * 60, 30)).toBe(true);
   });
 

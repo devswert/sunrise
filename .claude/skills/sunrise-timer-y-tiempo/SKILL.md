@@ -14,6 +14,7 @@ deliberadas, y la mayoría tiene su comentario en `src-tauri/src/repo.rs`.
 | Archivo | Qué |
 |---|---|
 | `src-tauri/src/repo.rs` | `start_timer`, `stop_timer`, `get_active_timer`, `seconds_today`, `set_actual_seconds`, `focus_queue` |
+| `src-tauri/src/bell.rs` | **decide y toca** la campana del estimado (vigilante) |
 | `src-tauri/src/sound.rs` | síntesis de la campana con `rodio` |
 | `src/features/timer/timerStore.ts` | store del timer (por ventana), `isOverEstimate`, `hms` |
 | `src/features/timer/useTimer.ts` | `useTimerRuntime` (ciclo de vida por ventana) + `useTimer` |
@@ -117,18 +118,48 @@ después, porque el estado del timer pudo cambiar sin que la vista lo pidiera.
 solo se cambia Rust, la app en el browser y los tests se comportan distinto al
 backend real.
 
-**Una sola ventana toca la campana.**
-`main` es la dueña (`useTimerRuntime({ bell: true })`); el taxímetro no
-(`useTimerRuntime()` sin argumento). El store corre en las dos ventanas, así que
-si ambas suenan se oyen dos copias con unos ms de desfase y queda "vibrado".
-Lo controla `setBellOwner`.
+**La campana la toca Rust, no una ventana** (`src-tauri/src/bell.rs`).
+
+Antes la decidía el `tick` de 1 s del webview de `main`, con el taxímetro
+excluido para que no sonaran dos copias. Falló donde importaba: **un webview que
+no se ve no corre sus timers** —macOS los estrangula—, así que con la ventana
+tapada o minimizada la campana no sonaba, y recién lo hacía cuando algo despertaba
+la página (un evento del poller de calendario, o sea hasta `poll_minutes` de
+atraso). Y el taxímetro, que sí estaba a la vista contando bien, era justamente el
+que no tenía permiso para sonar.
+
+De ahí sale la regla general: **lo que depende del reloj y tiene que pasar aunque
+no estés mirando, va en Rust** (I6). Si vas a agregar otro aviso de este tipo —el
+de "se viene tu próxima tarea", Mej.4—, no lo cuelgues de un `setInterval` del
+front.
 
 ## Semántica de la campana y del estimado
 
 - `isOverEstimate(elapsed, planned)`: con `planned` `null` o `<= 0` **nunca** se
   considera excedido. Sin estimado no hay campana ni aviso.
-- Suena **una sola vez por entrada**, no una vez por tarea: `belledEntryId`
-  guarda la entrada ya avisada. Si se pausa y se reanuda, hay entrada nueva.
+- Suena **una sola vez por (entrada, estimado)**, no una vez por tarea: el
+  vigilante recuerda ese par en una variable de su loop. Si se pausa y se reanuda
+  hay entrada nueva, y **si se le sube el estimado la promesa es otra**, así que
+  vuelve a armarse. Con la entrada como única llave —como estaba— subir el
+  estimado dejaba esa entrada muda para siempre.
+- **La espera y el timbre son optimizaciones, no la decisión.** Duerme hasta el
+  momento en que tiene que sonar (`next_wake`, techo 30 s); sin timer espera el
+  timbre `Armed` —que toca `start_timer`— con un techo de 5 min; y **cada vuelta
+  relee la base**. No conviertas eso en un `sleep` de una sola vez ni cuelgues la
+  campana del timbre: habría que invalidar el momento al bajar el estimado, al
+  ajustar tiempo a mano, al pausar, al cambiar de tarea y al despertar la máquina
+  (los temporizadores no corren mientras duerme), y olvidarse de uno deja la
+  campana muda **sin ningún síntoma**. Con los techos, un olvido cuesta atraso.
+- **No la muevas al taxímetro** aunque ya tenga un tick de 1 s: se puede esconder
+  con el ojo del widget y no existe mientras no haya timer ni tarea pausada. Un
+  aviso que un botón de la UI puede apagar en silencio es el bug de vuelta.
+- `isOverEstimate` sigue en el front pero **solo pinta** (rojo del taxímetro,
+  aviso de Focus). La regla de la campana está en `bell::is_due`: son dos copias
+  de la misma condición y hay que cambiarlas juntas.
+- `bell::elapsed_today` espeja `runSeconds`, **incluido el recorte a medianoche**.
+  Sin eso, un timer que quedó abierto toda la noche haría sonar la campana a las
+  00:00 de cualquier tarea con estimado. Las dos preguntan `repo::start_of_today()`.
+- **Fuera de Tauri no hay campana.** En el browser el tick solo dibuja.
 - **Sin notificación nativa** al llegar al estimado: bastan el sonido y el
   cambio de color del taxímetro.
 - **Pasarse del estimado nunca cierra ni bloquea nada.** Focus muestra "puedes

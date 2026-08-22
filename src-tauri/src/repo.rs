@@ -1,7 +1,7 @@
 //! Lógica de datos de sunrise (funciones puras sobre `&Connection`), testeable
 //! sin el runtime de Tauri. Los comandos en `commands.rs` son wrappers delgados.
 
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
 
@@ -457,14 +457,19 @@ pub fn list_backlog(conn: &Connection) -> Result<Vec<Task>> {
 // time_entries (timer / taxímetro)
 // ---------------------------------------------------------------------------
 
-/// Medianoche local de hoy, en RFC3339 UTC (para comparar con `started_at`).
-fn start_of_today() -> String {
+/// Medianoche local de hoy, en UTC (para comparar con `started_at`).
+///
+/// La usan dos cosas que **tienen que coincidir**: el `SUM` de los segundos ya
+/// registrados hoy y el recorte de la entrada abierta que hace la campana
+/// (`bell::elapsed_today`). Si cada una calculara su propio "hoy", el contador y
+/// la campana hablarían de días distintos.
+pub(crate) fn start_of_today() -> DateTime<Utc> {
     let now = chrono::Local::now();
     now.date_naive()
         .and_hms_opt(0, 0, 0)
         .and_then(|naive| now.timezone().from_local_datetime(&naive).single())
-        .map(|dt| dt.with_timezone(&Utc).to_rfc3339())
-        .unwrap_or_else(|| Utc::now().to_rfc3339())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now)
 }
 
 /// Segundos ya registrados **hoy** para una tarea (entradas cerradas).
@@ -481,7 +486,7 @@ pub fn seconds_today(conn: &Connection, task_id: i64) -> Result<i64> {
     conn.query_row(
         "SELECT MAX(0, COALESCE(SUM(seconds), 0)) FROM time_entries
          WHERE task_id = ?1 AND ended_at IS NOT NULL AND started_at >= ?2",
-        params![task_id, start_of_today()],
+        params![task_id, start_of_today().to_rfc3339()],
         |r| r.get(0),
     )
 }

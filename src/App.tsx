@@ -38,7 +38,7 @@ import "./features/backup/backup.css";
 
 /** Efectos que necesitan estar dentro del Router. */
 function Shell({ children }: { children: React.ReactNode }) {
-  useTimerRuntime({ bell: true });
+  useTimerRuntime();
   // Recarga las vistas cuando el taxímetro (u otra ventana) muta datos.
   useDataSync();
   useSettingsRuntime();

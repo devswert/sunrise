@@ -43,8 +43,11 @@ function broadcast() {
 }
 
 /**
- * ¿Se pasó del tiempo estimado? Se usa para la campana y el aviso en Focus.
- * Sin estimado (null o <= 0) nunca se considera excedido.
+ * ¿Se pasó del tiempo estimado? Pinta el taxímetro en rojo y da el aviso de
+ * Focus. Sin estimado (null o <= 0) nunca se considera excedido.
+ *
+ * **La campana no sale de acá**: la misma regla vive en `bell::is_due` (Rust),
+ * que es quien la toca. Si cambia una, cambia la otra.
  */
 export function isOverEstimate(
   elapsedSeconds: number,
@@ -104,23 +107,10 @@ export function runSeconds(startedAt: string, ahora: number = Date.now()): numbe
   return Math.max(0, Math.round((ahora - from) / 1000));
 }
 
-/**
- * ¿Esta ventana es la responsable de tocar la campana?
- *
- * El store corre en las dos ventanas (principal y taxímetro). Si ambas tocan,
- * se oyen dos copias con unos ms de desfase y suena "vibrado"/saturado.
- */
-let bellOwner = false;
-export function setBellOwner(value: boolean) {
-  bellOwner = value;
-}
-
 interface TimerState {
   active: ActiveTimer | null;
   elapsed: number;
   last: LastTask | null;
-  /** Entrada para la que ya sonó la campana (evita repetirla). */
-  belledEntryId: number | null;
 
   refresh: () => Promise<void>;
   start: (taskId: number) => Promise<void>;
@@ -143,7 +133,6 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   active: null,
   elapsed: 0,
   last: readLast(),
-  belledEntryId: null,
 
   refresh: async () => {
     const active = await api.getActiveTimer();
@@ -173,7 +162,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     if (active) {
       set({ active, last, elapsed: active.baseSeconds + runSeconds(active.startedAt) });
     } else {
-      set({ active: null, last, elapsed: 0, belledEntryId: null });
+      set({ active: null, last, elapsed: 0 });
     }
   },
 
@@ -186,7 +175,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       seconds: active.baseSeconds,
     };
     writeLast(last);
-    set({ active, last, elapsed: active.baseSeconds, belledEntryId: null });
+    set({ active, last, elapsed: active.baseSeconds });
     useAppStore.getState().bumpData();
     broadcast();
   },
@@ -203,9 +192,9 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         seconds: (prev?.baseSeconds ?? 0) + seconds,
       };
       writeLast(last);
-      set({ active: null, last, elapsed: 0, belledEntryId: null });
+      set({ active: null, last, elapsed: 0 });
     } else {
-      set({ active: null, elapsed: 0, belledEntryId: null });
+      set({ active: null, elapsed: 0 });
     }
     useAppStore.getState().bumpData();
     broadcast();
@@ -261,21 +250,16 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     useAppStore.getState().bumpData();
   },
 
+  /**
+   * Avanza la cuenta que se ve. **No toca la campana**, y eso es deliberado:
+   * la campana la decide Rust (`bell.rs`), porque este tick vive en un webview y
+   * un webview que no se ve no corre sus timers — con la ventana tapada la
+   * campana no sonaba hasta que algo despertaba la página.
+   */
   tick: () => {
-    const { active, belledEntryId } = get();
+    const { active } = get();
     if (!active) return;
-    const elapsed = active.baseSeconds + runSeconds(active.startedAt);
-    set({ elapsed });
-
-    // Campana al alcanzar el estimado, una sola vez por entrada.
-    //
-    // Sin notificación nativa a propósito: el sonido más el taxímetro cambiando
-    // de color ya avisan, y una notificación del sistema encima es ruido —hay
-    // que ir a descartarla, y se apila si se pasan varias tareas.
-    if (isOverEstimate(elapsed, active.estimatedMinutes) && belledEntryId !== active.entryId) {
-      set({ belledEntryId: active.entryId });
-      if (bellOwner) void api.playBell();
-    }
+    set({ elapsed: active.baseSeconds + runSeconds(active.startedAt) });
   },
 }));
 

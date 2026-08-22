@@ -1,11 +1,5 @@
 import { useEffect } from "react";
-import {
-  useTimerStore,
-  timerDisplay,
-  isOverEstimate,
-  setBellOwner,
-  runTotalSeconds,
-} from "./timerStore";
+import { useTimerStore, timerDisplay, isOverEstimate, runTotalSeconds } from "./timerStore";
 import { DATA_CHANNEL, useAppStore } from "../../lib/store";
 
 export { hms, isOverEstimate } from "./timerStore";
@@ -15,11 +9,13 @@ export type { LastTask } from "./timerStore";
  * Arranca el ciclo de vida del timer en la ventana actual: carga el estado,
  * escucha cambios de la otra ventana y mantiene el tick de 1s.
  * Se llama UNA vez por ventana (Shell en main, raíz en el taxímetro).
+ *
+ * **No lleva parámetro de campana.** Lo llevaba —`{ bell: true }` en `main`, nada
+ * en el taxímetro— porque el tick de acá la tocaba y dos ventanas sonando se oyen
+ * "vibrado". Ahora la toca Rust (`bell.rs`), así que no hay ventana que elegir:
+ * este tick solo dibuja.
  */
-export function useTimerRuntime(options: { bell?: boolean } = {}) {
-  // Solo una ventana debe tocar la campana (ver `setBellOwner`).
-  setBellOwner(options.bell ?? false);
-
+export function useTimerRuntime() {
   const refresh = useTimerStore((s) => s.refresh);
   const tick = useTimerStore((s) => s.tick);
   const hasActive = useTimerStore((s) => !!s.active);

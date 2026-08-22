@@ -857,10 +857,6 @@ export const mock = {
         return a.position - b.position;
       }),
 
-  playBell: async (): Promise<void> => {
-    /* en browser no hay campana nativa; M2 la toca vía Rust */
-  },
-
   notifyAlert: async (
     _title: string,
     _body: string,

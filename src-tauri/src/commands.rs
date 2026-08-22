@@ -96,10 +96,24 @@ pub fn list_task_events(db: State<'_, Db>, task_id: i64) -> Result<Vec<TaskEvent
 
 // --- Timer / time_entries ---
 
+/// Arranca el timer y **toca el timbre de la campana**.
+///
+/// Sin el timbre, el vigilante (`bell.rs`) tendría que estar mirando el reloj
+/// mientras no hay ningún timer, solo para enterarse de que empezó uno. Es una
+/// optimización y no el mecanismo: si esto no avisara, la campana saldría tarde,
+/// no dejaría de salir.
 #[tauri::command]
-pub fn start_timer(db: State<'_, Db>, task_id: i64) -> Result<ActiveTimer, String> {
-    let conn = db.0.lock().map_err(e)?;
-    repo::start_timer(&conn, task_id).map_err(e)
+pub fn start_timer(
+    app: tauri::AppHandle,
+    db: State<'_, Db>,
+    task_id: i64,
+) -> Result<ActiveTimer, String> {
+    let active = {
+        let conn = db.0.lock().map_err(e)?;
+        repo::start_timer(&conn, task_id).map_err(e)?
+    };
+    crate::bell::Armed::poke(&app);
+    Ok(active)
 }
 
 /// Cierra el timer activo. Devuelve `(task_id, seconds)` si había uno.
@@ -200,20 +214,6 @@ pub fn focus_queue(
 ) -> Result<Vec<Task>, String> {
     let conn = db.0.lock().map_err(e)?;
     repo::focus_queue(&conn, &date, &now_hhmm).map_err(e)
-}
-
-/// Suena la campana (fin del tiempo estimado).
-///
-/// Usa el audio propio si dejaste uno en el directorio de datos de la app
-/// (`bell.wav|mp3|ogg|flac`); si no, cae a la síntesis interna.
-#[tauri::command]
-pub fn play_bell(app: tauri::AppHandle) -> Result<(), String> {
-    let custom = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .and_then(|dir| crate::sound::find_bell_file(&dir));
-    crate::sound::play_bell(custom).map_err(e)
 }
 
 /// Muestra u oculta el taxímetro.
