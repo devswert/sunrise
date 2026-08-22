@@ -1,50 +1,12 @@
-import { SettingKey, backupSettings, type SettingsMap } from "../../lib/settings";
-
 /**
- * Si corresponde hacer el respaldo automático ahora.
+ * **La decisión de cuándo respaldar ya no vive acá: está en Rust**
+ * (`backup::should_backup`), con sus mismos cuatro cortes y sus tests.
  *
- * Es la misma forma que `shouldRemindShutdown` (M3.6) y por la misma razón: la
- * decisión es pura y se prueba sola, y el hook solo la consulta.
- *
- * Cuatro cortes, en orden de qué tan barato es descartarlos:
- *
- * 0. **En dev no corre.** Dev y producción tienen bases distintas pero la carpeta
- *    de respaldos es una ruta en el disco, no un dato de la base: si restauras un
- *    zip de producción en dev —que es justo el puente entre las dos— dev hereda
- *    `backup_dir`, empieza a escribir zips ahí y **la retención borra los
- *    respaldos de verdad** para dejar los de prueba. El botón manual sigue
- *    funcionando: eso lo pides tú, esto pasa solo.
- * 1. **Sin carpeta configurada no hay respaldo.** No es un error ni algo que
- *    avisar cada minuto: es el estado de fábrica.
- * 2. **Una vez al día.** `backup_ran_on` guarda una fecha y no un booleano —el
- *    mismo patrón de `planned_at`— porque una sesión abierta que cruza la
- *    medianoche tiene que volver a respaldar al día siguiente.
- * 3. **Recién pasada la hora.** La comparación de `HH:mm` como texto es
- *    lexicográfica, y por eso alcanza.
- *
- * El efecto de los dos últimos juntos es que el respaldo **se pone al día**: si
- * la app estaba cerrada a las 20:00 y se abre a las 23:00, se hace ahí mismo. Si
- * se abre al otro día, la fecha guardada ya no es hoy y también se hace. Lo único
- * que no cubre es un día en que la app no se abrió nunca — ver SPECS §4.17.
+ * Se movió con el vigilante, y por la razón de la invariante I6: esto corría en
+ * un `setInterval` del webview de `main`, que **no corre sus timers cuando la
+ * ventana no se ve**, así que el respaldo llegaba cuando alguien miraba la app y
+ * no a la hora que pediste. Lo que queda en este archivo es solo formato.
  */
-export function shouldBackup(options: {
-  nowHhmm: string;
-  values: SettingsMap;
-  today: string;
-  isDev: boolean;
-}): boolean {
-  const { nowHhmm, values, today, isDev } = options;
-  if (isDev) return false;
-  const { active, hour } = backupSettings(values);
-  if (!active) return false;
-  if (values[SettingKey.BACKUP_RAN_ON]?.trim() === today) return false;
-  return nowHhmm >= hour;
-}
-
-/** `HH:mm` de un `Date`, en hora local. */
-export function hhmm(d: Date): string {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 /**
  * Tamaño legible. Base 1024 y una decimal desde los MB: la diferencia entre

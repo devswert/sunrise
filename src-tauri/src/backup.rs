@@ -37,11 +37,14 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Timelike};
 use rusqlite::Connection;
+use tauri::{AppHandle, Manager};
 
+use crate::db::Db;
 use crate::models::BackupFile;
 
 /// Versión de la app, fijada al compilar. Es la que Tauri usa para el `.dmg`
@@ -88,14 +91,29 @@ pub fn is_semver(v: &str) -> bool {
     })
 }
 
-/// `sunrise-20260817-200315.zip`, en hora **local**.
+/// El prefijo de los nombres, que **es lo que separa los dos perfiles**.
+///
+/// Producción escribe `sunrise-…` y dev escribe `sunrise-dev-…`, y con eso los
+/// dos conjuntos son disjuntos: **la retención de un perfil no puede alcanzar lo
+/// que escribió el otro**, aunque los dos apunten a la misma carpeta. Es lo que
+/// permite que dev respalde de verdad en vez de tener el automático apagado
+/// (§4.20).
+fn prefix(dev: bool) -> &'static str {
+    if dev {
+        "sunrise-dev-"
+    } else {
+        "sunrise-"
+    }
+}
+
+/// `sunrise-20260817-200315.zip`, en hora **local** (`sunrise-dev-…` en dev).
 ///
 /// Los segundos no son decoración: son lo que evita que dos respaldos del mismo
 /// minuto se pisen. Y el orden alfabético del nombre es el cronológico, así que
 /// la retención puede ordenar por nombre sin preguntarle nada al sistema de
 /// archivos (cuya fecha de creación no es confiable después de un `rsync`).
-pub fn file_name(now: DateTime<Local>) -> String {
-    format!("sunrise-{}.zip", now.format("%Y%m%d-%H%M%S"))
+pub fn file_name(now: DateTime<Local>, dev: bool) -> String {
+    format!("{}{}.zip", prefix(dev), now.format("%Y%m%d-%H%M%S"))
 }
 
 /// Si el nombre es de un respaldo escrito por esta app.
@@ -104,9 +122,13 @@ pub fn file_name(now: DateTime<Local>) -> String {
 /// exige el largo exacto y que todo lo que debe ser dígito lo sea. Un
 /// `sunrise-respaldo-bueno.zip` puesto a mano por el usuario no calza, y eso es
 /// lo que se quiere.
-pub fn is_backup_name(name: &str) -> bool {
+///
+/// **Y es del perfil**: en dev, un `sunrise-20260817-200315.zip` de producción no
+/// calza (sobra el `dev-`), y en producción tampoco calza uno de dev (el largo no
+/// da). Esa asimetría no es un detalle de implementación, es la garantía.
+pub fn is_backup_name(name: &str, dev: bool) -> bool {
     let Some(medio) = name
-        .strip_prefix("sunrise-")
+        .strip_prefix(prefix(dev))
         .and_then(|s| s.strip_suffix(".zip"))
     else {
         return false;
@@ -193,11 +215,11 @@ fn current_schema(conn: &Connection) -> Result<i64> {
 /// que ve aparecer: con el nombre definitivo desde el principio, la nube
 /// terminaría guardando un archivo a medio escribir que se ve como un respaldo
 /// válido. El `rename` dentro del mismo volumen es atómico.
-pub fn create(conn: &Connection, dir: &Path, now: DateTime<Local>) -> Result<BackupFile> {
+pub fn create(conn: &Connection, dir: &Path, now: DateTime<Local>, dev: bool) -> Result<BackupFile> {
     fs::create_dir_all(dir)
         .with_context(|| format!("no se pudo crear la carpeta de respaldos {}", dir.display()))?;
 
-    let name = file_name(now);
+    let name = file_name(now, dev);
     let target = dir.join(&name);
     // El temporal va en la carpeta destino y no en /tmp: el `rename` final tiene
     // que ser dentro del mismo volumen para ser atómico, y la carpeta puede
@@ -285,9 +307,10 @@ pub fn create_and_prune(
     dir: &Path,
     keep: usize,
     now: DateTime<Local>,
+    dev: bool,
 ) -> Result<BackupFile> {
-    let done = create(conn, dir, now)?;
-    if let Err(err) = prune(dir, keep) {
+    let done = create(conn, dir, now, dev)?;
+    if let Err(err) = prune(dir, keep, dev) {
         eprintln!("[sunrise] no se pudo podar respaldos viejos: {err}");
     }
     Ok(done)
@@ -316,7 +339,7 @@ pub fn test_folder(dir: &Path) -> Result<()> {
 /// cosa que el usuario tenga en la carpeta no son asunto nuestro. Una carpeta
 /// que no existe devuelve vacío en vez de error — es el estado normal antes del
 /// primer respaldo.
-pub fn list(dir: &Path) -> Result<Vec<BackupFile>> {
+pub fn list(dir: &Path, dev: bool) -> Result<Vec<BackupFile>> {
     if !dir.is_dir() {
         return Ok(vec![]);
     }
@@ -327,12 +350,12 @@ pub fn list(dir: &Path) -> Result<Vec<BackupFile>> {
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();
-        if !is_backup_name(&name) {
+        if !is_backup_name(&name, dev) {
             continue;
         }
         let meta = entry.metadata()?;
         out.push(BackupFile {
-            created_at: date_from_name(&name).unwrap_or_default(),
+            created_at: date_from_name(&name, dev).unwrap_or_default(),
             name: name,
             path: entry.path().to_string_lossy().to_string(),
             bytes: meta.len(),
@@ -348,9 +371,9 @@ pub fn list(dir: &Path) -> Result<Vec<BackupFile>> {
 ///
 /// Sin zona horaria: el nombre se escribió en hora local, pero no dice cuál, y
 /// el consumidor solo lo muestra.
-fn date_from_name(name: &str) -> Option<String> {
+fn date_from_name(name: &str, dev: bool) -> Option<String> {
     let medio = name
-        .strip_prefix("sunrise-")?
+        .strip_prefix(prefix(dev))?
         .strip_suffix(".zip")?
         .as_bytes();
     let s = |a: usize, b: usize| std::str::from_utf8(&medio[a..b]).ok();
@@ -373,16 +396,16 @@ fn date_from_name(name: &str) -> Option<String> {
 ///
 /// `conservar == 0` no borra nada. Es a propósito: un cero por un ajuste vacío o
 /// con basura no puede significar "borra todos mis respaldos".
-pub fn prune(dir: &Path, keep: usize) -> Result<usize> {
+pub fn prune(dir: &Path, keep: usize, dev: bool) -> Result<usize> {
     if keep == 0 {
         return Ok(0);
     }
-    let files = list(dir)?;
+    let files = list(dir, dev)?;
     let mut deleted = 0;
     for old in files.into_iter().skip(keep) {
         // Doble llave: `listar` ya filtró por nombre, y esto lo vuelve a exigir
         // justo antes del borrado. Es la línea más peligrosa del módulo.
-        if !is_backup_name(&old.name) {
+        if !is_backup_name(&old.name, dev) {
             continue;
         }
         if fs::remove_file(&old.path).is_ok() {
@@ -526,10 +549,195 @@ pub fn safety_snapshot(conn: &Connection, dir: &Path, now: DateTime<Local>) -> R
     Ok(target)
 }
 
+// ---------------------------------------------------------------------------
+// El respaldo automático
+// ---------------------------------------------------------------------------
+
+/// Claves de `settings` que mira el vigilante. **Espejo de `SettingKey` en
+/// `src/lib/settings.ts`**, igual que las de `commands.rs`.
+const KEY_DIR: &str = "backup_dir";
+const KEY_TIME: &str = "backup_time";
+const KEY_KEEP: &str = "backup_keep";
+const KEY_RAN_ON: &str = "backup_ran_on";
+const KEY_LAST_ERROR: &str = "backup_last_error";
+
+/// La hora del respaldo si el ajuste falta o trae basura.
+/// **Espejo de `SETTING_DEFAULTS.backupTime`.**
+const DEFAULT_TIME: &str = "20:00";
+
+/// Cada cuánto mira el reloj el vigilante.
+///
+/// **Un pulso simple y no un sueño calculado como el de la campana**, y es a
+/// propósito: el respaldo apunta a una hora de pared una vez al día y **se pone al
+/// día por construcción** (la condición es "ya pasó la hora y todavía no se hizo",
+/// no "es exactamente esta hora"), así que llegar un minuto tarde no cambia nada.
+/// Lo que se vino a arreglar no es la precisión, es que corriera con la ventana
+/// tapada.
+const PULSO: Duration = Duration::from_secs(60);
+
+/// Minutos desde medianoche de un `HH:mm`, o `None` si no se entiende.
+///
+/// Se compara en números y no como texto —que es lo que hace el front— porque
+/// `hour()` en `settings.ts` acepta una hora de un dígito: con `"9:05"`,
+/// `"9:05" >= "20:00"` es **falso** todo el día y el respaldo nunca corre.
+fn minutes_of_day(hhmm: &str) -> Option<i64> {
+    let (h, m) = hhmm.trim().split_once(':')?;
+    let h: i64 = h.trim().parse().ok()?;
+    let m: i64 = m.trim().parse().ok()?;
+    if h > 23 || m > 59 {
+        return None;
+    }
+    Some(h * 60 + m)
+}
+
+/// Los ajustes del respaldo tal como salen de `settings`, sin interpretar.
+pub struct AutoSettings {
+    pub dir: Option<String>,
+    pub hour: Option<String>,
+    pub ran_on: Option<String>,
+}
+
+/// Si corresponde hacer el respaldo automático **ahora**.
+///
+/// Tres cortes, en orden de qué tan barato es descartarlos:
+///
+/// 1. **Sin carpeta configurada no hay respaldo.** No es un error ni algo que
+///    avisar: es el estado de fábrica.
+/// 2. **Una vez al día.** `backup_ran_on` guarda una **fecha local** y no un
+///    booleano —el mismo patrón que `planned_at`— porque una sesión abierta que
+///    cruza la medianoche tiene que volver a respaldar al día siguiente.
+/// 3. **Recién pasada la hora.**
+///
+/// El efecto de los dos últimos juntos es que el respaldo **se pone al día**: si
+/// la app estaba cerrada a las 20:00 y se abre a las 23:00, se hace ahí mismo. Lo
+/// único que no cubre es un día en que la app no se abrió nunca (SPECS §4.17).
+///
+/// **Corre igual en dev**, y eso cambió: antes había un cuarto corte que lo
+/// apagaba, porque dev podía heredar `backup_dir` de producción (restaurar un zip
+/// de producción en dev es justo el puente entre las dos) y **la retención habría
+/// borrado los respaldos de verdad** para dejar los de prueba. Lo que lo permite
+/// ahora es que los nombres llevan el perfil (`prefix`): los dos conjuntos son
+/// disjuntos y ninguna retención alcanza al otro. Y apagado no había forma de
+/// probar el automático antes de publicar una versión, que es exactamente cuando
+/// importa que funcione.
+pub fn should_backup(s: &AutoSettings, now: DateTime<Local>) -> bool {
+    if s.dir.as_deref().map(str::trim).unwrap_or("").is_empty() {
+        return false;
+    }
+    if s.ran_on.as_deref().map(str::trim) == Some(now.format("%Y-%m-%d").to_string().as_str()) {
+        return false;
+    }
+    let hora = s
+        .hour
+        .as_deref()
+        .and_then(minutes_of_day)
+        .unwrap_or_else(|| minutes_of_day(DEFAULT_TIME).unwrap());
+    i64::from(now.hour()) * 60 + i64::from(now.minute()) >= hora
+}
+
+/// Lee los ajustes del respaldo y **suelta el lock antes de volver**.
+///
+/// Vive aparte del pulso por lo mismo que `bell::read_active`: sostener el
+/// `Mutex` de la base mientras se decide algo que no la necesita es la forma de
+/// trabar al resto de la app.
+fn read_settings(app: &AppHandle) -> Option<AutoSettings> {
+    let db = app.state::<Db>();
+    let conn = match db.0.lock() {
+        Ok(conn) => conn,
+        Err(e) => {
+            eprintln!("[sunrise] respaldo: no pude leer los ajustes: {e}");
+            return None;
+        }
+    };
+    let leer = |k: &str| crate::repo::get_setting(&conn, k).ok().flatten();
+    Some(AutoSettings {
+        dir: leer(KEY_DIR),
+        hour: leer(KEY_TIME),
+        ran_on: leer(KEY_RAN_ON),
+    })
+}
+
+/// Escribe el respaldo y **anota cómo salió**, con el lock tomado una sola vez.
+///
+/// **El fracaso se guarda, no se traga**: si falló queda en `backup_last_error` y
+/// la sección de Configs lo muestra. Un respaldo que dejó de correr en silencio es
+/// peor que no tener respaldo, porque se cuenta con él sin que exista.
+///
+/// **La fecha se marca igual cuando falla**, y esa es la parte que se discutió:
+/// reintentar cada minuto contra una carpeta que no está —un disco externo
+/// desconectado, un Drive sin sesión— es un error por minuto hasta la medianoche.
+/// Queda anotado y el botón de Configs sigue ahí para reintentar a mano.
+fn run(app: &AppHandle, today: &str, now: DateTime<Local>) {
+    let db = app.state::<Db>();
+    let conn = match db.0.lock() {
+        Ok(conn) => conn,
+        Err(e) => {
+            eprintln!("[sunrise] respaldo: no pude tomar la base: {e}");
+            return;
+        }
+    };
+
+    let dir = crate::repo::get_setting(&conn, KEY_DIR).ok().flatten();
+    let Some(dir) = dir else { return };
+    let keep = crate::repo::get_setting(&conn, KEY_KEEP)
+        .ok()
+        .flatten()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(2);
+
+    let hecho = create_and_prune(&conn, Path::new(&dir), keep, now, crate::db::is_dev());
+    let _ = crate::repo::set_setting(&conn, KEY_RAN_ON, today);
+    match hecho {
+        Ok(file) => {
+            let _ = crate::repo::set_setting(&conn, KEY_LAST_ERROR, "");
+            eprintln!("[sunrise] respaldo automático: {}", file.name);
+        }
+        Err(err) => {
+            let _ = crate::repo::set_setting(&conn, KEY_LAST_ERROR, &err.to_string());
+            eprintln!("[sunrise] falló el respaldo automático: {err}");
+        }
+    }
+}
+
+/// Arranca el vigilante del respaldo. Se llama una vez, desde `setup`.
+///
+/// **Vivía en un `setInterval` del webview de `main` y por eso se movió acá**
+/// (invariante I6): un webview que no se ve no corre sus timers, así que con la
+/// ventana tapada el respaldo esperaba a que algo despertara la página. Medido en
+/// la app instalada: con la hora en 00:22, el zip salió a las 00:27. No se perdía
+/// —se pone al día solo—, pero llegaba cuando el reloj ya no era el que pediste.
+///
+/// De paso desaparece una invariante que había que mantener a mano: el hook vivía
+/// en `Shell` **solo** para que el taxímetro no hiciera su propio respaldo al mismo
+/// minuto. Con un proceso no hay ventana que elegir.
+pub fn start_watcher(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let now = Local::now();
+            if let Some(s) = read_settings(&app) {
+                if should_backup(&s, now) {
+                    let today = now.format("%Y-%m-%d").to_string();
+                    run(&app, &today, now);
+                    // Configs tiene que enterarse: muestra la lista de zips y el
+                    // último error, y los dos los acaba de escribir Rust.
+                    let _ = tauri::Emitter::emit(&app, crate::BACKUP_RAN, ());
+                }
+            }
+            tokio::time::sleep(PULSO).await;
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db;
+
+    /// Los perfiles, para que cada test diga cuál está describiendo. **Los tests
+    /// corren con `debug_assertions`**, o sea que `db::is_dev()` es `true` ahí: si
+    /// se dejara implícito, los que hablan de producción probarían dev.
+    const PROD: bool = false;
+    const DEV: bool = true;
     use chrono::TimeZone;
 
     fn migrated_conn() -> Connection {
@@ -598,10 +806,10 @@ mod tests {
 
     #[test]
     fn el_nombre_es_cronologico_y_solo_el_propio_se_reconoce() {
-        let n = file_name(now());
-        assert!(is_backup_name(&n));
+        let n = file_name(now(), PROD);
+        assert!(is_backup_name(&n, PROD));
         // Ordenar por nombre = ordenar por fecha.
-        let after = file_name(now() + chrono::Duration::seconds(1));
+        let after = file_name(now() + chrono::Duration::seconds(1), PROD);
         assert!(after > n);
 
         // Nada de lo que el usuario pueda tener en su Drive califica para borrar.
@@ -614,7 +822,56 @@ mod tests {
             "sunrise-20260817_200315.zip",
             "fotos.zip",
         ] {
-            assert!(!is_backup_name(foreign), "{foreign} no es un respaldo");
+            assert!(!is_backup_name(foreign, PROD), "{foreign} no es un respaldo");
+        }
+    }
+
+    #[test]
+    fn los_dos_perfiles_no_se_reconocen_los_respaldos() {
+        // **La garantía de la que depende que dev pueda respaldar de verdad**: si
+        // un perfil reconociera el nombre del otro, su retención lo borraría. En
+        // dev eso significaba perder los respaldos reales para dejar los de
+        // prueba, y era la razón por la que el automático estaba apagado ahí.
+        let prod = file_name(now(), PROD);
+        let dev = file_name(now(), DEV);
+        assert_ne!(prod, dev);
+        assert!(is_backup_name(&prod, PROD) && !is_backup_name(&prod, DEV));
+        assert!(is_backup_name(&dev, DEV) && !is_backup_name(&dev, PROD));
+    }
+
+    #[test]
+    fn la_retencion_de_dev_no_toca_los_respaldos_de_produccion() {
+        // La misma carpeta, que es el caso real: dev hereda `backup_dir` al
+        // restaurar un zip de producción, y ese puente se usa a propósito.
+        let c = migrated_conn();
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..3 {
+            create(&c, dir.path(), now() + chrono::Duration::seconds(i), PROD).unwrap();
+        }
+        for i in 0..3 {
+            create(&c, dir.path(), now() + chrono::Duration::seconds(i), DEV).unwrap();
+        }
+
+        // Dev conserva uno de los suyos y borra dos, sin tocar los tres de
+        // producción.
+        assert_eq!(prune(dir.path(), 1, DEV).unwrap(), 2);
+        assert_eq!(list(dir.path(), PROD).unwrap().len(), 3);
+        assert_eq!(list(dir.path(), DEV).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn cada_perfil_lista_solo_lo_suyo() {
+        let c = migrated_conn();
+        let dir = tempfile::tempdir().unwrap();
+        create(&c, dir.path(), now(), PROD).unwrap();
+        create(&c, dir.path(), now(), DEV).unwrap();
+
+        // Y la fecha se lee bien en los dos, que es donde el prefijo más largo
+        // desalinearía los índices del nombre.
+        for perfil in [PROD, DEV] {
+            let l = list(dir.path(), perfil).unwrap();
+            assert_eq!(l.len(), 1);
+            assert_eq!(l[0].created_at, "2026-08-17T16:53:20");
         }
     }
 
@@ -629,12 +886,12 @@ mod tests {
         .unwrap();
 
         let dir = tempfile::tempdir().unwrap();
-        let done = create(&c, dir.path(), now()).unwrap();
+        let done = create(&c, dir.path(), now(), PROD).unwrap();
 
         assert!(done.bytes > 0);
         assert!(Path::new(&done.path).is_file());
         // Nada de temporales a medio escribir en la carpeta del usuario.
-        assert_eq!(list(dir.path()).unwrap().len(), 1);
+        assert_eq!(list(dir.path(), PROD).unwrap().len(), 1);
         assert!(fs::read_dir(dir.path())
             .unwrap()
             .all(|e| !e.unwrap().file_name().to_string_lossy().contains("parcial")));
@@ -679,7 +936,7 @@ mod tests {
         );
 
         let dir = tempfile::tempdir().unwrap();
-        let done = create(&c, dir.path(), now()).unwrap();
+        let done = create(&c, dir.path(), now(), PROD).unwrap();
 
         // La alternativa ingenua —copiar el archivo principal— se lleva una base
         // sin lo recién escrito. Es exactamente lo que `VACUUM INTO` evita.
@@ -712,7 +969,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         for i in 0..5 {
-            create(&c, dir.path(), now() + chrono::Duration::seconds(i)).unwrap();
+            create(&c, dir.path(), now() + chrono::Duration::seconds(i), PROD).unwrap();
         }
         // Lo que el usuario ya tenía en su carpeta sincronizada.
         fs::write(dir.path().join("presupuesto.zip"), b"mio").unwrap();
@@ -721,13 +978,13 @@ mod tests {
         fs::create_dir(&subfolder).unwrap();
         fs::write(subfolder.join("nada.txt"), b"mio").unwrap();
 
-        assert_eq!(prune(dir.path(), 2).unwrap(), 3);
+        assert_eq!(prune(dir.path(), 2, PROD).unwrap(), 3);
 
-        let remaining = list(dir.path()).unwrap();
+        let remaining = list(dir.path(), PROD).unwrap();
         assert_eq!(remaining.len(), 2);
         assert_eq!(
             remaining[0].name,
-            file_name(now() + chrono::Duration::seconds(4)),
+            file_name(now() + chrono::Duration::seconds(4), PROD),
             "el que queda primero es el más nuevo"
         );
         assert!(dir.path().join("presupuesto.zip").exists());
@@ -743,14 +1000,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         for i in 0..7 {
-            create_and_prune(&c, dir.path(), 2, now() + chrono::Duration::seconds(i)).unwrap();
+            create_and_prune(&c, dir.path(), 2, now() + chrono::Duration::seconds(i), PROD).unwrap();
         }
 
-        let remaining = list(dir.path()).unwrap();
+        let remaining = list(dir.path(), PROD).unwrap();
         assert_eq!(remaining.len(), 2);
         assert_eq!(
             remaining[0].name,
-            file_name(now() + chrono::Duration::seconds(6)),
+            file_name(now() + chrono::Duration::seconds(6), PROD),
             "el que queda primero es el último que se hizo"
         );
     }
@@ -759,14 +1016,14 @@ mod tests {
     fn purgar_con_cero_no_borra_nada() {
         let c = migrated_conn();
         let dir = tempfile::tempdir().unwrap();
-        create(&c, dir.path(), now()).unwrap();
-        assert_eq!(prune(dir.path(), 0).unwrap(), 0);
-        assert_eq!(list(dir.path()).unwrap().len(), 1);
+        create(&c, dir.path(), now(), PROD).unwrap();
+        assert_eq!(prune(dir.path(), 0, PROD).unwrap(), 0);
+        assert_eq!(list(dir.path(), PROD).unwrap().len(), 1);
     }
 
     #[test]
     fn listar_una_carpeta_que_no_existe_no_es_error() {
-        assert!(list(Path::new("/no/existe/esta/carpeta")).unwrap().is_empty());
+        assert!(list(Path::new("/no/existe/esta/carpeta"), PROD).unwrap().is_empty());
     }
 
     #[test]
@@ -808,7 +1065,7 @@ mod tests {
     fn extraer_rechaza_un_respaldo_de_una_version_mas_nueva() {
         let c = migrated_conn();
         let dir = tempfile::tempdir().unwrap();
-        let done = create(&c, dir.path(), now()).unwrap();
+        let done = create(&c, dir.path(), now(), PROD).unwrap();
 
         let err = extract_db(Path::new(&done.path), &dir.path().join("out.sqlite"), 1)
             .unwrap_err();
@@ -823,16 +1080,82 @@ mod tests {
         assert!(copy.is_file());
 
         // No calza el patrón, así que ni `listar` la ve ni `purgar` la toca.
-        assert!(list(dir.path()).unwrap().is_empty());
-        create(&c, dir.path(), now()).unwrap();
-        prune(dir.path(), 1).unwrap();
+        assert!(list(dir.path(), PROD).unwrap().is_empty());
+        create(&c, dir.path(), now(), PROD).unwrap();
+        prune(dir.path(), 1, PROD).unwrap();
         assert!(copy.is_file(), "la copia de seguridad tiene que sobrevivir");
+    }
+
+    /// Los ajustes de un respaldo configurado y todavía no hecho hoy.
+    fn auto(dir: &str, hour: &str, ran_on: Option<&str>) -> AutoSettings {
+        AutoSettings {
+            dir: Some(dir.to_string()),
+            hour: Some(hour.to_string()),
+            ran_on: ran_on.map(str::to_string),
+        }
+    }
+
+    /// Un momento local concreto, para no depender del reloj de la máquina.
+    fn local(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Local> {
+        Local.with_ymd_and_hms(y, m, d, h, min, 0).unwrap()
+    }
+
+    #[test]
+    fn pasada_la_hora_y_sin_hacerlo_hoy_toca_respaldar() {
+        let s = auto("/tmp/bkp", "20:00", None);
+        assert!(should_backup(&s, local(2026, 8, 22, 20, 0)));
+        assert!(!should_backup(&s, local(2026, 8, 22, 19, 59)));
+    }
+
+    #[test]
+    fn sin_carpeta_configurada_no_hay_respaldo() {
+        for dir in ["", "   "] {
+            let s = auto(dir, "20:00", None);
+            assert!(!should_backup(&s, local(2026, 8, 22, 23, 0)));
+        }
+        let s = AutoSettings { dir: None, hour: None, ran_on: None };
+        assert!(!should_backup(&s, local(2026, 8, 22, 23, 0)));
+    }
+
+    #[test]
+    fn una_vez_al_dia_y_al_dia_siguiente_de_nuevo() {
+        let s = auto("/tmp/bkp", "20:00", Some("2026-08-22"));
+        assert!(!should_backup(&s, local(2026, 8, 22, 23, 0)));
+        // La marca es del día anterior: vuelve a tocar sin que nadie la limpie.
+        assert!(should_backup(&s, local(2026, 8, 23, 20, 0)));
+    }
+
+    #[test]
+    fn la_fecha_de_la_marca_es_local_y_no_utc() {
+        // En Santiago las últimas horas del día son ya el día siguiente en UTC.
+        // Comparando contra una fecha UTC, un respaldo hecho a las 21:00 quedaría
+        // marcado como de mañana y correría dos veces.
+        let s = auto("/tmp/bkp", "20:00", Some("2026-08-22"));
+        assert!(!should_backup(&s, local(2026, 8, 22, 21, 30)));
+    }
+
+    #[test]
+    fn una_hora_ilegible_cae_en_el_default_y_no_congela_el_respaldo() {
+        for hora in ["", "ayer", "25:00", "20:70", "20"] {
+            let s = auto("/tmp/bkp", hora, None);
+            assert!(should_backup(&s, local(2026, 8, 22, 20, 0)), "{hora}");
+            assert!(!should_backup(&s, local(2026, 8, 22, 19, 0)), "{hora}");
+        }
+    }
+
+    #[test]
+    fn una_hora_de_un_digito_se_entiende() {
+        // El front la guarda tal cual y la comparaba como texto: `"9:05" >= hora`
+        // daba falso todo el día y el respaldo no corría nunca.
+        let s = auto("/tmp/bkp", "9:05", None);
+        assert!(should_backup(&s, local(2026, 8, 22, 9, 5)));
+        assert!(!should_backup(&s, local(2026, 8, 22, 9, 4)));
     }
 
     #[test]
     fn la_fecha_sale_del_nombre_y_no_del_sistema_de_archivos() {
         assert_eq!(
-            date_from_name("sunrise-20260817-200315.zip").as_deref(),
+            date_from_name("sunrise-20260817-200315.zip", PROD).as_deref(),
             Some("2026-08-17T20:03:15")
         );
     }

@@ -25,7 +25,7 @@ import { useFloatingWindow, useGotoListener } from "./features/timer/useFloating
 import { useCalendarListener } from "./features/calendar/useCalendarListener";
 import { useCalendarSyncRuntime } from "./lib/calendarSync";
 import { useShutdownReminder } from "./features/shutdown/useShutdownReminder";
-import { useBackupRuntime } from "./features/backup/useBackupRuntime";
+import { useBackupListener } from "./features/backup/useBackupListener";
 import "./features/week/week.css";
 import "./features/updates/updates.css";
 import "./features/tasks/task-modal.css";
@@ -60,8 +60,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   // Avisa a la hora de `work_end` que toca cerrar el día. Va acá y no en el
   // taxímetro por la misma razón que la campana (I6): una sola ventana avisa.
   useShutdownReminder();
-  // El respaldo automático, por lo mismo: dos ventanas serían dos zips por día.
-  useBackupRuntime();
+  // El respaldo automático **corre en Rust** (`backup.rs`), igual que la campana:
+  // acá solo se escucha su aviso para releer los ajustes que escribió.
+  useBackupListener();
   // Sondea el updater cada 4 h y detecta si esta sesión viene de actualizarse.
   // También una sola ventana: dos serían dos consultas por intervalo.
   useUpdateRuntime();

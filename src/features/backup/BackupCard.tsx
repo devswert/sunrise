@@ -11,6 +11,7 @@ import {
 import { api, isTauri } from "../../lib/ipc";
 import { useAppStore } from "../../lib/store";
 import { relativeTime } from "../../lib/date";
+import { useToday } from "../../lib/day";
 import { SETTING_DEFAULTS, SettingKey, backupSettings, useSettingsStore } from "../../lib/settings";
 import { minutesFromTime } from "../calendar/railLayout";
 import { sectionIcon } from "../settings/secciones";
@@ -206,6 +207,8 @@ export function BackupCard() {
   const bumpData = useAppStore((s) => s.bumpData);
   const settings = backupSettings(values);
   const ultimoError = values[SettingKey.BACKUP_LAST_ERROR]?.trim();
+  const today = useToday();
+  const ranToday = values[SettingKey.BACKUP_RAN_ON]?.trim() === today;
 
   const [files, setArchivos] = useState<BackupFile[]>([]);
   const [version, setVersion] = useState("");
@@ -221,10 +224,17 @@ export function BackupCard() {
     setArchivos(await api.listBackups());
   }, []);
 
+  // `ranToday` está en las dependencias porque **es el aviso de que el vigilante
+  // de Rust acabó de respaldar**: `useBackupListener` relee los ajustes al recibir
+  // el evento, y la marca del día cambiando es lo que dice que hay un zip nuevo
+  // que listar. Sin esto la lista se queda como estaba hasta reabrir Configs.
   useEffect(() => {
     void load();
+  }, [load, ranToday]);
+
+  useEffect(() => {
     void api.appVersion().then(setVersion);
-  }, [load]);
+  }, []);
 
   async function guardarCarpeta(raw: string) {
     const dir = raw.trim();
@@ -460,6 +470,21 @@ export function BackupCard() {
             ? error.text
             : "Corre una vez al día pasada esa hora, con la app abierta. Si estaba cerrada, se hace al abrirla."}
         </span>
+        {settings.active && ranToday && (
+          // **Una marca que afirma algo tiene que poder desmentirse.** Sin esto,
+          // el respaldo de hoy ya está hecho y no hay forma de saberlo ni de
+          // volver a probarlo: cambiarle la hora no lo dispara —la regla es una
+          // vez al día— y parece que el automático estuviera roto.
+          <span className="set-note">
+            Ya se hizo el de hoy.{" "}
+            <button
+              className="set-note__link"
+              onClick={() => void setSetting(SettingKey.BACKUP_RAN_ON, "")}
+            >
+              Volver a respaldar hoy
+            </button>
+          </span>
+        )}
       </div>
 
       {ultimoError && (

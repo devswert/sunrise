@@ -1,72 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { SettingKey, backupSettings } from "../../lib/settings";
-import { readableDate, formatBytes, hhmm, readableMoment, shouldBackup } from "./backup";
-
-const HOY = "2026-08-17";
+import { readableDate, formatBytes, readableMoment } from "./backup";
 
 /** Los ajustes mínimos para que el respaldo esté encendido. */
 const encendido = (extra: Record<string, string> = {}) => ({
   [SettingKey.BACKUP_DIR]: "/Users/leo/Drive/sunrise",
   [SettingKey.BACKUP_TIME]: "20:00",
   ...extra,
-});
-
-describe("tocaRespaldar", () => {
-  it("no respalda si no hay carpeta: es el estado de fábrica, no un error", () => {
-    expect(shouldBackup({ nowHhmm: "23:00", values: {}, today: HOY, isDev: false })).toBe(false);
-    // Una carpeta con solo espacios es lo mismo que ninguna.
-    expect(
-      shouldBackup({ nowHhmm: "23:00", values: { [SettingKey.BACKUP_DIR]: "   " }, today: HOY, isDev: false }),
-    ).toBe(false);
-  });
-
-  it("espera la hora configurada", () => {
-    expect(shouldBackup({ nowHhmm: "19:59", values: encendido(), today: HOY, isDev: false })).toBe(false);
-    expect(shouldBackup({ nowHhmm: "20:00", values: encendido(), today: HOY, isDev: false })).toBe(true);
-  });
-
-  it("una vez al día: con la fecha de hoy ya marcada, no vuelve", () => {
-    const values = encendido({ [SettingKey.BACKUP_RAN_ON]: HOY });
-    expect(shouldBackup({ nowHhmm: "21:00", values, today: HOY, isDev: false })).toBe(false);
-  });
-
-  /**
-   * En dev no corre, y este es el corte más importante de los cuatro. Dev y
-   * producción tienen bases distintas, pero `backup_dir` es una ruta en el disco:
-   * si restauras un zip de producción en dev —que es el puente entre las dos—, dev
-   * hereda la carpeta, empieza a escribir zips de prueba ahí y **la retención
-   * borra los respaldos de verdad** para conservar los de prueba.
-   */
-  it("en dev no respalda, aunque esté todo configurado y pasada la hora", () => {
-    expect(shouldBackup({ nowHhmm: "23:00", values: encendido(), today: HOY, isDev: true })).toBe(
-      false,
-    );
-    // Y el mismo caso en producción sí, para que quede claro que es el perfil y no
-    // otra cosa lo que lo apagó.
-    expect(shouldBackup({ nowHhmm: "23:00", values: encendido(), today: HOY, isDev: false })).toBe(
-      true,
-    );
-  });
-
-  /**
-   * El caso que justifica guardar una fecha y no un booleano: una sesión abierta
-   * que cruza la medianoche tiene que volver a respaldar.
-   */
-  it("con la marca de ayer sí respalda hoy", () => {
-    const values = encendido({ [SettingKey.BACKUP_RAN_ON]: "2026-08-16" });
-    expect(shouldBackup({ nowHhmm: "20:00", values, today: HOY, isDev: false })).toBe(true);
-  });
-
-  /** Se pone al día: la app cerrada a las 20:00 y abierta a las 23:00 respalda. */
-  it("respalda al abrir la app si la hora ya pasó", () => {
-    expect(shouldBackup({ nowHhmm: "23:47", values: encendido(), today: HOY, isDev: false })).toBe(true);
-  });
-
-  it("una hora con basura cae al default de las 20:00, no se apaga", () => {
-    const values = encendido({ [SettingKey.BACKUP_TIME]: "las ocho" });
-    expect(shouldBackup({ nowHhmm: "19:00", values, today: HOY, isDev: false })).toBe(false);
-    expect(shouldBackup({ nowHhmm: "20:01", values, today: HOY, isDev: false })).toBe(true);
-  });
 });
 
 describe("backupSettings", () => {
@@ -128,9 +68,3 @@ describe("momentoLegible", () => {
   });
 });
 
-describe("hhmm", () => {
-  it("rellena con ceros para que la comparación de texto sirva", () => {
-    expect(hhmm(new Date(2026, 7, 17, 9, 5))).toBe("09:05");
-    expect(hhmm(new Date(2026, 7, 17, 20, 0))).toBe("20:00");
-  });
-});

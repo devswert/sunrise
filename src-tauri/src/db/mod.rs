@@ -31,11 +31,22 @@ pub const PROD_FILE: &str = "sunrise.sqlite";
 /// `tauri dev` de `tauri build`. Un `tauri build --debug` también cae en dev, y
 /// está bien: es un artefacto de desarrollo.
 pub fn file_name() -> &'static str {
-    if cfg!(debug_assertions) {
+    if is_dev() {
         "sunrise-dev.sqlite"
     } else {
         PROD_FILE
     }
+}
+
+/// Si esta build es de desarrollo.
+///
+/// **La única definición de "es dev" del backend**, y por eso vive acá y no donde
+/// se necesita: la separación de perfiles la usan la base (`file_name`), el
+/// nombre de los respaldos (`backup::prefix`) y `profile()`, y si cada una
+/// resolviera su propio `cfg!`, una podría quedar en el lado equivocado sin que
+/// nada lo notara.
+pub fn is_dev() -> bool {
+    cfg!(debug_assertions)
 }
 
 /// Estado manejado por Tauri: la conexión SQLite protegida por Mutex.

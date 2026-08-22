@@ -1415,6 +1415,25 @@
   color: var(--rose-ink);
 }
 
+/* Desmentir una marca desde una nota. Mismo tratamiento que `.dialog__deny`: es
+   la misma clase de acción —contradecir algo que la app afirma— y no un botón. */
+.set-note__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--muted);
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.set-note__link:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
 /* Un punto por fila; la paleta completa vive en el popover. */
 .color-dot {
   width: 18px;

@@ -2158,6 +2158,42 @@ eran un click en "Empezar el día" al navegar, un ritual cerrado pasada la
 medianoche, o una sesión que cruzó la medianoche con `today` ya actualizado. Si
 vuelve a pasar, el diálogo ahora dice la hora y con eso se elige entre los tres.
 
+### Mej.27 ✅ El respaldo automático llegaba tarde a su hora — hecho
+
+El segundo caso de la misma clase que Mej.26, y el que dejó de convertir I6 en una
+anécdota. El respaldo corría en un `setInterval` de 60 s en el webview de `main`
+(`useBackupRuntime`), y un webview que no se ve no corre sus timers: con la ventana
+tapada esperaba a que algo despertara la página. **Medido en la app instalada: con
+`backup_time` en 00:22, el zip salió a las 00:27.**
+
+Se movió a `backup::start_watcher`, con la decisión pura en `backup::should_backup`
+y sus mismos cuatro cortes (en dev no corre, sin carpeta no corre, una vez al día,
+recién pasada la hora). Tres cosas que salieron de hacerlo:
+
+- **Pulso fijo de 60 s, no un sueño calculado como la campana.** El respaldo apunta
+  a una hora de pared una vez al día y se pone al día por construcción, así que la
+  precisión nunca fue el problema. Lo único que se compró es que corra tapado.
+- **La hora se compara en minutos, no como texto.** El front lo hacía
+  lexicográficamente y `hour()` acepta una hora de un dígito: con `9:05`,
+  `"9:05" >= "20:00"` es falso todo el día y el respaldo **no corría nunca**. Bug
+  latente que nadie había pisado.
+- **La marca del día ahora se puede desmentir** ("Volver a respaldar hoy"). Con el
+  de hoy hecho, cambiarle la hora no dispara nada —la regla es una vez al día— y
+  eso se ve exactamente igual que un automático roto. Fue lo que pasó al probarlo:
+  lo que parecía la falla era la regla funcionando, sin forma de verlo.
+
+De paso desaparece la invariante de "el hook va en `Shell` para que el taxímetro no
+haga su propio zip": con un proceso no hay ventana que elegir.
+
+**Y el automático se encendió en dev**, pedido por el dev con la razón correcta:
+apagado no había forma de probarlo antes de publicar una versión, que es
+exactamente cuando importa que funcione. Estaba apagado porque dev puede heredar
+`backup_dir` de producción y la retención habría borrado los respaldos de verdad
+para dejar los de prueba. Se resolvió por el nombre y no por el interruptor: dev
+escribe `sunrise-dev-…`, e `is_backup_name` —el único permiso para borrar— exige el
+prefijo de su propio perfil, así que los dos conjuntos son disjuntos aun apuntando
+a la misma carpeta. Detalle en SPECS §4.17 y §4.20.
+
 ### Mej.26 ✅ La campana del estimado no sonaba con la ventana tapada — hecho
 
 Reportado por el dev con el caso exacto: el timer pasó su estimado de 1:00, no

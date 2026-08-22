@@ -211,6 +211,18 @@ nueva. Consecuencias para cualquier cosa que escribas cerca:
   constante y no la función: si llevara el nombre del perfil, un respaldo hecho en
   dev no se podría restaurar en producción, y eso es justamente el puente entre las
   dos bases. Hay un test que lo fija.
+
+  **El nombre del zip es lo contrario**: ese sí lleva el perfil
+  (`sunrise-dev-…` vs `sunrise-…`, `backup::prefix`), y no es simetría estética.
+  `is_backup_name` es **el único permiso para borrar** que tiene la retención, y
+  exige el prefijo del perfil propio: con eso los dos conjuntos son disjuntos y dev
+  puede respaldar en la misma carpeta que producción sin poder borrarle nada. Es lo
+  que permitió encender el automático en dev (SPECS §4.20). Si algún día unificas
+  los nombres, estás reactivando esa pérdida de datos.
+
+  **Y `db::is_dev()` es la única definición de "es dev" del backend.** La usan la
+  base, el prefijo del respaldo y `profile()`. Un `cfg!(debug_assertions)` suelto en
+  un cuarto lugar puede quedar en el lado equivocado sin que nada lo note.
 - Nada de esto se puede probar fuera de Tauri (el mock no tiene base). Lo que sí
   está cubierto en `backup.rs` es todo el camino de archivos. Ver SPECS §4.17.
 

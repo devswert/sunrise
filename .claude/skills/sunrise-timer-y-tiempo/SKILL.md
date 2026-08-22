@@ -133,6 +133,20 @@ no estés mirando, va en Rust** (I6). Si vas a agregar otro aviso de este tipo �
 de "se viene tu próxima tarea", Mej.4—, no lo cuelgues de un `setInterval` del
 front.
 
+**Ya son dos casos medidos**: el respaldo automático tenía el mismo `setInterval`
+en `main` y llegaba cinco minutos tarde a su hora; se movió a
+`backup::start_watcher` (SPECS §4.17). Los dos vigilantes tienen la misma forma
+—leer la base, dormir, **releer** y decidir— pero **no la misma espera**, y la
+diferencia es la que hay que copiar bien:
+
+| | Espera | Por qué |
+|---|---|---|
+| campana | duerme hasta el cruce, techo de 30 s | el momento se mueve: el estimado se edita con el timer corriendo |
+| respaldo | pulso fijo de 60 s | es una hora de pared una vez al día, y **se pone al día** por construcción |
+
+O sea: si lo que agregas se pone al día solo, no le calcules el momento. Un sueño
+calculado hay que invalidarlo, y olvidarse de invalidarlo no deja síntoma.
+
 ## Semántica de la campana y del estimado
 
 - `isOverEstimate(elapsed, planned)`: con `planned` `null` o `<= 0` **nunca** se

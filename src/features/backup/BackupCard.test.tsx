@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BackupCard } from "./BackupCard";
 import { SettingKey, backupSettings, useSettingsStore } from "../../lib/settings";
+import { todayISO } from "../../lib/date";
 
 const CARPETA = "/Users/leo/Drive/sunrise";
 
@@ -67,6 +68,35 @@ describe("BackupCard · la carpeta", () => {
 
     expect(saved().active).toBe(false);
     expect(field).not.toHaveClass("is-invalid");
+  });
+});
+
+describe("BackupCard · la marca del día", () => {
+  beforeEach(async () => {
+    await configure(CARPETA);
+  });
+
+  /**
+   * El respaldo automático corre **una vez al día**, así que con la marca puesta
+   * cambiarle la hora no lo dispara de nuevo. Sin forma de desmentirla, eso se ve
+   * exactamente igual que un automático roto — y fue lo que pasó.
+   */
+  it("con el de hoy hecho, se puede volver a armar", async () => {
+    const hoy = todayISO();
+    await useSettingsStore.getState().set(SettingKey.BACKUP_RAN_ON, hoy);
+    render(<BackupCard />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Volver a respaldar hoy/ }));
+
+    expect(useSettingsStore.getState().values[SettingKey.BACKUP_RAN_ON]).toBe("");
+  });
+
+  it("sin la marca de hoy no ofrece desmentir nada", async () => {
+    await useSettingsStore.getState().set(SettingKey.BACKUP_RAN_ON, "2026-01-01");
+    render(<BackupCard />);
+
+    await screen.findByLabelText("Carpeta de respaldos");
+    expect(screen.queryByRole("button", { name: /Volver a respaldar hoy/ })).toBeNull();
   });
 });
 

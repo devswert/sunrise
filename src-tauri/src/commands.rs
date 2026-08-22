@@ -522,7 +522,7 @@ pub fn app_version() -> String {
 #[tauri::command]
 pub fn profile() -> Profile {
     Profile {
-        dev: cfg!(debug_assertions),
+        dev: crate::db::is_dev(),
         db_file: crate::db::file_name().to_string(),
     }
 }
@@ -552,7 +552,7 @@ pub fn create_backup(db: State<'_, Db>) -> Result<BackupFile, String> {
     let conn = db.0.lock().map_err(e)?;
     let dir = backup_dir_setting(&conn)?;
     let keep = how_many_to_keep(&conn)?;
-    backup::create_and_prune(&conn, &dir, keep, chrono::Local::now()).map_err(e)
+    backup::create_and_prune(&conn, &dir, keep, chrono::Local::now(), crate::db::is_dev()).map_err(e)
 }
 
 /// Prueba que la carpeta elegida sirva, antes de guardarla como ajuste.
@@ -571,7 +571,7 @@ pub fn list_backups(db: State<'_, Db>) -> Result<Vec<BackupFile>, String> {
     let Some(dir) = repo::get_setting(&conn, BACKUP_DIR).map_err(e)? else {
         return Ok(vec![]);
     };
-    backup::list(std::path::Path::new(&dir)).map_err(e)
+    backup::list(std::path::Path::new(&dir), crate::db::is_dev()).map_err(e)
 }
 
 /// Reemplaza la base viva por la que trae un `.zip`.

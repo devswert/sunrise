@@ -1493,14 +1493,45 @@ que lo fija.
 > significar "borra todos mis respaldos". Hay un test que se pone rojo si el
 > patrón se afloja a `*.zip`.
 
-**El automático corre a `backup_time`, una vez al día, con la app abierta.**
-`useBackupRuntime` es gemelo de `useShutdownReminder` y va montado en `Shell` por
-la misma razón que I6: en las dos ventanas serían dos zips por día, o dos
-`VACUUM INTO` peleándose el `Mutex`. La decisión vive en `shouldBackup` (puro y
-testeado). La marca es la fecha `backup_ran_on`, y el efecto es que **se pone al
-día**: si la app estaba cerrada a las 20:00 y se abre a las 23:00, respalda ahí; si
-se abre al otro día, la fecha ya no es hoy y también respalda. Lo único que no
-cubre es un día en que la app no se abrió nunca.
+**El automático corre a `backup_time`, una vez al día, y lo corre Rust**
+(`backup::start_watcher`, pulso de 60 s). La decisión vive en
+`backup::should_backup`, pura y testeada, con tres cortes: sin carpeta no corre,
+una vez al día (`backup_ran_on`) y recién pasada la hora. **Corre igual en dev**
+— ver §4.20. La
+marca es una **fecha local**, y el efecto es que **se pone al día**: si la app
+estaba cerrada a las 20:00 y se abre a las 23:00, respalda ahí; si se abre al otro
+día, la fecha ya no es hoy y también respalda. Lo único que no cubre es un día en
+que la app no se abrió nunca.
+
+> **Vivía en el front y se movió por I6.** Era un `setInterval` de 60 s en el
+> webview de `main` (`useBackupRuntime`), y un webview que no se ve no corre sus
+> timers: con la ventana tapada el respaldo esperaba a que algo despertara la
+> página. **Medido en la app instalada: con la hora en 00:22, el zip salió a las
+> 00:27.** Es el segundo caso de la misma clase después de la campana (§4.6), y
+> por eso I6 dejó de ser una anécdota. Al moverlo desaparece además una
+> invariante que había que mantener a mano —el hook vivía en `Shell` **solo** para
+> que el taxímetro no hiciera su propio zip al mismo minuto—: con un proceso no
+> hay ventana que elegir.
+>
+> Es un **pulso simple y no un sueño calculado** como el de la campana, a
+> propósito: el respaldo apunta a una hora de pared una vez al día y se pone al
+> día por construcción, así que la precisión no era lo que estaba roto. Lo único
+> que se compró es que corra con la ventana tapada.
+>
+> La hora se compara **en minutos y no como texto**. El front lo hacía
+> lexicográficamente y `hour()` acepta una hora de un dígito: con `9:05`,
+> `"9:05" >= "20:00"` es falso todo el día y el respaldo no corría nunca.
+
+**Configs se entera por evento.** Lo que escribe el vigilante —la marca del día y,
+si falló, el error— no pasa por `setSetting`, que es lo que antes hacía redibujar
+la sección. Rust emite `sunrise://backup-ran`, `useBackupListener` relee los
+ajustes y `BackupCard` relista los zips cuando la marca cambia. Sin ese hilo el
+síntoma es el silencioso de siempre: Configs diciendo que hoy no pasó nada.
+
+**Y la marca del día se puede desmentir** ("Volver a respaldar hoy", la misma
+regla que §4.24). No es una comodidad: con el de hoy hecho, cambiarle la hora no
+dispara nada —la regla es una vez al día— y eso se ve **exactamente igual que un
+automático roto**. Fue lo que pasó al probarlo.
 
 **Carpeta vacía = respaldo apagado.** Es el estado de fábrica: los ajustes de
 respaldo no los siembra ninguna migración, como `planned_at`. Y **la carpeta se
@@ -1787,12 +1818,26 @@ porque **el nombre de la base dentro del zip no depende del perfil**: siempre es
 el nombre del perfil, un respaldo tomado en dev no se podría restaurar en
 producción, y el puente no existiría.
 
-> **I** — **El respaldo automático no corre en dev**, y el corte vive en
-> `shouldBackup` con los otros tres. Las bases están separadas, pero `backup_dir`
-> es una ruta en el disco: si restauras un zip de producción en dev —o sea, si usas
-> el puente— dev hereda la carpeta, empieza a escribir zips de prueba ahí y **la
-> retención borra los respaldos de verdad** para conservar los de prueba. El botón
-> manual sigue funcionando: eso lo pides tú, esto pasa solo.
+> **I** — **El respaldo automático corre también en dev, y lo que lo hace seguro
+> son los nombres.** Producción escribe `sunrise-…` y dev escribe `sunrise-dev-…`
+> (`backup::prefix`), y `is_backup_name` —que es **el único permiso para borrar**—
+> exige el prefijo de su propio perfil. Con eso los dos conjuntos son **disjuntos**:
+> apuntando los dos a la misma carpeta, ninguna retención puede alcanzar lo que
+> escribió la otra. Cada perfil lista solo lo suyo, y el puente sigue existiendo
+> porque restaurar toma la ruta del selector de archivos, no de la lista.
+>
+> **Antes estaba apagado**, y la razón era real: las bases están separadas pero
+> `backup_dir` es una ruta en el disco, así que si restauras un zip de producción
+> en dev —o sea, si usas el puente— dev hereda la carpeta, empieza a escribir zips
+> de prueba ahí y con un nombre compartido **la retención borra los respaldos de
+> verdad** para conservar los de prueba. Lo que cambió no es la evaluación del
+> riesgo, es que el riesgo desapareció: separar los nombres es más barato que
+> apagar la función. Y apagado **no había forma de probar el automático antes de
+> publicar una versión**, que es exactamente cuando importa que funcione.
+>
+> Tres tests lo sostienen: que ningún perfil reconozca el nombre del otro, que la
+> retención de dev no toque los de producción en la misma carpeta, y que cada uno
+> liste solo lo suyo.
 
 **El `localStorage` tampoco se cruza, pero por otra razón.** La base no es el único
 almacén de la app: el canal entre ventanas (`sunrise-data`, §5.2), el tema y la
@@ -1941,8 +1986,9 @@ Una franja arriba del switch de tema, con **dos estados y ninguno interrumpe**.
 
 > **I** — **Se monta una sola vez, en `Shell`** (ventana `main`). Dos ventanas
 > sondeando serían dos consultas por intervalo, por lo mismo que el aviso de
-> cierre y el respaldo automático (I6). La campana **ya no** es ejemplo de esto:
-> se fue a Rust justamente porque depender de una ventana la dejaba muda (§4.6).
+> cierre (I6). La campana y el respaldo automático **ya no** son ejemplos de esto:
+> se fueron a Rust justamente porque depender de una ventana los dejaba muda al
+> uno y tarde al otro (§4.6 y §4.17).
 
 **El aviso reemplazó al modal automático**, que fue la primera versión de esto. Un
 modal encima de la app al abrirla es la interrupción que §4.21 descartó: el aviso
@@ -2359,7 +2405,12 @@ En `useFloatingWindow.ts`, ya pagadas:
   ventana tapada. Vive en `bell.rs`. Lo que **sí** puede vivir en el front es lo
   que solo importa cuando estás mirando —el dibujo del taxímetro— y lo que igual
   necesita una ventana; eso último, montado en `Shell`, que solo existe en `main`,
-  para que no ocurra dos veces (el aviso de cierre, el respaldo, el updater).
+  para que no ocurra dos veces (el aviso de cierre, el updater). **El respaldo
+  automático siguió el mismo camino que la campana** (§4.17): llegaba cinco minutos
+  tarde por lo mismo, y ahora lo corre `backup.rs`. Con dos casos medidos, lo que
+  queda en el front por "necesita una ventana" hay que justificarlo, no heredarlo
+  — el aviso de cierre es el próximo candidato y su costo es el envío, que hoy
+  pasa por el plugin de JS.
 - **I7. Los listados filtran `source_state = 'ACTIVE'`.** Las `ORPHANED` existen
   solo para el historial y la review. **La única excepción es el tiempo del
   rollup compartido** (`work_by_day`, §4.15 y §4.16), que las cuenta a
@@ -2644,7 +2695,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **459 tests front (54 archivos) y 156 Rust, todos verdes.**
+estado actual: **453 tests front (54 archivos) y 168 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -2783,15 +2834,22 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
   y un hito abre el detalle). Este archivo **depende del orden**: el mock guarda la
   bitácora en memoria de módulo. **El aviso nativo de `work_end` no está
   cubierto**: necesita Tauri.
-- **Respaldo**: catorce en `backup.rs` (el zip trae la base y el manifest, lo
+- **Respaldo**: veintitrés en `backup.rs` (el zip trae la base y el manifest, lo
   recién escrito está en el snapshot **sin checkpoint del WAL**, el nombre es
   cronológico, la versión es semver y coincide en los tres archivos, el zip sin
   base / con una base ajena / de una versión más nueva se rechazan, la copia de
   seguridad sobrevive a la retención, **siete respaldos seguidos dejan los que se
-  conservan**, una carpeta que no existe no es error) más
-  `backup.test.ts` (las cuatro condiciones de `shouldBackup` —incluida la
-  puesta al día al abrir la app—, el `conservar` que no puede ser 0, y **los dos
-  formateadores de fecha: uno convierte zona y el otro no**) y
+  conservan**, una carpeta que no existe no es error), **siete de ellos sobre
+  `should_backup`**: sin carpeta no corre, una vez al día y al
+  día siguiente de nuevo, **la fecha de la marca es local y no UTC**, una hora
+  ilegible cae al default en vez de congelar el respaldo, y **una hora de un
+  dígito se entiende** (comparada como texto no funcionaba), y **tres sobre la
+  separación de perfiles**: ningún perfil reconoce el nombre del otro, la retención
+  de dev no toca los de producción en la misma carpeta, y cada uno lista solo lo
+  suyo. Más
+  `backup.test.ts` (el `conservar` que no puede ser 0 y **los dos formateadores de
+  fecha: uno convierte zona y el otro no**), los dos de **la marca del día que se
+  puede desmentir** en `BackupCard.test.tsx`, y
   `BackupCard.test.tsx` (sin carpeta está apagado, la ruta se valida **al
   escribir**, vaciarla apaga sin validar, el error del automático se muestra y un
   manual exitoso lo limpia, restaurar exige la confirmación que nombra lo que se
@@ -2816,8 +2874,9 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 - **Dev y producción conviviendo** (§4.20): `db::file_name()` no puede devolver lo
   mismo que `PROD_FILE` —si los dos perfiles abren el mismo archivo, probar un cambio
   escribe en la base de verdad—, `DB_IN_ZIP` **sí** tiene que ser el nombre de
-  producción para que el respaldo cruce entre las dos, y `shouldBackup` con
-  `isDev: true` no respalda ni con todo configurado y pasada la hora. Los tres
+  producción para que el respaldo cruce entre las dos, y **ningún perfil reconoce
+  el nombre de respaldo del otro** —la garantía de la que depende que dev pueda
+  respaldar sin borrar los zips de verdad. Los tres
   protegen decisiones, no código: cada uno se pone rojo si alguien "simplifica" la
   separación en la dirección obvia. Y en `Sidebar.test.tsx`, que el distintivo
   `dev` esté y diga qué base usa: es **toda** la protección del lado del usuario, y

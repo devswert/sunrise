@@ -22,6 +22,10 @@ const CLOSE_REQUESTED: &str = "sunrise://close-requested";
 /// Aviso de que el poller de calendario escribió algo. Lo escuchan las dos
 /// ventanas para invalidar sus vistas (ver `useCalendarListener` en el front).
 pub const CALENDAR_SYNCED: &str = "sunrise://calendar-synced";
+/// Aviso de que el respaldo automático corrió (haya salido bien o mal). Lo
+/// escucha Configs para releer la lista de zips y el último error, que los acaba
+/// de escribir Rust (ver `useBackupListener` en el front).
+pub const BACKUP_RAN: &str = "sunrise://backup-ran";
 
 /// Pide la confirmación de salida, **después** de asegurarse de que se pueda
 /// ver.
@@ -133,6 +137,10 @@ pub fn run() {
             // webview que no se ve no corre sus timers (ver `bell.rs`), y también
             // necesita la DB.
             bell::start_watcher(app.handle().clone());
+
+            // El respaldo automático, por la misma razón que la campana: vivía en
+            // un `setInterval` de `main` y con la ventana tapada llegaba tarde.
+            backup::start_watcher(app.handle().clone());
 
             Ok(())
         })
