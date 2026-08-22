@@ -15,6 +15,55 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.3.0 — 2026-08-22
+
+Si tienes la 0.2.0 esta actualización es obligada: ahí el ritual diario se iba a
+pantalla en blanco al entrar al paso 2, el Backlog no cargaba, y la campana del
+estimado no sonaba mientras la ventana estuviera tapada. Las tres quedan
+arregladas.
+
+Lo nuevo es la vista semana: dibuja tres semanas con scroll horizontal y abre con
+hoy al centro, así reprogramar una tarea a la semana que viene ya no obliga a
+cambiar de vista.
+
+### Detalle
+
+- **El ritual diario y el Backlog volvieron a abrir.** Dos campos que viajaban
+  con un nombre distinto del que declaraba el front (`fromDate` leído como
+  `from`, la clave `to` mandada a un parámetro `to_date`) dejaban el paso 2 del
+  planning en blanco, el Backlog roto, y la bitácora y el cierre de jornada sin
+  datos. Ahora lo vigila un test del contrato de IPC.
+- **La campana la toca Rust, no una ventana.** La decisión vivía en el tick del
+  webview, y un webview tapado no corre sus timers: la campana esperaba a que
+  algo despertara la ventana. Ahora duerme en el proceso nativo y vuelve a leer
+  la base antes de sonar. De paso, subirle el estimado a una tarea ya no la deja
+  muda para siempre.
+- **La vista semana muestra tres semanas** —la anterior, la del ancla y la
+  siguiente— con scroll horizontal, rótulo pegado y días plegables, y al abrir
+  centra hoy en vez de alinear el lunes al borde.
+- **El calendario dejó de bajar todos los feeds a cada cambio de ventana.**
+  Volver a la app sincroniza, pero con un freno; antes cada `focus` golpeaba el
+  feed entero.
+- **⌘Q levanta la ventana antes de preguntar.** Minimizada, el diálogo de salida
+  no se veía y la app parecía colgada con el timer corriendo.
+- **La marca de "ya planificaste hoy" guarda la hora y se puede desmentir.**
+- **Un ajuste manual de tiempo se acredita al día de la tarea**, no al día en que
+  lo escribiste: corregir el lunes las horas del sábado ya no las cuenta en lunes
+  ni las manda a otra semana en el rollup.
+- **Borrar una tarea desde el modal saca la card de la vista.** Era la única
+  mutación que no avisaba, y el gesto se sentía muerto.
+- **El arrastre deja la card donde se suelta.** Reordenar dentro de un mismo día
+  la dejaba un lugar antes.
+- **La fecha de las tareas rescatadas va en el rótulo del grupo** ("Desde el
+  18 ago"), una vez por día, en vez de repetida bajo cada card.
+- **Configs:** dar de alta un canal, el corrector de los campos de texto y el
+  foco de los selects con búsqueda; y una sección Dev Tools que dispara las
+  notificaciones probables para poder verlas sin esperarlas.
+- **El contenido sube a 32px del borde.** Sin barra de título, el respiro de
+  arriba era aire, y el logo arrancaba 4px más abajo que el contenido.
+- **La app distribuida se ve igual que la compilada acá.** CI compila en
+  `macos-26`; con el runner viejo los botones de ventana salían de otro tamaño.
+
 ## v0.2.0 — 2026-08-18
 
 Más espacio para trabajar: el sidebar se colapsa a una barra de iconos con un
