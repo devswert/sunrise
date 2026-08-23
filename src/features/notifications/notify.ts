@@ -15,6 +15,16 @@ export interface NoticeCopy {
    * `notify_alert` (Rust) en vez del plugin.
    */
   action?: string;
+  /**
+   * A dónde lleva el aviso al accionarlo. Viaja de ida y vuelta sin usarse en el
+   * envío: es lo que le permite al front saber **a dónde ir** cuando la respuesta
+   * llega por el evento. Sin él, "apretó el botón" no dice nada.
+   *
+   * Es una ruta y no solo un id porque los tres avisos van a lugares distintos:
+   * la reunión y la campana a Focus con su tarea, el cierre del día al shutdown,
+   * que no tiene tarea.
+   */
+  target?: { route: string; taskId?: number | null };
 }
 
 /**
@@ -46,26 +56,24 @@ export const SYSTEM_SOUND = "NSUserNotificationDefaultSoundName";
 export const SHUTDOWN_NOTICE: NoticeCopy = {
   title: "Hora de cerrar el día",
   body: "Pasa por el shutdown si quieres dejarlo escrito. Si no, queda como borrador.",
+  // **Lleva botón, así que es alerta y no banner**, y eso cambió: antes era un
+  // banner con el argumento de que si te lo pierdes el shutdown sigue ahí. Cierto,
+  // pero el aviso sin botón tampoco llevaba a ninguna parte — había que ir a
+  // buscar la vista a mano, que es exactamente el trabajo que el aviso viene a
+  // ahorrar.
+  action: "Ir al shutdown",
+  target: { route: "/daily-shutdown" },
 };
 
 /**
- * El aviso de "se viene tu próxima tarea".
+ * **El texto del aviso de próxima reunión ya no vive acá: está en `notice::copy`**
+ * (Rust), y se pide con `api.previewMeetingNotice`.
  *
- * Existe antes que su disparador a propósito: el botón "Probar" es lo único que
- * lo muestra hoy. **Cuando se haga Mej.4, tiene que consumir esta función** en
- * vez de escribir su propio texto, o el botón vuelve a mentir.
+ * Se movió porque el que lo manda de verdad es el vigilante de Rust (Mej.4), y
+ * dejar la copia en el front obligaba a escribirlo dos veces: el botón de prueba de
+ * Dev Tools acabaría probando un texto que el aviso real no usa, que es
+ * exactamente lo que esta regla vino a evitar.
  */
-export function nextTaskNotice(title: string, minutes: number): NoticeCopy {
-  return {
-    title: `En ${minutes} min: ${title}`,
-    body: "Ve a Focus si quieres entrar con el timer corriendo.",
-    // Con botón, y por eso **alerta**: este aviso sirve justamente cuando no
-    // estás mirando la pantalla, así que uno que se va solo en cinco segundos no
-    // sirve de nada. El del cierre del día sí puede ser un banner: si te lo
-    // pierdes, el shutdown sigue ahí.
-    action: "Ir a Focus",
-  };
-}
 
 /**
  * Si hay permiso para avisar. `unknown` junta **denegado y sin preguntar**, y no
@@ -124,7 +132,7 @@ export async function notify(copy: NoticeCopy, sound = DEFAULT_SOUND): Promise<N
       // Alerta: por Rust, porque el plugin no manda botones. El comando **no
       // espera** la respuesta —eso bloquearía hasta que alguien mire la
       // pantalla—; llega después por el evento (ver `useNotificationActions`).
-      await api.notifyAlert(copy.title, copy.body, copy.action, sound);
+      await api.notifyAlert(copy.title, copy.body, copy.action, sound, copy.target ?? null);
       return "sent";
     }
     notif.sendNotification({ title: copy.title, body: copy.body, sound });

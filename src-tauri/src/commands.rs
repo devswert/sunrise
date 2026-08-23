@@ -757,6 +757,37 @@ pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
 // un botón de acción, así que este camino habla directo con
 // `mac-notification-sys`, que es la misma librería que el plugin usa por abajo.
 
+/// A dónde lleva un aviso cuando lo accionas.
+///
+/// Es una ruta y no solo un id porque los tres avisos van a lugares distintos: la
+/// reunión y la campana a Focus con su tarea, el cierre del día al shutdown, que no
+/// tiene tarea. Sin la ruta, cada aviso nuevo obligaría a inventar otro campo.
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoticeTarget {
+    pub route: String,
+    pub task_id: Option<i64>,
+}
+
+/// Lo que vuelve al front cuando el usuario responde una alerta: qué apretó **y a
+/// dónde iba ese aviso**. Sin el destino, "apretó el botón" no dice nada.
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoticeResponse {
+    pub action: String,
+    pub route: Option<String>,
+    pub task_id: Option<i64>,
+}
+
+/// El texto de un aviso, para previsualizarlo desde Dev Tools.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoticeCopy {
+    pub title: String,
+    pub body: String,
+    pub action: String,
+}
+
 /// La respuesta del usuario a una alerta. La escucha el front.
 pub const NOTIFICATION_ACTION: &str = "sunrise://notification-action";
 
@@ -866,6 +897,13 @@ pub fn notice_sounds() -> Vec<String> {
     names
 }
 
+/// El sonido de los avisos de sunrise. **Espejo de `DEFAULT_SOUND`** en
+/// `notify.ts`. Es un nombre de archivo sin extensión que macOS busca en las
+/// carpetas `Sounds`; un nombre que no existe **no suena y no falla**.
+pub fn default_sound() -> String {
+    "Blow".to_string()
+}
+
 /// Muestra una alerta con un botón y avisa qué apretó el usuario.
 ///
 /// **No espera acá.** `send()` bloquea el hilo hasta que la persona hace algo
@@ -873,18 +911,28 @@ pub fn notice_sounds() -> Vec<String> {
 /// dentro del comando congelaría la app hasta que alguien mirara la esquina de la
 /// pantalla. Se manda en un hilo aparte y la respuesta vuelve por
 /// `NOTIFICATION_ACTION`, que es un evento y llega a las dos ventanas.
-#[tauri::command]
-pub fn notify_alert(
-    app: tauri::AppHandle,
+///
+/// `target` viaja de ida y vuelta sin usarse acá: es lo que le permite al front
+/// saber **a dónde llevarte** cuando accionas el aviso. Sin él la respuesta solo
+/// decía qué se apretó, no de qué aviso.
+///
+/// **No lleva botón de cerrar.** Lo tenía y no servía para nada: la alerta ya se
+/// saca con el gesto de siempre, y un botón "Cerrar" al lado del botón útil solo
+/// da una forma más de no hacer lo que el aviso propone. Sin él, además, el click
+/// sobre la alerta entera vuelve como `Click` y se puede tratar igual que el botón,
+/// que es lo que la gente hace por instinto.
+pub fn send_alert(
+    app: &tauri::AppHandle,
     title: String,
     body: String,
     action: String,
     sound: String,
-) -> Result<(), String> {
+    target: Option<NoticeTarget>,
+) {
     #[cfg(target_os = "macos")]
     {
         // La identidad ya la fijó el arranque (`claim_notification_identity`).
-
+        let app = app.clone();
         std::thread::spawn(move || {
             use mac_notification_sys::{MainButton, Notification};
 
@@ -893,23 +941,63 @@ pub fn notify_alert(
                 .title(&title)
                 .message(&body)
                 .main_button(MainButton::SingleAction(&action))
-                .close_button("Cerrar")
                 .sound(sound.as_str());
 
             match notification.send() {
                 Ok(response) => {
-                    let _ = app.emit(NOTIFICATION_ACTION, response_label(&response));
+                    let (route, task_id) = match &target {
+                        Some(t) => (Some(t.route.clone()), t.task_id),
+                        None => (None, None),
+                    };
+                    let _ = app.emit(
+                        NOTIFICATION_ACTION,
+                        NoticeResponse {
+                            action: response_label(&response).to_string(),
+                            route,
+                            task_id,
+                        },
+                    );
                 }
                 Err(err) => eprintln!("[sunrise] no se pudo mostrar la alerta: {err}"),
             }
         });
-        Ok(())
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (app, title, body, action, sound);
-        Err("las alertas con botón son solo de macOS".into())
+        let _ = (app, title, body, action, sound, target);
+        eprintln!("[sunrise] las alertas con botón son solo de macOS");
     }
+}
+
+#[tauri::command]
+pub fn notify_alert(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+    action: String,
+    sound: String,
+    target: Option<NoticeTarget>,
+) -> Result<(), String> {
+    if !cfg!(target_os = "macos") {
+        return Err("las alertas con botón son solo de macOS".into());
+    }
+    send_alert(&app, title, body, action, sound, target);
+    Ok(())
+}
+
+/// El texto del aviso de próxima reunión, para que Dev Tools pruebe **el de
+/// verdad**. Vive en `notice.rs`; acá solo se expone.
+#[tauri::command]
+pub fn preview_meeting_notice(title: String, time: String) -> NoticeCopy {
+    let (title, body, action) = crate::notice::copy(&title, &time);
+    NoticeCopy { title, body, action }
+}
+
+/// Lo mismo para el de la campana, que también lo manda Rust (`bell::copy`).
+#[tauri::command]
+pub fn preview_bell_notice(title: String, minutes: i64) -> NoticeCopy {
+    let (title, body, action) = crate::bell::copy(&title, minutes);
+    NoticeCopy { title, body, action }
 }
 
 /// Qué apretó el usuario, como texto para el front. `action` es el botón nuestro;

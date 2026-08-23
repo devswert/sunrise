@@ -7,6 +7,7 @@ import { formatMinutes, parseDuration } from "../../lib/capacity";
 import { Popover } from "../../components/Popover";
 import { Switch } from "../../components/Switch";
 import { FeedsCard } from "../calendar/FeedsCard";
+import { NotificationsCard } from "../notifications/NotificationsCard";
 import { BackupCard } from "../backup/BackupCard";
 import { DevToolsCard } from "../devtools/DevToolsCard";
 import { TABS, type TabId, sectionIcon, visibleTabs } from "./secciones";
@@ -913,6 +914,7 @@ export function SettingsView() {
         <CalendariosCard />
         <ChannelsCard />
         <ShortcutsCard />
+        <NotificationsCard />
         <BackupCard />
         {/* Solo en dev, y con la misma condición que filtra su tab. */}
         {profile?.dev && <DevToolsCard />}

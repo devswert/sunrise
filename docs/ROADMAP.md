@@ -656,10 +656,9 @@ selector nativo de carpeta y de archivo (`open`). **Los diálogos de confirmaci�
 son React**, como el de ⌘Q: el plugin no se usa para eso.
 
 > **Verificado en la app**: el selector abre el Finder (el permiso
-> `dialog:allow-open` alcanzaba) y **restaurar funciona de verdad**, que son las
-> dos que podían salir mal en silencio. Siguen sin comprobar las dos que dependen
-> de esperar: que el respaldo aparezca en un Drive real y que el automático se
-> dispare a la hora.
+> `dialog:allow-open` alcanzaba), **restaurar funciona de verdad** —las dos que
+> podían salir mal en silencio— y **el automático se dispara a la hora** (Mej.27).
+> El zip en un Drive real quedó fuera de alcance: es del sistema de archivos.
 
 ### 4.2 ✅ Marca e inicio automático — hecho
 
@@ -1237,55 +1236,98 @@ total y el modal muestra el reparto por día, ver
 
 </details>
 
-### Mej.4 🔵 Aviso nativo de "se viene tu próxima tarea"
+### Mej.4 ✅ Aviso nativo de "se viene tu próxima reunión" — hecho
 
-Hoy la app sabe a qué hora empieza cada reunión (`event_start`) y no hace nada
-con eso: hay que estar mirando la pantalla para no llegar tarde.
+La app sabía a qué hora empieza cada reunión y no hacía nada con eso. Ahora avisa
+**5 minutos antes** (configurable), con un botón que lleva a Focus con esa tarea.
 
-**Va como notificación nativa, no como toast in-app** (cambio de decisión, ver
-abajo): **5 minutos antes** de una tarea con hora, un aviso del sistema que diga
-cuál viene. Al hacer click debería entrar a **Focus con esa tarea**, donde ya está
-el botón de play y el de entrar a la reunión.
+**Lo manda Rust** (`notice.rs`), tercer vigilante después de la campana y el
+respaldo, y acá la invariante I6 es la más literal de las tres: el caso que este
+aviso cubre es estar en otra ventana, y un webview que no se ve no corre sus timers.
+Detalle en SPECS §4.26.
 
-> **Por qué nativa y no un toast.** Un toast solo sirve si estás mirando la app, y
-> justo el caso que importa es el contrario: estás en otra ventana y se te viene
-> el Meet encima. M3.6 ya montó el camino (`useShutdownReminder` + el plugin de
-> notificaciones), así que el costo bajó a casi nada. La decisión de M2 de **no**
-> notificar la campana del estimado sigue en pie y no se contradice: ahí el sonido
-> alcanza y una notificación por tarea se apila (SPECS §4.6). Acá el aviso es uno
-> por reunión y es justamente para cuando no estás mirando.
+Cinco cosas que salieron de escribirlo:
 
-Cosas a resolver, que no son obvias:
+- **No se pone al día, y por eso la ventana tiene borde de arriba.** `due` exige
+  que la reunión **todavía no haya empezado**: un "en 5 minutos" a las 09:30 para
+  una reunión de 09:00 es basura, y ese mismo borde es lo que evita que un Mac
+  recién despertado mande seis avisos viejos de golpe. No hizo falta un número de
+  gracia arbitrario — la condición útil es "no empezó".
+- **La marca guarda la hora, no un booleano.** `tasks.notified_for` (migración 11)
+  anota **sobre qué hora** avisó. Si la sincronización mueve la reunión de 15:00 a
+  16:00 es otra promesa y vuelve a avisar; con un flag la tarea quedaba muda para
+  siempre, que es exactamente el bug que tuvo la campana con su llave. Va en `tasks`
+  y no en `settings` porque esto necesita un conjunto de ids, no una marca.
+- **El texto se movió a Rust.** Estaba en `notify.ts` con el resto de los avisos,
+  y el que lo manda es el vigilante: dejarlo en el front obligaba a escribirlo dos
+  veces y el botón de prueba de Dev Tools acabaría probando un texto que el aviso
+  real no usa. Dev Tools lo pide con `preview_meeting_notice`, así que prueba el de
+  verdad.
+- **Solo avisa de reuniones del calendario**, y eso lo cachó el dev leyendo el
+  plan: el ítem hablaba de "una tarea con hora", pero **nada de la UI escribe
+  `scheduled_time`**. La columna existe de punta a punta y el único que la llena es
+  el import. Ponerle hora a una tarea a mano es otro ítem.
+- **La respuesta necesitaba el id de la tarea.** `notify_alert` emitía solo qué se
+  apretó, así que "apretó el botón" no decía a dónde ir. Ahora el evento es
+  `{ action, taskId }` y el id viaja de ida y vuelta sin usarse en el envío.
 
-- **Cuándo dispararlo, y ojo dónde.** El aviso depende del reloj, no de los
-  datos, así que necesita su propio tick — pero **no lo cuelgues de un
-  `setInterval` del front**: eso es exactamente lo que falló con la campana
-  (Mej.26). Un webview que no se ve no corre sus timers, y el caso que este aviso
-  quiere cubrir es justamente "estoy en otra ventana". El patrón a copiar es
-  `bell::start_watcher`, en Rust, que además ya resuelve la parte de "una sola
-  vez" sin tocar `settings`.
-- **Una sola vez por tarea, y que reiniciar no vuelva a avisar todas.** La campana
-  del estimado guarda `belledEntryId` en memoria; acá hace falta que sobreviva al
-  reinicio. Ojo con la tentación de una fila por tarea en `settings`: el patrón de
-  `planned_at` / `shutdown_notified_on` guarda **una** marca, y para esto haría
-  falta un conjunto de ids — probablemente una tabla o una columna en `tasks`.
-- **Una sola ventana avisa** (I6). `useShutdownReminder` lo resuelve montándose en
-  `Shell`, que solo existe en `main`; este puede hacer lo mismo.
-- **El click tiene que llevar a Focus.** Eso no lo cubre M3.6: el aviso del cierre
-  no navega a ninguna parte. Hace falta escuchar la acción de la notificación desde
-  Rust y emitir un evento como el de `goto` del taxímetro.
-- **El aviso ya está construido: falta el disparador y la navegación.** El
-  mecanismo se hizo junto con Mej.16 (SPECS §4.25): `nextTaskNotice` tiene el
-  texto, lleva botón —"Ir a Focus"— y por eso **queda pegado en pantalla** como el
-  aviso de reunión del Calendario; suena; y viaja por `notify_alert`, no por el
-  plugin, que no sabe mandar botones. Este ítem tiene que **consumir eso**, no
-  reescribirlo: si escribe su propio texto, el botón de prueba de Dev Tools queda
-  probando un aviso que no existe.
-- **El click ya tiene por dónde llegar**: la respuesta vuelve por
-  `useNotificationActions` con `action | click | close | reply | none`. Lo que
-  falta es que `action` navegue a Focus con esa tarea. **Engánchate ahí**, no abras
-  otro camino.
-- Y de paso: con Mej.16 hecha, esto ya no se prueba esperando una reunión.
+Y lo que **no** se puede arreglar en código, que era la duda del dev: que la alerta
+se quede en pantalla lo decide el estilo de notificación del usuario. El default
+documentado de macOS para cualquier app es *banner*, y la única clave que pide otra
+cosa (`NSUserNotificationAlertStyle`) está reportada como inefectiva. Calendar "solo
+funciona" porque es de Apple: su app viene con el estilo alerta de fábrica y eso no
+lo puede declarar una app de terceros. Así que la app lo **dice**, en la sección
+nueva.
+
+**De paso salió Configs → Notificaciones** (§4.27), que el dev propuso mejor que el
+plan: en vez de enterrar el ajuste en General, una sección con un switch por aviso y
+la nota del ajuste del sistema con su botón.
+
+Y una segunda tanda, toda de cosas que el dev vio en la app y no se veían escribiendo
+el código:
+
+- **Los tres avisos son alertas y el click lleva a donde prometen.** El del cierre
+  del día era un banner sin botón —"si te lo pierdes, el shutdown sigue ahí"—, y era
+  cierto pero incompleto: tampoco llevaba a ninguna parte. Ahora va al shutdown. Por
+  eso la respuesta pasó de `taskId` a `{ route, taskId }`: los tres avisos van a
+  lugares distintos y sin la ruta cada aviso nuevo pedía otro campo.
+- **Se fue el botón "Cerrar" de la alerta**, y el click sobre la alerta entera hace
+  lo mismo que el botón. El "Cerrar" no servía para nada: la alerta ya se saca con el
+  gesto de siempre, y un botón para no hacer nada al lado del botón útil solo da una
+  forma más de ignorar el aviso.
+- **La notificación de la campana es opt-in y el switch no apaga el sonido.** Es la
+  decisión de M2 respetada: la campana no notifica, así que esto se prende a mano.
+  Lo que gana quien lo prende es que el click lleva a Focus con la tarea que estaba
+  corriendo.
+- **Un bug de StrictMode**: `focusTaskId` se consumía dentro de `load`, y en dev
+  React monta los efectos dos veces, así que la primera pasada lo gastaba y la
+  segunda reseteaba el índice. El aviso abría Focus **sin mover la tarea**, que fue
+  el síntoma reportado. Ahora se lee como valor y se limpia en un efecto aparte,
+  declarado después del salto al timer para que gane.
+- **El click en la tab de Notificaciones no hacía nada**: la sección necesita
+  `id="set-<tab>"` y `data-section="<tab>"`, y tenía solo el nombre pelado. La card
+  además no usaba la estructura de las otras (`set-card__head` con `h2` y `p`), así
+  que el título se veía distinto.
+- **El banner de la nota era rosa**, que es el color de "algo salió mal". Una nota
+  permanente en rosa hace leer la sección como si estuviera roto: ahora es
+  `resp-nota`, en el tono de las superficies.
+- **El primer switch se llama "Evento de tu Calendar importado"** y no "reunión":
+  eso es literalmente lo que cubre, y llamarlo reunión prometía también las tareas
+  con hora, que no existen.
+- **El texto del aviso dejó de decir los minutos que faltan.** Lo cachó el dev: el
+  aviso puede salir en cualquier punto de su ventana —app cerrada, máquina dormida,
+  la sync moviendo la reunión—, así que "en 5 min" es un número que se puede
+  equivocar. Ahora el título dice **"Cambio de Focus a las 15:00"** —la hora del
+  evento no depende de cuándo llegue el aviso— y el cuerpo **"Sigue Weekly de
+  equipo. Toca para verla."**. El de la campana quedó en la misma forma. Dos
+  detalles del texto: *"Sigue X"* y no *"Toca X"*, porque el cierre ya usa *toca*
+  como "púlsalo" y la misma palabra con dos sentidos obliga a releer; y el cierre no
+  dice "en sunrise", que macOS ya pone arriba del aviso.
+- **La notificación de la campana no tenía botón de prueba**, y su texto estaba
+  escrito suelto dentro del loop de `bell.rs`. Salió de una pregunta del dev —"¿los
+  botones de test usan los mismos textos?"—: dos de tres sí, ese no. Ahora el texto
+  vive en `bell::copy` y Dev Tools lo pide con `preview_bell_notice`, así que los
+  tres botones mandan el de verdad.
 
 ### Mej.16 ✅ No había forma de probar las notificaciones sin esperar la hora — hecho
 
@@ -2403,13 +2445,18 @@ Los pasos 1–5 ya deberían pasar; 6–10 son de M3/M4.
 
 **Confirmado por el dev en la app instalada** (agosto 2026): el selector de carpeta
 del respaldo, una restauración de verdad, el icono en el Dock, la instalación del
-`.dmg` y el modal "Lo nuevo" al actualizar. Queda sin comprobar lo que exige
-esperar o mirar otra máquina: el respaldo automático a su hora, el zip en un Drive
-real, y la casilla de inicio automático registrando el LaunchAgent.
+`.dmg`, el modal "Lo nuevo" al actualizar y **el respaldo automático disparándose a
+su hora** (Mej.27: dos zips a la hora configurada, y los de producción intactos al
+lado — la separación de perfiles funcionando fuera de los tests).
+
+Queda **una** sin comprobar: la casilla de inicio automático registrando el
+LaunchAgent. El zip en un Drive real se sacó de la lista: es del sistema de
+archivos, no de la app — sunrise escribe en la carpeta que le den y quién la
+sincroniza no es asunto suyo.
 
 1. `pnpm tauri dev` levanta app + flotante; `pnpm test:all` en verde.
-2. Categorías de 2 niveles con color pastel; planned/actual; DnD; anidar en
-   objetivo; modal con historial.
+2. Categorías de 2 niveles con su color de la paleta; planned/actual; DnD; anidar
+   en objetivo; modal con historial.
 3. Tarea incompleta ayer aparece hoy (carry-over).
 4. Daily planning: arrastradas arriba, rail con las meets, capacidad
    gris→amarillo→rojo; "Empezar el día" → confetti + semana. (El almuerzo no es

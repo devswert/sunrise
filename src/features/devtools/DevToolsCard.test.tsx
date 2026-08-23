@@ -32,7 +32,7 @@ describe("Dev Tools · notificaciones", () => {
 
     expect(await screen.findByText(/existen solo en la app/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cierre del día" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Próxima tarea" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Próxima reunión" })).toBeDisabled();
   });
 
   it("sin marca del día no hay nada que borrar", async () => {

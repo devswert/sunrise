@@ -1,4 +1,5 @@
 import {
+  BellRing,
   CalendarDays,
   DatabaseBackup,
   FlaskConical,
@@ -30,6 +31,8 @@ export const TABS = [
   // Los canales son el `#tag` de las tarjetas, así que el numeral.
   { id: "canales", label: "Canales", icon: Hash },
   { id: "atajos", label: "Atajos", icon: Keyboard },
+  // Antes de Respaldo: se visita más que él y menos que el resto.
+  { id: "notificaciones", label: "Notificaciones", icon: BellRing },
   // Al final: es la sección que menos se visita y la única que puede destruir
   // datos, así que no debe quedar en el camino de nadie.
   { id: "respaldo", label: "Respaldo", icon: DatabaseBackup },

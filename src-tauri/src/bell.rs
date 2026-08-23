@@ -149,6 +149,22 @@ pub fn next_wake(
     Duration::from_secs(falta as u64).clamp(MIN_ESPERA, MAX_ESPERA)
 }
 
+/// El texto de la notificación de la campana, **y vive acá y solo acá**.
+///
+/// Misma razón que `notice::copy`: el que la manda es este vigilante, así que una
+/// copia en el front acabaría probando un aviso que no existe. Dev Tools lo pide con
+/// `preview_bell_notice`, así que su botón prueba **este**.
+///
+/// Misma forma que el aviso de reunión (§4.26): el título dice qué clase de cosa es,
+/// el cuerpo cuál, y cierra con el mismo gesto para que se aprenda una vez.
+pub fn copy(title: &str, estimated: i64) -> (String, String, String) {
+    (
+        "Se acabó el tiempo estimado".to_string(),
+        format!("Llevas los {estimated} min de {title}. {}", crate::notice::HINT),
+        "Ir a Focus".to_string(),
+    )
+}
+
 /// Toca la campana: el audio propio si dejaste uno en el directorio de datos de
 /// la app (`bell.wav|mp3|ogg|flac`), y si no la síntesis interna.
 ///
@@ -167,6 +183,38 @@ fn ring(app: &AppHandle) -> anyhow::Result<()> {
 /// Vive aparte del loop por eso mismo: sostener el `Mutex` de la DB mientras se
 /// decide algo que no la necesita —y mientras suena la campana— es la forma de
 /// trabar al resto de la app.
+/// La clave de `settings` que agrega **una notificación** al sonido de la campana.
+/// Espeja `SettingKey.NOTICE_BELL`.
+const KEY_NOTICE: &str = "notice_bell";
+
+/// Si además del sonido hay que mandar una notificación clickeable.
+///
+/// **Apagada por defecto**, al revés que los otros dos switches, y por la decisión
+/// de M2: la campana **no** notifica —el sonido alcanza y una notificación por tarea
+/// se apila (§4.6)—, así que esto es opt-in. Lo que gana quien la prende es que el
+/// click lleva a Focus con la tarea que está corriendo.
+///
+/// **El sonido no depende de esto.** Es la campana, no el aviso: apagar la
+/// notificación no puede dejar al timer sin su campanada, o el switch mentiría
+/// sobre lo que apaga.
+fn notice_enabled(conn: &rusqlite::Connection) -> bool {
+    repo::get_setting(conn, KEY_NOTICE)
+        .ok()
+        .flatten()
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false)
+}
+
+/// Si la notificación de la campana está encendida. Lock aparte y corto.
+fn notice_on(app: &AppHandle) -> bool {
+    let db = app.state::<Db>();
+    let conn = match db.0.lock() {
+        Ok(conn) => conn,
+        Err(_) => return false,
+    };
+    notice_enabled(&conn)
+}
+
 fn read_active(app: &AppHandle) -> Option<ActiveTimer> {
     let db = app.state::<Db>();
     let conn = match db.0.lock() {
@@ -235,6 +283,22 @@ pub fn start_watcher(app: AppHandle) {
             );
             if let Err(e) = ring(&app) {
                 eprintln!("[sunrise] campana: no pudo sonar: {e}");
+            }
+            // Y la notificación, si la prendieron: el sonido dice "se acabó" y la
+            // notificación dice **de qué tarea** y te lleva a ella.
+            if notice_on(&app) {
+                let (titulo, cuerpo, boton) = copy(&active.title, estimated);
+                crate::commands::send_alert(
+                    &app,
+                    titulo,
+                    cuerpo,
+                    boton,
+                    crate::commands::default_sound(),
+                    Some(crate::commands::NoticeTarget {
+                        route: "/focus".into(),
+                        task_id: Some(active.task_id),
+                    }),
+                );
             }
         }
     });
@@ -375,6 +439,16 @@ mod tests {
         let ahora = instante("2026-08-21T13:00:00+00:00");
         assert_eq!(elapsed_today(600, "ayer por la tarde", medianoche, ahora), 600);
         assert!(!is_due(&timer("ayer", 600, Some(30)), medianoche, ahora, None));
+    }
+
+    #[test]
+    fn el_texto_de_la_notificacion_tiene_la_misma_forma_que_el_de_la_reunion() {
+        // Título: qué clase de cosa es. Cuerpo: cuál, y el mismo cierre. Si los dos
+        // avisos se leyeran distinto, el gesto habría que aprenderlo dos veces.
+        let (t, b, a) = copy("Weekly de equipo", 90);
+        assert_eq!(t, "Se acabó el tiempo estimado");
+        assert_eq!(b, "Llevas los 90 min de Weekly de equipo. Toca para verla.");
+        assert_eq!(a, "Ir a Focus");
     }
 
     #[test]

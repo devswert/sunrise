@@ -11,7 +11,6 @@ import {
   SHUTDOWN_NOTICE,
   SYSTEM_SOUND,
   askPermission,
-  nextTaskNotice,
   notify,
   openNotificationSettings,
   permission,
@@ -19,7 +18,11 @@ import {
   type NoticeCopy,
   type NotifyResult,
 } from "../notifications/notify";
-import { useNotificationActions, type NoticeAction } from "../notifications/useNotificationActions";
+import {
+  useNotificationActions,
+  type NoticeAction,
+  type NoticeResponse,
+} from "../notifications/useNotificationActions";
 
 const SectionIcon = sectionIcon("dev-tools");
 
@@ -32,7 +35,7 @@ const SOUND_OPTIONS = (sounds: string[]): SearchOption[] => [
 
 /** Qué hizo el usuario con una alerta, en palabras. */
 const ACTION_NOTE: Record<NoticeAction, string> = {
-  action: "Apretaste el botón de la alerta. Con Mej.4, eso va a llevar a Focus.",
+  action: "Apretaste el botón de la alerta. En un aviso de verdad, eso lleva a Focus.",
   click: "Le hiciste click al aviso mismo, no al botón.",
   close: "La cerraste sin accionarla.",
   reply: "Llegó una respuesta escrita, que este aviso no pide.",
@@ -110,7 +113,7 @@ function NotificationTools() {
     setPerm(await permission());
   }, []);
   // La respuesta a una alerta llega por evento, no como retorno del comando.
-  useNotificationActions(useCallback((action: NoticeAction) => setNotice(ACTION_NOTE[action]), []));
+  useNotificationActions(useCallback((r: NoticeResponse) => setNotice(ACTION_NOTE[r.action]), []));
   useEffect(() => {
     void refresh();
     void api.noticeSounds().then(setSounds);
@@ -217,10 +220,27 @@ function NotificationTools() {
               type="button"
               className="resp-btn"
               disabled={outsideApp}
-              onClick={() => void sendTest(nextTaskNotice("Weekly de equipo", 5))}
+              onClick={() =>
+                void api
+                  .previewMeetingNotice("Weekly de equipo", "15:00")
+                  .then((c) => sendTest({ ...c, target: { route: "/focus" } }))
+              }
             >
               <Send size={13} aria-hidden />
-              <span className="resp-btn__texto">Próxima tarea</span>
+              <span className="resp-btn__texto">Próxima reunión</span>
+            </button>
+            <button
+              type="button"
+              className="resp-btn"
+              disabled={outsideApp}
+              onClick={() =>
+                void api
+                  .previewBellNotice("Weekly de equipo", 90)
+                  .then((c) => sendTest({ ...c, target: { route: "/focus" } }))
+              }
+            >
+              <Send size={13} aria-hidden />
+              <span className="resp-btn__texto">Se acabó el tiempo</span>
             </button>
           </div>
         </div>

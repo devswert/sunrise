@@ -22,6 +22,7 @@ import type {
   TaskPatch,
 } from "./types";
 import { mock } from "./mockDb";
+import type { NoticeTarget } from "./types";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -171,10 +172,40 @@ export const api = {
    * `sunrise://notification-action`. El resto de los avisos los manda el plugin
    * de notificaciones desde el front (`features/notifications/notify.ts`).
    */
-  notifyAlert: (title: string, body: string, action: string, sound: string) =>
+  notifyAlert: (
+    title: string,
+    body: string,
+    action: string,
+    sound: string,
+    target: NoticeTarget | null = null,
+  ) =>
     isTauri()
-      ? invoke<void>("notify_alert", { title, body, action, sound })
-      : mock.notifyAlert(title, body, action, sound),
+      ? invoke<void>("notify_alert", { title, body, action, sound, target })
+      : mock.notifyAlert(title, body, action, sound, target),
+
+  /**
+   * El texto del aviso de próxima reunión, tal como lo manda Rust.
+   *
+   * Existe para que el botón de prueba de Dev Tools mande **el de verdad**: el
+   * texto vive en `notice::copy` porque el que lo manda es el vigilante, y una
+   * copia en el front acabaría probando un aviso que no existe.
+   */
+  previewMeetingNotice: (title: string, time: string) =>
+    isTauri()
+      ? invoke<{ title: string; body: string; action: string }>("preview_meeting_notice", {
+          title,
+          time,
+        })
+      : mock.previewMeetingNotice(title, time),
+
+  /** Lo mismo para el de la campana, que también lo manda Rust (`bell::copy`). */
+  previewBellNotice: (title: string, minutes: number) =>
+    isTauri()
+      ? invoke<{ title: string; body: string; action: string }>("preview_bell_notice", {
+          title,
+          minutes,
+        })
+      : mock.previewBellNotice(title, minutes),
 
   /** Los sonidos que macOS puede tocar, del sistema y de `~/Library/Sounds`. */
   noticeSounds: () => (isTauri() ? invoke<string[]>("notice_sounds") : mock.noticeSounds()),

@@ -37,6 +37,8 @@ export function FocusView() {
   const timer = useTimer();
   const dataVersion = useAppStore((s) => s.dataVersion);
   const bumpData = useAppStore((s) => s.bumpData);
+  const focusTaskId = useAppStore((s) => s.focusTaskId);
+  const clearFocusTask = useAppStore((s) => s.clearFocusTask);
   const [picker, setPicker] = useState<null | "actual" | "planned" | "canal">(null);
   const actualRef = useRef<HTMLDivElement>(null);
   const plannedRef = useRef<HTMLDivElement>(null);
@@ -86,6 +88,30 @@ export function FocusView() {
       syncedFor.current = activeTaskId;
     }
   }, [activeTaskId, queue]);
+
+  /**
+   * Abre en la tarea que pidió un aviso del sistema.
+   *
+   * **Va en su propio efecto y no dentro de `load`**, y esa es la parte que
+   * importa: en dev React monta los efectos dos veces, así que consumir el id
+   * dentro de la carga lo gastaba en la primera pasada y la segunda reseteaba el
+   * índice. El síntoma era exacto: el aviso abría Focus sin mover la tarea.
+   *
+   * **Va declarado después del salto al timer, y por eso gana**: React corre los
+   * efectos en orden, así que puesto antes el timer lo pisaba en el primer montaje.
+   * Y tiene que ganar: un aviso que acabas de accionar es más explícito que el
+   * timer que venía corriendo.
+   *
+   * Una tarea que no está en la cola se ignora en silencio —la completaste, la
+   * borraron, era de otro día— pero la marca se limpia igual: el aviso ya cumplió y
+   * dejarla puesta movería la vista en la próxima carga.
+   */
+  useEffect(() => {
+    if (focusTaskId == null || queue.length === 0) return;
+    const i = queue.findIndex((t) => t.id === focusTaskId);
+    if (i >= 0) setIndex(i);
+    clearFocusTask();
+  }, [queue, focusTaskId, clearFocusTask]);
 
   const current = queue[index] ?? null;
 

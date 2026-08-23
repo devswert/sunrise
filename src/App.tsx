@@ -26,6 +26,7 @@ import { useCalendarListener } from "./features/calendar/useCalendarListener";
 import { useCalendarSyncRuntime } from "./lib/calendarSync";
 import { useShutdownReminder } from "./features/shutdown/useShutdownReminder";
 import { useBackupListener } from "./features/backup/useBackupListener";
+import { useNoticeNavigation } from "./features/notifications/useNoticeNavigation";
 import "./features/week/week.css";
 import "./features/updates/updates.css";
 import "./features/tasks/task-modal.css";
@@ -63,6 +64,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   // El respaldo automático **corre en Rust** (`backup.rs`), igual que la campana:
   // acá solo se escucha su aviso para releer los ajustes que escribió.
   useBackupListener();
+  // Los avisos los manda Rust; acá solo se escucha la respuesta para navegar a
+  // donde prometían. En `Shell` porque el evento llega a las dos ventanas y el
+  // taxímetro no tiene esas vistas.
+  useNoticeNavigation();
   // Sondea el updater cada 4 h y detecta si esta sesión viene de actualizarse.
   // También una sola ventana: dos serían dos consultas por intervalo.
   useUpdateRuntime();

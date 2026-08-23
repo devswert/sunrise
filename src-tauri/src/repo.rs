@@ -443,6 +443,55 @@ pub fn focus_queue(conn: &Connection, date: &str, now_hhmm: &str) -> Result<Vec<
     rows
 }
 
+/// Una reunión del día que todavía no empezó, para el aviso de próxima reunión.
+///
+/// Es un tipo propio y no `Task` porque `notified_for` **no viaja al front**: es
+/// estado del vigilante y nadie más lo necesita. Meterlo en `TASK_COLS` lo pondría
+/// en todos los listados para nada.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Meeting {
+    pub task_id: i64,
+    pub title: String,
+    /// `HH:mm` local, de `scheduled_time`.
+    pub time: String,
+    /// La hora sobre la que ya se avisó, si se avisó.
+    pub notified_for: Option<String>,
+}
+
+/// Las reuniones de un día que **tienen hora y siguen pendientes**, de la más
+/// temprana a la más tarde.
+///
+/// `source = 'CALENDAR'` a propósito: hoy **nada de la UI escribe
+/// `scheduled_time`** —solo lo llena el import del calendario—, así que el aviso
+/// es de reuniones sincronizadas y no de tareas en general. El día que exista un
+/// selector de hora para una tarea manual, este filtro es lo que hay que aflojar.
+pub fn meetings_for_date(conn: &Connection, date: &str) -> Result<Vec<Meeting>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, scheduled_time, notified_for FROM tasks
+         WHERE source_state = 'ACTIVE' AND status = 'TODO' AND source = 'CALENDAR'
+           AND scheduled_date = ?1 AND scheduled_time IS NOT NULL
+         ORDER BY scheduled_time, id",
+    )?;
+    let rows = stmt.query_map([date], |r| {
+        Ok(Meeting {
+            task_id: r.get(0)?,
+            title: r.get(1)?,
+            time: r.get(2)?,
+            notified_for: r.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Deja anotado que se avisó de esta reunión **a esta hora**.
+pub fn mark_notified(conn: &Connection, task_id: i64, time: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET notified_for = ?2 WHERE id = ?1",
+        params![task_id, time],
+    )?;
+    Ok(())
+}
+
 pub fn list_backlog(conn: &Connection) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {TASK_COLS} FROM tasks

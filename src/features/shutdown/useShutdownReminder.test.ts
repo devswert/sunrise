@@ -23,4 +23,5 @@ describe("markAfter", () => {
   it("no marca el día fuera de la app, donde no hay avisos", () => {
     expect(markAfter("unavailable")).toBe(false);
   });
+
 });

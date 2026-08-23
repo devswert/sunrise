@@ -120,4 +120,19 @@ describe("tocaAvisarCierre", () => {
   it("no avisa si ya cerraste el día", () => {
     expect(shouldRemindShutdown({ ...base, nowHhmm: "19:00", alreadyClosed: true })).toBe(false);
   });
+
+  it("apagado desde Configs no avisa, aunque la hora haya pasado", () => {
+    const values = { [SettingKey.NOTICE_SHUTDOWN]: "0" };
+    expect(shouldRemindShutdown({ ...base, nowHhmm: "19:00", values })).toBe(false);
+  });
+
+  it("sin la clave del switch sí avisa: este viene encendido de fábrica", () => {
+    // Existía antes de que hubiera dónde apagarlo, así que una clave que falta no
+    // puede significar que se apagó solo. Y con basura tampoco: no se inventa una
+    // decisión, se cae en el default de la clave.
+    expect(shouldRemindShutdown({ ...base, nowHhmm: "19:00", values: {} })).toBe(true);
+    expect(
+      shouldRemindShutdown({ ...base, nowHhmm: "19:00", values: { [SettingKey.NOTICE_SHUTDOWN]: "sí" } }),
+    ).toBe(true);
+  });
 });

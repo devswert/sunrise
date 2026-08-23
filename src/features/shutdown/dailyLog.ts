@@ -6,7 +6,7 @@
  * cuándo toca avisar.
  */
 import type { LogDay, DoneTask } from "../../lib/types";
-import { SettingKey, type SettingsMap } from "../../lib/settings";
+import { SettingKey, noticeOn, type SettingsMap } from "../../lib/settings";
 
 /** Un día sin nada: ni trabajo, ni tareas cerradas, ni nota, ni cierre. */
 export function isEmpty(d: LogDay): boolean {
@@ -81,8 +81,11 @@ export function segmentSeconds(
 /**
  * Si toca avisar que es hora de cerrar el día.
  *
- * Tres condiciones, y las tres importan:
+ * Cuatro condiciones, y las cuatro importan:
  *
+ * - **El aviso está encendido** (`notice_shutdown`, Configs → Notificaciones). Una
+ *   clave ausente es encendida: el aviso existía antes de que hubiera dónde
+ *   apagarlo.
  * - **Ya pasó `work_end`** (la hora de la jornada, de `settings` — nunca una hora
  *   hardcodeada: el rail ya usa ese mismo ajuste).
  * - **No se avisó todavía hoy.** El guardado es una fecha y no un booleano, por lo
@@ -98,6 +101,7 @@ export function shouldRemindShutdown(options: {
   alreadyClosed: boolean;
 }): boolean {
   const { nowHhmm, workEnd, values, today, alreadyClosed } = options;
+  if (!noticeOn(values, SettingKey.NOTICE_SHUTDOWN)) return false;
   if (alreadyClosed) return false;
   if (values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === today) return false;
   // Comparación de strings `HH:mm`, que es lexicográfica y por eso funciona.

@@ -59,6 +59,7 @@
 }
 
 .resp-alerta,
+.resp-nota,
 .resp-ok {
   display: flex;
   align-items: flex-start;
@@ -77,7 +78,21 @@
   background: color-mix(in srgb, var(--mint) 26%, transparent);
   color: var(--mint-ink);
 }
+/* Informa, no alarma. `resp-alerta` es rosa porque es el color de "algo salió
+   mal"; una nota permanente en rosa hace leer la sección como si estuviera roto.
+   Va en el tono de las superficies, con el ink normal. */
+.resp-nota {
+  background: var(--surface-sunken);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.resp-nota strong,
+.resp-nota em {
+  color: var(--ink);
+}
+
 .resp-alerta svg,
+.resp-nota svg,
 .resp-ok svg {
   flex: 0 0 auto;
   margin-top: 1px;

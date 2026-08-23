@@ -6,6 +6,7 @@ mod calendar;
 mod commands;
 mod db;
 mod models;
+mod notice;
 mod repo;
 mod sound;
 
@@ -142,6 +143,10 @@ pub fn run() {
             // un `setInterval` de `main` y con la ventana tapada llegaba tarde.
             backup::start_watcher(app.handle().clone());
 
+            // El aviso de próxima reunión, por lo mismo (I6): el caso que cubre es
+            // justamente "estoy en otra ventana".
+            notice::start_watcher(app.handle().clone());
+
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -216,6 +221,8 @@ pub fn run() {
             commands::sync_calendar_feeds,
             // avisos del sistema con botón (el resto los manda el plugin)
             commands::notify_alert,
+            commands::preview_meeting_notice,
+            commands::preview_bell_notice,
             commands::notification_identity,
             commands::notice_sounds,
             commands::open_notification_settings,

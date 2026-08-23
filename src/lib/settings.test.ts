@@ -5,6 +5,8 @@ import {
   capacityWarnRatio,
   collapsedWeekdays,
   dailyCapacityMinutes,
+  noticeMeetingMinutes,
+  noticeOn,
   planMark,
   workHours,
 } from "./settings";
@@ -218,3 +220,40 @@ describe("useSettingsStore · round-trip por ipc/mockDb", () => {
     expect(dailyCapacityMinutes(useSettingsStore.getState().values)).toBe(300);
   });
 });
+
+/**
+ * Los ajustes de Notificaciones. **Una clave ausente es encendida**, y eso no es
+ * un default cualquiera: los tres avisos ya andaban antes de que hubiera dónde
+ * apagarlos, así que leer "falta la clave" como apagado los habría silenciado a
+ * todos en la actualización que trajo la sección.
+ */
+describe("avisos", () => {
+  it("el del cierre viene encendido: ya andaba antes de que hubiera dónde apagarlo", () => {
+    expect(noticeOn({}, SettingKey.NOTICE_SHUTDOWN)).toBe(true);
+    expect(noticeOn({ [SettingKey.NOTICE_SHUTDOWN]: "0" }, SettingKey.NOTICE_SHUTDOWN)).toBe(false);
+  });
+
+  it("la notificación de la campana viene apagada: es opt-in por la decisión de M2", () => {
+    expect(noticeOn({}, SettingKey.NOTICE_BELL)).toBe(false);
+    expect(noticeOn({ [SettingKey.NOTICE_BELL]: "1" }, SettingKey.NOTICE_BELL)).toBe(true);
+  });
+
+  it("un valor que no se entiende cae en el default de su clave, no en uno solo", () => {
+    // Con basura, inventar una decisión es peor que quedarse en lo de fábrica — y
+    // "lo de fábrica" no es lo mismo para los dos.
+    for (const raw of ["", "sí", "true"]) {
+      expect(noticeOn({ [SettingKey.NOTICE_SHUTDOWN]: raw }, SettingKey.NOTICE_SHUTDOWN)).toBe(true);
+      expect(noticeOn({ [SettingKey.NOTICE_BELL]: raw }, SettingKey.NOTICE_BELL)).toBe(false);
+    }
+  });
+
+  it("los minutos del aviso de reunión caen al default y 0 es apagado", () => {
+    expect(noticeMeetingMinutes({})).toBe(5);
+    expect(noticeMeetingMinutes({ [SettingKey.NOTICE_MEETING_MINUTES]: "basura" })).toBe(5);
+    expect(noticeMeetingMinutes({ [SettingKey.NOTICE_MEETING_MINUTES]: "10" })).toBe(10);
+    expect(noticeMeetingMinutes({ [SettingKey.NOTICE_MEETING_MINUTES]: "0" })).toBe(0);
+    // Un negativo es "apagado", no "avisar después de que empezó".
+    expect(noticeMeetingMinutes({ [SettingKey.NOTICE_MEETING_MINUTES]: "-3" })).toBe(0);
+  });
+});
+

@@ -133,19 +133,31 @@ no estés mirando, va en Rust** (I6). Si vas a agregar otro aviso de este tipo �
 de "se viene tu próxima tarea", Mej.4—, no lo cuelgues de un `setInterval` del
 front.
 
-**Ya son dos casos medidos**: el respaldo automático tenía el mismo `setInterval`
-en `main` y llegaba cinco minutos tarde a su hora; se movió a
-`backup::start_watcher` (SPECS §4.17). Los dos vigilantes tienen la misma forma
-—leer la base, dormir, **releer** y decidir— pero **no la misma espera**, y la
-diferencia es la que hay que copiar bien:
+**Ya son tres vigilantes en Rust**, y todos tienen la misma forma —leer la base,
+dormir, **releer** y decidir— pero **no la misma espera**. La diferencia es lo que
+hay que copiar bien:
 
-| | Espera | Por qué |
+| | Espera | ¿Se pone al día? |
 |---|---|---|
-| campana | duerme hasta el cruce, techo de 30 s | el momento se mueve: el estimado se edita con el timer corriendo |
-| respaldo | pulso fijo de 60 s | es una hora de pared una vez al día, y **se pone al día** por construcción |
+| `bell.rs` | hasta el cruce, techo 30 s | sí: el estimado sigue excedido |
+| `backup.rs` | pulso fijo de 60 s | sí, por construcción |
+| `notice.rs` | hasta el cruce, techo 60 s | **no** |
 
-O sea: si lo que agregas se pone al día solo, no le calcules el momento. Un sueño
-calculado hay que invalidarlo, y olvidarse de invalidarlo no deja síntoma.
+Dos reglas que salen de la tabla:
+
+- **Si lo que agregas se pone al día solo, no le calcules el momento.** Un sueño
+  calculado hay que invalidarlo, y olvidarse de invalidarlo no deja síntoma. El
+  respaldo llegaba cinco minutos tarde por vivir en un `setInterval` de `main`
+  (SPECS §4.17): lo que se compró al moverlo fue que corra tapado, no precisión.
+- **Si no se pone al día, ponle borde de arriba.** El aviso de reunión exige que la
+  reunión no haya empezado, y eso hace dos cosas a la vez: no manda un "en 5
+  minutos" a las 09:30, y no deja que un Mac recién despertado vomite seis avisos
+  viejos. No hace falta un número de gracia arbitrario.
+
+Y la que se paga dos veces si se olvida: **lo que recuerda "ya avisé" guarda la
+promesa, no un booleano.** La campana usa `(entrada, estimado)`; el aviso de reunión
+guarda `tasks.notified_for` con **la hora**. Con un flag, cambiar el estimado o
+mover la reunión deja eso mudo para siempre y sin ningún síntoma.
 
 ## Semántica de la campana y del estimado
 

@@ -11,9 +11,14 @@
   usuario elija en Ajustes del sistema → Notificaciones, y no hay forma de
   forzarlo desde el código (SPECS §4.25).
 
-  Sin verificar: es la clave de la API vieja de notificaciones —la que permite
-  botones y la que usamos por abajo—, y no comprobamos que macOS 26 todavía la
-  respete. Se sabrá en la primera instalación de un build que la lleve.
+  **Reportada como inefectiva**, y se deja igual porque no cuesta nada: Apple
+  documenta que el default de esta clave es `banner` y que "la mayoría de las apps
+  no debería necesitar el estilo alerta", y hay radars y hilos de desarrolladores
+  poniéndola en `alert` y recibiendo banners de todos modos. O sea que la palanca
+  real es el switch del usuario, y por eso Configs → Notificaciones lo nombra y
+  ofrece el botón que abre ese panel. Calendar "solo funciona" porque es de Apple:
+  su app viene con el estilo alerta de fábrica, y eso no es algo que una app de
+  terceros pueda declarar.
 -->
 <plist version="1.0">
   <dict>

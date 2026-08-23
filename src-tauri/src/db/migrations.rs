@@ -240,6 +240,28 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         DELETE FROM settings WHERE key = 'planned_on';
         "#,
     ),
+    (
+        11,
+        r#"
+        -- El aviso de "se viene tu próxima reunión" necesita recordar que ya
+        -- avisó, y tiene que sobrevivir al reinicio.
+        --
+        -- **Guarda la hora sobre la que avisó, no un booleano**, y esa es toda la
+        -- decisión: la promesa no es "avisé una vez por esta tarea", es "avisé que
+        -- empezaba a ESTA hora". Si el calendario mueve la reunión de 15:00 a
+        -- 16:00 es otra promesa y hay que volver a avisar; con un flag la tarea
+        -- quedaría muda para siempre. Es la misma lección que la campana, que usa
+        -- (entrada, estimado) como llave y no solo la entrada.
+        --
+        -- Va en `tasks` y no en `settings` porque es un hecho de la tarea: una
+        -- lectura, sin join, y se va con ella al borrarla. `settings` guarda UNA
+        -- marca (como `planned_at`) y acá haría falta un conjunto de ids.
+        --
+        -- Es dato nuestro, no del feed: la sincronización del calendario NO lo
+        -- pisa, igual que `status` y `actual_seconds`.
+        ALTER TABLE tasks ADD COLUMN notified_for TEXT;
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.

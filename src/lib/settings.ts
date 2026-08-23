@@ -29,6 +29,11 @@ export const SettingKey = {
   BACKUP_KEEP: "backup_keep",
   BACKUP_RAN_ON: "backup_ran_on",
   BACKUP_LAST_ERROR: "backup_last_error",
+  // Notificaciones. `NOTICE_MEETING_MINUTES` la lee **también Rust**
+  // (`notice.rs`), que es quien manda ese aviso.
+  NOTICE_MEETING_MINUTES: "notice_meeting_minutes",
+  NOTICE_BELL: "notice_bell",
+  NOTICE_SHUTDOWN: "notice_shutdown",
 } as const;
 export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
 
@@ -51,6 +56,9 @@ export const SETTING_DEFAULTS = {
   backupKeep: 2,
   /** El fin de semana, en números ISO. Espeja la migración 9. */
   collapsedWeekdays: [6, 7] as readonly number[],
+  /** Minutos de adelanto del aviso de próxima reunión. **0 apaga el aviso.**
+   *  Espeja `notice::DEFAULT_LEAD`: Rust es quien manda ese aviso. */
+  noticeMeetingMinutes: 5,
 } as const;
 
 export type SettingsMap = Record<string, string>;
@@ -193,6 +201,55 @@ export function backupSettings(values: SettingsMap): AjustesDeRespaldo {
     keep: keep >= 1 ? keep : SETTING_DEFAULTS.backupKeep,
     active: dir !== "",
   };
+}
+
+/**
+ * Qué avisos vienen encendidos de fábrica, **y no todos**.
+ *
+ * El del cierre del día **sí**: ya estaba andando antes de que hubiera dónde
+ * apagarlo, y leer "falta la clave" como apagado lo habría silenciado en la
+ * actualización que trajo la sección de Notificaciones.
+ *
+ * La notificación de la campana **no**, y es la decisión de M2: la campana no
+ * notifica —el sonido alcanza y una notificación por tarea se apila (SPECS §4.6)—,
+ * así que es opt-in. Ojo con la lectura: lo que está apagado es la **notificación**,
+ * no la campana; el sonido suena igual.
+ */
+const NOTICE_DEFAULT_ON: Record<string, boolean> = {
+  [SettingKey.NOTICE_SHUTDOWN]: true,
+  [SettingKey.NOTICE_BELL]: false,
+};
+
+/**
+ * Un switch de aviso guardado como texto.
+ *
+ * `"1"` enciende, `"0"` apaga, y **cualquier otra cosa cae en el default de esa
+ * clave** —ausente, vacío o basura editada a mano—. Es el mismo criterio que el
+ * resto de `settings`: un valor que no se entiende no puede inventar una decisión.
+ *
+ * Espeja `bell::notice_enabled` en Rust para la campana. Si cambia un default,
+ * cambia en los dos lados.
+ */
+export function noticeOn(values: SettingsMap, key: SettingKey): boolean {
+  const raw = values[key]?.trim();
+  if (raw === "1") return true;
+  if (raw === "0") return false;
+  return NOTICE_DEFAULT_ON[key] ?? true;
+}
+
+/**
+ * Minutos de adelanto del aviso de próxima reunión, o **0 si está apagado**.
+ *
+ * Espeja `notice::lead_minutes` en Rust, que es quien decide de verdad; esto es
+ * para dibujar el control. Un negativo se lee como apagado y no como "avisar
+ * después de que empezó".
+ */
+export function noticeMeetingMinutes(values: SettingsMap): number {
+  const raw = values[SettingKey.NOTICE_MEETING_MINUTES]?.trim();
+  if (raw == null || raw === "") return SETTING_DEFAULTS.noticeMeetingMinutes;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return SETTING_DEFAULTS.noticeMeetingMinutes;
+  return n >= 0 ? Math.floor(n) : 0;
 }
 
 interface SettingsState {

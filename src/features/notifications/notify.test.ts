@@ -1,22 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SOUND, SHUTDOWN_NOTICE, nextTaskNotice } from "./notify";
+import { DEFAULT_SOUND, SHUTDOWN_NOTICE } from "./notify";
 
 /**
- * **Cuál de los dos avisos es alerta** es la única decisión de este módulo que se
- * puede sostener en jsdom: mandarlos necesita Tauri. Y es la que importa, porque
- * el `action` no es decoración — es lo que hace que macOS deje el aviso pegado en
- * pantalla en vez de pasarlo como banner.
+ * Que el aviso **lleve botón y sepa a dónde va** es la única decisión de este
+ * módulo que se puede sostener en jsdom: mandarlo necesita Tauri. Y es la que
+ * importa: el botón es lo que hace que macOS lo trate como alerta en vez de banner,
+ * y el destino es lo único que le permite llevarte a alguna parte.
  */
 describe("los avisos del sistema", () => {
-  it("el de la próxima tarea es una alerta: lleva botón", () => {
-    const notice = nextTaskNotice("Weekly de equipo", 5);
-    expect(notice.action).toBe("Ir a Focus");
-    expect(notice.title).toBe("En 5 min: Weekly de equipo");
-  });
+  // El de la próxima reunión ya no se prueba acá: su texto vive en `notice::copy`
+  // (Rust), porque el que lo manda es el vigilante y no el front. Sus tests están
+  // en `notice.rs`.
 
-  it("el del cierre del día no lleva botón, y está bien", () => {
-    // Si te lo pierdes, el shutdown sigue ahí. La reunión, no.
-    expect(SHUTDOWN_NOTICE.action).toBeUndefined();
+  it("el del cierre del día lleva al shutdown", () => {
+    // Antes era un banner sin botón, con el argumento de que si te lo pierdes el
+    // shutdown sigue ahí. Cierto, pero tampoco llevaba a ninguna parte: había que
+    // ir a buscar la vista a mano, que es el trabajo que el aviso viene a ahorrar.
+    expect(SHUTDOWN_NOTICE.action).toBe("Ir al shutdown");
+    expect(SHUTDOWN_NOTICE.target?.route).toBe("/daily-shutdown");
+    // Sin tarea: el shutdown es del día, no de una.
+    expect(SHUTDOWN_NOTICE.target?.taskId).toBeUndefined();
   });
 });
 

@@ -862,9 +862,24 @@ export const mock = {
     _body: string,
     _action: string,
     _sound: string,
+    _target: { route: string; taskId?: number | null } | null = null,
   ): Promise<void> => {
     /* fuera de Tauri no hay avisos del sistema; los manda macOS vía Rust */
   },
+
+  /** Espeja `notice::copy`. Si cambia el texto en Rust, cambia acá. */
+  previewMeetingNotice: async (title: string, time: string) => ({
+    title: `Cambio de Focus a las ${time}`,
+    body: `Sigue ${title}. Toca para verla.`,
+    action: "Ir a Focus",
+  }),
+
+  /** Espeja `bell::copy`. Si cambia el texto en Rust, cambia acá. */
+  previewBellNotice: async (title: string, minutes: number) => ({
+    title: "Se acabó el tiempo estimado",
+    body: `Llevas los ${minutes} min de ${title}. Toca para verla.`,
+    action: "Ir a Focus",
+  }),
 
   // Los catorce de `/System/Library/Sounds` en un macOS de fábrica. Fuera de
   // Tauri no se puede leer la carpeta, y una lista vacía dejaría el selector

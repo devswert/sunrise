@@ -537,7 +537,8 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
 
 Cinco secciones, cada una con título y bajada propia (`Card` en
 `SettingsView.tsx`), en este orden: **General**, **Calendarios** (§4.12),
-**Canales**, **Atajos de teclado** (§4.9) y **Respaldo** (§4.17). En dev hay una
+**Canales**, **Atajos de teclado** (§4.9), **Notificaciones** (§4.27) y
+**Respaldo** (§4.17). En dev hay una
 sexta al final, **Dev Tools** (§4.24), que la app instalada no muestra. El orden de la
 lista lateral y el de las cards **tienen que coincidir**: el resaltado lo decide
 un `IntersectionObserver` sobre las secciones, así que si divergen la lista marca
@@ -2139,19 +2140,26 @@ identidad, más abajo) y el ajuste que mandaba era el de la Terminal.
 próxima tarea y el banner del cierre— se quedan pegadas hasta que las saques. En
 **Temporary**, que es como estaba, las dos se van solas aunque tengan botones.
 
-> **I** — **No se puede garantizar que quede en Persistent al instalar, y no hay
-> API para intentarlo.** El estilo es del usuario: no se puede leer ni escribir
-> desde la app, y macOS recuerda el ajuste por identificador, así que reinstalar
-> tampoco lo reinicia. `NSUserNotificationAlertStyle=alert` en
-> `src-tauri/Info.plist` —que Tauri mezcla solo con el que genera— pide que el
-> **default** sea alerta, y es lo máximo que se puede hacer: es un default para un
-> registro nuevo, no una imposición, y está **sin verificar** porque es la clave de
-> la API vieja. Así que lo que la app hace es **decirlo**: Dev Tools nombra el
-> ajuste exacto y tiene un botón que abre ese panel
-> (`x-apple.systempreferences:com.apple.preference.notifications`, con su esquema
-> permitido en `capabilities/default.json`). Cuando exista el aviso de próxima
-> tarea de verdad (Mej.4), esto tiene que decírselo al usuario **una vez, en
-> Configs**: una feature que promete avisarte y depende de un switch escondido no
+> **I** — **No se puede garantizar que quede en Persistent, y no es que falte
+> intentarlo: lo gatea Apple.** El estilo es del usuario —no se puede leer ni
+> escribir desde la app, y macOS lo recuerda por identificador, así que reinstalar
+> tampoco lo reinicia—, **el default documentado para cualquier app es `banner`**
+> ("la mayoría de las apps no debería necesitar el estilo alerta", dice Apple), y
+> la única clave que pide otra cosa —`NSUserNotificationAlertStyle=alert` en
+> `src-tauri/Info.plist`, que Tauri mezcla con el que genera— **está reportada como
+> inefectiva** (radars y hilos de desarrolladores que la ponen y reciben banners
+> igual). Se deja porque no cuesta nada, no porque se cuente con ella.
+>
+> **Calendar "solo funciona" porque es de Apple**: su app viene con el estilo
+> alerta de fábrica, y eso no es algo que una app de terceros pueda declarar. La
+> documentación de Apple para Calendar describe el estilo como un ajuste del
+> usuario, en el mismo panel.
+>
+> Así que lo único que la app puede hacer es **decirlo**, y lo dice en **Configs →
+> Notificaciones** (§4.26): nombra el ajuste exacto y tiene el botón que abre ese
+> panel (`x-apple.systempreferences:com.apple.preference.notifications`, abierto
+> **desde Rust** por la trampa del `opener`). Dev Tools lo repite para el que está
+> probando. Una feature que promete avisarte y depende de un switch escondido no
 > puede quedarse callada.
 
 **El plugin de notificaciones no sirve para esto**, y no es cosa de configurarlo:
@@ -2209,10 +2217,171 @@ decisión: si te pierdes el aviso del cierre, el shutdown sigue ahí; la reunió
 > (`open_notification_settings`, que usa la API Rust del plugin `opener`): desde
 > Rust el ACL no aplica, igual que el updater, así que no hay capability que tocar.
 
-Falta el consumidor de verdad: **que apretar "Ir a Focus" navegue a Focus es de
-Mej.4**, y tiene que engancharse en `useNotificationActions` en vez de abrir otro
-camino. Hoy el único que escucha es la card de Dev Tools, que muestra qué volvió —
-que es lo que hace verificable todo esto sin esperar una reunión.
+**La respuesta trae el destino**, no solo qué se apretó. `NoticeResponse` es
+`{ action, route, taskId }`, y el destino viaja de ida y vuelta sin usarse en el
+envío: es lo único que le permite al front saber **a dónde ir**. Es una ruta y no
+solo un id porque los tres avisos van a lugares distintos —la reunión y la campana
+a Focus con su tarea, el cierre del día al shutdown, que no tiene tarea—, y sin la
+ruta cada aviso nuevo obligaría a inventar otro campo.
+
+> **I** — **La alerta no lleva botón de cerrar, y el click sobre ella hace lo mismo
+> que el botón.** El "Cerrar" no servía para nada: la alerta ya se saca con el gesto
+> de siempre, y un botón para no hacer nada al lado del botón útil solo da una forma
+> más de ignorar el aviso. Sin él, el click sobre la alerta entera vuelve como
+> `Click` y se trata igual que `ActionButton` — que es lo que la gente hace por
+> instinto. `close` y `none` no navegan: descartar un aviso no pidió ir a ninguna
+> parte.
+
+**Los tres avisos llevan botón, así que los tres son alertas.** El del cierre del
+día era un banner, con el argumento de que si te lo pierdes el shutdown sigue ahí.
+Cierto, pero tampoco llevaba a ninguna parte: había que ir a buscar la vista a mano,
+que es justo el trabajo que el aviso viene a ahorrar.
+
+### 4.26 El aviso de próxima reunión (Mej.4)
+
+**Lo manda Rust** (`notice.rs`), y es el tercer vigilante después de la campana y
+el respaldo. Por la invariante I6, y acá es lo más literal de los tres: el caso que
+este aviso cubre es **estar en otra ventana** cuando se te viene el Meet encima, y
+un webview que no se ve no corre sus timers.
+
+**La espera es la de la campana, no la del respaldo**, y la diferencia es la que
+hay que entender antes de tocarlo:
+
+| | Espera | Se pone al día |
+|---|---|---|
+| campana | hasta el cruce, techo 30 s | sí (el estimado sigue excedido) |
+| respaldo | pulso fijo de 60 s | sí (por construcción) |
+| **este** | hasta el cruce, techo 60 s | **no** |
+
+`due` exige que la reunión **todavía no haya empezado** —la ventana es
+`[hora - lead, hora)`— y ese borde superior es toda la diferencia: un "en 5
+minutos" a las 09:30 para una reunión de 09:00 es basura, y es también lo que evita
+que un Mac recién despertado mande seis avisos viejos de golpe. Por eso no hay
+número de gracia arbitrario: la condición útil es "la reunión no empezó".
+
+**Solo de reuniones del calendario** (`source = 'CALENDAR'`), y no por decisión de
+producto: **nada de la UI escribe `scheduled_time`**. La columna existe de punta a
+punta —`create_task`, `TaskPatch`, el rail, la card, y `dailyPlan` la cuenta como
+compromiso— pero el único que la llena es el import. El día que exista un selector
+de hora para una tarea manual, `repo::meetings_for_date` es el filtro que hay que
+aflojar.
+
+**La memoria de "ya avisé" es `tasks.notified_for` (migración 11), y guarda la
+hora, no un booleano.** La promesa no es "avisé una vez por esta tarea", es "avisé
+que empezaba a **esta** hora": si la sincronización mueve la reunión de 15:00 a
+16:00 es otra promesa y hay que volver a avisar. Con un flag la tarea quedaría muda
+para siempre, que es exactamente el bug que tuvo la campana con su llave (§4.6).
+
+> **I** — **La sincronización del calendario no pisa `notified_for`.** Es dato
+> nuestro, no del feed, igual que `status` y `actual_seconds`. Y el upsert **sí**
+> actualiza `scheduled_time`, que es justamente lo que hace que una reunión movida
+> vuelva a entrar.
+
+> **I** — **Va en `tasks` y no en `settings`.** `settings` guarda **una** marca
+> (como `planned_at` o `backup_ran_on`); esto necesita un conjunto de ids que
+> sobreviva al reinicio. En la fila de la tarea es una lectura, sin join, y se va
+> con ella al borrarla.
+
+**La marca se escribe antes de mandar**, no después: `send()` bloquea su hilo hasta
+que la persona responde, así que anotarla después dejaría dos vueltas del loop
+mandando dos avisos de la misma reunión. Y el loop guarda además la última promesa
+en memoria, como red para el caso en que la escritura falle — sin eso, `due`
+devolvería la misma reunión cada dos segundos.
+
+**El texto vive en `notice::copy` (Rust) y solo ahí.** Estaba en `notify.ts` con el
+resto, y se movió porque el que lo manda es el vigilante: dejar la copia en el front
+obligaba a escribirlo dos veces y el botón de prueba de Dev Tools acabaría probando
+un texto que el aviso real no usa. Dev Tools lo pide con `preview_meeting_notice`,
+así que prueba **el de verdad**.
+
+Dice **"Cambio de Focus a las 15:00" / "Sigue Weekly de equipo. Toca para
+verla."**, y cada parte del texto tiene su razón:
+
+- **La hora del evento, no los minutos que faltan.** El aviso puede salir en
+  cualquier punto de su ventana —la app estaba cerrada, la máquina durmió, la
+  sincronización movió la reunión—, así que "en 5 min" es un número que se puede
+  equivocar; `scheduled_time` no. Es el mismo criterio que `readableDate` con las
+  fechas del respaldo: mostrar el dato que no depende de cuándo se lea.
+- **El título dice qué clase de cosa es y a qué hora; el cuerpo, cuál.** Con varios
+  avisos apilados, "Cambio de Focus a las 15:00" se reconoce de una pasada sin leer
+  el nombre completo de la reunión. El de la campana tiene la misma forma —"Se acabó
+  el tiempo estimado" / "Llevas los 90 min de X"— para que los dos se lean igual.
+- **"Sigue X" y no "Toca X"**: el cierre del cuerpo ya usa *toca* como "púlsalo", y
+  la misma palabra con dos sentidos en la misma frase obliga a releerla.
+- **El cierre enseña el gesto** (`notice::HINT`, "Toca para verla"), y es la misma
+  frase en los dos avisos: sin botón de cerrar, que el click sobre la alerta entera
+  valga no se descubre mirando, y repetirla hace que se aprenda una vez. **No dice
+  "en sunrise"**: macOS ya pone el nombre de la app arriba, y repetirlo gasta la
+  línea que sirve para decir qué hacer.
+
+**El click lleva a Focus con esa tarea.** `useMeetingNotice` escucha la respuesta,
+escribe `focusTaskId` en el store y navega; `FocusView` lo **consume** al cargar su
+cola y lo limpia. Tres cosas que importan: se monta en `Shell` (el evento llega a
+las dos ventanas y el taxímetro no tiene esas vistas), **solo `action` navega**
+—`click` y `close` no pidieron ir a ninguna parte—, y sin `taskId` no navega, porque
+el aviso del cierre pasa por el mismo evento.
+
+**El ajuste es `notice_meeting_minutes`, con 0 = apagado** (mismo patrón que
+`backup_dir` vacío). Un aviso que no se puede apagar es peor que no tenerlo.
+
+**Focus abre en la tarea del aviso**, y eso tiene un detalle que costó un bug:
+`focusTaskId` se lee como valor y se limpia en un efecto aparte, **no con un "tomar
+y vaciar" dentro de la carga**. En dev React monta los efectos dos veces, así que
+consumirlo en la primera pasada lo dejaba vacío para la segunda, que reseteaba el
+índice — el aviso abría Focus sin mover la tarea. Y el efecto va declarado
+**después** del salto al timer que ya existía, porque React corre los efectos en
+orden y puesto antes el timer lo pisaba: un aviso que acabas de accionar es más
+explícito que el timer que venía corriendo.
+
+---
+
+### 4.27 Configs → Notificaciones
+
+Tres switches —**se viene una reunión**, **hora de cerrar el día**, **se acabó el
+tiempo estimado**— más los minutos de adelanto del primero.
+
+**Es sección propia y no un campo de General**, y la razón no es la cantidad de
+controles: acá además hay que explicar que **macOS decide si el aviso se queda en
+pantalla** (§4.25), y eso no cabe como una línea suelta entre la capacidad diaria y
+la jornada. La nota nombra el ajuste exacto (*Persistent*) y trae el botón que abre
+ese panel.
+
+> **I** — **El default no es el mismo para los tres, y no es un descuido.** El del
+> cierre del día viene **encendido**: ya andaba antes de que hubiera dónde apagarlo,
+> y leer "falta la clave" como apagado lo habría silenciado en la actualización que
+> trajo esta sección. La notificación de la campana viene **apagada**, por la
+> decisión de M2 (§4.6): la campana no notifica —el sonido alcanza y una
+> notificación por tarea se apila—, así que es opt-in. `"1"` enciende, `"0"` apaga,
+> y **cualquier otra cosa cae en el default de esa clave**: un valor que no se
+> entiende no puede inventar una decisión. Lo hacen `noticeOn` (con su tabla de
+> defaults) en el front y `bell::notice_enabled` / `notice::lead_minutes` en Rust,
+> y cada uno tiene su test.
+
+> **I** — **El switch de la campana apaga la notificación, no la campana.** El
+> sonido no depende de él: es la campana, no el aviso, y un switch que apagara el
+> sonido mentiría sobre lo que dice apagar. La etiqueta lo dice en la card.
+
+**Cada switch lo lee quien manda el aviso, no la vista**: el de la campana en
+`bell.rs`, el de la reunión en `notice.rs`, el del cierre en
+`shouldRemindShutdown`. En `bell.rs` se consulta **después** de que suena y no en
+`is_due`: `is_due` es la regla de producto —cuándo le toca campana a un timer— y
+meterle un ajuste la volvería dependiente de la base, que es justo lo que la hace
+testeable.
+
+**El primer switch dice "Evento de tu Calendar importado"** y no "reunión", porque
+eso es literalmente lo que cubre: lo que trae hora es el import del calendario
+(§4.26), y llamarlo reunión prometería también las tareas con hora, que no existen.
+
+Queda para **Mej.1**: el sonido de la campana (`bell_sound`) y el de los avisos,
+que hoy se elige en Dev Tools y no se guarda. Los dos van acá cuando existan.
+
+> **I** — **Los tres botones de prueba de Dev Tools mandan el texto de verdad**, no
+> una copia. El del cierre usa la misma constante `SHUTDOWN_NOTICE` que el
+> recordatorio; los otros dos piden el texto a Rust
+> (`preview_meeting_notice` / `preview_bell_notice`), porque ahí viven
+> `notice::copy` y `bell::copy`. Un botón que escribe su propia versión prueba un
+> aviso que no existe, y el desacuerdo no se nota hasta que llega el real. Si
+> agregas un aviso, su texto va en una función y el botón la consume.
 
 ---
 
@@ -2759,7 +2928,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **459 tests front (54 archivos) y 168 Rust, todos verdes.**
+estado actual: **467 tests front (55 archivos) y 181 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -2933,6 +3102,15 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
   verificado a mano —se pone rojo agregando un color inventado a `PALETTE`— y cubre
   el fallo que ningún otro ve: sin el token, `var(--x)` no resuelve y el punto sale
   **transparente, sin un error en consola**.
+- **Aviso de próxima reunión**: once en `notice.rs` — avisa dentro de la ventana,
+  **no avisa de una que ya empezó** (el borde que hace que el aviso no se ponga al
+  día), no repite la misma hora, **si le mueven la hora vuelve a avisar**, en 0 está
+  apagado, una hora ilegible se salta sin tumbar el resto, avisa de la primera que
+  toque, el ajuste cae al default con basura y un negativo es apagado, duerme justo
+  hasta el cruce, y **el piso cuando ya hay algo pendiente** (arrancar la app a las
+  14:57 no puede costar un minuto de un aviso que avisa con cinco). Más los dos
+  switches en `settings.test.ts` y `dailyLog.test.ts`: **una clave ausente es
+  encendido**, que es lo que evita silenciar los tres avisos al actualizar.
 - **Marca**: `SunriseMark.test.tsx` — dos instancias no repiten el id del
   degradado, `public/app-icon.svg` es XML válido, y sigue siendo el favicon de las
   dos ventanas. Los tres cubren fallos que **ningún otro test puede ver**: el id
@@ -3007,11 +3185,6 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 - **D6. `SettingsView` no observa `dataVersion`**: solo recarga con su propio
   `load`.
 - **D7. Warning de `act()`** en el test del `Sidebar` (pasa, pero ensucia).
-- **D10. Por qué un esquema nuevo en `opener:allow-open-url` mata los avisos del
-  sistema.** Está comprobado que lo hace y revertirlo lo arregla (§4.25), pero el
-  mecanismo no: el glob es válido y el `ScopeObject` del plugin deserializa sin
-  error, así que no es un fallo de parseo a la vista. Mientras no se entienda, la
-  regla es no tocar esa entrada y abrir URLs de esquema propio desde Rust.
 - **D9. El error de reemplazo en la restauración se muestra en un webview que
   quizá ya no puede leer su base.** Si `db::open` falla después de copiar
   (§4.17), el mensaje va a la card de Configs como cualquier otro. Un `message()`

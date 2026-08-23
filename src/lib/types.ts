@@ -297,3 +297,16 @@ export interface AppUpdate {
   /** Día de publicación (`2026-08-17`), o `null` si el `latest.json` no lo trae. */
   date: string | null;
 }
+
+/**
+ * A dónde lleva un aviso del sistema al accionarlo. Espeja `NoticeTarget` en
+ * `commands.rs`.
+ *
+ * Es una ruta y no solo un id porque los tres avisos van a lugares distintos: la
+ * reunión y la campana a Focus con su tarea, el cierre del día al shutdown, que no
+ * tiene tarea.
+ */
+export interface NoticeTarget {
+  route: string;
+  taskId?: number | null;
+}

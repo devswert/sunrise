@@ -32,6 +32,24 @@ interface AppState {
   quitOpen: boolean;
   setQuitOpen: (v: boolean) => void;
 
+  /**
+   * En qué tarea tiene que abrir Focus, **una sola vez**.
+   *
+   * Lo escribe el aviso al accionarlo y lo aplica `FocusView` cuando su cola ya
+   * tiene la tarea; después lo limpia. Es de un solo uso a propósito: si quedara
+   * puesto, cada vez que vuelvas a Focus te llevaría a la reunión de la mañana.
+   *
+   * **Se lee como valor y se limpia aparte**, no con un "tomar y vaciar": en dev
+   * React monta los efectos dos veces, y consumirlo en la primera pasada lo dejaba
+   * vacío para la segunda, que reseteaba el índice. El aviso abría Focus sin mover
+   * la tarea, que fue el síntoma reportado.
+   */
+  focusTaskId: number | null;
+  /** Pide que Focus abra en esa tarea. */
+  requestFocusTask: (taskId: number) => void;
+  /** Lo limpia, una vez aplicado. */
+  clearFocusTask: () => void;
+
   /** Timer simple (M1). El widget flotante y la campana llegan en M2. */
   activeTaskId: number | null;
   startedAtMs: number | null;
@@ -58,6 +76,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   markDataStale: () => set((s) => ({ dataVersion: s.dataVersion + 1 })),
+
+  focusTaskId: null,
+  requestFocusTask: (taskId) => set({ focusTaskId: taskId }),
+  clearFocusTask: () => set({ focusTaskId: null }),
 
   quitOpen: false,
   setQuitOpen: (v) => set({ quitOpen: v }),
