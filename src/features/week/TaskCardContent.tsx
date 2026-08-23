@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { CalendarDays, Check, Clock, Hash, Pause, Play } from "lucide-react";
 import type { Category, Task, TaskPatch } from "../../lib/types";
+import { chipVars } from "../tasks/chipVars";
 import { formatMinutes } from "../../lib/capacity";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { TimePicker } from "../../components/TimePicker";
@@ -139,15 +140,22 @@ export function TaskCardContent({
         <div className="chip-wrap tc__tagwrap" ref={tagRef} onPointerDown={stop}>
           <button
             type="button"
-            className="tc__tag"
-            style={category ? { color: `var(--${category.color}-ink)` } : undefined}
+            className={`cat-tag tc__tag${category ? "" : " is-empty"}`}
+            style={chipVars(category)}
             aria-label="Cambiar canal"
             onClick={(e) => {
               stop(e);
               setPicker((p) => (p === "channel" ? null : "channel"));
             }}
           >
-            {category ? `#${category.name}` : <Hash size={12} />}
+            {category ? (
+              <>
+                <span className="cat-tag__dot" aria-hidden />
+                {`#${category.name}`}
+              </>
+            ) : (
+              <Hash size={12} />
+            )}
           </button>
           {picker === "channel" && (
             <Popover anchorRef={tagRef} align="right" onClose={() => setPicker(null)}>

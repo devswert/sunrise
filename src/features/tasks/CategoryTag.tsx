@@ -1,16 +1,16 @@
-import type { CSSProperties } from "react";
 import type { Category } from "../../lib/types";
+import { chipVars } from "./chipVars";
 
-/** Chip de categoría: punto de color + nombre (estilo #tag). */
+/**
+ * Chip de categoría: punto de color + nombre (estilo #tag).
+ *
+ * Las variables salen de `chipVars`, compartido con la card de la semana y el
+ * modal de detalle: los tres dibujan el mismo chip y tienen que seguir haciéndolo.
+ */
 export function CategoryTag({ category }: { category: Category | null | undefined }) {
   if (!category) return null;
-  // Custom properties del token de paleta (ej. --lavender / --lavender-ink).
-  const style = {
-    "--tag-bg": `var(--${category.color})`,
-    "--tag-ink": `var(--${category.color}-ink)`,
-  } as CSSProperties;
   return (
-    <span className="cat-tag" style={style}>
+    <span className="cat-tag" style={chipVars(category)}>
       <span className="cat-tag__dot" aria-hidden />
       {category.name}
     </span>

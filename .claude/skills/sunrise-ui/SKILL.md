@@ -259,7 +259,7 @@ Si una fila ofrece un puñado de opciones, muestra **la elegida** y deja el rest
 en un popover. El caso real: cada categoría en Settings mostraba las ocho
 muestras de color, y con ocho categorías eran 64 puntos compitiendo con los
 nombres, que es lo que uno va a leer ahí. Hoy es un `ColorDot` que abre la
-paleta. Mismo criterio que los chips del modal de tarea.
+paleta — y con 24 colores serían 192, así que dejó de ser una preferencia. Mismo criterio que los chips del modal de tarea.
 
 ## Controles que aparecen al hover
 
@@ -310,10 +310,37 @@ las cards, `horas`/`hoursFromMinutes` para las cifras de cabecera).
 ## Paleta y tema
 
 Colores por **token CSS**, nunca hex en el componente: `var(--lavender)`,
-`var(--lavender-ink)` para texto sobre ese color. Tokens en
-`src/styles/tokens.css`, con tema claro/oscuro. La paleta disponible es
-`peach`, `apricot`, `lavender`, `mint`, `sky`, `butter`, `rose`, `sage`
-(la misma lista que `PALETTE` en `SettingsView`).
+`var(--lavender-ink)` para el texto encima. Tokens en `src/styles/tokens.css`. La
+lista de colores de categoría vive en `src/lib/palette.ts` (`PALETTE`) — **son 24,
+en orden de matiz y en tono medio, no pastel**.
+
+**Si vas a agregar un color, no lo elijas a ojo.** Tiene que sobrevivir a cuatro
+usos y son los tintes los que traicionan: dos matices que se distinguen a
+saturación completa **colapsan al 18%**, que es el bloque del rail. Los cuatro: el
+punto a full, el chip al 35% (`.cat-tag`), el rail al 18%, y el `-ink` como texto
+encima **y como punto sólido** (los highlights del shutdown). El criterio con el
+que se eligieron los 24 fue ΔE en Lab contra todos los demás en los tres fondos,
+tomando el mínimo; quedó en 8.1. Los números y los tres caminos descartados están
+en el comentario de `tokens.css` y en SPECS §7.
+
+Cuatro cosas que se rompen fácil:
+
+- **Renombrar o quitar un color rompe las categorías guardadas.** `categories.color`
+  guarda el **nombre** del token, así que queda un `var(--loquesea)` inexistente:
+  un punto transparente, sin un error en consola. Agregar sí es compatible.
+- **El `-ink` sigue al tema; el color no.** Los 24 `-ink` están declarados en las
+  tres ramas de tema y hay un test que los exige en las tres (Mej.28: con un solo
+  hex, el chip de canal quedaba en contraste 1.1–1.5 en oscuro). El color en sí
+  **no** se redefine por tema, y eso también tiene test.
+- **Un fondo sólido con texto blanco encima no sale del `-ink`**, sale de
+  `--mint-solid`, que es fijo. Con el ink claro en oscuro, blanco sobre claro no se
+  lee. Pero los fills **sin** texto —el punto pulsante, las barras— sí siguen al
+  tema, porque un verde oscuro sobre fondo oscuro desaparece. La pregunta es
+  **¿lleva texto encima?**, no "¿es un fondo?".
+- **El canal se dibuja siempre como chip**, nunca como texto teñido. La card, el
+  modal de detalle y `CategoryTag` comparten `.cat-tag` y sacan sus variables de
+  `chipVars`. Si escribes las variables a mano en un cuarto lugar, ese chip se va a
+  separar de los otros tres con el primer ajuste.
 
 Fuentes **Sora** (títulos) y **Manrope/Inter** (cuerpo), auto-hospedadas vía
 `@fontsource` para que la app funcione offline. No agregues fuentes por CDN.

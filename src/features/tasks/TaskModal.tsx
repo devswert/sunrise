@@ -13,6 +13,7 @@ import type {
   TimeEntry,
 } from "../../lib/types";
 import { extractLinks, taskEventLine } from "./history";
+import { chipVars } from "./chipVars";
 import { abrirExterno } from "../calendar/MeetingLink";
 import { CalendarEventCard } from "../calendar/EventoDelCalendario";
 import { shortDuration, timeByDay } from "./timeByDay";
@@ -267,10 +268,19 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
           <div className="chip-wrap" ref={chanRef}>
             <button className="tmodal__meta" onClick={() => toggle("channel")}>
               <span className="tmodal__meta-label">Canal</span>
-              <span className={`tmodal__meta-value${channel ? " is-set" : ""}`}>
-                <Hash size={13} />
-                {channel ? channel.name : "ninguno"}
-              </span>
+              {/* El mismo chip que la card de la semana, no un texto teñido: es
+                  la pieza por la que se reconoce el canal en el resto de la app. */}
+              {channel ? (
+                <span className="cat-tag tmodal__chip" style={chipVars(channel)}>
+                  <span className="cat-tag__dot" aria-hidden />
+                  {`#${channel.name}`}
+                </span>
+              ) : (
+                <span className="tmodal__meta-value">
+                  <Hash size={13} />
+                  ninguno
+                </span>
+              )}
             </button>
             {picker === "channel" && (
               <Popover anchorRef={chanRef} onClose={() => setPicker(null)}>

@@ -4,25 +4,113 @@
  */
 
 :root {
-  /* --- Paleta pastel (colores de categoría) --- */
-  --peach: #ffd9c7;
-  --apricot: #ffb59e;
-  --lavender: #d9c7ff;
-  --mint: #c7f0db;
-  --sky: #c7e3ff;
-  --butter: #fff1c7;
-  --rose: #ffc7d9;
-  --sage: #d7ecc7;
+  /* --- Paleta de categorías ---
+   *
+   * Veinticuatro, **en orden de matiz**, en **tono medio y no pastel**. El cambio
+   * salió de una queja concreta: con la paleta pastel una lista de canales era
+   * difícil de seguir porque los puntos se parecían todos.
+   *
+   * Cada color tiene que sobrevivir a cuatro usos —el punto a saturación completa,
+   * el chip al 35%, el bloque del rail al 18% y su `-ink` como texto encima— y son
+   * los tintes los que traicionan: dos matices que se distinguen a full colapsan
+   * al 18%. El criterio fue **distancia perceptual (ΔE en Lab) contra todos los
+   * demás en los tres fondos, tomando el mínimo**. Quedó en **ΔE mínimo 8.1**;
+   * la paleta pastel anterior estaba en 4.2.
+   *
+   * Tres caminos que se midieron y se descartaron, porque los dos primeros
+   * parecen la respuesta obvia:
+   *
+   * - **Un anillo uniforme** (misma L, mismo croma, matiz cada 15°) da **3.8, peor
+   *   que la paleta pastel**: 15° de matiz no es un paso perceptual constante, y en
+   *   los verdes y azules casi no se ve.
+   * - **Optimizar sin restricciones** llega a 13.8 pero rompe los nombres: `sage`
+   *   sale verde eléctrico, `amber` café, `lime` oliva oscuro. Un ΔE mejor con una
+   *   paleta incoherente es peor producto.
+   * - **Croma alto dentro de la caja pastel** (L 80–95) topa en 5.3. La caja era el
+   *   límite, no el matiz.
+   *
+   * Lo que queda es el diseño a mano —**la luminosidad sigue al matiz**, como una
+   * rueda de pigmentos: los amarillos claros, los azules y violetas más oscuros,
+   * porque a luminosidad constante el amarillo se ve café— con el optimizador
+   * gastando el presupuesto **solo en los pares que chocaban**.
+   *
+   * El orden no significa nada en los datos —`categories.color` guarda el nombre
+   * del token— así que reordenar es gratis; **renombrar o quitar no**, porque deja
+   * categorías apuntando a un `var(--loquesea)` que no existe: un punto
+   * transparente, sin un error. Lo vigila `tokens.test.ts`.
+   */
+  --rose: #e13483;
+  --apricot: #ff7b56;
+  --peach: #ffb588;
+  --amber: #e67902;
+  --butter: #fad366;
+  --khaki: #ddcaa3;
+  --olive: #838700;
+  --lime: #a8ea52;
+  --sage: #699850;
+  --fern: #05851c;
+  --mint: #6eea93;
+  --seafoam: #00daaf;
+  --jade: #00835d;
+  --aqua: #60eddb;
+  --mist: #5c8f8d;
+  --ice: #9ce2f7;
+  --teal: #008eaa;
+  --azure: #00c5ff;
+  --sky: #00a2ff;
+  --periwinkle: #4f89cb;
+  --lavender: #a585e4;
+  --mauve: #876887;
+  --lilac: #eacdf7;
+  --orchid: #fd82f5;
 
-  /* Versiones "ink" (texto sobre chip pastel) — más saturadas/oscuras */
-  --peach-ink: #b5502b;
-  --apricot-ink: #b5502b;
-  --lavender-ink: #6b4fb5;
-  --mint-ink: #2f8f5f;
-  --sky-ink: #2f6fb5;
-  --butter-ink: #9c7a1f;
-  --rose-ink: #b53f66;
-  --sage-ink: #558f2f;
+  /* Versiones "ink" (texto sobre el color) — **y estas sí cambian por tema.**
+   *
+   * Estas son las de tema claro. Las oscuras están en las dos ramas de abajo, y
+   * no es simetría estética: el chip de canal pinta el `-ink` sobre el color al
+   * 35% de un fondo que **sí** cambia, así que un solo hex tiene que fallar en un
+   * tema. Con el hex único, en oscuro el chip quedaba en contraste 1.1–1.5 —
+   * ilegible— y era la Mej.28.
+   *
+   * Los 24 están calculados, no elegidos a ojo: cada uno es el que llega a **4.6
+   * de contraste** contra el peor de sus fondos (su propio chip al 35%, y las tres
+   * superficies del tema), con croma parejo para que se vean como una familia. En
+   * claro el peor es 4.6 y en oscuro 4.6; el mínimo AA para texto chico es 4.5.
+   *
+   * **Ojo con los que se usan como fondo sólido**: hay cuatro lugares que hacen
+   * `background: var(--mint-ink)` con `color: #fff` encima (el play de Focus, los
+   * dos checks, el bloque real del rail). Esos **no** pueden seguir al tema —con el
+   * ink claro, blanco sobre claro no se lee— y por eso usan `--mint-solid`, que es
+   * fijo. Si necesitas otro sólido, agrégalo así; no lo saques del `-ink`.
+   */
+  --rose-ink: #a40058;
+  --apricot-ink: #b81f03;
+  --peach-ink: #ad4a09;
+  --amber-ink: #9a4100;
+  --butter-ink: #846700;
+  --khaki-ink: #836400;
+  --olive-ink: #525e00;
+  --lime-ink: #327a00;
+  --sage-ink: #006b00;
+  --fern-ink: #006109;
+  --mint-ink: #007a31;
+  --seafoam-ink: #007159;
+  --jade-ink: #005f4a;
+  --aqua-ink: #00786d;
+  --mist-ink: #006564;
+  --ice-ink: #007690;
+  --teal-ink: #00606b;
+  --azure-ink: #00688e;
+  --sky-ink: #18618b;
+  --periwinkle-ink: #045c9a;
+  --lavender-ink: #6443c4;
+  --mauve-ink: #940f9c;
+  --lilac-ink: #9543c6;
+  --orchid-ink: #a81da4;
+
+  /* El verde sólido, **fijo en los dos temas**: fondo con texto blanco encima.
+   * Es el `--mint-ink` que había antes de que el ink pasara a seguir el tema. */
+  --mint-solid: #007a31;
 
   /* --- Semáforo de capacidad --- */
   --cap-ok: #b8c0cc; /* gris: bajo el objetivo */
@@ -93,6 +181,33 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
+    /* Los 24 `-ink` de la paleta, en su versión clara para fondo oscuro
+     * (Mej.28). Van en las dos ramas oscuras por lo mismo que `color-scheme`:
+     * `data-theme` es convención nuestra y el media query no la ve. */
+    --rose-ink: #ecb1c3;
+    --apricot-ink: #f1baa9;
+    --peach-ink: #ffd0b4;
+    --amber-ink: #e3b89a;
+    --butter-ink: #f8e3b7;
+    --khaki-ink: #f0dbaf;
+    --olive-ink: #c6c396;
+    --lime-ink: #d8e9bc;
+    --sage-ink: #afc99f;
+    --fern-ink: #a9caa3;
+    --mint-ink: #bfeac7;
+    --seafoam-ink: #a3e1cc;
+    --jade-ink: #96cdb3;
+    --aqua-ink: #aaf0e4;
+    --mist-ink: #85cecb;
+    --ice-ink: #aaf0ff;
+    --teal-ink: #86cbe1;
+    --azure-ink: #9cd7f6;
+    --sky-ink: #a5c3ed;
+    --periwinkle-ink: #a8c2ed;
+    --lavender-ink: #cabae5;
+    --mauve-ink: #dbb5da;
+    --lilac-ink: #f8dbff;
+    --orchid-ink: #e8c0e3;
     --ink: #ecebe6;
     --muted: #9a9aa6;
     --faint: #6a6a76;
@@ -108,6 +223,33 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  /* Los 24 `-ink` de la paleta, en su versión clara para fondo oscuro
+   * (Mej.28). Van en las dos ramas oscuras por lo mismo que `color-scheme`:
+   * `data-theme` es convención nuestra y el media query no la ve. */
+  --rose-ink: #ecb1c3;
+  --apricot-ink: #f1baa9;
+  --peach-ink: #ffd0b4;
+  --amber-ink: #e3b89a;
+  --butter-ink: #f8e3b7;
+  --khaki-ink: #f0dbaf;
+  --olive-ink: #c6c396;
+  --lime-ink: #d8e9bc;
+  --sage-ink: #afc99f;
+  --fern-ink: #a9caa3;
+  --mint-ink: #bfeac7;
+  --seafoam-ink: #a3e1cc;
+  --jade-ink: #96cdb3;
+  --aqua-ink: #aaf0e4;
+  --mist-ink: #85cecb;
+  --ice-ink: #aaf0ff;
+  --teal-ink: #86cbe1;
+  --azure-ink: #9cd7f6;
+  --sky-ink: #a5c3ed;
+  --periwinkle-ink: #a8c2ed;
+  --lavender-ink: #cabae5;
+  --mauve-ink: #dbb5da;
+  --lilac-ink: #f8dbff;
+  --orchid-ink: #e8c0e3;
   --ink: #ecebe6;
   --muted: #9a9aa6;
   --faint: #6a6a76;

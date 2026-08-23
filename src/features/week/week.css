@@ -456,9 +456,13 @@
   border-radius: 4px;
   padding: 1px 6px;
 }
-/* Solo la tarea en curso va en verde; el resto queda en gris. */
+/* Solo la tarea en curso va en verde; el resto queda en gris.
+   El 35% y no 55%: es la misma proporción que el chip de canal, y es la que
+   tienen calculada los `-ink` de los dos temas. Con 55% el fondo en oscuro queda
+   demasiado claro para su ink y el badge volvía a perderse — que es justo lo que
+   se reportó (§4.6). */
 .tc__badge.is-running {
-  background: color-mix(in srgb, var(--mint) 55%, transparent);
+  background: color-mix(in srgb, var(--mint) 35%, transparent);
   color: var(--mint-ink);
   font-weight: 600;
 }
@@ -514,8 +518,8 @@
   color: var(--mint-ink);
 }
 .tc__check.is-checked {
-  background: var(--mint-ink);
-  border-color: var(--mint-ink);
+  background: var(--mint-solid);
+  border-color: var(--mint-solid);
   color: #fff;
 }
 .tc__tag {
@@ -567,8 +571,8 @@
   padding: 0;
 }
 .backlog .task-card__check.is-checked {
-  background: var(--mint-ink);
-  border-color: var(--mint-ink);
+  background: var(--mint-solid);
+  border-color: var(--mint-solid);
 }
 .backlog .task-card__body {
   flex: 1;
@@ -636,8 +640,8 @@
   padding: 0;
 }
 .obj-chip__check.is-checked {
-  background: var(--mint-ink);
-  border-color: var(--mint-ink);
+  background: var(--mint-solid);
+  border-color: var(--mint-solid);
 }
 .obj-chip__count {
   font-variant-numeric: tabular-nums;
@@ -1503,8 +1507,8 @@
   flex-shrink: 0;
 }
 .task-card__check.is-checked {
-  background: var(--mint-ink);
-  border-color: var(--mint-ink);
+  background: var(--mint-solid);
+  border-color: var(--mint-solid);
 }
 
 /* --- Weekly planning --- */
@@ -1616,18 +1620,30 @@
   min-width: 0;
   overflow: visible;
 }
+/* El canal de la card **es el mismo chip que el resto de la app**: lleva también
+   la clase `.cat-tag`, así que de acá solo salen los resets de botón. Antes era el
+   `-ink` suelto sobre la card, y con veinticuatro colores en tono medio un texto
+   teñido no dice a qué canal pertenece — el fondo del chip es lo que se reconoce
+   de reojo en una lista. Duplicar el estilo sería la forma de que los dos chips se
+   separen con el primer ajuste. */
 button.tc__tag {
-  background: transparent;
   border: none;
-  padding: 0;
-  color: var(--faint);
   font-family: var(--font-body);
+  font-weight: 500;
   cursor: pointer;
   margin-left: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 button.tc__tag:hover {
-  filter: brightness(0.9);
-  text-decoration: underline;
+  filter: brightness(0.95);
+}
+/* Sin canal no se dibuja una píldora vacía: queda el `#` tenue de siempre. */
+button.tc__tag.is-empty {
+  background: transparent;
+  color: var(--faint);
+  padding: 0;
 }
 
 /* Mini footer de tiempos dentro de la card */
@@ -1656,8 +1672,8 @@ button.tc__tag:hover {
   color: var(--mint-ink);
 }
 .tc__play.is-running {
-  background: var(--mint-ink);
-  border-color: var(--mint-ink);
+  background: var(--mint-solid);
+  border-color: var(--mint-solid);
   color: #fff;
 }
 .tc__timer-times {

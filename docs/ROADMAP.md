@@ -1470,22 +1470,104 @@ La regla quedó escrita en la skill `sunrise-ui`, con el criterio para un campo
 nuevo: la pregunta no es si molesta el subrayado, es si alguien escribiría ahí una
 frase.
 
-### Mej.6 🔵 Más colores en la paleta
+### Mej.28 ✅ Los `-ink` de la paleta no cambiaban en tema oscuro — hecho
 
-Hoy son ocho (`peach`, `apricot`, `lavender`, `mint`, `sky`, `butter`, `rose`,
-`sage`) y con varios contextos y canales se repiten, así que el punto de color
-deja de distinguir nada.
+Salió de medir la paleta para Mej.6 y se cerró en la misma tanda, porque el dev
+reportó el síntoma con un pantallazo: **el badge del timer en curso era ilegible en
+oscuro**. Resultó ser el mismo bug — `.tc__badge.is-running` pinta `--mint-ink`
+sobre `--mint` a un porcentaje, igual que el chip de canal.
 
-Cada color son **dos tokens** en `src/styles/tokens.css` —el pastel y su `-ink`
-para el texto encima— y los dos tienen que existir en tema claro y oscuro. El
-`-ink` no es el pastel oscurecido a ojo: tiene que dar contraste legible sobre el
-pastel en los dos temas, que es lo que hace que agregar un color sea más que
-sumar un hex. Después va en `PALETTE` en `SettingsView`.
+Los 24 `-ink` estaban declarados una sola vez, en `:root` pelado, así que el mismo
+hex se usaba en los dos temas. En claro bien; en oscuro el chip quedaba en
+**contraste 1.1–1.5, ilegible**. Ahora van en las tres ramas de tema, calculados
+para llegar a **4.6** contra el peor de sus fondos en cada tema (AA para texto
+chico es 4.5).
 
-Ojo con lo que ya está guardado: `categories.color` almacena el **nombre** del
-token, no un hex, así que agregar colores es compatible hacia atrás, pero
-**renombrar o quitar uno rompe las categorías existentes** (quedarían con un
-`var(--loquesea)` que no existe).
+Tres cosas que aparecieron al hacerlo, y la segunda casi rompió la app:
+
+- **La primera solución no servía.** La idea era el chip con el color completo y un
+  token nuevo para el texto encima, con lo cual el chip dejaba de depender del tema
+  y esto se disolvía. Medido: **seis de los 24 no llegan a 4.5 contra ningún
+  extremo** —ni negro ni blanco—, porque el tono medio tiene un valle de contraste.
+  Descartada por los números, no por gusto.
+- **Un `-ink` no siempre es texto.** Hay nueve bloques que lo usan como **fondo
+  sólido con `color: #fff`** encima (el play de Focus y del modal, los cuatro
+  checks): invertirlos en oscuro pone blanco sobre claro. Esos pasaron a
+  `--mint-solid`, fijo en los dos temas. Y el corte no es "fondo sí, texto no": los
+  fills **sin** texto —el punto pulsante, las barras de progreso— tienen que seguir
+  al tema, porque un verde oscuro sobre fondo oscuro desaparece. La pregunta es
+  **¿lleva texto encima?**
+- **El badge usaba 55% y el resto 35%.** Los `-ink` están calculados contra el chip
+  al 35%, así que a 55% el fondo en oscuro queda demasiado claro para su ink y el
+  badge se volvía a perder. Ahora los dos usan 35%.
+
+Dos tests nuevos lo sostienen: que los 24 `-ink` estén en **las tres** ramas de
+tema (darle variante a uno solo deja el chip de un canal legible y el de al lado
+no), y que **el color en sí no** se redefina por tema — el punto de un canal siendo
+de dos colores según el tema rompe lo único que sirve para reconocerlo.
+
+### Mej.6 ✅ Más colores en la paleta — hecho
+
+Eran ocho pastel y ahora son **veinticuatro en tono medio**. Con varios contextos y canales los ocho se
+repetían y el punto de color dejaba de distinguir nada: en la base de dev había 17
+categorías sobre 7 colores en uso, con hasta 4 compartiendo el mismo.
+
+**Se eligieron midiendo, no a ojo**, y eso fue lo que hizo la diferencia. Cada
+color tiene que sobrevivir a cuatro usos —el punto a saturación completa, el chip
+al 35%, el bloque del rail al 18% y su `-ink` encima— y **son los tintes los que
+traicionan**: dos matices que se distinguen a full colapsan al 18%, así que mirar
+las muestras del picker no alcanza para decidir. El criterio fue distancia
+perceptual (ΔE en Lab) contra todos los demás en los tres fondos, tomando el
+mínimo, y eligiendo cada vez el que maximiza ese mínimo.
+
+**El primer intento se quedó corto y el dev lo cachó a la vista**: dieciséis
+colores nuevos dentro de la caja pastel daban ΔE 5.3, y con una lista larga de
+canales seguían pareciéndose. La caja era el límite —L 80–95, croma 16–33—, no el
+matiz. Pasando a **tono medio** el mínimo sube a **8.1**, casi el doble de la
+paleta pastel (4.2).
+
+Los ocho originales **también cambiaron**, y ahí hay una decisión: dejarlos
+pastel los habría convertido en los descoloridos al lado de los nuevos. Los
+**nombres** no cambiaron, así que no hubo migración ni categorías rotas — solo se
+ven más profundas.
+
+Y una consecuencia que no era obvia: **lo pastel que la app necesita está en los
+tintes, y los tintes se calculan**. El chip usa el color al 35% y el rail al 18%,
+así que el token puede ser saturado y los fondos siguen suaves. Lo que gana es el
+punto, que es lo que se sigue en una lista.
+
+Tres cosas que salieron del camino:
+
+- **Lo que hizo que cupieran 24 fue la luminosidad, no el matiz.** El primer
+  intento —ocho matices nuevos en la franja donde viven los originales (L 89–91)—
+  metía pares en 3.3, *bajo* el piso que ya existía. Abriendo el rango a L 80–95
+  aparece sitio donde el círculo de matices ya estaba lleno. Queda margen medido
+  hasta unos 32; pasado eso la salida es un segundo eje (una forma, una inicial),
+  no otro matiz.
+- **`PALETTE` se mudó a `src/lib/palette.ts`.** Vivía en `SettingsView` y es dos
+  cosas a la vez: las opciones del picker y el dominio de valores de
+  `categories.color`. Aparte, el test que lo vigila no tiene que arrastrar un
+  componente entero.
+- **El orden ahora es por matiz** y el picker es una grilla de 6×4, así que se lee
+  como un espectro. Reordenar es gratis: el orden no se guarda en ninguna parte.
+- **Un anillo uniforme da peor resultado que la paleta pastel** (3.8 contra 4.2), y
+  era el camino que parecía obvio: 15° de matiz no es un paso perceptual constante
+  y en los verdes y azules casi no se ve. Y **optimizar sin restricciones** llega a
+  13.8 rompiendo los nombres (`sage` verde eléctrico, `amber` café). Lo que quedó
+  es diseño a mano con la luminosidad siguiendo al matiz, y el optimizador gastando
+  el presupuesto solo en los pares que chocaban.
+
+Y el test que faltaba: `tokens.test.ts` comprueba que cada nombre de `PALETTE`
+tenga sus dos tokens, que no haya un `-ink` huérfano, y que los pasteles sigan en
+`:root` pelado. El modo de falla era silencioso —agregar a la lista y olvidar el
+token deja `var(--x)` sin resolver, un punto transparente y ni un error en
+consola—, así que la regla escrita no alcanzaba.
+
+De paso salió **Mej.28**, que se cerró en la misma tanda: los `-ink` no tenían
+variante oscura y el chip de canal —y el badge del timer— eran ilegibles en tema
+oscuro. Y el canal pasó a dibujarse **siempre como chip**, también en el modal de
+detalle: con veinticuatro colores en tono medio, un texto teñido se lee como texto
+raro en vez de decir a qué canal pertenece.
 
 ### Mej.7 ✅ Crear un canal y elegirle el color en el mismo gesto — hecho
 

@@ -63,6 +63,11 @@
 .tmodal__meta-value.is-set {
   color: var(--apricot-ink);
 }
+/* El chip del canal dentro de la barra: solo la escala, el resto lo trae
+   `.cat-tag`. Es 13px acá y 11px en la card porque sigue al texto de su fila. */
+.tmodal__chip {
+  font-size: 13px;
+}
 
 .tmodal__close {
   background: transparent;
@@ -107,8 +112,8 @@
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 .tmodal__check.is-checked {
-  background: var(--mint-ink);
-  border-color: var(--mint-ink);
+  background: var(--mint-solid);
+  border-color: var(--mint-solid);
 }
 
 .tmodal__title {
@@ -472,8 +477,8 @@ button.tmodal__time:hover {
   color: var(--mint-ink);
 }
 .tmodal__play.is-running {
-  background: var(--mint-ink);
-  border-color: var(--mint-ink);
+  background: var(--mint-solid);
+  border-color: var(--mint-solid);
   color: #fff;
 }
 .tmodal__time-value.is-over {

@@ -137,10 +137,18 @@ backlog: Thinking, Tooling, Docs, Projects, Selfcare, Issues, Meetings).
 Con `parent_id` ⇒ **channel** (el `#tag` de las cards). Una tarea puede
 apuntar a cualquiera de los dos niveles.
 
-`color` guarda un **token de la paleta**, no un hex: `peach`, `apricot`,
-`lavender`, `mint`, `sky`, `butter`, `rose`, `sage`. Se usa como
-`var(--${color})` / `var(--${color}-ink)`. **Si agregas un color a `PALETTE` en
-`SettingsView`, tiene que existir el token en `src/styles/tokens.css`.**
+`color` guarda un **token de la paleta**, no un hex, y se usa como
+`var(--${color})` / `var(--${color}-ink)`. **Son veinticuatro**, listados en orden
+de matiz en `src/lib/palette.ts` (`PALETTE`) — vive ahí y no en `SettingsView`
+porque es dos cosas a la vez: las opciones del picker y el dominio de valores de
+esta columna.
+
+**Agregar un color es compatible hacia atrás; renombrar o quitar uno rompe las
+categorías que ya lo usan** (quedan con un `var(--loquesea)` que no existe: un
+punto transparente, sin error). Cada nombre necesita sus **dos** tokens en
+`src/styles/tokens.css`, y eso lo vigila `tokens.test.ts` — el modo de falla es
+silencioso, así que no alcanza con la regla escrita. Cómo se eligieron los
+dieciséis últimos y por qué caben, en §7.
 
 ### 3.4 `objectives`
 
@@ -554,9 +562,10 @@ también de donde sale el icono de cada una (§7).
   no en el blur del nombre: elegir el color primero perdía el alta a medio camino
   (la regla completa, en §7).
 - Contextos/channels: renombrar en línea, borrar, y el color se elige con un
-  **punto que abre la paleta en un popover**. Las ocho muestras solían estar
-  visibles en cada fila: con ocho categorías eran 64 puntos compitiendo con los
-  nombres, que es lo que uno viene a leer.
+  **punto que abre la paleta en un popover** (grilla de 6×4). Las muestras solían
+  estar visibles en cada fila: con ocho categorías eran 64 puntos compitiendo con
+  los nombres, que es lo que uno viene a leer — con veinticuatro colores serían
+  192, así que el popover pasó de conveniencia a requisito.
 
 Los ajustes viven en la tabla `settings` (TEXT/TEXT) y se leen vía
 `src/lib/settings.ts`: `useSettingsStore` los carga desde `Shell` y los relee con
@@ -2643,6 +2652,61 @@ En `useFloatingWindow.ts`, ya pagadas:
   aceptar en naranjo se lee como una advertencia. El naranjo queda para lo que
   avisa. Y todo botón de acción lleva **su icono** (`lucide-react`) además del
   texto.
+- **La paleta de categorías son 24 colores en tono medio, y se eligieron midiendo,
+  no a ojo.** Cada color son **tres** tokens: el color (`--rose`), su `-ink` para
+  el texto encima, y para el verde además `--mint-solid`. Tiene que sobrevivir a
+  cuatro usos: el punto a saturación completa (`SearchSelect`, el sidebar, el
+  donut), el chip al 35% (`.cat-tag`), el bloque del rail al 18% (`CalendarRail`)
+  y el `-ink` como texto **y como punto sólido** (los highlights del shutdown).
+  Son los tintes los que traicionan: **dos matices que se distinguen a full
+  colapsan al 18%**, así que mirar las muestras del picker no sirve para decidir.
+
+  El criterio fue distancia perceptual (ΔE en Lab) contra todos los demás en los
+  tres fondos, tomando el mínimo. Quedó en **ΔE mínimo 8.1**; la paleta pastel
+  anterior estaba en 4.2, y el síntoma era el reportado: una lista de canales
+  difícil de seguir porque los puntos se parecían todos.
+
+  > **Tres caminos medidos y descartados**, porque los dos primeros parecen la
+  > respuesta obvia. **Un anillo uniforme** (misma L, mismo croma, matiz cada 15°)
+  > da **3.8: peor que la pastel** — 15° de matiz no es un paso perceptual
+  > constante y en los verdes y azules casi no se ve. **Optimizar sin
+  > restricciones** llega a 13.8 pero rompe los nombres (`sage` sale verde
+  > eléctrico, `amber` café): un ΔE mejor con una paleta incoherente es peor
+  > producto. Y **croma alto dentro de la caja pastel** (L 80–95) topa en 5.3 — la
+  > caja era el límite, no el matiz. Lo que quedó es diseño a mano, con **la
+  > luminosidad siguiendo al matiz** como una rueda de pigmentos (los amarillos
+  > claros, los azules y violetas más oscuros: a luminosidad constante el amarillo
+  > se ve café), y el optimizador gastando el presupuesto solo en los pares que
+  > chocaban.
+
+- **Los `-ink` sí cambian por tema; el color no.** El chip pinta el `-ink` sobre
+  el color al 35% de un fondo que **sí** cambia, así que un solo hex tiene que
+  fallar en un tema: con el hex único, en oscuro el chip quedaba en contraste
+  1.1–1.5 (era Mej.28, y el mismo bug hacía ilegible el badge del timer en curso).
+  Los 24 están calculados para llegar a **4.6 de contraste** contra el peor de sus
+  fondos en cada tema — el mínimo AA para texto chico es 4.5. Van en **las tres
+  ramas** de tema, por lo mismo que `color-scheme`, y hay un test que exige los 24
+  en las tres: darle variante a uno solo deja el chip de un canal legible y el del
+  canal de al lado no, sin ninguna razón visible.
+
+  > **I** — **El color en sí no se redefine por tema**, y eso también tiene test.
+  > El punto de un canal siendo de dos colores distintos según el tema rompe lo
+  > único que sirve para reconocerlo.
+  >
+  > **I** — **Un fondo sólido con texto blanco encima no puede salir del `-ink`.**
+  > Hay nueve bloques que hacen `background: var(--mint-ink)` con `color: #fff`
+  > (el play de Focus y del modal, los cuatro checks): con el ink claro en oscuro,
+  > blanco sobre claro no se lee. Usan **`--mint-solid`**, que es fijo en los dos
+  > temas. Los fills **sin** texto —el punto pulsante, las barras de progreso— sí
+  > siguen al tema, porque un verde oscuro sobre fondo oscuro desaparece. La
+  > pregunta al agregar uno es "¿lleva texto encima?", no "¿es un fondo?".
+
+- **El canal se dibuja siempre como chip**, nunca como texto teñido: la card de la
+  semana, el modal de detalle y `CategoryTag` comparten `.cat-tag` y sacan sus
+  variables de `chipVars`. El fondo del chip es lo que se reconoce de reojo en una
+  lista; un texto de color con veinticuatro colores en tono medio se lee como
+  texto raro. Duplicar el estilo en cada lugar sería la forma de que los tres se
+  separen con el primer ajuste.
 - **Los diálogos chicos son un componente, no un patrón copiado**
   (`src/components/Dialog.tsx`): confirmar salida (⌘Q), el aviso de "ya
   planificaste", "Lo nuevo", y los dos de Respaldo. Él es dueño del overlay, de
@@ -2695,7 +2759,7 @@ En `useFloatingWindow.ts`, ya pagadas:
 ## 8. Tests
 
 Obligatorios por milestone. La Fase 0 cerró con **140 tests front y 35 Rust**;
-estado actual: **453 tests front (54 archivos) y 168 Rust, todos verdes.**
+estado actual: **459 tests front (54 archivos) y 168 Rust, todos verdes.**
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -2858,6 +2922,17 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
   **El test de la retención es el importante**: se pone rojo si el patrón de
   borrado se afloja a `*.zip`, y está verificado a mano que lo hace. **La
   restauración real no está cubierta**: el mock no tiene base que reemplazar.
+- **Paleta**: seis en `src/styles/tokens.test.ts` — cada nombre de `PALETTE` tiene
+  sus dos tokens, no hay un `-ink` huérfano, no hay nombres repetidos, **los 24
+  `-ink` están en las tres ramas de tema**, el color en sí **no** se redefine por
+  tema, y `--mint-solid` no sigue al tema. Los tres últimos son los que dejó
+  Mej.28 y cada uno protege una decisión: darle variante oscura a un `-ink` suelto
+  deja el chip de un canal legible y el del canal de al lado no; darle variante al
+  color haría que el punto de un canal fuera de dos colores según el tema; y
+  `--mint-solid` siguiendo al tema pone blanco sobre claro. El primero está
+  verificado a mano —se pone rojo agregando un color inventado a `PALETTE`— y cubre
+  el fallo que ningún otro ve: sin el token, `var(--x)` no resuelve y el punto sale
+  **transparente, sin un error en consola**.
 - **Marca**: `SunriseMark.test.tsx` — dos instancias no repiten el id del
   degradado, `public/app-icon.svg` es XML válido, y sigue siendo el favicon de las
   dos ventanas. Los tres cubren fallos que **ningún otro test puede ver**: el id

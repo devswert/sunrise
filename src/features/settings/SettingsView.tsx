@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { api } from "../../lib/ipc";
+import { PALETTE } from "../../lib/palette";
 import type { AppUpdate, Category } from "../../lib/types";
 import { formatMinutes, parseDuration } from "../../lib/capacity";
 import { Popover } from "../../components/Popover";
@@ -30,7 +31,6 @@ import {
   shortcutKey,
 } from "../../lib/shortcuts";
 
-const PALETTE = ["peach", "apricot", "lavender", "mint", "sky", "butter", "rose", "sage"];
 
 /** Cada sección es una card con su título y bajada. */
 function Card({
