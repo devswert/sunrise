@@ -65,9 +65,12 @@ describe("tokens · paleta", () => {
   });
 
   it("no hay un color con `-ink` que el picker no ofrezca", () => {
-    // `accent` es la excepción legítima: es el color de la app, no de categoría.
+    // Dos excepciones legítimas, y ninguna es de categoría: `accent` es el color
+    // de la app, y `selection` es el texto seleccionado (fondo fijo, así que su
+    // ink tampoco puede seguir al tema).
+    const SIN_CANAL = ["accent", "selection"];
     const conInk = [...tokens.matchAll(/--([a-z]+)-ink:/g)].map((m) => m[1]);
-    const huerfanos = conInk.filter((c) => c !== "accent" && !PALETTE.includes(c as never));
+    const huerfanos = conInk.filter((c) => !SIN_CANAL.includes(c) && !PALETTE.includes(c as never));
     expect(huerfanos).toEqual([]);
   });
 
@@ -120,11 +123,58 @@ describe("tokens · paleta", () => {
     }
   });
 
-  it("el verde sólido no sigue al tema", () => {
-    // `--mint-solid` es el fondo con texto blanco encima (el play de Focus, los
-    // checks). Si siguiera al tema, en oscuro quedaría blanco sobre claro.
-    expect(tokens).toMatch(/--mint-solid:\s*#[0-9a-f]{6}/);
+  /**
+   * Los sólidos y el ink de la selección son fondos **fijos**: si siguieran al
+   * tema, en oscuro quedaría blanco sobre claro (los sólidos) o el marrón de la
+   * selección sobre un damasco que nunca cambió.
+   */
+  it("los sólidos y el ink de la selección no siguen al tema", () => {
     const oscuro = tokens.slice(tokens.indexOf("/* --- Tema oscuro"));
-    expect(oscuro).not.toContain("--mint-solid:");
+    for (const token of ["mint-solid", "sage-solid", "selection-ink"]) {
+      expect(tokens, `falta --${token}`).toMatch(new RegExp(`--${token}:\\s*#[0-9a-f]{6}`));
+      expect(oscuro, `--${token} no debería redefinirse por tema`).not.toContain(`--${token}:`);
+    }
+  });
+});
+
+/**
+ * **El color entero con su `-ink` encima no se lee**, y es un error que no avisa:
+ * compila, se ve "verde sobre verde" y hay que medirlo para descubrir que son 2.0
+ * de contraste. Pasó en tres lugares a la vez —el botón de confirmar, el icono del
+ * diálogo de ritual y el texto seleccionado— porque los `-ink` están calibrados
+ * contra el chip **al 35%** y nadie escribió que el 35% era parte del cálculo.
+ *
+ * Este test lee todos los CSS del proyecto, no solo `tokens.css`: el par se arma
+ * lejos de donde se declaran los tokens. Busca el caso exacto —`background:
+ * var(--x)` con un `color: var(--x-ink)` en la misma regla— y no las mezclas, que
+ * sí son legítimas. Si necesitas el color a full con texto encima, va un sólido.
+ */
+describe("tokens · el color entero no lleva su propio `-ink`", () => {
+  const hojas = import.meta.glob("../**/*.css", { query: "?raw", import: "default", eager: true });
+
+  // Sin esto el test pasa aunque el glob no lea nada, que es el modo de falla del
+  // que se entera nadie: verde para siempre y sin vigilar ni un archivo.
+  it("lee las hojas de estilo del proyecto", () => {
+    expect(Object.keys(hojas).length).toBeGreaterThan(8);
+  });
+
+  it("ninguna regla pinta un color de la paleta a full y le pone su `-ink` de texto", () => {
+    const culpables: string[] = [];
+    for (const [ruta, hoja] of Object.entries(hojas)) {
+      // Sin comentarios: si no, uno arriba de la regla se cuela en el selector, y
+      // un par comentado se contaría como si estuviera vivo.
+      const css = (hoja as string).replace(/\/\*[\s\S]*?\*\//g, "");
+      const re = /([^{}]+)\{([^{}]*)\}/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(css))) {
+        const [, selector, cuerpo] = m;
+        for (const color of PALETTE) {
+          const aFull = new RegExp(`background(-color)?:\\s*var\\(--${color}\\)`).test(cuerpo);
+          const inkEncima = new RegExp(`color:\\s*var\\(--${color}-ink\\)`).test(cuerpo);
+          if (aFull && inkEncima) culpables.push(`${ruta} → ${selector.trim()} (${color})`);
+        }
+      }
+    }
+    expect(culpables).toEqual([]);
   });
 });

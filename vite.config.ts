@@ -36,16 +36,17 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
-    // CSS apagado salvo `tokens.css`. Apagado es el default y conviene: con CSS
-    // procesado, jsdom empieza a aplicar estilos y las consultas de RTL que miran
-    // visibilidad cambian de resultado. La excepción existe porque `tokens.test.ts`
-    // lee el archivo con `?raw`, y con CSS apagado Vitest devuelve string vacío.
-    // La query va **dentro** del patrón, no es un descuido: `tokens.css` también lo
-    // importa la app (`main.tsx`, `timer.tsx`), y un patrón sin `?raw` procesaría
-    // esos imports en todos los tests que renderizan algo — jsdom pasaría a aplicar
-    // estilos y las consultas de RTL que miran visibilidad cambiarían de resultado.
+    // CSS apagado salvo lo que se importe con `?raw`. Apagado es el default y
+    // conviene: con CSS procesado, jsdom empieza a aplicar estilos y las consultas
+    // de RTL que miran visibilidad cambian de resultado. La excepción existe porque
+    // `tokens.test.ts` lee las hojas como texto, y con CSS apagado Vitest devuelve
+    // string vacío — sin error, así que un test que las revise pasaría siempre.
+    // La query va **dentro** del patrón, no es un descuido: estas hojas también las
+    // importa la app, y un patrón sin `?raw` procesaría esos imports en todos los
+    // tests que renderizan algo — jsdom pasaría a aplicar estilos y las consultas de
+    // RTL que miran visibilidad cambiarían de resultado.
     // Anclar con `$` tampoco sirve: el id que se compara termina en la query.
-    css: { include: [/tokens\.css\?raw/] },
+    css: { include: [/\.css\?raw/] },
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
   },
 });

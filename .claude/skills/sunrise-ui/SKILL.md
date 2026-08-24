@@ -99,8 +99,9 @@ No agregues un botón Guardar ni un formulario plano: el usuario lo ha pedido
 explícitamente más de una vez. Si un cambio necesita confirmación, es porque es
 destructivo, y el patrón para eso es el de Eliminar.
 
-**Color de los botones**: confirmar es **salvia** (`.btn-primary`, `--sage` /
-`--sage-ink`), nunca naranjo. El damasco de la paleta es el mismo tono que
+**Color de los botones**: confirmar es **salvia** (`.btn-primary`, `--sage-solid`
+con texto blanco — **no** `--sage` con `--sage-ink`, que da 2.0 de contraste),
+nunca naranjo. El damasco de la paleta es el mismo tono que
 `--cap-over` ("te pasaste"), así que un aceptar en naranjo se lee como error. El
 naranjo queda para lo que avisa. Todo botón de acción lleva su icono de
 `lucide-react` además del texto.
@@ -337,6 +338,16 @@ Cuatro cosas que se rompen fácil:
   lee. Pero los fills **sin** texto —el punto pulsante, las barras— sí siguen al
   tema, porque un verde oscuro sobre fondo oscuro desaparece. La pregunta es
   **¿lleva texto encima?**, no "¿es un fondo?".
+- **El 35% es parte de la calibración del `-ink`.** Están calculados contra el chip
+  al 35% y las superficies del tema; sobre el color **entero** llegan a 1.2–2.0, o
+  sea texto invisible, y en los dos temas por igual. Si necesitas el color a full
+  con algo encima va un sólido (`--sage-solid`, `--selection-ink`), y **no** se
+  arregla oscureciendo el color: es uno de los 24 y su hex mueve los ΔE de la
+  familia. Un test lee **todos** los CSS buscando ese par.
+- **Un botón relleno no se apaga con `opacity`**: acerca el fondo y el texto a la
+  superficie a la vez y el contraste se derrumba (2.3). El `:disabled` declara su
+  par —fondo al 22% con el `-ink` encima—. Los botones fantasma sí pueden, ahí solo
+  se atenúa texto contra una superficie quieta.
 - **El canal se dibuja siempre como chip**, nunca como texto teñido. La card, el
   modal de detalle y `CategoryTag` comparten `.cat-tag` y sacan sus variables de
   `chipVars`. Si escribes las variables a mano en un cuarto lugar, ese chip se va a

@@ -47,7 +47,7 @@ a {
 
 ::selection {
   background: var(--peach);
-  color: var(--peach-ink);
+  color: var(--selection-ink);
 }
 
 /* --- Barras de scroll propias ---

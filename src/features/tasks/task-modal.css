@@ -394,8 +394,8 @@ button.tmodal__time:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--sage);
-  color: var(--sage-ink);
+  background: var(--sage-solid);
+  color: #fff;
   border: none;
   border-radius: var(--radius-sm);
   padding: 8px 16px;
@@ -405,8 +405,16 @@ button.tmodal__time:hover {
 .btn-primary:hover {
   filter: brightness(0.97);
 }
+/* Par explícito y no `opacity`, que es lo que había: bajarle la opacidad a un
+   botón relleno acerca el fondo **y** el texto a la superficie a la vez, así que
+   el contraste se derrumba (2.3 en claro) por más oscuro que sea el verde. Un
+   fondo aguado con el `-ink` encima —que sí está calibrado para esa mezcla— se
+   lee en los dos temas (4.8 y 7.7) y sigue diciendo que es el botón de confirmar,
+   apagado. */
 .btn-primary:disabled {
-  opacity: 0.6;
+  background: color-mix(in srgb, var(--sage-solid) 22%, var(--surface));
+  color: var(--sage-ink);
+  cursor: default;
 }
 
 .btn-danger {

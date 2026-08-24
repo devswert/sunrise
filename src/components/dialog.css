@@ -80,8 +80,10 @@
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: var(--sage);
-  color: var(--sage-ink);
+  /* Sólido y no el color entero con su `-ink`: así quedaba en 2.0 de contraste y
+     el icono no se veía, que es lo contrario de "más presencia". */
+  background: var(--sage-solid);
+  color: #fff;
 }
 
 /* El desmentido de un aviso: "no fui yo". Va dentro del cuerpo, debajo de la

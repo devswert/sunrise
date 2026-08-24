@@ -2823,7 +2823,8 @@ En `useFloatingWindow.ts`, ya pagadas:
   texto.
 - **La paleta de categorías son 24 colores en tono medio, y se eligieron midiendo,
   no a ojo.** Cada color son **tres** tokens: el color (`--rose`), su `-ink` para
-  el texto encima, y para el verde además `--mint-solid`. Tiene que sobrevivir a
+  el texto encima, y para el verde además dos sólidos (`--mint-solid`,
+  `--sage-solid`). Tiene que sobrevivir a
   cuatro usos: el punto a saturación completa (`SearchSelect`, el sidebar, el
   donut), el chip al 35% (`.cat-tag`), el bloque del rail al 18% (`CalendarRail`)
   y el `-ink` como texto **y como punto sólido** (los highlights del shutdown).
@@ -2869,6 +2870,27 @@ En `useFloatingWindow.ts`, ya pagadas:
   > temas. Los fills **sin** texto —el punto pulsante, las barras de progreso— sí
   > siguen al tema, porque un verde oscuro sobre fondo oscuro desaparece. La
   > pregunta al agregar uno es "¿lleva texto encima?", no "¿es un fondo?".
+  >
+  > **I** — **El 35% es parte de la calibración: el `-ink` no sirve sobre el color
+  > entero.** Los 24 están calculados contra el chip **al 35%** y las tres
+  > superficies; más concentrado que eso quedan fuera del cálculo, y sobre el color
+  > a full llegan a **1.2–2.0 de contraste**, que es texto invisible. Costó tres
+  > lugares a la vez —el botón de confirmar (`.btn-primary`, diez llamadores), el
+  > icono del diálogo de ritual y el texto seleccionado (`::selection`)—, y en los
+  > dos temas por igual, que es lo que lo delató. **La salida no es oscurecer el
+  > color**: es uno de los 24 y mover su hex corre los ΔE de toda la familia. Va un
+  > sólido: `--sage-solid` (el mismo tono a L 38%, aguanta blanco en 5.5) y
+  > `--selection-ink` (el fondo de la selección es `--peach`, que no cambia por
+  > tema, así que su texto tampoco puede). Lo vigila un test que **lee todos los
+  > CSS** buscando el par exacto.
+  >
+  > **I** — **Un botón relleno no se apaga con `opacity`.** Bajarle la opacidad
+  > acerca el fondo **y** el texto a la superficie al mismo tiempo, así que el
+  > contraste se derrumba (2.3 en claro) por más oscuro que sea el relleno. El
+  > `:disabled` de `.btn-primary` declara su par: fondo aguado al 22% —donde el
+  > `-ink` sí está calibrado— con el `-ink` encima (4.8 y 7.7). Los botones fantasma
+  > sí pueden usar `opacity`: ahí solo se atenúa el texto contra una superficie que
+  > no se mueve.
 
 - **El canal se dibuja siempre como chip**, nunca como texto teñido: la card de la
   semana, el modal de detalle y `CategoryTag` comparten `.cat-tag` y sacan sus
@@ -3091,10 +3113,18 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
   **El test de la retención es el importante**: se pone rojo si el patrón de
   borrado se afloja a `*.zip`, y está verificado a mano que lo hace. **La
   restauración real no está cubierta**: el mock no tiene base que reemplazar.
-- **Paleta**: seis en `src/styles/tokens.test.ts` — cada nombre de `PALETTE` tiene
+- **Paleta**: ocho en `src/styles/tokens.test.ts` — cada nombre de `PALETTE` tiene
   sus dos tokens, no hay un `-ink` huérfano, no hay nombres repetidos, **los 24
   `-ink` están en las tres ramas de tema**, el color en sí **no** se redefine por
-  tema, y `--mint-solid` no sigue al tema. Los tres últimos son los que dejó
+  tema, y los sólidos y `--selection-ink` no siguen al tema.
+  **El octavo es el que lee todos los CSS** y exige que ninguna regla pinte un
+  color a full con su propio `-ink` de texto: es el par que da 2.0 de contraste, y
+  el modo de falla es que compila, se ve "verde sobre verde" y hay que medirlo para
+  descubrirlo. Está verificado a mano contra los tres lugares que lo tenían. Lo
+  acompaña un noveno que exige que el glob **haya leído algo**: con el CSS apagado
+  Vitest devuelve string vacío sin avisar, y el test pasaría para siempre sin
+  vigilar ni un archivo — por eso `vite.config.ts` procesa todo `*.css?raw` y no
+  solo `tokens.css`. Los tres últimos son los que dejó
   Mej.28 y cada uno protege una decisión: darle variante oscura a un `-ink` suelto
   deja el chip de un canal legible y el del canal de al lado no; darle variante al
   color haría que el punto de un canal fuera de dos colores según el tema; y

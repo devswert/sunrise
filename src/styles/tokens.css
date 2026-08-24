@@ -77,6 +77,12 @@
    * superficies del tema), con croma parejo para que se vean como una familia. En
    * claro el peor es 4.6 y en oscuro 4.6; el mínimo AA para texto chico es 4.5.
    *
+   * **El 35% es parte de la calibración, no un detalle.** Un `-ink` sobre su color
+   * más concentrado que eso queda fuera del cálculo y no está garantizado: sobre
+   * el color entero llegan a 1.2–2.0, que es texto invisible. Si necesitas el
+   * color a full con algo encima, va un sólido (abajo), no el `-ink`. Lo vigila
+   * `tokens.test.ts`, que lee todos los CSS buscando justamente ese par.
+   *
    * **Ojo con los que se usan como fondo sólido**: hay cuatro lugares que hacen
    * `background: var(--mint-ink)` con `color: #fff` encima (el play de Focus, los
    * dos checks, el bloque real del rail). Esos **no** pueden seguir al tema —con el
@@ -108,9 +114,26 @@
   --lilac-ink: #9543c6;
   --orchid-ink: #a81da4;
 
-  /* El verde sólido, **fijo en los dos temas**: fondo con texto blanco encima.
-   * Es el `--mint-ink` que había antes de que el ink pasara a seguir el tema. */
+  /* Los sólidos, **fijos en los dos temas**: fondo con texto blanco encima.
+   *
+   * `--mint-solid` es el `--mint-ink` que había antes de que el ink pasara a
+   * seguir el tema (el play de Focus, los checks, el bloque real del rail).
+   *
+   * `--sage-solid` es el botón de confirmar y el icono del diálogo de ritual, y
+   * nació de un error que vale contar: usaban `--sage` de fondo con `--sage-ink`
+   * de texto, o sea el color **entero** con un ink calibrado para el chip al 35%,
+   * y eso daba **2.0 de contraste en claro y 1.88 en oscuro** — el texto casi no
+   * se veía, y en los dos temas por igual. No se arregla oscureciendo `--sage`:
+   * es uno de los 24 y mover su hex corre los ΔE de toda la familia. Es el mismo
+   * tono de salvia bajado a L 38% para que aguante blanco encima (5.5). */
   --mint-solid: #007a31;
+  --sage-solid: #4e723c;
+
+  /* El texto de la selección. El fondo es `--peach`, que **no** cambia por tema,
+   * así que su texto tampoco puede: con `--peach-ink` quedaba en 3.25 en claro y
+   * **1.22 en oscuro**, o sea texto seleccionado ilegible. Es el mismo damasco
+   * llevado a marrón oscuro (6.3 sobre el fondo). */
+  --selection-ink: #5a3410;
 
   /* --- Semáforo de capacidad --- */
   --cap-ok: #b8c0cc; /* gris: bajo el objetivo */
