@@ -6,6 +6,7 @@ import {
   collapsedWeekdays,
   dailyCapacityMinutes,
   noticeMeetingMinutes,
+  noticeSound,
   noticeOn,
   planMark,
   workHours,
@@ -255,5 +256,13 @@ describe("avisos", () => {
     // Un negativo es "apagado", no "avisar después de que empezó".
     expect(noticeMeetingMinutes({ [SettingKey.NOTICE_MEETING_MINUTES]: "-3" })).toBe(0);
   });
-});
 
+  it("el sonido cae al de la app si no hay nada útil guardado", () => {
+    // Importa más que los otros parsers: un nombre que no existe **no suena y no
+    // falla**, así que dejar pasar un vacío deja los avisos mudos sin síntoma.
+    expect(noticeSound({})).toBe("Blow");
+    expect(noticeSound({ [SettingKey.NOTICE_SOUND]: "" })).toBe("Blow");
+    expect(noticeSound({ [SettingKey.NOTICE_SOUND]: "   " })).toBe("Blow");
+    expect(noticeSound({ [SettingKey.NOTICE_SOUND]: " Submarine " })).toBe("Submarine");
+  });
+});

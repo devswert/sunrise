@@ -78,7 +78,19 @@ export const api = {
 
   getTask: (id: number) => (isTauri() ? invoke<Task | null>("get_task", { id }) : mock.getTask(id)),
 
-  bellDir: () => (isTauri() ? invoke<string>("bell_dir") : Promise.resolve("")),
+  /**
+   * Copia el audio elegido a la carpeta de la app y devuelve su nombre, que es lo
+   * que se guarda en `bell_sound`. **Falla si rodio no puede decodificarlo**, y ese
+   * error es el punto: `play_bell` cae a la síntesis en silencio, así que un archivo
+   * roto se viviría como "elegí mi mp3 y sigue sonando el de la app".
+   *
+   * La clave del argumento es el parámetro de Rust en camelCase (`path`).
+   */
+  installBellFile: (path: string) =>
+    isTauri() ? invoke<string>("install_bell_file", { path }) : mock.installBellFile(path),
+
+  /** Toca la campana que esté elegida (el botón de probar de Apariencia). */
+  playBell: () => (isTauri() ? invoke<void>("play_bell") : mock.playBell()),
 
   /** Muestra/oculta el taxímetro (lo resuelve Rust). */
   setTaximeterVisible: (visible: boolean, pos?: { x: number; y: number } | null) =>
@@ -176,7 +188,8 @@ export const api = {
     title: string,
     body: string,
     action: string,
-    sound: string,
+    /** `null` = alerta muda (la de la campana). Ver `NoticeCopy.silent`. */
+    sound: string | null,
     target: NoticeTarget | null = null,
   ) =>
     isTauri()
@@ -192,7 +205,7 @@ export const api = {
    */
   previewMeetingNotice: (title: string, time: string) =>
     isTauri()
-      ? invoke<{ title: string; body: string; action: string }>("preview_meeting_notice", {
+      ? invoke<{ title: string; body: string; action: string; silent: boolean }>("preview_meeting_notice", {
           title,
           time,
         })
@@ -201,7 +214,7 @@ export const api = {
   /** Lo mismo para el de la campana, que también lo manda Rust (`bell::copy`). */
   previewBellNotice: (title: string, minutes: number) =>
     isTauri()
-      ? invoke<{ title: string; body: string; action: string }>("preview_bell_notice", {
+      ? invoke<{ title: string; body: string; action: string; silent: boolean }>("preview_bell_notice", {
           title,
           minutes,
         })
@@ -209,6 +222,19 @@ export const api = {
 
   /** Los sonidos que macOS puede tocar, del sistema y de `~/Library/Sounds`. */
   noticeSounds: () => (isTauri() ? invoke<string[]>("notice_sounds") : mock.noticeSounds()),
+
+  /**
+   * Toca un sonido de aviso para oírlo antes de elegirlo. Va por `afplay` en Rust:
+   * los del sistema son `.aiff` y rodio no los decodifica.
+   */
+  previewNoticeSound: (name: string) =>
+    isTauri() ? invoke<void>("preview_notice_sound", { name }) : mock.previewNoticeSound(name),
+
+  /** Las tipografías instaladas en el sistema, ya filtradas (`fonts.rs`). */
+  systemFonts: () => (isTauri() ? invoke<string[]>("system_fonts") : mock.systemFonts()),
+
+  /** Borra la copia de la campana propia (al volver a la de sunrise). */
+  clearBellFile: () => (isTauri() ? invoke<void>("clear_bell_file") : mock.clearBellFile()),
 
   /**
    * Con qué identidad salen los avisos (`app.sunrise.desktop`, o la Terminal si

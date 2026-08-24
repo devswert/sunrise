@@ -1,4 +1,5 @@
 import { api, isTauri } from "../../lib/ipc";
+import { SETTING_DEFAULTS, noticeSound, useSettingsStore } from "../../lib/settings";
 
 /** Título, cuerpo y —si es una alerta— la etiqueta de su botón. */
 export interface NoticeCopy {
@@ -25,11 +26,20 @@ export interface NoticeCopy {
    * que no tiene tarea.
    */
   target?: { route: string; taskId?: number | null };
+  /**
+   * Si el aviso llega **sin sonido**. Lo trae la copia y no lo decide quien manda:
+   * el de la campana es mudo porque la campanada ya está sonando, y las dos cosas
+   * en el mismo instante se escuchan como un solo sonido reventado. Si lo eligiera
+   * cada llamador, el botón de probar de Dev Tools sonaría distinto al aviso real.
+   */
+  silent?: boolean;
 }
 
 /**
- * El sonido de los avisos de sunrise: `Blow`, elegido por el dev y **probado en
- * la app**.
+ * El sonido de los avisos **cuando no eligieron otro**: `Blow`, probado en la app.
+ * El elegido vive en `settings` (`notice_sound`, Configs → Notificaciones) y lo
+ * leen los dos lados —acá `noticeSound`, en Rust `commands::sound_or_default`—
+ * porque tres de los cuatro avisos los manda el backend.
  *
  * Es un **nombre de archivo sin extensión**, y macOS lo busca en las carpetas
  * `Sounds`: las del sistema y **`~/Library/Sounds`**, que es dónde va uno propio
@@ -38,13 +48,27 @@ export interface NoticeCopy {
  * quedó descartado —costó una regresión— es que un sonido con nombre impida la
  * entrega: suena y llega igual que el del sistema.
  */
-export const DEFAULT_SOUND = "Blow";
+export const DEFAULT_SOUND = SETTING_DEFAULTS.noticeSound;
 
 /**
  * El sonido que el sistema use como suyo, que no es un archivo sino este nombre
- * literal. Se ofrece en el selector de Dev Tools; el de la app es `Blow`.
+ * literal. Se ofrece en el selector de Configs; el de la app es `Blow`.
  */
 export const SYSTEM_SOUND = "NSUserNotificationDefaultSoundName";
+
+/**
+ * Las opciones del selector de sonido, con las dos con nombre propio primero.
+ *
+ * Vive acá —y no en la card que lo dibuja— porque el sonido se elige en
+ * Notificaciones y se **prueba** en Dev Tools: dos lugares, una lista. `sounds`
+ * sale de `api.noticeSounds()`, que lista las carpetas del sistema y
+ * `~/Library/Sounds`.
+ */
+export const SOUND_OPTIONS = (sounds: string[]): Array<{ value: string; label: string }> => [
+  { value: DEFAULT_SOUND, label: `${DEFAULT_SOUND} — el de sunrise` },
+  { value: SYSTEM_SOUND, label: "El que use el sistema" },
+  ...sounds.filter((s) => s !== DEFAULT_SOUND).map((s) => ({ value: s, label: s })),
+];
 
 /**
  * El texto de cada aviso vive **acá y solo acá**.
@@ -112,6 +136,28 @@ export async function askPermission(): Promise<NoticePermission> {
 }
 
 /**
+ * Con qué sonido sale un aviso. `null` = mudo.
+ *
+ * Función aparte y exportada porque es **la decisión**, y mandar el aviso necesita
+ * Tauri: así se puede sostener desde jsdom lo único que se puede equivocar acá.
+ *
+ * Tres reglas, en este orden:
+ *
+ * - **Un aviso mudo no lleva sonido**, ni el elegido ni ninguno. `null` viaja hasta
+ *   `send_alert`, que entonces **no llama** a `.sound()`. Un nombre vacío no serviría:
+ *   macOS lo trataría como un sonido que no existe, o sea mudo por accidente, y eso es
+ *   indistinguible de un typo en el sonido elegido.
+ * - Si el llamador pasó uno, ese.
+ * - Si no, **el que eligió el usuario, leído al llamar** y no como default de
+ *   parámetro: así cambiarlo en Configs se siente en el aviso siguiente sin recargar
+ *   nada, y es la misma lectura que hace Rust para los avisos que manda él.
+ */
+export function soundFor(copy: NoticeCopy, override?: string): string | null {
+  if (copy.silent) return null;
+  return override ?? noticeSound(useSettingsStore.getState().values);
+}
+
+/**
  * Manda el aviso, y **devuelve cómo terminó**.
  *
  * Los tres resultados no son informativos: cada uno tiene una política distinta
@@ -121,7 +167,12 @@ export async function askPermission(): Promise<NoticePermission> {
  * falló, porque eso puede ser pasajero y el próximo tick lo reintenta. Si esto
  * devolviera `void`, las tres se volverían una.
  */
-export async function notify(copy: NoticeCopy, sound = DEFAULT_SOUND): Promise<NotifyResult> {
+export async function notify(copy: NoticeCopy, sound?: string): Promise<NotifyResult> {
+  // Sin `sound`, el que eligió el usuario. **No es un default de parámetro**: el
+  // valor se lee al llamar, así que cambiarlo en Configs se siente en el aviso
+  // siguiente sin recargar nada. Y es la misma lectura que hace Rust para los
+  // avisos que manda él, o el aviso de prueba sonaría distinto al de verdad.
+  const elegido = soundFor(copy, sound);
   if (!isTauri()) return "unavailable";
   try {
     const notif = await plugin();
@@ -132,10 +183,14 @@ export async function notify(copy: NoticeCopy, sound = DEFAULT_SOUND): Promise<N
       // Alerta: por Rust, porque el plugin no manda botones. El comando **no
       // espera** la respuesta —eso bloquearía hasta que alguien mire la
       // pantalla—; llega después por el evento (ver `useNotificationActions`).
-      await api.notifyAlert(copy.title, copy.body, copy.action, sound, copy.target ?? null);
+      await api.notifyAlert(copy.title, copy.body, copy.action, elegido, copy.target ?? null);
       return "sent";
     }
-    notif.sendNotification({ title: copy.title, body: copy.body, sound });
+    notif.sendNotification({
+      title: copy.title,
+      body: copy.body,
+      sound: elegido ?? undefined,
+    });
     return "sent";
   } catch (err) {
     // Que falle un aviso no puede tumbar la app.

@@ -5,6 +5,7 @@ import {
   FlaskConical,
   Hash,
   Keyboard,
+  Palette,
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
@@ -27,6 +28,8 @@ import {
  */
 export const TABS = [
   { id: "general", label: "General", icon: SlidersHorizontal },
+  // Después de General: es lo segundo que alguien va a buscar y no toca datos.
+  { id: "apariencia", label: "Apariencia", icon: Palette },
   { id: "calendarios", label: "Calendarios", icon: CalendarDays },
   // Los canales son el `#tag` de las tarjetas, así que el numeral.
   { id: "canales", label: "Canales", icon: Hash },

@@ -262,6 +262,28 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         ALTER TABLE tasks ADD COLUMN notified_for TEXT;
         "#,
     ),
+    (
+        12,
+        r#"
+        -- `bell_sound` estrena consumidor (Mej.1) y el valor sembrado en la
+        -- migración 2 no significa lo que va a significar ahora.
+        --
+        -- Sembraba `'bell'`, que era el **tronco de archivo** que la campana
+        -- buscaba en el directorio de datos: si dejabas ahí un `bell.mp3` a mano,
+        -- sonaba. Con el selector de Configs el archivo lo copia la app y la clave
+        -- pasa a guardar su nombre completo, así que `'bell'` quedaría nombrando un
+        -- archivo que nunca existió.
+        --
+        -- `SUNRISE` es la campana sintetizada, que es lo que suena hoy en la
+        -- práctica, así que para casi todos esto no cambia nada. Lo que sí cambia:
+        -- un archivo dejado a mano en esa carpeta **deja de sonar** hasta que se
+        -- elija desde Configs. Es a propósito — pedirle a alguien que copie un
+        -- archivo a una ruta escondida era el diseño provisorio de cuando no había
+        -- picker, y ahora tener las dos vías haría imposible volver a la campana de
+        -- la app sin borrar archivos.
+        UPDATE settings SET value = 'SUNRISE' WHERE key = 'bell_sound';
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.

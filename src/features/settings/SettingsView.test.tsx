@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingsView } from "./SettingsView";
+import { visibleTabs } from "./secciones";
 import { api } from "../../lib/ipc";
 import {
   SettingKey,
@@ -16,6 +17,33 @@ describe("SettingsView", () => {
     // El mock provee las categorías padre por defecto.
     expect(await screen.findByDisplayValue("Thinking")).toBeInTheDocument();
     expect(await screen.findByDisplayValue("Meetings")).toBeInTheDocument();
+  });
+
+  /**
+   * **Las cards van en el mismo orden que las tabs, y en el mismo número.**
+   * `secciones.ts` lo pide por escrito y no había nada que lo vigilara: el
+   * resaltado del menú lo decide un `IntersectionObserver` sobre las secciones, así
+   * que una tab de más, de menos o corrida marca una sección y muestra otra — sin
+   * error y sin nada roto a la vista.
+   *
+   * Se compara con el `data-section` de cada card y no con el `id`, porque son dos
+   * atributos que también pueden divergir: agregar una sección y olvidar el
+   * `data-section` fue el bug reportado de Notificaciones, donde el click en la tab
+   * no llevaba a ninguna parte.
+   */
+  it("las cards salen en el mismo orden que las tabs del menú", async () => {
+    const { container } = render(<SettingsView />);
+    await screen.findByRole("heading", { name: "General" });
+
+    const enPantalla = [...container.querySelectorAll("[data-section]")].map((el) =>
+      el.getAttribute("data-section"),
+    );
+    // El mock dice `dev: true`, que es lo correcto fuera de Tauri.
+    expect(enPantalla).toEqual(visibleTabs(true).map((t) => t.id));
+    // Y el id de cada sección es `set-<tab>`, que es lo que busca `goTo`.
+    for (const id of enPantalla) {
+      expect(container.querySelector(`#set-${id}`)).not.toBeNull();
+    }
   });
 });
 

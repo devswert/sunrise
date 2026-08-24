@@ -231,7 +231,16 @@ nueva. Consecuencias para cualquier cosa que escribas cerca:
 Tabla plana `key TEXT PRIMARY KEY, value TEXT`, sembrada por la migración 2
 (`daily_capacity_minutes`, `capacity_warn_ratio`, `bell_sound`, `work_start`,
 `work_end`). Se lee entera con `list_settings` y se escribe con `set_setting`
-(upsert). En el front vive en `src/lib/settings.ts`: `useSettingsStore` la carga
+(upsert). Desde Mej.1 **ninguna clave sembrada quedó sin consumidor**; si agregas una
+sin UI, deja dicho en el ROADMAP quién la va a leer, porque una clave sembrada que
+nadie lee sobrevive versiones (`bell_sound` fue deuda desde la fase 0.4).
+
+**Una migración también puede reescribir un valor sembrado, y a veces hay que
+hacerlo**: si una clave estrena consumidor y su semilla no significa lo que va a
+significar, la semilla es un valor inventado. La 12 lo hace (`bell_sound` pasó de un
+tronco de nombre de archivo a `SUNRISE`). Eso no rompe la inmutabilidad —es una
+versión nueva, no la edición de la 2— pero **sí cambia datos de alguien**: escribe en
+el comentario qué se pierde. En el front vive en `src/lib/settings.ts`: `useSettingsStore` la carga
 desde `Shell` y la relee con cada invalidación.
 
 **Ojo con una clave donde ausente y vacío NO significan lo mismo.** Es el caso de

@@ -1,9 +1,12 @@
 //! Campana de fin de tiempo.
 //!
-//! Prioriza un **archivo de audio real** si existe (`bell.wav|mp3|ogg|flac` en
-//! el directorio de datos de la app): así puedes usar una grabación de cuenco
-//! tibetano propia. Si no hay archivo, cae a una síntesis suave (sin
-//! saturación) que aproxima el timbre.
+//! Suena la **síntesis interna** —un cuenco tibetano aproximado, sin saturación—
+//! salvo que hayas elegido un archivo propio en Configs → Apariencia, que la app
+//! copia a su carpeta `sounds`.
+//!
+//! Quién manda es `bell_sound` de `settings`, y no la presencia del archivo: antes
+//! bastaba con dejar un audio en el directorio de datos, y eso hacía imposible
+//! volver a la campana de la app sin ir a borrarlo (§4.28).
 
 use std::fs::File;
 use std::io::BufReader;
@@ -16,43 +19,76 @@ use rodio::{Decoder, OutputStream, Sink};
 /// Extensiones de audio que sabemos decodificar.
 const AUDIO_EXTS: [&str; 5] = ["wav", "mp3", "ogg", "flac", "m4a"];
 
-/// Nombres preferidos (si hay varios audios, gana el primero de esta lista).
-const PREFERRED_STEMS: [&str; 3] = ["bell", "timeout", "campana"];
-
-/// Busca el sonido propio en `dir`.
+/// El valor de `bell_sound` que significa "la campana de la app".
 ///
-/// Acepta **cualquier** archivo de audio de la carpeta (no un nombre fijo):
-/// así basta con dejar el mp3 ahí. Si hay varios, prioriza los nombres
-/// conocidos (`bell`, `timeout`, `campana`) y si no, va en orden alfabético.
-pub fn find_bell_file(dir: &Path) -> Option<PathBuf> {
-    let mut audios: Vec<PathBuf> = std::fs::read_dir(dir)
-        .ok()?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.is_file())
-        .filter(|p| {
-            p.extension()
-                .and_then(|e| e.to_str())
-                .map(|e| AUDIO_EXTS.contains(&e.to_lowercase().as_str()))
-                .unwrap_or(false)
-        })
-        .collect();
+/// Enum en MAYÚSCULAS como el resto (§ convención), y **no** una clave vacía: un
+/// vacío no distingue "elegí la de sunrise" de "nunca elegí nada", y las dos tienen
+/// que sonar igual pero solo una es una decisión.
+pub const SUNRISE_BELL: &str = "SUNRISE";
 
-    audios.sort();
+/// Si la extensión es una de las que sabemos decodificar.
+fn is_audio(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| AUDIO_EXTS.contains(&e.to_lowercase().as_str()))
+        .unwrap_or(false)
+}
 
-    let rank = |p: &PathBuf| -> usize {
-        let stem = p
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-        PREFERRED_STEMS
-            .iter()
-            .position(|pref| stem == *pref)
-            .unwrap_or(PREFERRED_STEMS.len())
-    };
-    audios.sort_by_key(rank);
+/// El archivo de campana que corresponde tocar, según el ajuste.
+///
+/// `None` significa "la síntesis". Son tres casos y los tres caen ahí a propósito:
+/// el ajuste dice `SUNRISE`, no dice nada, o **nombra un archivo que ya no está**
+/// (se puede borrar por fuera, y quedarse en silencio sería peor que sonar la de la
+/// app).
+pub fn bell_file(dir: &Path, setting: Option<&str>) -> Option<PathBuf> {
+    let name = setting.map(str::trim).filter(|v| !v.is_empty())?;
+    if name == SUNRISE_BELL {
+        return None;
+    }
+    // Solo el nombre: un ajuste con `../` no puede salir de la carpeta.
+    let name = Path::new(name).file_name()?;
+    let path = dir.join(name);
+    path.is_file().then_some(path)
+}
 
-    audios.into_iter().next()
+/// Copia un audio elegido por el usuario a la carpeta de sonidos y devuelve su
+/// nombre, que es lo que se guarda en `bell_sound`.
+///
+/// **Valida decodificando, no solo por la extensión**, y esa es la decisión que
+/// importa: `play_bell` cae a la síntesis cuando el decoder falla —en silencio,
+/// porque una campana que revienta no puede tumbar el timer—, así que un archivo
+/// que rodio no entiende se traduciría en "elegí mi mp3 y sigue sonando el de la
+/// app". El error tiene que llegar acá, cuando la persona está mirando el diálogo.
+///
+/// **Deja uno solo.** Los audios que había se borran: la carpeta es de la app, la
+/// campana es una, y acumular los descartados sería basura que nadie va a limpiar.
+pub fn install_bell(dir: &Path, src: &Path) -> anyhow::Result<String> {
+    if !is_audio(src) {
+        anyhow::bail!(
+            "solo sirven archivos de audio ({})",
+            AUDIO_EXTS.join(", ")
+        );
+    }
+    let name = src
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow::anyhow!("ese archivo no tiene nombre"))?
+        .to_string();
+
+    let file = File::open(src)?;
+    Decoder::new(BufReader::new(file))
+        .map_err(|e| anyhow::anyhow!("no pude leer ese audio: {e}"))?;
+
+    std::fs::create_dir_all(dir)?;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for path in entries.filter_map(|e| e.ok().map(|e| e.path())) {
+            if path.is_file() && is_audio(&path) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    std::fs::copy(src, dir.join(&name))?;
+    Ok(name)
 }
 
 // ---------------------------------------------------------------------------
@@ -174,38 +210,67 @@ mod tests {
         assert!(play_bell(None).is_ok());
     }
 
-    #[test]
-    fn find_bell_file_acepta_cualquier_audio_de_la_carpeta() {
-        let dir = std::env::temp_dir().join("sunrise-bell-test");
+    /// Una carpeta de prueba propia por test: corren en paralelo y `install_bell`
+    /// borra lo que encuentra, así que compartirla las haría pisarse.
+    fn carpeta(nombre: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("sunrise-bell-{nombre}"));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
-        assert!(find_bell_file(&dir).is_none(), "sin audio debe ser None");
+    #[test]
+    fn sin_ajuste_o_con_sunrise_suena_la_sintesis() {
+        let dir = carpeta("sintesis");
+        // Un audio en la carpeta **no** alcanza: manda el ajuste. Antes bastaba con
+        // dejarlo ahí, y eso hacía imposible volver a la campana de la app.
+        std::fs::write(dir.join("cuenco.mp3"), b"x").unwrap();
 
-        // Archivos que no son audio se ignoran (p. ej. la propia base de datos).
-        std::fs::write(dir.join("sunrise.sqlite"), b"db").unwrap();
-        assert!(find_bell_file(&dir).is_none());
-
-        // Un mp3 con cualquier nombre sirve.
-        let timeout = dir.join("timeout.mp3");
-        std::fs::write(&timeout, b"fake").unwrap();
-        assert_eq!(find_bell_file(&dir), Some(timeout));
+        assert!(bell_file(&dir, None).is_none());
+        assert!(bell_file(&dir, Some("")).is_none());
+        assert!(bell_file(&dir, Some("  ")).is_none());
+        assert!(bell_file(&dir, Some(SUNRISE_BELL)).is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn find_bell_file_prefiere_bell_si_hay_varios() {
-        let dir = std::env::temp_dir().join("sunrise-bell-pref");
+    fn el_ajuste_nombra_el_archivo_y_si_no_esta_cae_a_la_sintesis() {
+        let dir = carpeta("nombrado");
+        let cuenco = dir.join("cuenco.mp3");
+        std::fs::write(&cuenco, b"x").unwrap();
+
+        assert_eq!(bell_file(&dir, Some("cuenco.mp3")), Some(cuenco));
+        // Borrado por fuera: quedarse en silencio sería peor que sonar la de la app.
+        assert!(bell_file(&dir, Some("el-que-borre.mp3")).is_none());
+        // Y un ajuste editado a mano no puede salir de la carpeta.
+        assert!(bell_file(&dir, Some("../sunrise.sqlite")).is_none());
+
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+    }
 
-        std::fs::write(dir.join("otro.mp3"), b"x").unwrap();
-        std::fs::write(dir.join("timeout.mp3"), b"x").unwrap();
-        let bell = dir.join("bell.wav");
-        std::fs::write(&bell, b"x").unwrap();
+    #[test]
+    fn instalar_rechaza_lo_que_no_es_audio_antes_de_copiar_nada() {
+        let dir = carpeta("rechazo");
+        let origen = dir.join("apuntes.txt");
+        std::fs::write(&origen, b"no soy audio").unwrap();
 
-        assert_eq!(find_bell_file(&dir), Some(bell));
+        assert!(install_bell(&dir, &origen).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **El caso que justifica validar decodificando.** `play_bell` cae a la
+    /// síntesis cuando el decoder falla, y en silencio: sin este chequeo, elegir un
+    /// archivo roto se vive como "el selector no hace nada".
+    #[test]
+    fn instalar_rechaza_un_audio_que_no_se_puede_decodificar() {
+        let dir = carpeta("roto");
+        let origen = dir.join("mentira.mp3");
+        std::fs::write(&origen, b"esto no es un mp3").unwrap();
+
+        let err = install_bell(&dir, &origen).unwrap_err().to_string();
+        assert!(err.contains("no pude leer"), "el error tiene que explicarse: {err}");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

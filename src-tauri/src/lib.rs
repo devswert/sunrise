@@ -5,6 +5,7 @@ mod bell;
 mod calendar;
 mod commands;
 mod db;
+mod fonts;
 mod models;
 mod notice;
 mod repo;
@@ -184,7 +185,11 @@ pub fn run() {
             commands::close_day,
             commands::reopen_day,
             commands::focus_queue,
-            commands::bell_dir,
+            commands::install_bell_file,
+            commands::clear_bell_file,
+            commands::play_bell,
+            commands::preview_notice_sound,
+            commands::system_fonts,
             commands::set_taximeter_visible,
             commands::get_task,
             commands::set_actual_seconds,

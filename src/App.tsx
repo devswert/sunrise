@@ -18,6 +18,7 @@ import { useDevFake } from "./features/updates/devFake";
 import { useAppStore, useDataSync } from "./lib/store";
 import { useDayWatcher } from "./lib/day";
 import { useSettingsRuntime } from "./lib/settings";
+import { useFontRuntime } from "./lib/fonts";
 import { useShortcuts } from "./lib/shortcuts";
 import { useTimerStore } from "./features/timer/timerStore";
 import { useTimerRuntime } from "./features/timer/useTimer";
@@ -43,6 +44,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   // Recarga las vistas cuando el taxímetro (u otra ventana) muta datos.
   useDataSync();
   useSettingsRuntime();
+  // La tipografía elegida, estampada en <html>. Después de los ajustes porque sale
+  // de ellos.
+  useFontRuntime();
   // Una sesión que queda abierta cruza la medianoche sin enterarse.
   useDayWatcher();
   useShortcuts();

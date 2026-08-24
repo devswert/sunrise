@@ -165,16 +165,16 @@ pub fn copy(title: &str, estimated: i64) -> (String, String, String) {
     )
 }
 
-/// Toca la campana: el audio propio si dejaste uno en el directorio de datos de
-/// la app (`bell.wav|mp3|ogg|flac`), y si no la síntesis interna.
+/// Toca la campana: el audio que se eligió en Configs → Apariencia, y si no hay
+/// ninguno la síntesis interna.
+///
+/// **Quién decide es `bell_sound`, no la presencia del archivo.** Antes bastaba con
+/// dejar un audio en el directorio de datos, y con eso no había forma de volver a la
+/// campana de la app sin ir a borrarlo.
 ///
 /// `sound::play_bell` levanta su propio hilo, así que esto no bloquea el runtime.
-fn ring(app: &AppHandle) -> anyhow::Result<()> {
-    let custom = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .and_then(|dir| crate::sound::find_bell_file(&dir));
+pub fn ring(app: &AppHandle) -> anyhow::Result<()> {
+    let custom = crate::commands::bell_choice(app);
     crate::sound::play_bell(custom)
 }
 
@@ -293,7 +293,9 @@ pub fn start_watcher(app: AppHandle) {
                     titulo,
                     cuerpo,
                     boton,
-                    crate::commands::default_sound(),
+                    // **Muda**: la campanada acaba de sonar. Las dos cosas en el mismo
+                // instante se escuchan como un solo sonido reventado, no como dos.
+                None,
                     Some(crate::commands::NoticeTarget {
                         route: "/focus".into(),
                         task_id: Some(active.task_id),

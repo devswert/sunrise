@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SOUND, SHUTDOWN_NOTICE } from "./notify";
+import { DEFAULT_SOUND, SHUTDOWN_NOTICE, soundFor } from "./notify";
 
 /**
  * Que el aviso **lleve botón y sepa a dónde va** es la única decisión de este
@@ -20,6 +20,28 @@ describe("los avisos del sistema", () => {
     expect(SHUTDOWN_NOTICE.target?.route).toBe("/daily-shutdown");
     // Sin tarea: el shutdown es del día, no de una.
     expect(SHUTDOWN_NOTICE.target?.taskId).toBeUndefined();
+  });
+});
+
+/**
+ * **El aviso de la campana llega mudo, y eso viaja en la copia.** No es una decisión
+ * de quien lo manda: si cada llamador la tomara, el botón de probar de Dev Tools
+ * sonaría distinto al aviso real — el mismo desacuerdo que el texto ya tuvo.
+ *
+ * `null` y no un nombre vacío: un nombre que no existe deja el aviso mudo **por
+ * accidente**, y eso es indistinguible de un typo en el sonido elegido.
+ */
+describe("el aviso mudo", () => {
+  it("la campana avisa sin sonido; los demás con el elegido", () => {
+    const campana = { title: "t", body: "b", action: "Ir a Focus", silent: true };
+
+    // `null` y no `""`: ver el doc de `soundFor`.
+    expect(soundFor(campana)).toBeNull();
+    // Ni siquiera con un sonido pasado a mano — mudo es mudo.
+    expect(soundFor(campana, "Submarine")).toBeNull();
+
+    expect(soundFor({ ...campana, silent: false })).toBe(DEFAULT_SOUND);
+    expect(soundFor({ ...campana, silent: false }, "Submarine")).toBe("Submarine");
   });
 });
 

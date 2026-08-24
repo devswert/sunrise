@@ -1,15 +1,25 @@
-import { useEffect, useState } from "react";
-import { BellRing, ExternalLink } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { BellRing, ExternalLink, Play, Volume2 } from "lucide-react";
 import { Switch } from "../../components/Switch";
+import { Popover } from "../../components/Popover";
+import { SearchSelect } from "../../components/SearchSelect";
+import { api, isTauri } from "../../lib/ipc";
 import { sectionIcon } from "../settings/secciones";
 import {
   SETTING_DEFAULTS,
   SettingKey,
   noticeMeetingMinutes,
   noticeOn,
+  noticeSound,
   useSettingsStore,
 } from "../../lib/settings";
-import { openNotificationSettings, permission, type NoticePermission } from "./notify";
+import {
+  SOUND_OPTIONS,
+  SYSTEM_SOUND,
+  openNotificationSettings,
+  permission,
+  type NoticePermission,
+} from "./notify";
 
 const SectionIcon = sectionIcon("notificaciones");
 
@@ -32,10 +42,17 @@ export function NotificationsCard() {
   const [perm, setPerm] = useState<NoticePermission>("unavailable");
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sounds, setSounds] = useState<string[]>([]);
+  const [pickingSound, setPickingSound] = useState(false);
+  const [soundError, setSoundError] = useState<string | null>(null);
+  const soundRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void permission().then(setPerm);
+    void api.noticeSounds().then(setSounds);
   }, []);
+
+  const sound = noticeSound(values);
 
   const lead = noticeMeetingMinutes(values);
   const meetingOn = lead > 0;
@@ -71,6 +88,67 @@ export function NotificationsCard() {
           pantalla o se van solos— lo decide el sistema.
         </p>
       </header>
+
+      {/*
+        Arriba de los switches a propósito: el sonido vale para **los tres** avisos, así
+        que puesto entre ellos se leería como el de uno solo. Vivía en Dev Tools con
+        estado local, o sea que se elegía para probar y se perdía al cerrar.
+
+        Y "Probar" toca el archivo directo (por `afplay` en Rust), no manda un aviso:
+        oír el sonido no tiene que depender del permiso de notificaciones ni llenar el
+        centro de avisos de pruebas. Con "el que use el sistema" no hay archivo que
+        tocar —ese no es un archivo, es un nombre que macOS resuelve al mandar el
+        aviso—, así que el botón se apaga en vez de fallar sin explicar nada.
+      */}
+      <div className="set-field">
+        <div className="set-field__row">
+          <span className="set-field__label">Sonido de los avisos</span>
+          <div className="upd-acciones">
+            <div className="chip-wrap" ref={soundRef}>
+              <button
+                className="chip is-set"
+                aria-label="Elegir el sonido de los avisos"
+                onClick={() => setPickingSound((v) => !v)}
+              >
+                <Volume2 size={12} aria-hidden />{" "}
+                {sound === SYSTEM_SOUND ? "el del sistema" : sound}
+              </button>
+              {pickingSound && (
+                <Popover anchorRef={soundRef} align="right" onClose={() => setPickingSound(false)}>
+                  <SearchSelect
+                    options={SOUND_OPTIONS(sounds)}
+                    value={sound}
+                    placeholder="Buscar sonido…"
+                    onSelect={(v) => {
+                      setSoundError(null);
+                      void setSetting(SettingKey.NOTICE_SOUND, v ?? "");
+                      setPickingSound(false);
+                    }}
+                  />
+                </Popover>
+              )}
+            </div>
+            <button
+              type="button"
+              className="resp-btn"
+              disabled={!isTauri() || sound === SYSTEM_SOUND}
+              onClick={() => {
+                setSoundError(null);
+                void api.previewNoticeSound(sound).catch((err) => setSoundError(String(err)));
+              }}
+            >
+              <Play size={13} aria-hidden />
+              <span className="resp-btn__texto">Probar</span>
+            </button>
+          </div>
+        </div>
+        <span className={`set-note${soundError ? " is-error" : ""}`}>
+          {soundError ??
+            (sound === SYSTEM_SOUND
+              ? "El sistema elige cuál, así que este no se puede oír por adelantado."
+              : "Los del sistema, más lo que haya en ~/Library/Sounds: ahí va uno propio y aparece en esta lista con el nombre del archivo. Un nombre que no existe no suena y no avisa, así que si un aviso llega mudo, es esto.")}
+        </span>
+      </div>
 
       <div className="set-field">
         <div className="set-field__row">
@@ -144,7 +222,9 @@ export function NotificationsCard() {
         </div>
         <span className="set-note">
           La campana suena siempre. Esto agrega una notificación que puedes apretar para ir a
-          Focus con la tarea que estabas cronometrando.
+          Focus con la tarea que estabas cronometrando. Llega <strong>muda</strong>: la
+          campanada ya está sonando, y las dos cosas juntas se escuchan como un solo sonido
+          reventado.
         </span>
       </div>
 

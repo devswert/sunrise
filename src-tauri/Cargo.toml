@@ -42,6 +42,7 @@ tauri-plugin-updater = "2"
 # macOS solo pasa título, cuerpo, icono y sonido — nunca un botón de acción, que
 # es justamente lo que hace que macOS muestre una **alerta** en vez de un banner.
 [target.'cfg(target_os = "macos")'.dependencies]
+core-text = "22.0.0"
 mac-notification-sys = "0.6"
 
 [features]

@@ -1402,8 +1402,13 @@
   border-color: var(--muted);
 }
 /* Marcado = plegado. Es el mismo damasco que usa el board para "hoy" y para el
-   destino de un arrastre: acá dice "este día está tomado por el ajuste". */
-.set-weekday.is-on {
+   destino de un arrastre: acá dice "este día está tomado por el ajuste".
+   `.resp-btn.is-on` comparte la regla porque dice lo mismo —"esta es la opción
+   elegida", en la tipografía de Apariencia— y una segunda definición idéntica se
+   separaría de esta con el primer ajuste. Medido: 5.1 de contraste en claro y 8.3 en
+   oscuro; con `--accent` al 22% habrían sido 4.4, bajo el mínimo AA. */
+.set-weekday.is-on,
+.resp-btn.is-on {
   background: color-mix(in srgb, var(--apricot) 22%, transparent);
   border-color: var(--apricot-ink);
   color: var(--apricot-ink);

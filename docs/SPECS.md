@@ -535,15 +535,16 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
 
 ### 4.8 Settings
 
-Cinco secciones, cada una con título y bajada propia (`Card` en
-`SettingsView.tsx`), en este orden: **General**, **Calendarios** (§4.12),
-**Canales**, **Atajos de teclado** (§4.9), **Notificaciones** (§4.27) y
-**Respaldo** (§4.17). En dev hay una
-sexta al final, **Dev Tools** (§4.24), que la app instalada no muestra. El orden de la
+Seis secciones, cada una con título y bajada propia (`Card` en
+`SettingsView.tsx`), en este orden: **General**, **Apariencia** (§4.28),
+**Calendarios** (§4.12), **Canales**, **Atajos de teclado** (§4.9),
+**Notificaciones** (§4.27) y **Respaldo** (§4.17). En dev hay una séptima al final,
+**Dev Tools** (§4.24), que la app instalada no muestra. El orden de la
 lista lateral y el de las cards **tienen que coincidir**: el resaltado lo decide
 un `IntersectionObserver` sobre las secciones, así que si divergen la lista marca
 una y se ve otra. Las dos salen de la misma lista, `settings/secciones.ts`, que es
-también de donde sale el icono de cada una (§7).
+también de donde sale el icono de cada una (§7) — y desde Mej.1 lo vigila un test
+(§8), porque hasta entonces era una regla escrita sin nada que la sostuviera.
 
 - Capacidad diaria: autosave al salir del foco, acepta `8h`/`7h30`/`480`.
 - **Jornada** (`work_start`/`work_end`): dos horas en formato 24 h, autosave al
@@ -572,7 +573,8 @@ Los ajustes viven en la tabla `settings` (TEXT/TEXT) y se leen vía
 `src/lib/settings.ts`: `useSettingsStore` los carga desde `Shell` y los relee con
 cada invalidación, así un cambio en una ventana llega a la otra.
 **Toda lectura pasa por un parser con fallback** (`dailyCapacityMinutes`,
-`capacityWarnRatio`, `workHours`, `planMark`, `collapsedWeekdays`): la clave puede faltar, venir vacía o traer basura editada a
+`capacityWarnRatio`, `workHours`, `planMark`, `collapsedWeekdays`, `noticeSound`,
+`bellSound`, `fontFamily`): la clave puede faltar, venir vacía o traer basura editada a
 mano, y un `NaN` suelto dejaría el semáforo en OK para siempre sin error visible,
 porque toda comparación con `NaN` es false.
 
@@ -2372,8 +2374,43 @@ testeable.
 eso es literalmente lo que cubre: lo que trae hora es el import del calendario
 (§4.26), y llamarlo reunión prometería también las tareas con hora, que no existen.
 
-Queda para **Mej.1**: el sonido de la campana (`bell_sound`) y el de los avisos,
-que hoy se elige en Dev Tools y no se guarda. Los dos van acá cuando existan.
+**El sonido de los avisos se elige acá, arriba de los tres switches** (`notice_sound`,
+Mej.1). Arriba y no entre ellos porque vale para los tres: puesto en medio se leería
+como el de uno solo. Vivía en Dev Tools con `useState`, o sea que se elegía para
+probar y se perdía al cerrar la sección — y el botón de prueba sonaba distinto al
+aviso de verdad, el mismo desacuerdo que ya se había arreglado con el texto.
+
+Lo leen **los dos lados**, y tiene que ser así: tres de los cuatro avisos los manda
+Rust (`commands::sound_or_default`), y `notify()` lo lee del store en cada llamada
+—no como default de parámetro— para que cambiarlo en Configs se sienta en el aviso
+siguiente sin recargar nada.
+
+> **I** — **Un nombre de sonido que no existe no suena y no falla.** macOS lo busca
+> en las carpetas `Sounds` y si no está, manda el aviso en silencio. Por eso los dos
+> parsers descartan el vacío y los espacios en vez de pasarlos tal cual: un valor con
+> basura dejaría todos los avisos mudos sin ningún síntoma en pantalla. Y por eso el
+> selector tiene **botón de probar**: es lo único que distingue "elegí este sonido" de
+> "elegí un nombre que no existe".
+
+**El botón de probar toca el archivo, no manda un aviso.** Va por `afplay` en Rust
+(`preview_notice_sound`) y no por rodio, que es lo que toca la campana: los sonidos
+del sistema son `.aiff` y los decodificadores de rodio son wav, mp3, flac y vorbis —
+sonarían la mitad, y los que no, en silencio. Tocar el archivo en vez de mandar un
+aviso también evita dos cosas: depender del permiso de notificaciones, y llenar el
+centro de avisos de pruebas. Con "el que use el sistema" el botón se **apaga**: ese
+valor no es un archivo, es un nombre que macOS resuelve al mandar el aviso.
+
+> **I** — **El aviso de la campana llega mudo, y el "mudo" viaja en la copia.** La
+> campanada ya está sonando cuando llega; las dos cosas en el mismo instante se
+> escuchan como un solo sonido reventado. `NoticeCopy.silent` va junto al texto y no
+> lo decide quien manda, por lo mismo que el texto: si cada llamador lo eligiera, el
+> botón de probar de Dev Tools sonaría distinto al aviso real. En Rust viaja como
+> `Option<String>` y `send_alert` **no llama** a `.sound()` — no un nombre vacío, que
+> sería mudo por accidente e indistinguible de un typo.
+
+**La campana del timer no está acá, está en Apariencia (§4.28)**, y no es un
+descuido: este sonido es parte de un aviso que se puede apagar; la campana suena
+siempre que corras un timer.
 
 > **I** — **Los tres botones de prueba de Dev Tools mandan el texto de verdad**, no
 > una copia. El del cierre usa la misma constante `SHUTDOWN_NOTICE` que el
@@ -2384,6 +2421,99 @@ que hoy se elige en Dev Tools y no se guarda. Los dos van acá cuando existan.
 > agregas un aviso, su texto va en una función y el botón la consume.
 
 ---
+
+### 4.28 Configs → Apariencia (Mej.1)
+
+Cómo se **ve** y cómo **suena** sunrise: la campana del timer y la tipografía. Son
+dos cosas y una sección porque ninguna cambia qué hace la app ni cuándo, solo cómo se
+presenta.
+
+**La campana.** `bell_sound` tenía valor sembrado desde la migración 2 y ningún
+consumidor (era la deuda D4). Ahora manda:
+
+| Valor | Qué suena |
+|---|---|
+| `SUNRISE` | la síntesis interna (un cuenco tibetano aproximado) |
+| un nombre de archivo | ese audio, de la carpeta `sounds` del directorio de datos |
+| ausente, vacío, o un archivo que ya no está | la síntesis |
+
+> **I** — **Manda el ajuste, no la presencia del archivo.** Antes bastaba con dejar
+> un audio en el directorio de datos y sonaba; con eso no había forma de volver a la
+> campana de la app sin ir a borrarlo. La migración 12 reescribe el valor sembrado
+> (`'bell'`, que era un tronco de nombre) a `SUNRISE`, y el efecto que hay que
+> nombrar es que **un archivo dejado a mano deja de sonar** hasta elegirlo desde
+> Configs. Es a propósito: la copia a mano era el diseño provisorio de cuando no
+> había picker.
+
+> **I** — **El audio se valida decodificándolo, no por su extensión.** `play_bell`
+> cae a la síntesis cuando el decoder falla, **y en silencio**, porque una campana
+> que revienta no puede tumbar el timer. Sin validar al copiar, elegir un archivo que
+> rodio no entiende se vive como "elegí mi mp3 y sigue sonando el de la app".
+> `install_bell` lo abre con `Decoder::new` y devuelve el error mientras la persona
+> mira el diálogo. Y el ajuste se escribe **con el nombre que devuelve Rust**: si la
+> copia falla, la campana que sonaba sigue sonando.
+
+Queda **una sola** campana propia: al instalar una, los audios que había en la
+carpeta se borran. Y es una subcarpeta (`sounds/`) y no el directorio de datos a
+secas justamente por eso — borrar audios en la carpeta que además tiene la base de
+datos es pedir un accidente.
+
+**Volver a la campana de sunrise borra la copia.** No se guarda "por si acaso"
+porque no habría por si acaso: `bell_sound` guarda un nombre solo, así que al volver a
+`SUNRISE` ese nombre se pierde y el archivo queda sin nadie que lo nombre. Lo que se
+borra es la copia; el original sigue donde lo eligieron, y la nota de la card lo dice
+antes de que lo aprieten. **El ajuste se escribe primero y el borrado después**: al
+revés, un borrado exitoso con un `set` que falla dejaría el ajuste nombrando un
+archivo que ya no está — sonaría la síntesis y la card seguiría diciendo otra cosa.
+
+**La tipografía son dos ajustes, no uno**: `font_title` y `font_body`. Son dos roles —
+los títulos aguantan una fuente con carácter y el cuerpo necesita una que se lea en 12
+px— y con una sola clave elegir la de los títulos cambiaría las dos sin decir por qué.
+Cada una guarda uno de dos centinelas o **el nombre de una familia instalada**:
+
+| Valor | Qué se usa |
+|---|---|
+| `SUNRISE` | la de fábrica: **Sora** en títulos, **Manrope** en el cuerpo |
+| `SYSTEM` | `system-ui`, sin nombrar familia — la única forma de pedir la del sistema que sigue andando si le cambian el nombre |
+| una familia | esa, entre comillas, **más la pila de respaldo detrás** |
+
+Los centinelas van en MAYÚSCULAS para no poder chocar con un nombre de familia real,
+que siempre viene capitalizado normal.
+
+**La lista de familias la da Core Text, no la carpeta de fuentes** (`fonts.rs`, con la
+crate `core-text`): el nombre que necesita el CSS es el de la **familia** (`Helvetica
+Neue`) y el del archivo no lo es (`HelveticaNeue.ttc`), así que sacarlo del nombre de
+archivo obligaría a parsear las tablas de cada fuente para llegar a lo que el sistema
+ya sabe. Son ~180 familias, así que el selector tiene búsqueda.
+
+> **I** — **La lista se filtra, y no por prolijidad.** Se van las de puntito
+> (`.AppleSystemUIFont`, internas de macOS, que CSS no puede pedir por nombre) y **las
+> de símbolos y dingbats** (`Symbol`, `Wingdings 2`, `Zapf Dingbats`). Esas sí se
+> pueden pedir, y ese es el problema: con una puesta, cada letra de la app sale como un
+> cuadrito, y volver atrás habría que hacerlo a ciegas. Las numeradas se filtran por
+> palabra y no por nombre exacto, o la lista se queda corta con la próxima versión de
+> macOS.
+
+> **I** — **Toda elección arrastra la pila de respaldo.** Una familia desinstalada no
+> resuelve, y sin la pila la app se quedaría con la fuente por defecto del webview —una
+> serif—: un cambio de tipografía no puede verse como "la app se rompió". Por eso el
+> parser **no** valida contra la lista de instaladas: la lista solo existe dentro de la
+> app, y el CSS ya hace lo correcto solo.
+
+Se aplica **sobreescribiendo los tokens** `--font-title` / `--font-body` en `<html>`,
+no tocando componentes: todo el CSS ya los usa. Con `SUNRISE` la propiedad se **borra**
+en vez de reescribirse, para que el valor vuelva a salir de `tokens.css` y no haya dos
+lugares diciendo cuál es la fuente de la app. Cada selector muestra debajo una frase de
+ejemplo con la fuente puesta y en el tamaño de su rol: es lo único que responde "¿cómo
+se ve?" sin cerrar Configs.
+
+> **I** — **La tipografía llega al taxímetro por `localStorage`, igual que el tema.**
+> Los valores viven en `settings` —son ajustes—, pero el taxímetro es otra ventana con
+> su propio documento y **no monta el store de ajustes**: es una ventana chica que
+> solo muestra el timer. La ventana principal manda y espeja el valor; el taxímetro
+> lo aplica al arrancar y sigue el evento `storage` (§5.2). La base sigue siendo la
+> fuente de verdad; el espejo es el canal. Sin esto, la app en la fuente del sistema
+> con el taxímetro en Sora se ve partida.
 
 ## 5. Sincronización de estado — LEER ANTES DE TOCAR
 
@@ -2941,7 +3071,7 @@ En `useFloatingWindow.ts`, ya pagadas:
   —si empujan, la caja se reacomoda al pasar el mouse— y entran con `transform`
   además de `opacity`: solo el fundido se siente pegado. Referencia:
   `.tax__opts` en `src/features/timer/timer.css`.
-- Fuentes: **Sora** (títulos) + **Manrope/Inter** (cuerpo), auto-hospedadas
+- Fuentes de fábrica: **Sora** (títulos) + **Manrope** (cuerpo), auto-hospedadas
   (`@fontsource`) para funcionar offline. Paleta pastel en tokens CSS con tema
   claro/oscuro.
 
@@ -3141,6 +3271,32 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
   14:57 no puede costar un minuto de un aviso que avisa con cinco). Más los dos
   switches en `settings.test.ts` y `dailyLog.test.ts`: **una clave ausente es
   encendido**, que es lo que evita silenciar los tres avisos al actualizar.
+- **Sonidos y tipografía (Mej.1)**: cuatro en `sound.rs` —la síntesis suena cuando el
+  ajuste dice `SUNRISE` **aunque haya un audio en la carpeta**, el ajuste nombra el
+  archivo y cae a la síntesis si ya no está o si intenta salir de la carpeta con
+  `../`, y **dos de rechazo al instalar**: lo que no es audio, y lo que rodio no puede
+  decodificar. El segundo es el que importa: sin él, un archivo roto se vive como "el
+  selector no hace nada". Dos en `commands.rs` para el sonido de los avisos (vacío,
+  espacios y basura caen al de la app), su espejo en `settings.test.ts`, uno en
+  `notify.test.ts` para el **aviso mudo** (`null` y no un nombre vacío, ni siquiera con
+  un sonido pasado a mano), seis en `AppearanceCard.test.tsx` —el nombre que se guarda
+  es el que devolvió la copia, **si la copia falla el ajuste no se toca**, cada rol de
+  tipografía se guarda por separado y volver a la de sunrise borra la copia— y tres en
+  `fonts.test.ts`, donde los casos que hay que sostener son los de vuelta: con la fuente
+  de sunrise el token se **borra** (o `tokens.css` deja de ser el único lugar donde está
+  declarada) y **toda elección arrastra la pila de respaldo**.
+- **Familias del sistema**: dos en `fonts.rs`. El filtro es puro y se prueba con una
+  lista armada a mano —se van las de puntito, las de dingbats numeradas y los
+  repetidos—, y hay un segundo que llama a Core Text de verdad y exige **más de 20
+  familias**: si la API cambiara o el filtro se pasara de estricto, el selector quedaría
+  con una opción y eso se ve como "no tengo fuentes", no como un error.
+- **El orden de Configs**: `SettingsView.test.tsx` compara los `data-section` que se
+  dibujan contra `visibleTabs(true)`. Vigila una invariante que `secciones.ts` pedía
+  por escrito y **no tenía test**: el resaltado del menú lo decide un
+  `IntersectionObserver`, así que una sección de más, de menos o corrida marca una y
+  muestra otra, sin error y sin nada roto a la vista. Verificado a mano moviendo una
+  card. Y comprueba que cada sección tenga su `id="set-<tab>"`, que es el atributo
+  cuyo olvido dejó el click de la tab de Notificaciones sin llevar a ninguna parte.
 - **Marca**: `SunriseMark.test.tsx` — dos instancias no repiten el id del
   degradado, `public/app-icon.svg` es XML válido, y sigue siendo el favicon de las
   dos ventanas. Los tres cubren fallos que **ningún otro test puede ver**: el id
@@ -3204,9 +3360,10 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 
 ## 9. Deuda técnica conocida
 
-- **D4. `bell_sound` sigue sin consumidor.** La tabla `settings` ya se lee
-  (§4.8). `work_start`/`work_end` dejaron de ser deuda: los usa el rail (§4.13)
-  y se editan desde Configs → General.
+- ~~**D4. `bell_sound` sigue sin consumidor**~~ — resuelto en Mej.1: lo lee
+  `commands::bell_choice` y se elige en Configs → Apariencia (§4.28), con un picker
+  del Finder en vez de la copia a mano que preveía el diseño original.
+  `work_start`/`work_end` habían dejado de ser deuda antes, con el rail (§4.13).
 - ~~**D5. `USER_NAME` hardcodeado**~~ — resuelto, pero no como decía la deuda:
   no hacía falta una fuente de datos para el nombre, sino dejar de tener sujeto.
   Pasó por `HISTORY_ACTOR = "You"` y `= "Tú"` antes de desaparecer del todo

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import { api } from "./ipc";
+import { FontChoice, SUNRISE_BELL } from "./enums";
 import { useAppStore } from "./store";
 
 /**
@@ -34,6 +35,13 @@ export const SettingKey = {
   NOTICE_MEETING_MINUTES: "notice_meeting_minutes",
   NOTICE_BELL: "notice_bell",
   NOTICE_SHUTDOWN: "notice_shutdown",
+  // Este también lo lee Rust (`commands::notice_sound`): los tres avisos que
+  // manda —campana, reunión, cierre— tienen que sonar igual que el de prueba.
+  NOTICE_SOUND: "notice_sound",
+  // Apariencia. `BELL_SOUND` la lee **Rust** (`commands::bell_choice`), que es
+  // quien toca la campana; acá solo se elige.
+  FONT_TITLE: "font_title",
+  FONT_BODY: "font_body",
 } as const;
 export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
 
@@ -59,6 +67,13 @@ export const SETTING_DEFAULTS = {
   /** Minutos de adelanto del aviso de próxima reunión. **0 apaga el aviso.**
    *  Espeja `notice::DEFAULT_LEAD`: Rust es quien manda ese aviso. */
   noticeMeetingMinutes: 5,
+  /** El sonido de los avisos. Espeja `commands::DEFAULT_SOUND`, y es el mismo
+   *  valor que `DEFAULT_SOUND` en `notify.ts` — de ahí lo toma el selector. */
+  noticeSound: "Blow",
+  /** La campana de la app. Espeja `sound::SUNRISE_BELL` y la migración 12. */
+  bellSound: SUNRISE_BELL,
+  /** Las fuentes empaquetadas, que es lo que se ve desde siempre. */
+  font: FontChoice.SUNRISE,
 } as const;
 
 export type SettingsMap = Record<string, string>;
@@ -244,6 +259,49 @@ export function noticeOn(values: SettingsMap, key: SettingKey): boolean {
  * para dibujar el control. Un negativo se lee como apagado y no como "avisar
  * después de que empezó".
  */
+/**
+ * El sonido de los avisos, o el de la app si no eligieron uno.
+ *
+ * Espeja `commands::sound_or_default` en Rust, que es la que decide para los tres
+ * avisos que manda el backend. **Un nombre que no existe no suena y no falla**, así
+ * que un valor vacío o con espacios no puede pasar tal cual: dejaría los avisos
+ * mudos sin ningún síntoma.
+ */
+export function noticeSound(values: SettingsMap): string {
+  const raw = values[SettingKey.NOTICE_SOUND]?.trim();
+  return raw ? raw : SETTING_DEFAULTS.noticeSound;
+}
+
+/**
+ * La campana elegida: el centinela de la app, o el nombre de un archivo copiado.
+ *
+ * Espeja `sound::bell_file`, que es quien decide de verdad; esto es para dibujar el
+ * control. **Un nombre que ya no está también cae en la de la app**, pero eso solo lo
+ * sabe Rust —acá no hay disco—, así que la card muestra el nombre guardado y el botón
+ * de probar es lo que revela que el archivo se fue.
+ */
+export function bellSound(values: SettingsMap): string {
+  const raw = values[SettingKey.BELL_SOUND]?.trim();
+  return raw ? raw : SETTING_DEFAULTS.bellSound;
+}
+
+/**
+ * La tipografía elegida para los títulos o para el cuerpo.
+ *
+ * **No valida contra la lista de familias instaladas**, y es a propósito: la lista la
+ * da el sistema y solo existe dentro de la app, así que validar acá dejaría al
+ * browser y a los tests sin poder leer un valor perfectamente bueno. Una familia
+ * desinstalada tampoco necesita defensa: el CSS la ignora y cae en la pila de
+ * respaldo, que es exactamente lo que uno querría.
+ */
+export function fontChoice(
+  values: SettingsMap,
+  key: typeof SettingKey.FONT_TITLE | typeof SettingKey.FONT_BODY,
+): string {
+  const raw = values[key]?.trim();
+  return raw ? raw : SETTING_DEFAULTS.font;
+}
+
 export function noticeMeetingMinutes(values: SettingsMap): number {
   const raw = values[SettingKey.NOTICE_MEETING_MINUTES]?.trim();
   if (raw == null || raw === "") return SETTING_DEFAULTS.noticeMeetingMinutes;

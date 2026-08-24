@@ -275,7 +275,7 @@ pub fn start_watcher(app: AppHandle) {
                 titulo,
                 cuerpo,
                 boton,
-                crate::commands::default_sound(),
+                Some(crate::commands::notice_sound(&app)),
                 Some(crate::commands::NoticeTarget {
                     route: "/focus".into(),
                     task_id: Some(reunion.task_id),

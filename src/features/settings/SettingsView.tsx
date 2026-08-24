@@ -7,6 +7,7 @@ import { formatMinutes, parseDuration } from "../../lib/capacity";
 import { Popover } from "../../components/Popover";
 import { Switch } from "../../components/Switch";
 import { FeedsCard } from "../calendar/FeedsCard";
+import { AppearanceCard } from "../appearance/AppearanceCard";
 import { NotificationsCard } from "../notifications/NotificationsCard";
 import { BackupCard } from "../backup/BackupCard";
 import { DevToolsCard } from "../devtools/DevToolsCard";
@@ -911,6 +912,7 @@ export function SettingsView() {
 
       <div className="set-panels">
         <GeneralCard />
+        <AppearanceCard />
         <CalendariosCard />
         <ChannelsCard />
         <ShortcutsCard />

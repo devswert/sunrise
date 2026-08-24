@@ -1085,42 +1085,67 @@ Detalle en [SPECS.md §4.10](SPECS.md#410-cierre-de-la-app). **El camino de ⌘Q
 solo se puede verificar con `pnpm tauri dev`**: en el browser no hay eventos de
 cierre.
 
-### Mej.1 🔵 Más ajustes configurables desde Settings
+### Mej.1 ✅ Más ajustes configurables desde Settings — hecho
 
-La tabla `settings` ya se lee (Fase 0.4) y tiene tres claves sembradas **sin
-consumidor**. Darles UI:
+Las tres claves sembradas sin consumidor ya tienen su UI, y con eso la tabla
+`settings` no deja ninguna clave muerta. Salió en dos lugares y no en uno, y esa fue
+la decisión de diseño del ítem:
 
-| Clave | Para qué | Estado |
+| Ajuste | Dónde | Por qué ahí |
 |---|---|---|
-| ~~`work_start` / `work_end`~~ | jornada; dibuja la grilla del rail | ✅ **hecho** en 3.3 (Configs → General) |
-| `bell_sound` | qué campana suena al llegar al estimado | sembrada, sin uso |
-| tipografía | clave nueva | no existe |
+| sonido de los avisos (`notice_sound`) | Configs → Notificaciones | es parte de un aviso que se puede apagar |
+| campana del timer (`bell_sound`) | Configs → **Apariencia** (nueva) | suena siempre que corras un timer, no se apaga |
+| tipografía de títulos y de textos (`font_title`, `font_body`) | Configs → Apariencia | cómo se ve |
 
-Notas de implementación:
+Lo que se aprendió, que no estaba en el plan:
 
-- ~~**`work_start`/`work_end`**~~ — hecho junto con el rail (3.3), que es
-  justamente el consumidor que les faltaba. Dos campos en Configs → General, con
-  validación al escribir. Queda pendiente el resto de la tabla.
-- **`bell_sound`** hoy no elige nada: `sound.rs` sintetiza una sola campana con
-  `rodio`. Ojo: el botón de "probar" necesita volver a exponer el comando
-  `play_bell`, que se borró al mover la campana a Rust (Mej.26) porque quedó sin
-  llamadores. Es una línea en `ipc.ts`, una en `mockDb.ts` y el `#[tauri::command]`
-  sobre `bell::ring`. Para que la clave sirva hay que ofrecer variantes ahí (y un botón de
-  "probar" en Settings, o se elige a ciegas). Para el audio propio, `find_bell_file`
-  ya lo busca en el directorio de datos y `bell_dir` ya expone la ruta, pero **no
-  hace falta pedirle al usuario que copie el archivo a mano**: desde M4.1 está
-  `tauri-plugin-dialog`, así que puede elegirlo con el Finder y la app lo copia.
-  Hacerlo así cuando se tome este ítem —el diseño original era mostrar la ruta de
-  `bell_dir` para que la copiara a mano, y con el picker instalado eso ya no tiene
-  sentido—. `BackupCard` tiene el patrón de la llamada (`open` con `directory`).
-- **Tipografía**: las fuentes van **auto-hospedadas** vía `@fontsource`, sin CDN,
-  para que la app siga funcionando offline. Eso significa que el selector no
-  puede ofrecer "cualquier fuente del sistema": es una lista corta de fuentes
-  empaquetadas. Hoy son Sora (títulos) y Manrope/Inter (cuerpo), aplicadas por
-  tokens en `src/styles/tokens.css`, así que el cambio se hace sobreescribiendo
-  esos tokens y no tocando componentes.
-- Todas siguen la regla de `settings`: parser con fallback al default, porque el
-  valor puede faltar o venir con basura.
+- **El sonido de los avisos existía y no se guardaba.** Estaba en Dev Tools con
+  `useState`: se elegía para probar y se perdía al cerrar la sección, así que el botón
+  de prueba sonaba distinto al aviso de verdad. Es el mismo desacuerdo que ya se había
+  arreglado con el **texto** de los avisos (Mej.4), en otro campo. Ahora lo leen los dos
+  lados y el botón de prueba no pasa sonido: usa el guardado, como el aviso real.
+- **No hicieron falta variantes de campana.** El plan decía "ofrecer variantes en
+  `sound.rs`"; lo que se pidió fue dejar la de siempre por defecto y **poder elegir un
+  audio propio**. Menos código y mejor respuesta: una lista de campanas sintetizadas
+  es un catálogo que nadie mantiene.
+- **`bell_sound` pasó a mandar sobre la presencia del archivo.** Antes bastaba con
+  dejar un audio en el directorio de datos, y con eso no había forma de volver a la
+  campana de la app sin ir a borrarlo. Lo corrige la migración 12, que reescribe el
+  valor sembrado (`'bell'`) a `SUNRISE`. Efecto que hay que nombrar: **un archivo
+  dejado a mano deja de sonar** hasta elegirlo desde Configs.
+- **El audio se valida decodificándolo, no por la extensión.** `play_bell` cae a la
+  síntesis cuando el decoder falla, y en silencio, porque una campana que revienta no
+  puede tumbar el timer. Sin validar al copiar, elegir un mp3 roto se vive como "el
+  selector no hace nada". Es la clase de fallo que este proyecto ya pagó varias veces.
+- **La campana y su aviso sonaban juntos.** Con la notificación de la campana
+  encendida llegaban la campanada y el sonido del aviso en el mismo instante, y las dos
+  cosas se escuchan como un solo sonido reventado. El aviso pasó a ser **mudo**, y el
+  "mudo" viaja en la copia (`NoticeCopy.silent`) por lo mismo que el texto: si lo
+  eligiera cada llamador, el botón de probar de Dev Tools sonaría distinto al real.
+- **El selector de sonido necesitaba un botón de probar**, y no es comodidad: un nombre
+  que no existe no suena y no falla, así que probar es lo único que distingue "elegí
+  este sonido" de "elegí un nombre que no está". Va por `afplay` y no por rodio — los
+  del sistema son `.aiff`, que rodio no decodifica.
+- **Volver a la campana de sunrise borra la copia.** No hay por si acaso: `bell_sound`
+  guarda un nombre solo, así que al volver el nombre se pierde y el archivo queda sin
+  nadie que lo nombre.
+- **Son dos claves de tipografía y no una.** Títulos y cuerpo son dos roles; con una
+  clave, elegir la de los títulos cambiaría las dos. Y la lista de familias la da **Core
+  Text** (`fonts.rs`), no la carpeta de fuentes: el CSS necesita el nombre de la
+  familia (`Helvetica Neue`) y el del archivo no lo es (`HelveticaNeue.ttc`).
+- **La lista hay que filtrarla.** ~180 familias, y entre ellas las de símbolos y
+  dingbats — con una puesta, cada letra de la app sale como un cuadrito y volver atrás
+  se hace a ciegas. Se filtran por palabra, no por nombre exacto.
+- **La tipografía es de dos ventanas.** El valor vive en `settings`, pero el taxímetro
+  no monta el store de ajustes: se espeja en `localStorage` y él sigue el evento
+  `storage`, igual que el tema y por la misma razón. Sin eso, la app en la fuente del
+  sistema con el taxímetro en Sora se ve partida.
+- **De paso, el orden de Configs tiene test.** `secciones.ts` pedía por escrito que
+  las tabs y las cards fueran en el mismo orden y no había nada que lo vigilara —una
+  sección corrida marca una y muestra otra, sin error—. Agregar la séptima sección era
+  justo el momento.
+
+Detalle en SPECS §4.27 (el sonido de los avisos) y §4.28 (Apariencia).
 
 ### Mej.2 ✅ Ver tres semanas con scroll horizontal en la vista semana — hecho
 
@@ -1485,11 +1510,10 @@ no está disponible:
   Un `message()` nativo llegaría igual. Es el peor caso de un camino que ya tiene
   vuelta atrás, así que es baja prioridad.
 
-**Y una oportunidad concreta que el plugin habilita**: el audio propio de la
-campana. Hoy `bell_sound` no tiene UI (ver Mej.1) y el diseño era mostrar la ruta
-de `bell_dir` para que el usuario copie el archivo ahí a mano. Con el picker puede
-**elegir el archivo y que la app lo copie**, que es lo que uno espera. Cuando se
-tome Mej.1, hacerlo así.
+**Y una oportunidad concreta que el plugin habilitó**: el audio propio de la
+campana. El diseño original era mostrar la ruta de `bell_dir` para que el usuario
+copiara el archivo ahí a mano; con el picker **elige el archivo y la app lo copia**,
+que es lo que uno espera. Hecho así en Mej.1, y `bell_dir` se borró.
 
 </details>
 
@@ -2368,8 +2392,9 @@ Detalles que había que respetar al mover la regla de lado:
   es que todavía no tocara. El defecto era real igual y estaba esperando.)
 - **Se fue código muerto**: `setBellOwner`, `belledEntryId`, el parámetro `bell` de
   `useTimerRuntime`, y el comando `play_bell` con su binding en `ipc.ts` y su
-  gemelo en el mock — nada en el front lo llamaba ya. Cuando Mej.1 haga el botón
-  de probar la campana, vuelve a agregarlo (`bell::ring` ya existe).
+  gemelo en el mock — nada en el front lo llamaba ya. **Volvió en Mej.1**, para el
+  botón de probar de Configs → Apariencia: elegir un sonido sin poder oírlo es
+  elegirlo a ciegas.
 
 Diez tests en `bell.rs`, incluidos el de la entrada abierta desde ayer, el del
 reloj que va para atrás y el de la espera acotada. **Y comprobado tres veces en la

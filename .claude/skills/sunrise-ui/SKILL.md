@@ -353,7 +353,24 @@ Cuatro cosas que se rompen fácil:
   `chipVars`. Si escribes las variables a mano en un cuarto lugar, ese chip se va a
   separar de los otros tres con el primer ajuste.
 
-Fuentes **Sora** (títulos) y **Manrope/Inter** (cuerpo), auto-hospedadas vía
+**La tipografía se cambia sobreescribiendo los tokens en `<html>`**, nunca tocando
+componentes: `--font-title` y `--font-body` ya los usa todo el CSS. Son **dos ajustes**
+(`font_title`, `font_body`), y cada uno guarda `SUNRISE`, `SYSTEM` o el nombre de una
+familia instalada. Tres cosas que se rompen fácil:
+
+- Con `SUNRISE` la propiedad se **borra** en vez de reescribirse, para que el valor siga
+  saliendo de `tokens.css` y no haya dos declaraciones de la misma cosa.
+- **Toda elección arrastra la pila de respaldo** (`ui-sans-serif, system-ui, …`): una
+  familia desinstalada no resuelve, y sin la pila la app cae en la serif por defecto del
+  webview. Un cambio de tipografía no puede verse como "se rompió".
+- El taxímetro no monta el store de ajustes, así que se entera por el espejo en
+  `localStorage`, igual que el tema (`lib/fonts.ts`).
+
+Y la lista de familias **se filtra** (`fonts.rs`): sin sacar las de símbolos y dingbats,
+el selector ofrece fuentes que dejan cada letra de la app como un cuadrito, y volver
+atrás se hace a ciegas.
+
+Fuentes de fábrica **Sora** (títulos) y **Manrope** (cuerpo), auto-hospedadas vía
 `@fontsource` para que la app funcione offline. No agregues fuentes por CDN.
 
 El tema se persiste en `localStorage` (`sunrise-theme`) y la ventana flotante lo

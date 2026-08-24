@@ -1,15 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { BellRing, ExternalLink, RotateCcw, Send, Volume2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { BellRing, ExternalLink, RotateCcw, Send } from "lucide-react";
 import { api, isTauri } from "../../lib/ipc";
 import { SettingKey, useSettingsStore } from "../../lib/settings";
 import { useToday } from "../../lib/day";
 import { sectionIcon } from "../settings/secciones";
-import { Popover } from "../../components/Popover";
-import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import {
-  DEFAULT_SOUND,
   SHUTDOWN_NOTICE,
-  SYSTEM_SOUND,
   askPermission,
   notify,
   openNotificationSettings,
@@ -25,13 +21,6 @@ import {
 } from "../notifications/useNotificationActions";
 
 const SectionIcon = sectionIcon("dev-tools");
-
-/** El de la app primero, y el del sistema como alternativa con nombre propio. */
-const SOUND_OPTIONS = (sounds: string[]): SearchOption[] => [
-  { value: DEFAULT_SOUND, label: `${DEFAULT_SOUND} — el de sunrise` },
-  { value: SYSTEM_SOUND, label: "El que use el sistema" },
-  ...sounds.filter((s) => s !== DEFAULT_SOUND).map((s) => ({ value: s, label: s })),
-];
 
 /** Qué hizo el usuario con una alerta, en palabras. */
 const ACTION_NOTE: Record<NoticeAction, string> = {
@@ -103,11 +92,7 @@ function NotificationTools() {
   const today = useToday();
   const [perm, setPerm] = useState<NoticePermission | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [sound, setSound] = useState(DEFAULT_SOUND);
-  const [sounds, setSounds] = useState<string[]>([]);
   const [identity, setIdentity] = useState("");
-  const [pickingSound, setPickingSound] = useState(false);
-  const soundRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     setPerm(await permission());
@@ -116,15 +101,18 @@ function NotificationTools() {
   useNotificationActions(useCallback((r: NoticeResponse) => setNotice(ACTION_NOTE[r.action]), []));
   useEffect(() => {
     void refresh();
-    void api.noticeSounds().then(setSounds);
     void api.notificationIdentity().then(setIdentity);
   }, [refresh]);
 
   const notifiedToday = values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === today;
   const outsideApp = !isTauri();
 
+  // **Sin pasarle el sonido**: `notify` lee el que está guardado, que es el mismo
+  // que va a usar el aviso de verdad. Cuando el selector vivía acá con estado
+  // local, el botón probaba un sonido que ningún aviso real usaba — el mismo
+  // problema que ya se había arreglado con el texto.
   async function sendTest(copy: NoticeCopy) {
-    const result = await notify(copy, sound);
+    const result = await notify(copy);
     setNotice(RESULT_NOTE[result]);
     // Pedir permiso dentro del intento puede haberlo cambiado.
     await refresh();
@@ -169,39 +157,6 @@ function NotificationTools() {
         </span>
       </div>
 
-      <div className="set-field">
-        <div className="set-field__row">
-          <span className="set-field__label">Sonido</span>
-          <div className="chip-wrap" ref={soundRef}>
-            <button
-              className="chip is-set"
-              aria-label="Elegir el sonido del aviso"
-              onClick={() => setPickingSound((v) => !v)}
-            >
-              <Volume2 size={12} aria-hidden />{" "}
-              {sound === SYSTEM_SOUND ? "el del sistema" : sound}
-            </button>
-            {pickingSound && (
-              <Popover anchorRef={soundRef} align="right" onClose={() => setPickingSound(false)}>
-                <SearchSelect
-                  options={SOUND_OPTIONS(sounds)}
-                  value={sound}
-                  placeholder="Buscar sonido…"
-                  onSelect={(v) => {
-                    setSound(v ?? DEFAULT_SOUND);
-                    setPickingSound(false);
-                  }}
-                />
-              </Popover>
-            )}
-          </div>
-        </div>
-        <span className="set-note">
-          Los del sistema, más lo que haya en <code>~/Library/Sounds</code>: ahí va uno propio
-          y aparece en esta lista con el nombre del archivo. Un nombre que no existe no suena
-          y no avisa.
-        </span>
-      </div>
 
       <div className="set-field">
         <div className="set-field__row">

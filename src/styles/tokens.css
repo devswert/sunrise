@@ -1,5 +1,10 @@
 /* sunrise — design tokens
- * Fuentes: Sora (títulos/destacados) + Inter (cuerpo), auto-hospedadas vía @fontsource.
+ * Fuentes de fábrica: Sora (títulos/destacados) + Manrope (cuerpo), auto-hospedadas
+ * vía @fontsource para que la app funcione sin red. El usuario puede cambiar cada rol
+ * por una fuente instalada (Configs → Apariencia): `lib/fonts.ts` sobreescribe estos
+ * dos tokens en <html>, así que **este sigue siendo el único lugar donde está
+ * declarada la fuente de la app** — con la elección en `SUNRISE` la propiedad inline
+ * se borra en vez de reescribirse.
  * Paleta pastel con tema claro/oscuro.
  */
 

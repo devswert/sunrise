@@ -54,7 +54,7 @@ seq = 100;
 const settings = new Map<string, string>([
   ["daily_capacity_minutes", "480"],
   ["capacity_warn_ratio", "0.85"],
-  ["bell_sound", "bell"],
+  ["bell_sound", "SUNRISE"], // espeja la migración 12
   ["work_start", "09:00"],
   ["work_end", "18:00"],
   // Espeja la migración 9. La fila existe para que "ninguno colapsado" se pueda
@@ -861,7 +861,7 @@ export const mock = {
     _title: string,
     _body: string,
     _action: string,
-    _sound: string,
+    _sound: string | null,
     _target: { route: string; taskId?: number | null } | null = null,
   ): Promise<void> => {
     /* fuera de Tauri no hay avisos del sistema; los manda macOS vía Rust */
@@ -872,6 +872,7 @@ export const mock = {
     title: `Cambio de Focus a las ${time}`,
     body: `Sigue ${title}. Toca para verla.`,
     action: "Ir a Focus",
+    silent: false,
   }),
 
   /** Espeja `bell::copy`. Si cambia el texto en Rust, cambia acá. */
@@ -879,7 +880,40 @@ export const mock = {
     title: "Se acabó el tiempo estimado",
     body: `Llevas los ${minutes} min de ${title}. Toca para verla.`,
     action: "Ir a Focus",
+    // Mudo: cuando llega de verdad, la campana está sonando.
+    silent: true,
   }),
+
+  /**
+   * Fuera de Tauri no hay carpeta que copiar ni audio que decodificar, así que se
+   * devuelve el nombre y listo. Lo que **no** se simula es el rechazo de un archivo
+   * ilegible: eso lo decide rodio y solo existe en la app (hay tests en `sound.rs`).
+   */
+  installBellFile: async (path: string): Promise<string> =>
+    path.split("/").pop() || path,
+
+  /** No hay audio en jsdom ni en el browser; que no falle es todo lo que hace. */
+  playBell: async (): Promise<void> => {},
+
+  previewNoticeSound: async (_name: string): Promise<void> => {},
+
+  /** Y tampoco hay carpeta que borrar. */
+  clearBellFile: async (): Promise<void> => {},
+
+  /**
+   * Unas cuantas de las que trae macOS, para poder ver el selector en el browser.
+   * La lista de verdad la da Core Text y son ~180 familias (`fonts.rs`).
+   */
+  systemFonts: async (): Promise<string[]> => [
+    "Avenir Next",
+    "Courier New",
+    "Georgia",
+    "Helvetica Neue",
+    "Menlo",
+    "Optima",
+    "Palatino",
+    "Verdana",
+  ],
 
   // Los catorce de `/System/Library/Sounds` en un macOS de fábrica. Fuera de
   // Tauri no se puede leer la carpeta, y una lista vacía dejaría el selector

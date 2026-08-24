@@ -300,11 +300,52 @@ fn ensure_on_screen(win: &tauri::WebviewWindow) {
     }
 }
 
-/// Ruta donde dejar un audio propio para la campana (se muestra en Settings).
+/// La clave de `settings` con la campana elegida. Espeja `SettingKey.BELL_SOUND`.
+const KEY_BELL_SOUND: &str = "bell_sound";
+
+/// La carpeta donde la app guarda la campana propia.
+///
+/// Subcarpeta y no el directorio de datos a secas, y no es orden por gusto:
+/// `install_bell` **borra los audios que encuentra** para dejar uno solo, y hacer
+/// eso en la carpeta que además tiene la base de datos es pedir un accidente.
+pub fn sounds_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(e)?.join("sounds"))
+}
+
+/// El archivo de campana que toca, según `bell_sound`. `None` = la síntesis.
+///
+/// **Lock corto**, igual que `notice_sound`: quien llama a esto está a punto de
+/// hacer sonar algo, y la campana suena en su propio hilo.
+pub fn bell_choice(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let db = app.state::<Db>();
+    let elegido = match db.0.lock() {
+        Ok(conn) => repo::get_setting(&conn, KEY_BELL_SOUND).ok().flatten(),
+        Err(_) => None,
+    };
+    let dir = sounds_dir(app).ok()?;
+    crate::sound::bell_file(&dir, elegido.as_deref())
+}
+
+/// Copia el audio elegido a la carpeta de la app y devuelve su nombre.
+///
+/// Devuelve el nombre en vez de escribir el ajuste por su cuenta: el que decide
+/// cuándo se guarda es el front, que es también quien tiene que mostrar el error si
+/// el archivo no sirve. Escribirlo acá dejaría el ajuste apuntando a un archivo
+/// mientras la card sigue mostrando el anterior.
 #[tauri::command]
-pub fn bell_dir(app: tauri::AppHandle) -> Result<String, String> {
-    let dir = app.path().app_data_dir().map_err(e)?;
-    Ok(dir.to_string_lossy().to_string())
+pub fn install_bell_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let dir = sounds_dir(&app)?;
+    crate::sound::install_bell(&dir, std::path::Path::new(&path)).map_err(e)
+}
+
+/// Toca la campana que esté elegida, para el botón de probar de Configs.
+///
+/// Existía y se borró al mover la campana a Rust (Mej.26) porque quedó sin
+/// llamadores. Vuelve por el selector: elegir un sonido sin poder oírlo es elegir a
+/// ciegas.
+#[tauri::command]
+pub fn play_bell(app: tauri::AppHandle) -> Result<(), String> {
+    crate::bell::ring(&app).map_err(e)
 }
 
 /// Ajuste manual del tiempo real de una tarea.
@@ -786,6 +827,12 @@ pub struct NoticeCopy {
     pub title: String,
     pub body: String,
     pub action: String,
+    /// Si el aviso llega **sin sonido**. Viaja en la copia y no lo decide quien
+    /// manda, y esa es la razón: el aviso de la campana es mudo porque la campanada
+    /// ya suena, y si eso lo eligiera cada llamador, el botón de probar de Dev Tools
+    /// sonaría distinto al aviso de verdad — el mismo desacuerdo que el texto ya
+    /// tuvo. Va junto al texto para que se copie con él.
+    pub silent: bool,
 }
 
 /// La respuesta del usuario a una alerta. La escucha el front.
@@ -874,12 +921,7 @@ pub fn open_notification_settings(app: tauri::AppHandle) -> Result<(), String> {
 /// `"Campana"`.
 #[tauri::command]
 pub fn notice_sounds() -> Vec<String> {
-    let mut dirs: Vec<std::path::PathBuf> = vec!["/System/Library/Sounds".into(), "/Library/Sounds".into()];
-    if let Some(home) = std::env::var_os("HOME") {
-        dirs.push(std::path::Path::new(&home).join("Library/Sounds"));
-    }
-
-    let mut names: Vec<String> = dirs
+    let mut names: Vec<String> = sound_dirs()
         .iter()
         .filter_map(|dir| std::fs::read_dir(dir).ok())
         .flatten()
@@ -897,11 +939,109 @@ pub fn notice_sounds() -> Vec<String> {
     names
 }
 
-/// El sonido de los avisos de sunrise. **Espejo de `DEFAULT_SOUND`** en
-/// `notify.ts`. Es un nombre de archivo sin extensión que macOS busca en las
-/// carpetas `Sounds`; un nombre que no existe **no suena y no falla**.
-pub fn default_sound() -> String {
-    "Blow".to_string()
+/// Las carpetas donde macOS busca los sonidos de aviso, en su orden de precedencia.
+///
+/// Una sola definición porque hay dos consumidores —listar los nombres y resolver
+/// uno a su archivo para el botón de probar—, y dos copias de esta lista se
+/// separarían: la del usuario (`~/Library/Sounds`) es justamente la que se olvida.
+fn sound_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs: Vec<std::path::PathBuf> =
+        vec!["/System/Library/Sounds".into(), "/Library/Sounds".into()];
+    if let Some(home) = std::env::var_os("HOME") {
+        dirs.push(std::path::Path::new(&home).join("Library/Sounds"));
+    }
+    dirs
+}
+
+/// El archivo de un sonido de aviso, buscado por su nombre sin extensión.
+fn sound_path(name: &str) -> Option<std::path::PathBuf> {
+    let name = std::path::Path::new(name).file_stem()?.to_str()?.to_string();
+    sound_dirs()
+        .iter()
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flatten()
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .find(|p| p.file_stem().and_then(|s| s.to_str()) == Some(name.as_str()))
+}
+
+/// Toca un sonido de aviso, para el botón de probar de Configs → Notificaciones.
+///
+/// **Va por `afplay` y no por rodio**, que es lo que toca la campana: los sonidos del
+/// sistema son `.aiff`, y los decodificadores de rodio son wav, mp3, flac y vorbis.
+/// Sonarían la mitad, y los que no, en silencio.
+///
+/// No espera a que termine: son dos segundos de sonido y el comando no tiene nada que
+/// informar después. Un nombre que no existe devuelve error en vez de no hacer nada,
+/// porque "no suena" es exactamente el síntoma que este botón viene a explicar.
+#[tauri::command]
+pub fn preview_notice_sound(name: String) -> Result<(), String> {
+    let path = sound_path(&name)
+        .ok_or_else(|| format!("no encontré un sonido llamado «{name}» en las carpetas del sistema"))?;
+    std::process::Command::new("/usr/bin/afplay")
+        .arg(path)
+        .spawn()
+        .map_err(e)?;
+    Ok(())
+}
+
+/// Las tipografías instaladas, para el selector de Apariencia.
+#[tauri::command]
+pub fn system_fonts() -> Vec<String> {
+    crate::fonts::system_families()
+}
+
+/// Borra la campana propia que la app tenía copiada.
+///
+/// Se llama al volver a la campana de sunrise. **Borra en vez de guardarla por si
+/// acaso**, y la razón es que no habría por si acaso: `bell_sound` guarda un nombre
+/// solo, así que al volver a `SUNRISE` ese nombre se pierde y el archivo queda sin
+/// nadie que lo nombre — basura que ocupa espacio y que nadie va a ir a limpiar. Lo
+/// que se borra es **la copia**; el archivo original sigue donde lo eligieron.
+#[tauri::command]
+pub fn clear_bell_file(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = sounds_dir(&app)?;
+    // Que no exista no es un error: volver a la campana de la app teniéndola ya
+    // puesta es una operación válida y no tiene nada que borrar.
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
+/// El sonido de los avisos **cuando el usuario no eligió otro**. Espeja
+/// `DEFAULT_SOUND` de `notify.ts`, que es el que ve el selector de Configs.
+///
+/// Es un nombre de archivo sin extensión que macOS busca en las carpetas
+/// `Sounds`; un nombre que no existe **no suena y no falla**, así que un valor
+/// con basura deja los avisos mudos sin decirlo. Por eso la lectura de abajo
+/// solo confía en un valor no vacío.
+pub const DEFAULT_SOUND: &str = "Blow";
+
+/// La clave de `settings` con el sonido de los avisos. Espeja
+/// `SettingKey.NOTICE_SOUND`.
+const KEY_NOTICE_SOUND: &str = "notice_sound";
+
+/// El sonido elegido, o el de la app si no hay ninguno.
+///
+/// Función pura para poder probarla: el valor viene de `settings`, que es TEXT,
+/// así que puede faltar, venir vacío o traer espacios.
+pub fn sound_or_default(raw: Option<String>) -> String {
+    raw.map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| DEFAULT_SOUND.to_string())
+}
+
+/// El sonido de los avisos que manda Rust (la campana y la próxima reunión).
+///
+/// **Lock corto y guard soltado antes de volver**, igual que `bell::notice_on`:
+/// el que llama a esto lo hace justo antes de `send_alert`, que se lleva el hilo
+/// hasta que la persona responde. Sostener el `Mutex` de la DB ahí trabaría a
+/// toda la app mientras la alerta espera en la esquina de la pantalla.
+pub fn notice_sound(app: &tauri::AppHandle) -> String {
+    let db = app.state::<Db>();
+    let raw = match db.0.lock() {
+        Ok(conn) => repo::get_setting(&conn, KEY_NOTICE_SOUND).ok().flatten(),
+        Err(_) => None,
+    };
+    sound_or_default(raw)
 }
 
 /// Muestra una alerta con un botón y avisa qué apretó el usuario.
@@ -921,12 +1061,15 @@ pub fn default_sound() -> String {
 /// da una forma más de no hacer lo que el aviso propone. Sin él, además, el click
 /// sobre la alerta entera vuelve como `Click` y se puede tratar igual que el botón,
 /// que es lo que la gente hace por instinto.
+/// `sound` es `None` para una alerta **muda**, y eso no es un detalle de estilo: el
+/// aviso de la campana llega junto con la campanada, y las dos cosas sonando en el
+/// mismo instante se escuchan como un solo sonido reventado.
 pub fn send_alert(
     app: &tauri::AppHandle,
     title: String,
     body: String,
     action: String,
-    sound: String,
+    sound: Option<String>,
     target: Option<NoticeTarget>,
 ) {
     #[cfg(target_os = "macos")]
@@ -940,8 +1083,13 @@ pub fn send_alert(
             notification
                 .title(&title)
                 .message(&body)
-                .main_button(MainButton::SingleAction(&action))
-                .sound(sound.as_str());
+                .main_button(MainButton::SingleAction(&action));
+            // Sin llamar a `.sound()`, no con un nombre vacío: un nombre que no
+            // existe deja el aviso mudo por accidente, y eso es indistinguible de
+            // un typo en el sonido elegido.
+            if let Some(name) = sound.as_deref() {
+                notification.sound(name);
+            }
 
             match notification.send() {
                 Ok(response) => {
@@ -975,7 +1123,7 @@ pub fn notify_alert(
     title: String,
     body: String,
     action: String,
-    sound: String,
+    sound: Option<String>,
     target: Option<NoticeTarget>,
 ) -> Result<(), String> {
     if !cfg!(target_os = "macos") {
@@ -990,14 +1138,15 @@ pub fn notify_alert(
 #[tauri::command]
 pub fn preview_meeting_notice(title: String, time: String) -> NoticeCopy {
     let (title, body, action) = crate::notice::copy(&title, &time);
-    NoticeCopy { title, body, action }
+    NoticeCopy { title, body, action, silent: false }
 }
 
 /// Lo mismo para el de la campana, que también lo manda Rust (`bell::copy`).
 #[tauri::command]
 pub fn preview_bell_notice(title: String, minutes: i64) -> NoticeCopy {
     let (title, body, action) = crate::bell::copy(&title, minutes);
-    NoticeCopy { title, body, action }
+    // Mudo: cuando este aviso llega de verdad, la campana está sonando.
+    NoticeCopy { title, body, action, silent: true }
 }
 
 /// Qué apretó el usuario, como texto para el front. `action` es el botón nuestro;
@@ -1071,6 +1220,23 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// Un nombre que no existe **no suena y no falla**, así que el valor de
+    /// `settings` —que es TEXT y puede traer cualquier cosa— no se pasa tal cual.
+    #[test]
+    fn el_sonido_de_los_avisos_cae_al_de_la_app_si_no_hay_nada_util() {
+        assert_eq!(sound_or_default(None), DEFAULT_SOUND);
+        assert_eq!(sound_or_default(Some(String::new())), DEFAULT_SOUND);
+        assert_eq!(sound_or_default(Some("   ".into())), DEFAULT_SOUND);
+    }
+
+    #[test]
+    fn el_sonido_elegido_se_respeta_y_se_le_sacan_los_espacios() {
+        assert_eq!(sound_or_default(Some("Submarine".into())), "Submarine");
+        assert_eq!(sound_or_default(Some("  Ping \n".into())), "Ping");
+    }
+
     /// El updater se apaga en silencio si le falta una pieza de config: sin
     /// `pubkey` el plugin no arranca, sin `endpoints` no tiene a quién preguntar,
     /// y sin `createUpdaterArtifacts` el Release sale con `.dmg` pero sin el

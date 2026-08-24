@@ -176,6 +176,25 @@ mover la reunión deja eso mudo para siempre y sin ningún síntoma.
   ajustar tiempo a mano, al pausar, al cambiar de tarea y al despertar la máquina
   (los temporizadores no corren mientras duerme), y olvidarse de uno deja la
   campana muda **sin ningún síntoma**. Con los techos, un olvido cuesta atraso.
+- **Qué suena lo decide `bell_sound`, no la presencia de un archivo** (Mej.1):
+  `SUNRISE` es la síntesis, y cualquier otro valor es el nombre de un audio en la
+  subcarpeta `sounds` del directorio de datos, que copió `install_bell` desde el
+  picker del Finder. Un archivo que ya no está cae a la síntesis. Dos cosas que se
+  rompen fácil acá: **`play_bell` se come el error del decoder en silencio** —a
+  propósito, una campana que revienta no puede tumbar el timer—, así que la validación
+  del audio tiene que pasar al **instalarlo** o el usuario se queda con "elegí mi mp3
+  y sigue sonando el de la app"; y el ajuste se escribe con el nombre que **devuelve**
+  Rust, no con el path elegido, porque el original puede moverse de lugar.
+- **El sonido de la campana y el de los avisos son dos ajustes distintos**
+  (`bell_sound` y `notice_sound`), y no es duplicación: la campana suena siempre que
+  corras un timer, y el aviso es un extra que se puede apagar. Se eligen en dos
+  secciones distintas de Configs por eso mismo.
+- **El aviso de la campana llega mudo.** La campanada ya está sonando cuando llega, y
+  las dos cosas en el mismo instante se escuchan como un solo sonido reventado. El
+  "mudo" viaja en la copia (`NoticeCopy.silent`, `Option<String>` en Rust) y no lo
+  decide quien manda: si cada llamador lo eligiera, el botón de probar de Dev Tools
+  sonaría distinto al aviso real. Y es ausencia de `.sound()`, **no** un nombre vacío:
+  un nombre que no existe deja el aviso mudo por accidente, indistinguible de un typo.
 - **No la muevas al taxímetro** aunque ya tenga un tick de 1 s: se puede esconder
   con el ojo del widget y no existe mientras no haya timer ni tarea pausada. Un
   aviso que un botón de la UI puede apagar en silencio es el bug de vuelta.
