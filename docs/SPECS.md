@@ -325,6 +325,22 @@ siguiente corrida.
   `closestCorners`. Esa cascada existe para que **toda la columna** acepte el
   drop (incluida la mitad superior con el header y "Agregar tarea") y para que la
   card nunca se pierda entre columnas. No la simplifiques a un solo detector.
+  Encima de eso, el **panel de backlog** (§3.10) tiene dos reglas propias, y las
+  dos salen de que se superpone a una columna:
+  - **Si el puntero está dentro del panel, gana el panel.** dnd-kit **ignora el
+    `z-index`**: la columna tapada conserva su rectángulo, así que un drop dentro
+    del panel produce al menos dos colisiones y `pointerWithin` las ordena por
+    distancia al centro — con 300px de panel contra 236px de columna, la columna
+    escondida puede ganar y la tarea termina agendada en un día que no se ve.
+  - **El panel no participa de los dos fallbacks, salvo que no haya puntero.**
+    `closestCorners` nunca devuelve vacío, así que sin la exclusión una card
+    soltada sobre espacio muerto podía desagendarse sola. La excepción no es
+    decorativa: el `KeyboardSensor` no tiene coordenadas, `pointerWithin` devuelve
+    `[]` y los fallbacks son el único camino que le queda.
+
+  **La decisión de destino vive en `src/features/week/destino.ts`** (`resolveDrop`),
+  puro y testeado, y no inline en `WeekView`: jsdom no devuelve rectángulos, así
+  que el gesto se verifica en el browser pero los guards se fijan con tests.
   El índice que se manda al soltar es **el de la card sobre la que se soltó, en
   la lista tal como está antes de mover** — que es justo lo que dnd-kit muestra
   como previsualización. Con la semántica de `move_task` de §4.1 eso cae donde
@@ -422,9 +438,136 @@ siguiente corrida.
 ### 4.5 Backlog
 
 `list_backlog`: `scheduled_date IS NULL AND status = 'TODO' AND source_state =
-'ACTIVE'`, agrupado por contexto. El sidebar muestra los contextos que tienen
-items y su conteo (`useBacklogFolders`), resolviendo el contexto de cada tarea
-como `parentId ?? id` de su categoría.
+'ACTIVE'`, agrupado por contexto. El agrupado vive en
+**`src/features/backlog/agrupar.ts`** (`folderOf`, `groupByContext`), puro y
+compartido por sus tres consumidores — la vista, el sidebar y el panel de la
+semana—; estaba escrito tres veces. `includeEmpty` es explícito porque los
+consumidores difieren: **la vista lo quiere en `true`** (un contexto vacío ahí
+sigue mostrando su botón "Agregar tarea", que es la única forma de crear en un
+contexto que todavía no tiene nada), y el sidebar y el panel en `false`, porque
+no crean nada.
+
+Se ve en tres lugares:
+
+- **La vista `/backlog`**, agrupada por contexto, con cards no arrastrables.
+- **El sidebar**: solo el item, con el total en un **badge**. Cuenta todo,
+  incluidas las tareas sin canal, para que el número coincida con la lista que
+  abre. Es badge y no número suelto porque al lado del atajo, en la misma
+  tipografía tenue, se leía como parte del ruido de la fila — y es **gris y no un
+  color de la paleta**: con el durazno del acento parecía un contador de errores,
+  y esto es cuántas cosas hay, no un estado. Neutro tampoco puede ser una
+  superficie: el fondo del sidebar es `--surface-sunken` y el de la fila activa
+  `--surface-raised`, así que el badge desaparecería en uno de los dos. **Los canales no se
+  listan acá**: se ven en la vista, que es donde además se pueden abrir y editar
+  — repetirlos en el sidebar era una segunda lista que mantener y una columna más
+  larga de nombres sobre los que no se puede hacer nada.
+- **El panel de la semana** (`BacklogPanel`), detrás del segundo icono de la
+  tira. Arrastra en los dos sentidos: al día y de vuelta. Ahí sí agrupa **por
+  contexto**, porque el contexto es lo que estás decidiendo al planificar.
+
+#### El panel de la semana
+
+Es **el primer panel de la tira que participa del DnD** (la agenda es referencia
+y no tiene ningún `useDroppable`), así que vive **dentro** del `DndContext` de la
+semana. No hace falta backend: `move_task` con fecha ya registra
+`START_DATE_SET`, y con `null` registra `MOVED`, que es de donde salen los
+rótulos "desde el X".
+
+- **Las tareas sin fecha se cargan dentro de `useBoard`, en el mismo array
+  `tasks`**, detrás de un cuarto parámetro `withBacklog` que solo la vista semana
+  enciende. En el mismo array y no en uno aparte porque `reorderLocal` ya mueve
+  una tarea entre el bucket nulo y un día en una sola pasada, y porque
+  `activeTask` (el `DragOverlay`) y `selectedTask` (el modal) buscan ahí — una
+  tarea del backlog que no esté arrastra un overlay vacío. Es seguro porque los
+  conjuntos son disjuntos por construcción (`IS NOT NULL` vs `IS NULL`) y
+  `tasksByDate` ya saltea las de fecha nula.
+- **No se reordena por dentro.** La `position` del backlog es global sobre el
+  bucket `scheduled_date IS NULL` mientras `list_backlog` ordena por
+  `category_id, position, id`, así que un índice dentro de un grupo de contexto
+  no corresponde a ninguna posición global. Todo drop que caiga en el panel entra
+  en **0**, que con el agrupado del lado del cliente significa "primera de su
+  contexto" — igual antes y después de la recarga, así que no salta. Por lo mismo
+  el `SortableContext` va **sin estrategia**: `verticalListSortingStrategy` abre
+  un hueco de inserción y prometería un reordenamiento que no existe.
+- **Del backlog al backlog no pasa nada.** Con el panel superpuesto el arrastre
+  *empieza* con el puntero adentro y la card fuente sigue montada en su
+  rectángulo, así que un empujón de 5px —la constante de activación— resuelve el
+  panel; sin el guard, ese empujón reescribiría la `position` de todo el bucket.
+- **Una tarea completada no entra.** `list_backlog` filtra `status='TODO'`, así
+  que saldría del día sin entrar al backlog y quedaría **inalcanzable en toda la
+  app**. El drop es no-op y el panel tampoco se ilumina para ella (un marco
+  encendido sobre un destino que va a rechazar promete algo que no pasa). El
+  estado viaja en la `data` del `useSortable` de `TaskCard`, porque durante el
+  arrastre el panel solo tiene los datos del `active`.
+- **Mover desde o hacia el backlog invalida** (`bumpData`), porque los conteos
+  del sidebar y `BacklogView` se refrescan solo con `dataVersion`. El
+  `bumpData()` **reemplaza** al `reload()`, no se suma: el efecto de carga de
+  `useBoard` ya depende de `dataVersion`, así que llamar a los dos son dos
+  recargas por arrastre. Un reordenamiento dentro de un día no invalida nada.
+- **Solo mueve, no crea.** Crear sigue siendo de la vista y del compose.
+
+**La geometría es la misma que la de la agenda superpuesta**, y tiene que
+seguir siéndolo: los dos se abren en el mismo lugar y se alternan, así que
+cualquier diferencia se lee como un salto al cambiar de panel. Eso incluye la
+cabecera, que es una clase compartida (`.panel-head`, en `week.css`): dos líneas
+—el nombre del panel y qué está mostrando— porque en una sola fila los dos
+niveles competían sin que se supiera cuál leer primero. El rail **fijo** de Today
+conserva su cabecera de una línea: ahí la vista ya dice de qué día es.
+
+Los dos llegan **hasta el fondo de la app** con un `bottom` negativo que cancela
+el padding de `.app-main`; sin eso quedaba una franja en blanco abajo. La tira
+baja con ellos, o el panel colgaría por debajo de su propia perilla. Y el panel
+redondea **solo** su esquina superior izquierda, que es la única que queda suelta
+sobre el board.
+
+**Entran y salen con la misma animación** (`panel-entra` y su reverso
+`panel-sale`, en `week.css`): un panel que entra deslizándose y desaparece de
+golpe se siente como si se hubiera roto, no como si se hubiera cerrado. Animar la
+salida obliga a que el panel siga montado mientras se va, y de eso se encarga
+`usePanelPresence`. Mientras sale lleva `pointer-events: none`: ya no está, y
+además sigue siendo un droppable dentro del `DndContext`.
+
+Dos detalles que costaron una vuelta y por eso están escritos en el código:
+
+- **La salida declara el `animation` entero, no solo `animation-name`.** Cambiar
+  una longhand sobre un elemento que ya corrió su animación de entrada deja el
+  reinicio a merced de cómo el motor empareja la lista de animaciones, y la salida
+  no corría.
+- **El temporizador del desmontaje es más largo que la animación** (240 ms contra
+  160). El temporizador arranca cuando corre el efecto y la animación en el
+  pintado siguiente, uno o dos frames después; con el mismo número los dos, el
+  desmontaje llega antes del final y se ve un corte — indistinguible de no tener
+  animación. La holgura no se nota porque `forwards` deja el panel quieto en su
+  último fotograma.
+
+**El rótulo de origen es un badge montado sobre el borde superior de la card**,
+centrado, con el fondo de la card para cortar el borde en vez de taparlo. Como
+línea suelta debajo tenía márgenes propios y rompía el pulso de la lista: una card
+con rótulo dejaba 14px hasta la siguiente y una sin rótulo 8px, justo en las
+tareas que traían más información. El `padding-top` del contenedor es la mitad del
+alto del badge, que es lo que lo deja a caballo del borde; si cambia uno, cambia
+el otro.
+
+**Las cards del panel esconden los rellenos de los campos vacíos**
+(`hidePlaceholders` en `TaskCardContent`): ni el `--:--` de tiempos ni el chip `#`
+de canal. En el backlog la mayoría de las tareas no tiene ninguno de los dos
+todavía, así que las cards se llenaban de marcas de posición en vez de datos —y un
+numeral a 12px no se lee como "poner canal" sino como un glifo raro—. En una
+columna de día sí se muestran: ahí "sin estimar" es lo que no está contando para
+la capacidad. No se pierde nada, el reloj del pie abre los tiempos y el canal se
+cambia desde el detalle; es lo que ya hacía la vista Backlog, donde `CategoryTag`
+tampoco dibuja nada sin categoría.
+
+**Dos costos asumidos de que se superponga** (misma geometría que la agenda,
+`right: 44px`), los dos documentados en `BacklogPanel`:
+
+1. La columna que tapa no recibe drops mientras esté abierto. Para soltar ahí se
+   scrollea el board.
+2. **El autoscroll del arrastre no llega al borde tapado**: dnd-kit sigue al
+   scroller del nodo de destino, y el panel más la tira cubren el borde derecho.
+   Arrastrando no se alcanza un día fuera de las columnas visibles — hay que
+   cerrar el panel, scrollear y reabrirlo. Es una limitación del layout, no un
+   bug pendiente.
 
 ### 4.6 Timer / taxímetro
 
@@ -957,11 +1100,17 @@ alrededor** de lo que ya está comprometido. Se monta de dos formas:
 
 **La tira (`SideDock`, `.dock`)** es una columna de iconos **permanente** pegada
 al borde derecho: no se superpone, y los paneles se abren a su izquierda
-(`rail--overlay` tiene `right: 44px`, el ancho de la tira). Recibe sus botones
-como lista porque va a tener tres —agenda, objetivos de la semana y backlog
-arrastrable—, pero **solo se dibujan los paneles que ya existen**: un icono que
-no hace nada al apretarlo enseña que la barra no responde. Los otros dos llegan
-con sus milestones (M3.5 y el panel de backlog).
+(`rail--overlay` y `.backlog-panel` tienen `right: 44px`, el ancho de la tira).
+Recibe sus botones como lista porque va a tener tres —agenda, backlog y objetivos
+de la semana—, pero **solo se dibujan los paneles que ya existen**: un icono que
+no hace nada al apretarlo enseña que la barra no responde. El de objetivos llega
+con M3.5, que ya calcula ese avance para la review.
+
+**Se abre uno a la vez** (`panel: "agenda" | "backlog" | null` en `WeekView`), y
+no es una preferencia: los dos se montan en el mismo lugar, así que dos abiertos
+se apilarían. Por lo mismo, **clickear la cabecera de un día trae la agenda**
+incluso con el backlog abierto — el click es un pedido de ver ese día, y dejarlo
+sin efecto visible sería peor que el cambio de panel.
 
 Daily planning (M3.4) lo usa con las mismas props.
 
@@ -3071,6 +3220,16 @@ En `useFloatingWindow.ts`, ya pagadas:
   —si empujan, la caja se reacomoda al pasar el mouse— y entran con `transform`
   además de `opacity`: solo el fundido se siente pegado. Referencia:
   `.tax__opts` en `src/features/timer/timer.css`.
+- **Un panel superpuesto que además es zona de drop necesita ganar la colisión a
+  mano.** dnd-kit no sabe nada del `z-index`: lo que el panel tapa sigue teniendo
+  su rectángulo y sigue compitiendo, así que el `z-index` alcanza para verse
+  encima y no para *recibir* el drop. Y como `closestCorners` nunca devuelve
+  vacío, el panel también hay que sacarlo de los fallbacks — pero solo cuando hay
+  puntero, porque sin él (teclado) los fallbacks son el único camino que queda.
+  Referencia: `boardCollision` en `src/features/week/collision.ts`.
+- **Los paneles de la tira se abren de a uno.** Se montan todos en el mismo lugar
+  (`right: 44px`, 300px), así que dos abiertos se apilan. Es un solo estado con el
+  nombre del panel, no un booleano por panel.
 - Fuentes de fábrica: **Sora** (títulos) + **Manrope** (cuerpo), auto-hospedadas
   (`@fontsource`) para funcionar offline. Paleta pastel en tokens CSS con tema
   claro/oscuro.
@@ -3103,6 +3262,14 @@ tuya — un caso con fixtures en tu propia zona no puede detectar el error.
 - **Front**: `capacity` (semáforo + parseo), `date`, `history`, `useTimer`,
   `useDragOrClick`, `TaskCard`, `TaskModal`, `Sidebar`, `FocusView`,
   `SettingsView`.
+- **El DnD del board**, en las dos piezas puras que jsdom puede mirar:
+  `src/features/week/collision.test.ts` (con rectángulos falsos: el panel de
+  backlog superpuesto ganando por puntero aunque la columna tapada esté más cerca,
+  y su exclusión de los fallbacks solo cuando hay puntero) y
+  `src/features/week/destino.test.ts` (`resolveDrop`: los índices de columna y de
+  card, el día plegado, backlog→backlog, y la card completada al backlog). **El
+  gesto no se testea**: jsdom no devuelve rectángulos, así que se verifica en el
+  browser.
 - **El posicionamiento del scroll**: `src/features/week/anchor.test.ts`
   (`scrollDelta`: pegado a la izquierda, centrado, una columna ya centrada que no
   mueve nada, el negativo sin acotar y el board más angosto que la columna). Solo

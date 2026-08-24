@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WeekView } from "./WeekView";
 import { dateLabel, isoWeekday, todayISO, weekDates } from "../../lib/date";
@@ -105,11 +105,11 @@ describe("WeekView · agenda superpuesta", () => {
   const button = () => screen.getByRole("button", { name: /Agenda/ });
 
   it("la tira de la derecha solo trae los paneles que existen", () => {
-    // Objetivos y backlog llegan con sus milestones. Un icono que no hace nada
-    // al apretarlo enseña que la barra no responde.
+    // Agenda y backlog. El de objetivos de la semana llega con M3.5: un icono que
+    // no hace nada al apretarlo enseña que la barra no responde.
     render(<WeekView />);
     const tira = screen.getByRole("navigation", { name: "Paneles" });
-    expect(within(tira).getAllByRole("button")).toHaveLength(1);
+    expect(within(tira).getAllByRole("button")).toHaveLength(2);
   });
 
   it("arranca cerrada y se abre con el botón", async () => {
@@ -128,11 +128,17 @@ describe("WeekView · agenda superpuesta", () => {
 
     await userEvent.click(button());
     await userEvent.click(button());
-    expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull();
+    // `waitFor` y no un assert seco: el panel se queda montado mientras corre su
+    // animación de salida (ver `usePanelPresence`).
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull(),
+    );
 
     await userEvent.click(button());
     await userEvent.click(screen.getByRole("button", { name: "Cerrar la agenda" }));
-    expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull(),
+    );
   });
 
   it("Escape la cierra", async () => {
@@ -141,7 +147,9 @@ describe("WeekView · agenda superpuesta", () => {
 
     await userEvent.keyboard("{Escape}");
 
-    expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull(),
+    );
   });
 
   it("abierta, dice qué día está mostrando", async () => {
@@ -151,6 +159,107 @@ describe("WeekView · agenda superpuesta", () => {
     await userEvent.click(button());
 
     const panel = screen.getByRole("complementary", { name: "Agenda del día" });
-    expect(panel.querySelector(".rail__head-dia")?.textContent).toMatch(/\S/);
+    expect(panel.querySelector(".panel-head__sub")?.textContent).toMatch(/\S/);
+  });
+});
+
+/**
+ * El panel de backlog es el primero de la tira que participa del DnD. El
+ * arrastre en sí **no se prueba acá** —jsdom no devuelve rectángulos, así que un
+ * assert sobre el drop pasaría o fallaría por el motivo equivocado—: la decisión
+ * vive en `destino.ts` y el desempate de la colisión en `collision.test.ts`. Lo
+ * que se fija acá es el interruptor y su convivencia con la agenda.
+ */
+describe("WeekView · panel de backlog", () => {
+  const botonBacklog = () => screen.getByRole("button", { name: /^Backlog$/ });
+  const botonAgenda = () => screen.getByRole("button", { name: /Agenda/ });
+  const elPanel = () => screen.queryByRole("complementary", { name: "Backlog" });
+  const laAgenda = () => screen.queryByRole("complementary", { name: "Agenda del día" });
+
+  it("arranca cerrado y se abre con su botón", async () => {
+    render(<WeekView />);
+    expect(botonBacklog()).toHaveAttribute("aria-pressed", "false");
+    expect(elPanel()).toBeNull();
+
+    await userEvent.click(botonBacklog());
+
+    expect(botonBacklog()).toHaveAttribute("aria-pressed", "true");
+    expect(elPanel()).toBeInTheDocument();
+  });
+
+  it("abrir uno cierra el otro: los dos se montan en el mismo lugar", async () => {
+    render(<WeekView />);
+
+    await userEvent.click(botonAgenda());
+    expect(laAgenda()).toBeInTheDocument();
+
+    await userEvent.click(botonBacklog());
+    expect(elPanel()).toBeInTheDocument();
+    // El que se va sigue montado mientras dura su salida, así que se espera.
+    await waitFor(() => expect(laAgenda()).toBeNull());
+
+    await userEvent.click(botonAgenda());
+    expect(laAgenda()).toBeInTheDocument();
+    await waitFor(() => expect(elPanel()).toBeNull());
+  });
+
+  it("el mismo botón lo cierra, y también el aspa del panel", async () => {
+    render(<WeekView />);
+
+    await userEvent.click(botonBacklog());
+    await userEvent.click(botonBacklog());
+    await waitFor(() => expect(elPanel()).toBeNull());
+
+    await userEvent.click(botonBacklog());
+    await userEvent.click(screen.getByRole("button", { name: "Cerrar backlog" }));
+    await waitFor(() => expect(elPanel()).toBeNull());
+  });
+
+  it("Escape lo cierra", async () => {
+    render(<WeekView />);
+    await userEvent.click(botonBacklog());
+
+    await userEvent.keyboard("{Escape}");
+
+    await waitFor(() => expect(elPanel()).toBeNull());
+  });
+
+  it("clickear la cabecera de un día trae la agenda, aunque esté el backlog", async () => {
+    // El click en la cabecera es un pedido de ver ese día; dejarlo sin efecto
+    // visible por tener el backlog abierto sería peor que el cambio de panel.
+    render(<WeekView />);
+    await userEvent.click(botonBacklog());
+
+    const cabecera = document.querySelector<HTMLElement>(".day-col__head button");
+    if (cabecera) {
+      await userEvent.click(cabecera);
+      expect(laAgenda()).toBeInTheDocument();
+      await waitFor(() => expect(elPanel()).toBeNull());
+    }
+  });
+
+  /**
+   * El panel entraba animado y desaparecía de golpe, que se siente como si se
+   * hubiera roto y no como si se hubiera cerrado. Lo que se fija acá es que **no
+   * se desmonta en el mismo frame** en que se cierra: la animación necesita que
+   * el nodo siga existiendo, y esa es toda la razón de `usePanelPresence`.
+   */
+  it("al cerrarse se queda un momento marcado como saliendo, y recién después se va", async () => {
+    render(<WeekView />);
+    await userEvent.click(botonBacklog());
+    await userEvent.click(screen.getByRole("button", { name: "Cerrar backlog" }));
+
+    // Todavía en el DOM, ya marcado: es lo que dispara `panel-sale`.
+    expect(elPanel()).toHaveClass("is-leaving");
+    await waitFor(() => expect(elPanel()).toBeNull());
+  });
+
+  it("no contamina el conteo de columnas del board", async () => {
+    // El panel **no** reusa `.day-col`: con esa clase encima entraría en la
+    // consulta que cuenta las 21 columnas y `dataset.date` saldría undefined.
+    render(<WeekView />);
+    await userEvent.click(botonBacklog());
+
+    expect(document.querySelectorAll(".day-col")).toHaveLength(21);
   });
 });

@@ -355,10 +355,11 @@ quedan pedidos para cuando toque:
 |---|---|---|
 | Agenda | el rail de calendario | ✅ hecho |
 | Objetivos | objetivos de la semana con su avance | pendiente — la review (M3.5) ya los muestra, falta el panel de la semana |
-| Backlog | el backlog, **arrastrable a la semana** | ver Mej.11 |
+| Backlog | el backlog, **arrastrable a la semana** | ✅ hecho (Mej.11) |
 
-Por ahora **solo se dibuja el primero**: un icono que no hace nada al apretarlo
-enseña que la barra no responde.
+**Solo se dibujan los que existen**: un icono que no hace nada al apretarlo
+enseña que la barra no responde. Y **se abre uno a la vez**, porque los tres se
+montan en el mismo lugar.
 
 Lo que **no** se hizo: un selector de día dentro del panel, con flechas para
 navegar. El pedido era el interruptor; el día ya se elige desde la cabecera de la
@@ -414,8 +415,10 @@ sin tocarlo: recibe las mismas props que en Today) a la derecha. Detalle en
 SPECS §4.14.
 
 El paso 2 son tres columnas: **día · backlog · agenda**, y las dos primeras
-intercambian cards arrastrando. Eso dejó **media Mej.11 hecha** (`BacklogColumn`):
-falta montarla en la vista semana, donde el `DndContext` abarca siete columnas.
+intercambian cards arrastrando. Eso dejó **media Mej.11 hecha** (`BacklogColumn`);
+la otra mitad —el panel de la vista semana, donde el `DndContext` abarca las 21
+columnas— salió con Mej.11, y no reusó esta columna: agrupa por contexto en vez de
+por día de origen, y no se reordena por dentro.
 Los botones de "mañana" y "al backlog" que tenía la primera versión se fueron: el
 arrastre ya lleva la acción y la intención, y dos caminos para lo mismo obligan a
 mantener los dos.
@@ -476,8 +479,8 @@ implementa `getContext` y hay que poder mockearlo.
 
 Lo que **no** se hizo: el objetivo semanal dentro del ritual —M3.5 lo resolvió a
 medias: la weekly review muestra los objetivos y cuántos se cumplieron, pero el
-panel de la tira de la semana sigue pendiente— y el paso de "elegir del backlog"
-(es Mej.11, y el panel arrastrable sirve para la semana entera, no solo para hoy).
+panel de la tira de la semana sigue pendiente— y el paso de "elegir del backlog",
+que salió con Mej.11 como panel de la semana entera y no solo de hoy.
 
 ### 3.5 ✅ Weekly review — hecho
 
@@ -1759,28 +1762,82 @@ estaban escondidas no las habría mirado nunca más.
 
 Detalle en [SPECS.md §4.12](SPECS.md#412-feeds-de-calendario-ics).
 
-### Mej.11 🔵 Panel de backlog en la semana, arrastrable al tablero
+### Mej.11 ✅ Panel de backlog en la semana, arrastrable al tablero — hecho
 
-El tercer icono de la tira (`SideDock`, ver 3.3). Hoy el backlog es una vista
-aparte (`BacklogView`), así que planificar la semana obliga a salir del tablero,
-elegir, volver y buscar el día. Como panel al lado de las columnas, la tarea se
-arrastra directo al día que le toca.
+El segundo icono de la tira (`SideDock`). El backlog era una vista aparte, así que
+planificar la semana obligaba a salir del tablero, elegir, volver y buscar el día;
+ahora la tarea se arrastra directo al día que le toca, y de vuelta al panel cuando
+se decide que hoy no. Backend: ninguno, `move_task` ya hacía todo.
 
-Lo que hay que resolver antes de escribirlo:
+Las tres cosas que estaban anotadas se resolvieron como decía la nota —agrupar por
+contexto, el `DndContext` de la semana, `move_task` sin cambios— pero **el panel
+adentro del contexto destapó tres problemas que no estaban en la lista**, y los
+tres son de la misma familia: cosas que no fallan, solo hacen algo distinto.
 
-- **El drop tiene que entrar por el `DndContext` de la semana**, así que el panel
-  —a diferencia de la agenda— **no** puede quedar fuera. Es el primer caso en que
-  un panel de la tira participa del DnD, y `boardCollision` está afinada para
-  columnas: hay que ver cómo se comporta con un origen que no es una de ellas.
-- Arrastrar del backlog al día es `move_task` con fecha: ya existe y ya registra
-  `START_DATE_SET`. No hace falta backend nuevo.
-- **Agrupar por contexto (`parent_id`), no por horizonte temporal.** Es lo que ya
-  hace `BacklogView`. Un "algún día esta semana / este mes" suena bien pero el
-  modelo no tiene ese campo, y agregarlo obliga a mantener una segunda noción de
-  fecha al lado de `scheduled_date`.
+**1. dnd-kit ignora el `z-index`.** El panel se superpone a una columna, y esa
+columna **conserva su rectángulo** como droppable. Así que todo drop dentro del
+panel produce al menos dos colisiones, y `pointerWithin` las ordena por distancia
+al centro: con 300px de panel contra 236px de columna, la columna escondida gana
+en buena parte del área — y la tarea terminaba agendada **en un día que no se ve**.
+El `z-index` alcanza para dibujarse encima y no para recibir el drop. Lo resuelve
+`boardCollision`, que ahora le da prioridad al backlog cuando el puntero está
+adentro. Es la primera regla de colisión del proyecto que no es geometría.
 
-El segundo icono (objetivos de la semana con su avance) no lleva entrada propia:
-sale junto con **M3.5**, que ya calcula ese avance para la review.
+**2. Excluir el panel de los fallbacks lo dejaba inalcanzable por teclado.** El
+otro lado del problema: `closestCorners` nunca devuelve vacío, así que una card
+soltada sobre espacio muerto podía desagendarse sola, y la salida obvia era sacar
+el panel de los dos fallbacks. Pero el `KeyboardSensor` **no tiene coordenadas**,
+así que `pointerWithin` le devuelve `[]` y los fallbacks son el único camino que
+le queda: con la exclusión siempre puesta, el backlog no se alcanzaba arrastrando
+con el teclado. La exclusión quedó condicionada a que haya puntero.
+
+**3. El autoscroll no llega al borde tapado, y eso sí quedó como limitación.**
+dnd-kit sigue al scroller del nodo de destino, y el panel más la tira cubren el
+borde derecho del board, que es donde vive la zona de autoscroll. Arrastrando no
+se alcanza un día fuera de las columnas visibles: hay que cerrar el panel,
+scrollear y reabrir. Se evaluó que el panel **empujara** el board en vez de
+superponerse —y sale casi gratis: `.day-col` es `flex: 1 0 236px` y 21 columnas
+piden 4956px, así que el espacio libre nunca es positivo y ninguna columna se
+movería— pero se decidió mantener la superposición por consistencia con la agenda.
+Queda escrito en `BacklogPanel` como costo asumido, no como bug pendiente.
+
+Y tres decisiones que el modelo obligó:
+
+- **El panel no se reordena por dentro.** La `position` del backlog es global
+  sobre el bucket `scheduled_date IS NULL` mientras `list_backlog` ordena por
+  `category_id, position, id`: un índice dentro de un grupo de contexto no
+  corresponde a ninguna posición global. Todo drop entra en 0, que con el agrupado
+  del lado del cliente significa "primera de su contexto" — y por eso el
+  `SortableContext` va **sin estrategia**, o las cards abrirían un hueco de
+  inserción prometiendo algo que no pasa.
+- **Del backlog al backlog es no-op.** Con el panel superpuesto el arrastre
+  empieza con el puntero adentro y la card fuente sigue montada, así que un
+  empujón de 5px —la constante de activación— resolvía el panel y reescribía la
+  `position` de todo el bucket sin que nada se hubiera movido.
+- **Una tarea completada no entra al panel.** `list_backlog` filtra
+  `status='TODO'`, así que saldría del día sin entrar al backlog y quedaría
+  **inalcanzable en toda la app**. Mismo filo, otro camino: marcar como completada
+  una tarea del backlog desde el modal la saca del array del board, y con eso
+  `selectedTask` pasaba a `null` y **el modal se cerraba solo en medio de una
+  edición** — ahora conserva el último valor conocido.
+
+Dos cosas que ya estaban rotas y salieron a la luz al meter el backlog al board:
+`useBoard.moveTask` **no invalidaba nada**, así que los conteos por contexto del
+sidebar iban a quedar mintiendo con cada arrastre al panel (ahora invalida cuando
+el movimiento toca el backlog, y el `bumpData()` **reemplaza** al `reload()`
+porque el efecto de carga ya depende de `dataVersion`); y el agrupado por contexto
+estaba escrito **tres veces**, ahora en `agrupar.ts` con un `includeEmpty`
+explícito, porque la vista lo necesita en `true` (es su botón de crear) y el
+sidebar y el panel en `false`.
+
+Lo testeable se extrajo a dos funciones puras, que es lo único que jsdom puede
+mirar del DnD: `destino.ts` (`resolveDrop`, con los cinco guards) y la propia
+`boardCollision`, que hasta ahora **no tenía ningún test** y ahora se prueba con
+rectángulos falsos — incluido el caso de rectángulos superpuestos, que es el que
+destapa el problema 1. Se verificó que esos tests se ponen rojos con el arreglo
+neutralizado: tres de seis.
+
+Detalle en [SPECS.md §4.5](SPECS.md#45-backlog).
 
 ### Mej.12 ✅ El DnD de la semana reordena mal — hecho
 

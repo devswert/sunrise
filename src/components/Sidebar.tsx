@@ -23,7 +23,6 @@ import { ThemeToggle } from "./ThemeToggle";
 import { UpdateBanner } from "../features/updates/UpdateBanner";
 import { api } from "../lib/ipc";
 import { useAppStore } from "../lib/store";
-import type { Category, Task } from "../lib/types";
 import {
   SHORTCUT_ACTIONS,
   ariaKeyshortcuts,
@@ -67,7 +66,16 @@ function useShortcutFor(path: string): string | null {
   return action ? resolved[action.id] : null;
 }
 
-function NavRow({ item, collapsed }: { item: NavItem; collapsed?: boolean }) {
+function NavRow({
+  item,
+  collapsed,
+  count,
+}: {
+  item: NavItem;
+  collapsed?: boolean;
+  /** Pendientes de esa ruta. Se dibuja **en vez** del atajo: son el mismo lugar. */
+  count?: number;
+}) {
   const Icon = item.icon;
   const shortcut = useShortcutFor(item.to);
   return (
@@ -87,54 +95,58 @@ function NavRow({ item, collapsed }: { item: NavItem; collapsed?: boolean }) {
           y un prop no sabe en qué estado está el sidebar. */}
       <Icon className="sidebar__icon" strokeWidth={2} aria-hidden />
       <span className="sidebar__label">{item.label}</span>
-      {/* Decorativo: el nombre accesible del link es solo la etiqueta. */}
-      {shortcut && (
-        <span className="sidebar__key" aria-hidden>
-          {displayCombo(shortcut)}
+      {/* El conteo gana el lugar del atajo cuando hay: el atajo se aprende una
+        * vez y el número cambia todo el tiempo. Colapsado no va: al lado de un
+        * icono sin nombre, un número suelto no dice de qué es. */}
+      {count != null && count > 0 && !collapsed ? (
+        <span className="sidebar__count" aria-hidden>
+          {count}
         </span>
+      ) : (
+        /* Decorativo: el nombre accesible del link es solo la etiqueta. */
+        shortcut && (
+          <span className="sidebar__key" aria-hidden>
+            {displayCombo(shortcut)}
+          </span>
+        )
       )}
     </NavLink>
   );
 }
 
-/** Contextos (folders) que tienen items en el backlog, con su conteo. */
-function useBacklogFolders() {
+/**
+ * Cuántas tareas hay en el backlog, para el badge del item.
+ *
+ * **Cuenta todo**, incluidas las tareas sin canal: el número tiene que coincidir
+ * con la lista que abre el item, o el desajuste no se explica solo.
+ *
+ * Los canales **no** se listan acá. Se ven en la vista, que es donde además se
+ * pueden abrir y editar: repetirlos en el sidebar sumaba una segunda lista que
+ * mantener sincronizada y alargaba la columna con nombres sobre los que no se
+ * puede hacer nada.
+ */
+function useBacklogTotal() {
   const dataVersion = useAppStore((s) => s.dataVersion);
-  const [folders, setFolders] = useState<Array<{ cat: Category; count: number }>>([]);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [backlog, cats] = await Promise.all([api.listBacklog(), api.listCategories()]);
-      if (!alive) return;
-      const byId = new Map(cats.map((c) => [c.id, c]));
-      const folderOf = (t: Task): number | null => {
-        if (t.categoryId == null) return null;
-        const c = byId.get(t.categoryId);
-        return c ? (c.parentId ?? c.id) : null;
-      };
-      const counts = new Map<number, number>();
-      for (const t of backlog) {
-        const f = folderOf(t);
-        if (f != null) counts.set(f, (counts.get(f) ?? 0) + 1);
-      }
-      const list = cats
-        .filter((c) => c.parentId === null && counts.has(c.id))
-        .map((cat) => ({ cat, count: counts.get(cat.id)! }));
-      setFolders(list);
+      const backlog = await api.listBacklog();
+      if (alive) setTotal(backlog.length);
     })();
     return () => {
       alive = false;
     };
   }, [dataVersion]);
 
-  return folders;
+  return total;
 }
 
 export function Sidebar() {
   const { theme, toggle } = useTheme();
   const { collapsed, toggle: toggleCollapsed } = useSidebarCollapsed();
-  const backlogFolders = useBacklogFolders();
+  const backlogTotal = useBacklogTotal();
   const profile = useProfile();
 
   return (
@@ -202,24 +214,8 @@ export function Sidebar() {
         <NavRow
           item={{ to: "/backlog", label: "Backlog", icon: Inbox }}
           collapsed={collapsed}
+          count={backlogTotal}
         />
-        {/* Los contextos del backlog no se renderizan colapsado: un punto de
-          * color sin su nombre no dice cuál es, y son los únicos items cuya
-          * identidad **es** el texto. */}
-        {!collapsed &&
-          backlogFolders.map(({ cat, count }) => (
-          <NavLink
-            key={cat.id}
-            to="/backlog"
-            className={({ isActive }) =>
-              `sidebar__folder${isActive ? " is-active" : ""}`
-            }
-          >
-            <span className="sidebar__folder-dot" style={{ background: `var(--${cat.color})` }} />
-            <span className="sidebar__folder-name">{cat.name}</span>
-            <span className="sidebar__folder-count">{count}</span>
-          </NavLink>
-        ))}
       </div>
 
       {/* Footer: aviso del updater, switch de tema y Settings al final. El aviso

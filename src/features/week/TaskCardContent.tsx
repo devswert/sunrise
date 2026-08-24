@@ -16,6 +16,22 @@ interface Props {
   categories?: Category[];
   onToggle?: (task: Task) => void;
   onPatch?: (id: number, patch: TaskPatch) => void;
+  /**
+   * Esconde los **rellenos de los campos vacíos**: el badge `--:--` cuando no hay
+   * ningún tiempo, y el chip `#` cuando no hay canal.
+   *
+   * Existe por el backlog: ahí la mayoría de las tareas todavía no tiene ni
+   * estimado ni canal, así que las cards se llenaban de marcas de posición
+   * —guiones donde deberían ir números, y un numeral suelto que a 12px no se lee
+   * como "poner canal" sino como un glifo raro— en vez de datos. En un día sí se
+   * muestran, porque ahí "sin estimar" es información: es lo que no está contando
+   * para la capacidad.
+   *
+   * No se pierde nada: el reloj del pie abre los mismos tiempos, y el canal se
+   * cambia desde el detalle. Es lo que ya hace la vista Backlog, donde
+   * `CategoryTag` tampoco dibuja nada sin categoría.
+   */
+  hidePlaceholders?: boolean;
 }
 
 /**
@@ -31,6 +47,7 @@ export function TaskCardContent({
   categories = [],
   onToggle,
   onPatch,
+  hidePlaceholders,
 }: Props) {
   const [openFooter, setOpenFooter] = useState(false);
   const [picker, setPicker] = useState<null | "channel" | "planned" | "actual">(null);
@@ -93,19 +110,21 @@ export function TaskCardContent({
       {/* Título + tiempo alineados en la misma fila */}
       <div className="tc__main">
         <div className="tc__title">{task.title}</div>
-        <button
-          className={`tc__badge${running ? " is-running" : ""}`}
-          onPointerDown={stop}
-          onClick={(e) => {
-            stop(e);
-            setOpenFooter((v) => !v);
-          }}
-          aria-label="Ver tiempos"
-        >
-          {running && <span className="tc__pulse" aria-hidden />}
-          {liveSeconds > 0 && <>{formatMinutes(Math.round(liveSeconds / 60))} / </>}
-          {task.estimatedMinutes != null ? formatMinutes(task.estimatedMinutes) : "--:--"}
-        </button>
+        {!(hidePlaceholders && task.estimatedMinutes == null && liveSeconds === 0) && (
+          <button
+            className={`tc__badge${running ? " is-running" : ""}`}
+            onPointerDown={stop}
+            onClick={(e) => {
+              stop(e);
+              setOpenFooter((v) => !v);
+            }}
+            aria-label="Ver tiempos"
+          >
+            {running && <span className="tc__pulse" aria-hidden />}
+            {liveSeconds > 0 && <>{formatMinutes(Math.round(liveSeconds / 60))} / </>}
+            {task.estimatedMinutes != null ? formatMinutes(task.estimatedMinutes) : "--:--"}
+          </button>
+        )}
       </div>
 
       <div className="tc__foot">
@@ -136,7 +155,10 @@ export function TaskCardContent({
           <Clock size={12} />
         </button>
 
-        {/* Canal editable desde la lista */}
+        {/* Canal editable desde la lista. Sin canal y con `hidePlaceholders` no se
+          * dibuja: el chip vacío es solo un numeral, y en una lista de tareas sin
+          * canal es una columna de glifos que no dice nada. */}
+        {!(hidePlaceholders && !category) && (
         <div className="chip-wrap tc__tagwrap" ref={tagRef} onPointerDown={stop}>
           <button
             type="button"
@@ -172,6 +194,7 @@ export function TaskCardContent({
             </Popover>
           )}
         </div>
+        )}
       </div>
 
       {/* Mini footer de tiempos: abierto por defecto en la tarea en curso */}

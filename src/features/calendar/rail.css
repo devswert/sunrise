@@ -20,26 +20,23 @@
   top: 0;
   /* A la izquierda de la tira de iconos, que es permanente y no se tapa. */
   right: 44px;
-  bottom: 0;
+  /* Mismas medidas que `.backlog-panel` (week.css), y tienen que seguir siéndolo:
+     los dos ocupan este lugar y se alternan, así que cualquier diferencia se ve
+     como un salto al cambiar de panel. El negativo cancela el padding de abajo de
+     `.app-main`, que dejaba una franja en blanco contra el fondo de la app. */
+  bottom: calc(-1 * var(--space-5));
   width: 300px;
   flex: none;
   z-index: 5;
   background: var(--surface);
   box-shadow: var(--shadow-lg);
   border-left: 1px solid var(--border);
-  padding: 0 var(--space-3);
-  animation: rail-entra 140ms var(--theme-ease);
-}
-@keyframes rail-entra {
-  from {
-    transform: translateX(12px);
-    opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .rail--overlay {
-    animation: none;
-  }
+  border-top-left-radius: var(--radius-lg);
+  padding: 0 var(--space-4);
+  /* `panel-entra`, su reverso `panel-sale` y la regla de `.is-leaving` viven en
+     week.css, junto a `.backlog-panel`: son los dos paneles de la misma tira y
+     tienen que entrar y salir igual. */
+  animation: panel-entra 160ms var(--theme-ease);
 }
 
 .rail__head {
@@ -51,24 +48,6 @@
   font-weight: 700;
   font-size: 13px;
   color: var(--muted);
-}
-/* Qué día muestra. Solo en la variante superpuesta: montada fija en Today la
-   fecha ya está en la cabecera de la vista. */
-.rail__head-dia {
-  font-family: var(--font-body);
-  font-weight: 500;
-  color: var(--faint);
-}
-.rail__cerrar {
-  margin-left: auto;
-  display: inline-flex;
-  color: var(--faint);
-  background: transparent;
-  border: none;
-  padding: 2px;
-}
-.rail__cerrar:hover {
-  color: var(--ink);
 }
 
 /* Franja de día completo: arriba de la grilla, porque no tiene dónde caer

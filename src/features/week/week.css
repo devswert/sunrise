@@ -69,6 +69,9 @@
   position: relative;
   z-index: 6;
   background: var(--surface);
+  /* Baja con los paneles hasta el fondo de la app: si la tira terminara antes,
+     el panel colgaría por debajo de su propia perilla. */
+  margin-bottom: calc(-1 * var(--space-5));
 }
 .dock__btn {
   display: inline-flex;
@@ -2149,4 +2152,217 @@ button.tc__tag.is-empty {
   padding-left: 2px;
   font-size: 10px;
   color: var(--faint);
+}
+
+/* --- Panel de backlog -------------------------------------------------------
+
+   Misma geometría que la agenda superpuesta (`.rail--overlay`): a la izquierda
+   de la tira, que es permanente, y por debajo de ella en `z-index`.
+
+   A diferencia de la agenda, **este panel sí es zona de drop**, y eso trae una
+   consecuencia que no se puede arreglar con CSS: la columna que tapa sigue
+   teniendo su rectángulo para dnd-kit, que ignora el `z-index`. Quien decide el
+   empate es `boardCollision`. Ver el comentario de `BacklogPanel`. */
+.backlog-panel {
+  position: absolute;
+  top: 0;
+  right: 44px;
+  /* Hasta el fondo de la app, no hasta el fondo de la vista: `.app-main` reserva
+     `--space-5` de padding abajo y el panel dejaba esa franja en blanco. El
+     negativo lo cancela y llega justo al borde del área scrolleable, así que no
+     aparece scroll. Arriba no sube: ahí está la barra de navegación de semanas. */
+  bottom: calc(-1 * var(--space-5));
+  width: 300px;
+  flex: none;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  border-left: 1px solid var(--border);
+  /* Solo arriba a la izquierda: es la única esquina del panel que queda suelta
+     sobre el board. Las otras tres mueren contra un borde de la ventana o
+     contra la tira, y redondearlas ahí abriría una muesca. */
+  border-top-left-radius: var(--radius-lg);
+  padding: 0 var(--space-4);
+  animation: panel-entra 160ms var(--theme-ease);
+}
+/* Entrada y salida de los paneles de la tira. Son **la misma animación al
+   derecho y al revés**: un panel que entra deslizándose y se va de golpe se
+   siente como si se hubiera roto, no como si se hubiera cerrado.
+
+   Las usan `.backlog-panel` (acá) y `.rail--overlay` (rail.css), y la duración
+   está espejada en `panelPresence.ts`, que es quien mantiene el panel montado
+   mientras se va. Si cambia acá, cambia allá. */
+@keyframes panel-entra {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+}
+@keyframes panel-sale {
+  to {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+}
+.backlog-panel.is-leaving,
+.rail--overlay.is-leaving {
+  /* El shorthand **entero** y no solo `animation-name`: cambiando una longhand
+     sobre un elemento que ya corrió su animación de entrada, el reinicio depende
+     de cómo el motor empareja la lista de animaciones, y la salida se quedaba sin
+     correr. Declarada completa, es una animación nueva y sin ambigüedad.
+
+     `forwards` la deja en el último fotograma hasta que React desmonta: sin eso
+     el panel vuelve a su sitio en el frame anterior y da un salto. */
+  animation: panel-sale 160ms var(--theme-ease) forwards;
+  /* Ya se está yendo: un click acá caería sobre algo que no está, y mientras se
+     va sigue siendo un droppable dentro del `DndContext`. */
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .backlog-panel,
+  .rail--overlay,
+  .backlog-panel.is-leaving,
+  .rail--overlay.is-leaving {
+    animation: none;
+  }
+}
+/* El mismo tinte que una columna que recibe: es el mismo gesto. */
+.backlog-panel.is-over {
+  background: color-mix(in srgb, var(--apricot) 12%, var(--surface));
+}
+
+/* --- Cabecera de los paneles de la tira ---
+
+   Compartida por el backlog y la agenda superpuesta, y compartida a propósito:
+   son dos paneles que ocupan el mismo lugar y se alternan, así que dos cabeceras
+   distintas se leen como un salto al cambiar de uno al otro.
+
+   Dos líneas y no una: el nombre del panel y lo que está mostrando son dos
+   niveles distintos —qué es esto, y qué hay adentro— y en una sola fila de 13px
+   quedaban compitiendo, sin que se supiera cuál leer primero. */
+.panel-head {
+  flex: none;
+  padding: var(--space-4) 0 var(--space-3);
+}
+.panel-head__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.panel-head__icon {
+  flex: none;
+  color: var(--faint);
+}
+.panel-head__title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.panel-head__close {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--faint);
+  background: transparent;
+  border: none;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+}
+.panel-head__close:hover {
+  color: var(--ink);
+  background: var(--surface-sunken);
+}
+/* Alineado con el título y no con el icono: cuelga del nombre, que es lo que
+   está calificando. */
+.panel-head__sub {
+  margin: 2px 0 0;
+  padding-left: calc(14px + var(--space-2));
+  font-size: 11px;
+  /* Ver el contraste medido en `.backlog-panel__desde`: `--faint` sobre estas
+     superficies queda por debajo de 2. */
+  color: var(--muted);
+}
+
+.backlog-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--space-3);
+}
+.backlog-panel__group {
+  margin-bottom: var(--space-4);
+}
+/* Las cards del panel se apilaban pegadas: en las columnas el aire lo pone el
+   `gap` de `.day-col__list`, y acá no había lista. Mismo valor que allá, o las
+   dos superficies que muestran la misma card se ven de dos densidades. */
+.backlog-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* Card + su rótulo de origen como **una sola unidad**. Como línea suelta debajo,
+   el rótulo tenía márgenes propios y rompía el pulso de la lista: una card con
+   rótulo dejaba 14px hasta la siguiente y una sin rótulo 8px, justo en las tareas
+   que traían más información. */
+.backlog-panel__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+/* El hueco para el badge, y solo cuando lo hay: es la mitad de su alto, así que
+   el badge queda partido por el borde superior de la card. */
+.backlog-panel__item.has-desde {
+  padding-top: 9px;
+}
+/* Montado **sobre el borde superior de la card y centrado**, como una etiqueta
+   cosida: así se lee como una propiedad de esa card y no como una línea que
+   flota entre dos. Del fondo de la card (`--surface-raised`) para que corte el
+   borde en vez de taparlo.
+
+   Los 18px de alto —16 de `line-height` más los dos bordes— son los que hacen
+   que `padding-top: 9px` lo deje exactamente a caballo. Si cambia el tamaño,
+   cambian los dos. */
+.backlog-panel__desde {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: 9.5px;
+  line-height: 16px;
+  white-space: nowrap;
+  /* `--muted` y no `--faint`: medido sobre el fondo de la card, `--faint` da
+     **1,96** de contraste en claro y 2,81 en oscuro — a 9,5px eso no es un texto
+     tenue, es un texto que no está. `--muted` da 3,40 y 5,39. */
+  color: var(--muted);
+}
+.backlog-panel__group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--space-1);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.backlog-panel__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.backlog-panel__vacio {
+  margin: var(--space-3) 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
 }

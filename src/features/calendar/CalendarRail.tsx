@@ -101,23 +101,33 @@ export function CalendarRail({
 
   return (
     <aside className={`rail${className ? ` ${className}` : ""}`} aria-label="Agenda del día">
-      <div className="rail__head">
-        <CalendarDays size={13} aria-hidden />
-        <span>Agenda</span>
-        {onClose && (
-          <>
-            <span className="rail__head-dia">{weekdayLabel(date)}</span>
+      {/* Dos cabeceras y no una, y la condición es la misma que decide si el rail
+        * es un panel: montado fijo en Today la vista ya dice de qué día es y el
+        * rótulo de una línea alcanza. Como panel usa `panel-head`, la cabecera
+        * compartida con el backlog (`week.css`): los dos se abren en el mismo
+        * lugar y se alternan, así que tienen que verse iguales. */}
+      {onClose ? (
+        <header className="panel-head">
+          <div className="panel-head__row">
+            <CalendarDays size={14} aria-hidden className="panel-head__icon" />
+            <h2 className="panel-head__title">Agenda</h2>
             <button
               type="button"
-              className="rail__cerrar"
+              className="panel-head__close"
               onClick={onClose}
               aria-label="Cerrar la agenda"
             >
-              <X size={14} />
+              <X size={15} />
             </button>
-          </>
-        )}
-      </div>
+          </div>
+          <p className="panel-head__sub">{weekdayLabel(date)}</p>
+        </header>
+      ) : (
+        <div className="rail__head">
+          <CalendarDays size={13} aria-hidden />
+          <span>Agenda</span>
+        </div>
+      )}
 
       {rail.blocks.length === 0 && rail.todoElDia.length === 0 && (
         <p className="rail__vacio">El día está en blanco.</p>

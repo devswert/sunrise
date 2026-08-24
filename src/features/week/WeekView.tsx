@@ -10,9 +10,10 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Inbox } from "lucide-react";
 import { DayColumn } from "./DayColumn";
 import { boardCollision } from "./collision";
+import { resolveDrop, taskIdFrom, type DropData } from "./destino";
 import { TaskCardOverlay } from "./TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
 import { useBoard } from "../tasks/useBoard";
@@ -31,13 +32,30 @@ import { anchorAfterDayChange, scrollDelta } from "./anchor";
 import { SyncButton } from "../calendar/SyncButton";
 import { CalendarRail } from "../calendar/CalendarRail";
 import { SideDock } from "./SideDock";
+import { usePanelPresence } from "./panelPresence";
+import { BacklogPanel } from "../backlog/BacklogPanel";
+import type { Task } from "../../lib/types";
 import { useDayWork } from "../calendar/useTrabajoDelDia";
 
 export function WeekView() {
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
-  const [railAbierto, setRailAbierto] = useState(false);
+  /**
+   * Qué panel de la tira está abierto, y por eso **uno solo**: los dos se montan
+   * en el mismo lugar (`right: 44px`, 300px de ancho), así que dos abiertos se
+   * apilarían uno sobre el otro.
+   */
+  const [panel, setPanel] = useState<"agenda" | "backlog" | null>(null);
+  /**
+   * Los paneles siguen montados mientras se van, para poder animar la salida —
+   * ver `usePanelPresence`. Uno por panel y no uno compartido: al cambiar de la
+   * agenda al backlog los dos están en pantalla durante la transición, el que se
+   * va saliendo y el que llega entrando.
+   */
+  const agenda = usePanelPresence(panel === "agenda");
+  const backlog = usePanelPresence(panel === "backlog");
+  const railAbierto = panel === "agenda";
   /**
    * Dos arreglos y no uno, porque el board dejó de ser una semana:
    *
@@ -73,7 +91,10 @@ export function WeekView() {
   // el scroll. El domingo ya no hace falta acá, el rótulo lo saca de su semana.
   const start = anchorWeek[0];
 
-  const board = useBoard(dates[0], dates[dates.length - 1], start);
+  // Con el backlog: es la única vista que lo muestra al lado de las columnas, y
+  // las tareas sin fecha tienen que estar en el mismo array que las del rango
+  // para que el `DragOverlay` y el modal las encuentren (ver `useBoard`).
+  const board = useBoard(dates[0], dates[dates.length - 1], start, true);
   const capacity = useCapacitySettings();
   const workday = useWorkHours();
 
@@ -103,17 +124,23 @@ export function WeekView() {
   const isFoldable = (d: string) => collapsedWeekdays.includes(isoWeekday(d)) && d !== today;
   const isCollapsed = (d: string) => isFoldable(d) && !unfolded.has(d);
 
-  // Escape cierra el rail, pero **no si hay un modal abierto**: el de `TaskModal`
-  // escucha en `window` igual que este, y `preventDefault()` no frena a los
-  // demás listeners de la ventana — un solo Escape cerraría los dos.
+  // Escape cierra el panel, con dos excepciones:
+  //
+  // - **No si hay un modal abierto**: el de `TaskModal` escucha en `window` igual
+  //   que este, y `preventDefault()` no frena a los demás listeners de la
+  //   ventana — un solo Escape cerraría los dos.
+  // - **No en medio de un arrastre.** El `PointerSensor` cancela el arrastre con
+  //   Escape, y no hay forma de saberlo desde acá: sin este guard, un Escape
+  //   cancelaría el arrastre *y* cerraría el panel, sacándole el piso a la card
+  //   que estaba en vuelo.
   useEffect(() => {
-    if (!railAbierto || selectedId != null) return;
+    if (panel == null || selectedId != null || activeId != null) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setRailAbierto(false);
+      if (e.key === "Escape") setPanel(null);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [railAbierto, selectedId]);
+  }, [panel, selectedId, activeId]);
 
   /**
    * Dónde queda parado el scroll. Dos objetivos, y la condición entre ellos es lo
@@ -164,9 +191,21 @@ export function WeekView() {
   );
 
   const activeTask = activeId != null ? board.tasks.find((t) => t.id === activeId) : null;
-  // Deriva de los datos frescos: así el modal refleja al instante lo guardado.
-  const selectedTask =
+  /**
+   * Deriva de los datos frescos: así el modal refleja al instante lo guardado.
+   *
+   * Pero **conserva el último conocido** cuando la tarea desaparece de las dos
+   * listas, y eso no es paranoia: `list_backlog` filtra `status='TODO'`, así que
+   * marcar como completada una tarea del backlog desde el modal la saca del array
+   * y el modal **se cerraría solo en medio de una edición**. Con la tarea sin
+   * fecha adentro del board, ese camino existe.
+   */
+  const ultimoSeleccionado = useRef<Task | null>(null);
+  const encontrada =
     selectedId != null ? (board.tasks.find((t) => t.id === selectedId) ?? null) : null;
+  if (selectedId == null) ultimoSeleccionado.current = null;
+  else if (encontrada) ultimoSeleccionado.current = encontrada;
+  const selectedTask = encontrada ?? ultimoSeleccionado.current;
 
   function onDragStart(e: DragStartEvent) {
     setActiveId(Number(String(e.active.id).replace("task-", "")));
@@ -176,38 +215,20 @@ export function WeekView() {
     setActiveId(null);
     const { active, over } = event;
     if (!over) return;
-    const activeIdNum = Number(String(active.id).replace("task-", ""));
-    const overData = over.data.current as
-      { type: "column" | "task"; date: string | null } | undefined;
-
-    let targetDate: string | null;
-    let index: number;
-
-    if (overData?.type === "column") {
-      targetDate = overData.date;
-      const list = targetDate ? (board.tasksByDate[targetDate] ?? []) : [];
-      // Al final de la columna destino, salvo que la card ya esté en ella: la
-      // cascada de colisión resuelve la columna en vez de una card al pasar por
-      // el header o los márgenes, y ahí "al final" era un movimiento inventado.
-      const propio = list.findIndex((t) => t.id === activeIdNum);
-      index = propio >= 0 ? propio : list.length;
-    } else if (overData?.type === "task") {
-      targetDate = overData.date;
-      const list = targetDate ? (board.tasksByDate[targetDate] ?? []) : [];
-      const overId = Number(String(over.id).replace("task-", ""));
-      const found = list.findIndex((t) => t.id === overId);
-      index = found < 0 ? list.length : found;
-    } else {
-      return;
-    }
-
-    if (targetDate == null) return;
-    // A un día plegado no: no tiene ref de droppable, así que no debería llegar,
-    // pero la cascada de colisión tiene un fallback por esquina más cercana que
-    // no distingue. **A un día pasado sí** — ver el comentario del `useDroppable`
-    // en `DayColumn`.
-    if (isCollapsed(targetDate)) return;
-    board.moveTask(activeIdNum, targetDate, index);
+    const id = taskIdFrom(active.id);
+    // La decisión entera vive en `destino.ts`, que es lo que la hace testeable:
+    // jsdom no devuelve rectángulos, así que el gesto se verifica en el browser,
+    // pero los guards (el día plegado, el backlog→backlog, la card completada) se
+    // fijan con tests.
+    const target = resolveDrop({
+      task: board.tasks.find((t) => t.id === id),
+      overId: over.id,
+      overData: over.data.current as DropData | undefined,
+      tasksByDate: board.tasksByDate,
+      isCollapsed,
+    });
+    if (!target) return;
+    board.moveTask(id, target.date, target.index);
   }
 
   return (
@@ -302,10 +323,15 @@ export function WeekView() {
                       onToggle={board.toggleTask}
                       onOpen={(t) => setSelectedId(t.id)}
                       onPatch={board.patchTask}
+                      // Clickear la cabecera es un pedido de ver ese día, así
+                      // que abre la agenda incluso si el backlog está abierto:
+                      // dejarlo sin efecto visible sería peor que el cambio.
                       onPickDay={(day) => {
                         setDiaElegido(day);
-                        setRailAbierto(true);
+                        setPanel("agenda");
                       }}
+                      // Acotado a la agenda, o la cabecera quedaría marcada
+                      // mientras se muestra el backlog.
                       isPicked={railAbierto && d === diaDelRail}
                     />
                   ))}
@@ -325,17 +351,35 @@ export function WeekView() {
               />
             ) : null}
           </DragOverlay>
+
+          {/* **Adentro** del `DndContext`, y es el primero de la tira que lo
+            * necesita: el panel es zona de drop en los dos sentidos. Los costos
+            * de que además se superponga están escritos en `BacklogPanel`. */}
+          {backlog.mounted && (
+            <BacklogPanel
+              leaving={backlog.leaving}
+              tasks={board.backlogTasks}
+              rescued={board.rescues}
+              categoryMap={board.categoryMap}
+              categories={board.categories}
+              onToggle={board.toggleTask}
+              onOpen={(t) => setSelectedId(t.id)}
+              onPatch={board.patchTask}
+              onClose={() => setPanel(null)}
+            />
+          )}
         </DndContext>
 
-        {/* Fuera del `DndContext`, como en Today: es referencia, no zona de
-         * drop. Abierto tapa la última columna, que por lo tanto no recibe drops
-         * mientras esté visible. Es aceptable porque la agenda se abre para
-         * *consultar* a qué hora hay algo, no para arrastrar: se cierra y se
-         * arrastra. Un rail que se corriera para dejar la columna libre movería
-         * las siete de lugar cada vez que se abre. */}
-        {railAbierto && (
+        {/* La agenda queda fuera del `DndContext`, y no por la frontera en sí:
+         * lo que la hace no-droppable es no tener ningún `useDroppable`. Es
+         * referencia, no zona de drop — arrastrar ahí tendría que escribir
+         * `scheduled_time`. Abierta tapa la última columna, que por lo tanto no
+         * recibe drops mientras esté visible; es aceptable porque se abre para
+         * *consultar* a qué hora hay algo. Un rail que se corriera para dejar la
+         * columna libre movería las siete de lugar cada vez que se abre. */}
+        {agenda.mounted && (
           <CalendarRail
-            className="rail--overlay"
+            className={`rail--overlay${agenda.leaving ? " is-leaving" : ""}`}
             date={diaDelRail}
             today={today}
             tasks={board.tasksByDate[diaDelRail] ?? []}
@@ -345,21 +389,31 @@ export function WeekView() {
             work={work}
             segundosEnCurso={segundosEnCurso}
             onOpen={(t) => setSelectedId(t.id)}
-            onClose={() => setRailAbierto(false)}
+            onClose={() => setPanel(null)}
           />
         )}
 
         {/* La tira de iconos es permanente y no se superpone: los paneles se
-         * abren a su izquierda. Por ahora tiene un solo botón — objetivos de la
-         * semana y backlog llegan con sus milestones. */}
+         * abren a su izquierda. Falta el de objetivos de la semana, que sale con
+         * M3.5 — el avance que muestra lo calcula la review.
+         *
+         * Abrir uno cierra el otro, y no es una preferencia: los dos se montan en
+         * el mismo lugar. */}
         <SideDock
           items={[
             {
               id: "agenda",
               label: "Agenda",
               icon: <CalendarDays size={17} />,
-              active: railAbierto,
-              onToggle: () => setRailAbierto((v) => !v),
+              active: panel === "agenda",
+              onToggle: () => setPanel((p) => (p === "agenda" ? null : "agenda")),
+            },
+            {
+              id: "backlog",
+              label: "Backlog",
+              icon: <Inbox size={17} />,
+              active: panel === "backlog",
+              onToggle: () => setPanel((p) => (p === "backlog" ? null : "backlog")),
             },
           ]}
         />

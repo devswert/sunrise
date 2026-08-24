@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
@@ -165,5 +165,42 @@ describe("Sidebar · colapsar", () => {
     expect(
       screen.getByRole("switch", { name: "Cambiar a modo oscuro" }),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * El backlog en el sidebar es **un solo número**: todo lo que hay, incluidas las
+ * tareas sin canal, para que coincida con la lista que abre. Los canales se ven
+ * en la vista, que es donde además se pueden abrir.
+ */
+describe("Sidebar · backlog", () => {
+  // El estado de colapsado vive en `localStorage` y sobrevive entre tests: sin
+  // esto el sidebar arranca colapsado y el conteo no se dibuja.
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("el item Backlog lleva el total de pendientes", async () => {
+    renderSidebar();
+
+    // El mock siembra una sola tarea en el backlog.
+    const item = await screen.findByRole("link", { name: "Backlog" });
+    await waitFor(() => expect(item).toHaveTextContent("1"));
+  });
+
+  it("no lista los canales: esos viven en la vista", async () => {
+    renderSidebar();
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: "Backlog" })).toHaveTextContent("1"),
+    );
+
+    expect(screen.queryByText("Thinking")).toBeNull();
+  });
+
+  it("el conteo no se cuela en el nombre accesible del link", async () => {
+    renderSidebar();
+    // Si el número entrara al nombre, el link pasaría a llamarse "Backlog 1" y
+    // dejaría de ser encontrable por su nombre — acá y para un lector de pantalla.
+    expect(await screen.findByRole("link", { name: "Backlog" })).toBeInTheDocument();
   });
 });

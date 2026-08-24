@@ -300,37 +300,6 @@ a {
   height: 26px;
 }
 
-.sidebar__folder {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 4px var(--space-3) 4px 34px;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 12px;
-}
-.sidebar__folder:hover {
-  background: var(--surface-raised);
-  color: var(--ink);
-}
-.sidebar__folder-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.sidebar__folder-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sidebar__folder-count {
-  font-variant-numeric: tabular-nums;
-  color: var(--faint);
-}
-
 /* Marca y botón de colapsar, arriba. Expandido van en fila con el botón a la
  * derecha; colapsado se apilan centrados, porque en un rail angosto no caben lado
  * a lado y el botón tiene que seguir estando donde uno lo dejó. */
@@ -644,4 +613,29 @@ html.theme-transition *::after {
 .sidebar__link:hover .sidebar__key,
 .sidebar__link.is-active .sidebar__key {
   opacity: 1;
+}
+/* Conteo de pendientes, en el lugar del atajo. **Badge y no número suelto**: al
+   lado de un atajo tenue y en la misma tipografía, un número se leía como parte
+   del ruido de la fila en vez de como un dato. Misma forma que `.sidebar__perfil`
+   —la píldora de `dev`—, que es la otra cosa del sidebar que hay que ver sin
+   buscarla. */
+.sidebar__count {
+  flex: 0 0 auto;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  /* **Gris y no un color de la paleta.** Con el durazno del acento se leía como
+     una advertencia —un número en rojizo al lado de un nombre es un contador de
+     errores en casi cualquier app—, y esto es cuántas cosas hay, no un estado.
+     Neutro tampoco puede ser una superficie: el fondo del sidebar ya es
+     `--surface-sunken` y el de la fila en hover/activa es `--surface-raised`, así
+     que el badge desaparecería en uno de los dos. Una mezcla de `--muted` se ve
+     sobre los dos. */
+  color: var(--ink);
+  background: color-mix(in srgb, var(--muted) 22%, transparent);
 }

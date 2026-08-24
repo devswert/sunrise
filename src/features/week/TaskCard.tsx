@@ -11,6 +11,8 @@ interface TaskCardProps {
   onToggle: (task: Task) => void;
   onOpen?: (task: Task) => void;
   onPatch?: (id: number, patch: TaskPatch) => void;
+  /** Ver `TaskCardContent`: esconde los rellenos de los campos vacíos. */
+  hidePlaceholders?: boolean;
 }
 
 export function TaskCard({
@@ -20,11 +22,21 @@ export function TaskCard({
   onToggle,
   onOpen,
   onPatch,
+  hidePlaceholders,
 }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: `task-${task.id}`,
-      data: { type: "task", taskId: task.id, date: task.scheduledDate },
+      // `status` viaja acá porque el panel de backlog lo necesita **durante** el
+      // arrastre para decidir si se ilumina, y en ese momento solo tiene los
+      // datos del `active` — la tarea vive en la columna de otro día, no en su
+      // lista. Ver `BacklogPanel`.
+      data: {
+        type: "task",
+        taskId: task.id,
+        date: task.scheduledDate,
+        status: task.status,
+      },
     });
 
   const done = task.status === "DONE";
@@ -47,6 +59,7 @@ export function TaskCard({
         categories={categories}
         onToggle={onToggle}
         onPatch={onPatch}
+        hidePlaceholders={hidePlaceholders}
       />
     </div>
   );

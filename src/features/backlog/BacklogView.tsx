@@ -7,6 +7,7 @@ import { TaskModal } from "../tasks/TaskModal";
 import { formatMinutes } from "../../lib/capacity";
 import { isoWeekId, shortDate } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
+import { groupByContext } from "./agrupar";
 
 /** Card no-arrastrable para el backlog (reutiliza estilos de .task-card). */
 function BacklogCard({
@@ -74,18 +75,6 @@ export function BacklogView() {
   }, [load, dataVersion]);
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-  const parents = useMemo(() => categories.filter((c) => c.parentId === null), [categories]);
-
-  /** Carpeta (categoría padre) a la que pertenece una tarea. */
-  const folderOf = useCallback(
-    (t: Task): number | null => {
-      if (t.categoryId == null) return null;
-      const c = catMap.get(t.categoryId);
-      if (!c) return null;
-      return c.parentId ?? c.id;
-    },
-    [catMap],
-  );
 
   const toggle = async (t: Task) => {
     await api.setTaskStatus(t.id, t.status === "DONE" ? "TODO" : "DONE");
@@ -93,13 +82,10 @@ export function BacklogView() {
     bumpData(); // completar pudo detener el timer
   };
 
-  const groups: Array<{ folder: Category | null; items: Task[] }> = [
-    ...parents.map((p) => ({
-      folder: p,
-      items: tasks.filter((t) => folderOf(t) === p.id),
-    })),
-    { folder: null, items: tasks.filter((t) => folderOf(t) === null) },
-  ].filter((g) => g.items.length > 0 || g.folder !== null);
+  // Con los contextos vacíos: acá cada grupo trae su botón "Agregar tarea", que
+  // es la única forma de crear una tarea en un contexto que todavía no tiene
+  // ninguna. Sin el grupo no hay botón, y el contexto queda inalcanzable.
+  const groups = groupByContext(tasks, categories, { includeEmpty: true });
 
   return (
     <div>

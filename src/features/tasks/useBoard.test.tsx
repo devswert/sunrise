@@ -14,6 +14,10 @@ const moveTask = vi.fn(
       soltarMove = () => resolve();
     }),
 );
+let backlog: unknown[] = [];
+const listBacklog = vi.fn(async () => backlog);
+let rescates: unknown[] = [];
+const rescuedFromBacklog = vi.fn(async () => rescates);
 
 vi.mock("../../lib/ipc", () => ({
   isTauri: () => false,
@@ -23,6 +27,8 @@ vi.mock("../../lib/ipc", () => ({
     listCategories: vi.fn(async () => []),
     listObjectives: (...a: unknown[]) => listObjectives(...(a as [])),
     moveTask: () => moveTask(),
+    listBacklog: () => listBacklog(),
+    rescuedFromBacklog: () => rescuedFromBacklog(),
   },
 }));
 
@@ -34,14 +40,14 @@ vi.mock("../../lib/ipc", () => ({
  * recrea `useAppStore`, y una referencia importada arriba apuntaría a otra
  * instancia, sobre la que el componente no está suscrito.
  */
-async function freshBoard(range?: [string, string, string?]) {
+async function freshBoard(range?: [string, string, string?], withBacklog = false) {
   vi.resetModules();
   const { useBoard } = await import("./useBoard");
   const { useAppStore } = await import("../../lib/store");
   let board: ReturnType<typeof useBoard> | null = null;
   function Probe() {
     const [start, end, weekOf] = range ?? [todayISO(), todayISO()];
-    board = useBoard(start, end, weekOf);
+    board = useBoard(start, end, weekOf, withBacklog);
     return null;
   }
   return { Probe, useAppStore, verBoard: () => board! };
@@ -174,5 +180,130 @@ describe("useBoard · reorden optimista", () => {
     await act(async () => {
       soltarMove?.();
     });
+  });
+});
+
+/**
+ * El backlog dentro del board: es lo que hace posible el panel de la semana, y lo
+ * que hay que vigilar es que **solo** llegue cuando se pide. Las otras tres
+ * vistas que usan este hook (Today, planificación, cierre) no lo quieren, y sus
+ * mocks no tienen esas funciones.
+ */
+describe("useBoard · el backlog opt-in", () => {
+  const hoy = todayISO();
+  const tarea = (id: number, scheduledDate: string | null, position = id) => ({
+    id,
+    title: `t${id}`,
+    status: "TODO",
+    source: "MANUAL",
+    sourceState: "ACTIVE",
+    scheduledDate,
+    position,
+    actualSeconds: 0,
+  });
+
+  beforeEach(() => {
+    demote.mockClear();
+    listBacklog.mockClear();
+    rescuedFromBacklog.mockClear();
+    moveTask.mockClear();
+    soltarMove = null;
+    rango = [tarea(1, hoy, 0)];
+    backlog = [tarea(9, null, 1), tarea(8, null, 0)];
+    rescates = [{ taskId: 9, fromDate: "2026-08-14" }];
+  });
+
+  it("sin el flag no se le pide el backlog a nadie", async () => {
+    const { Probe, verBoard } = await freshBoard();
+    render(<Probe />);
+    await waitFor(() => expect(verBoard().tasks.length).toBe(1));
+
+    expect(listBacklog).not.toHaveBeenCalled();
+    expect(rescuedFromBacklog).not.toHaveBeenCalled();
+    expect(verBoard().backlogTasks).toEqual([]);
+  });
+
+  it("con el flag las tareas sin fecha entran al mismo array, ordenadas por position", async () => {
+    const { Probe, verBoard } = await freshBoard(undefined, true);
+    render(<Probe />);
+    await waitFor(() => expect(verBoard().backlogTasks.length).toBe(2));
+
+    expect(verBoard().backlogTasks.map((t) => t.id)).toEqual([8, 9]);
+    // En el mismo array: es lo que hace que el overlay y el modal las encuentren.
+    expect(verBoard().tasks.map((t) => t.id)).toContain(9);
+  });
+
+  it("pero `tasksByDate` sigue sin verlas: las columnas de día no se enteran", async () => {
+    const { Probe, verBoard } = await freshBoard(undefined, true);
+    render(<Probe />);
+    await waitFor(() => expect(verBoard().backlogTasks.length).toBe(2));
+
+    expect(verBoard().tasksByDate[hoy].map((t) => t.id)).toEqual([1]);
+    expect(Object.keys(verBoard().tasksByDate)).toEqual([hoy]);
+  });
+
+  it("los rescates llegan como mapa, salteando los que no traen día", async () => {
+    rescates = [{ taskId: 9, fromDate: "2026-08-14" }, { taskId: 8, fromDate: "" }];
+    const { Probe, verBoard } = await freshBoard(undefined, true);
+    render(<Probe />);
+    await waitFor(() => expect(verBoard().rescues.size).toBe(1));
+
+    expect(verBoard().rescues.get(9)).toBe("2026-08-14");
+  });
+});
+
+/**
+ * Mover **desde o hacia** el backlog cambia lo que ven el sidebar (sus conteos
+ * por contexto) y `BacklogView`, que se refrescan solo con `dataVersion`. Un
+ * reordenamiento dentro de un día no cambia nada de eso, y despertar a la otra
+ * ventana y al taxímetro por cada arrastre sería gratis para nadie.
+ */
+describe("useBoard · qué movimientos invalidan", () => {
+  const hoy = todayISO();
+  const tarea = (id: number, scheduledDate: string | null, position = id) => ({
+    id,
+    title: `t${id}`,
+    status: "TODO",
+    source: "MANUAL",
+    sourceState: "ACTIVE",
+    scheduledDate,
+    position,
+    actualSeconds: 0,
+  });
+
+  beforeEach(() => {
+    demote.mockClear();
+    moveTask.mockClear();
+    soltarMove = null;
+    rango = [tarea(1, hoy, 0), tarea(2, hoy, 1)];
+    backlog = [tarea(9, null, 0)];
+    rescates = [];
+  });
+
+  async function mover(id: number, date: string | null) {
+    const { Probe, useAppStore, verBoard } = await freshBoard(undefined, true);
+    render(<Probe />);
+    await waitFor(() => expect(verBoard().tasks.length).toBe(3));
+    const antes = useAppStore.getState().dataVersion;
+
+    await act(async () => {
+      const p = verBoard().moveTask(id, date, 0);
+      soltarMove?.();
+      await p;
+    });
+
+    return useAppStore.getState().dataVersion - antes;
+  }
+
+  it("mandar una tarea al backlog invalida", async () => {
+    expect(await mover(1, null)).toBeGreaterThan(0);
+  });
+
+  it("sacar una tarea del backlog invalida", async () => {
+    expect(await mover(9, hoy)).toBeGreaterThan(0);
+  });
+
+  it("reordenar dentro de un día no invalida", async () => {
+    expect(await mover(1, hoy)).toBe(0);
   });
 });

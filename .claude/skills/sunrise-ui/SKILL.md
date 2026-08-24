@@ -440,7 +440,37 @@ Si tocas el dibujo, dos cosas:
 card no se pierda al arrastrarla entre columnas. No la simplifiques a un solo
 detector.
 
+**La decisión de destino no vive en el handler**: está en `resolveDrop`
+(`src/features/week/destino.ts`), pura y testeada, porque jsdom no devuelve
+rectángulos — el gesto se verifica en el browser, pero los guards se fijan con
+tests. Si agregas una regla al drop, va ahí.
+
 Detalles que ya están resueltos y conviene mantener:
+
+- **Un panel superpuesto que además es zona de drop tiene que ganar la colisión a
+  mano.** dnd-kit **ignora el `z-index`**: lo que el panel tapa conserva su
+  rectángulo y sigue compitiendo, así que el `z-index` alcanza para dibujarse
+  encima y no para *recibir* el drop. Con el panel de backlog (300px) sobre una
+  columna (236px), `pointerWithin` devolvía las dos ordenadas por distancia al
+  centro y la columna escondida ganaba en buena parte del área: la tarea se
+  agendaba en un día que no se ve. Si montas otro panel droppable, esa prioridad
+  hay que decidirla explícitamente.
+- **Y si lo sacas de los fallbacks, hazlo solo cuando haya puntero.**
+  `closestCorners` nunca devuelve vacío, así que un destino que no debería
+  alcanzarse por descarte hay que excluirlo — pero el `KeyboardSensor` **no tiene
+  coordenadas**, `pointerWithin` le devuelve `[]` y los fallbacks son el único
+  camino que le queda. Con la exclusión siempre puesta, ese destino queda
+  inalcanzable arrastrando con el teclado, y nada se ve roto.
+- **Un `SortableContext` que no reordena va sin estrategia**
+  (`strategy={() => null}`). `useSortable` necesita el contexto para funcionar,
+  pero `verticalListSortingStrategy` hace que las cards abran un hueco de
+  inserción al pasar por encima — prometiendo un reordenamiento que después no
+  pasa. Uno por grupo es peor: el desplazamiento entre grupos no hace nada
+  mientras el drop sí se dispara.
+- **Un destino no se ilumina si va a rechazar el drop.** Es la misma regla que
+  "una columna no se ilumina si la card ya está en ella", y aplica a cada guard
+  nuevo: el panel de backlog no se enciende para una card completada, porque
+  `list_backlog` filtra `TODO` y el drop es no-op.
 
 - `PointerSensor` con `activationConstraint: { distance: 4 }`, para que un click
   en la card no se interprete como arrastre.
