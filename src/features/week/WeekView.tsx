@@ -13,7 +13,7 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CalendarDays, ChevronLeft, ChevronRight, Inbox } from "lucide-react";
 import { DayColumn } from "./DayColumn";
 import { boardCollision } from "./collision";
-import { resolveDrop, taskIdFrom, type DropData } from "./destino";
+import { resolveDrop, taskIdFrom, type DropData } from "./dropTarget";
 import { TaskCardOverlay } from "./TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
 import { useBoard } from "../tasks/useBoard";
@@ -55,7 +55,6 @@ export function WeekView() {
    */
   const agenda = usePanelPresence(panel === "agenda");
   const backlog = usePanelPresence(panel === "backlog");
-  const railAbierto = panel === "agenda";
   /**
    * Dos arreglos y no uno, porque el board dejó de ser una semana:
    *
@@ -200,12 +199,12 @@ export function WeekView() {
    * y el modal **se cerraría solo en medio de una edición**. Con la tarea sin
    * fecha adentro del board, ese camino existe.
    */
-  const ultimoSeleccionado = useRef<Task | null>(null);
-  const encontrada =
+  const lastSelected = useRef<Task | null>(null);
+  const found =
     selectedId != null ? (board.tasks.find((t) => t.id === selectedId) ?? null) : null;
-  if (selectedId == null) ultimoSeleccionado.current = null;
-  else if (encontrada) ultimoSeleccionado.current = encontrada;
-  const selectedTask = encontrada ?? ultimoSeleccionado.current;
+  if (selectedId == null) lastSelected.current = null;
+  else if (found) lastSelected.current = found;
+  const selectedTask = found ?? lastSelected.current;
 
   function onDragStart(e: DragStartEvent) {
     setActiveId(Number(String(e.active.id).replace("task-", "")));
@@ -332,7 +331,7 @@ export function WeekView() {
                       }}
                       // Acotado a la agenda, o la cabecera quedaría marcada
                       // mientras se muestra el backlog.
-                      isPicked={railAbierto && d === diaDelRail}
+                      isPicked={panel === "agenda" && d === diaDelRail}
                     />
                   ))}
                 </div>

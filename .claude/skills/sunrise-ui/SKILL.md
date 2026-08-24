@@ -441,7 +441,7 @@ card no se pierda al arrastrarla entre columnas. No la simplifiques a un solo
 detector.
 
 **La decisión de destino no vive en el handler**: está en `resolveDrop`
-(`src/features/week/destino.ts`), pura y testeada, porque jsdom no devuelve
+(`src/features/week/dropTarget.ts`), pura y testeada, porque jsdom no devuelve
 rectángulos — el gesto se verifica en el browser, pero los guards se fijan con
 tests. Si agregas una regla al drop, va ahí.
 

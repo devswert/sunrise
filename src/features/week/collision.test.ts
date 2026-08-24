@@ -21,25 +21,25 @@ function droppable(id: string, date: string | null): DroppableContainer {
  * El panel se superpone a la columna: sus dos rectángulos se pisan a propósito,
  * porque es la geometría real y es la que destapa el problema.
  */
-const COLUMNA = droppable("day-2026-08-21", "2026-08-21");
+const COLUMN = droppable("day-2026-08-21", "2026-08-21");
 const PANEL = droppable("backlog-panel", null);
 const RECTS = new Map<UniqueIdentifier, ClientRect>([
-  [COLUMNA.id, rect(0, 236)],
+  [COLUMN.id, rect(0, 236)],
   [PANEL.id, rect(0, 300)],
 ]);
 
-function colisionar({
+function collide({
   pointer,
-  arrastrada = rect(0, 100),
-  containers = [COLUMNA, PANEL],
+  draggedRect = rect(0, 100),
+  containers = [COLUMN, PANEL],
 }: {
   pointer: { x: number; y: number } | null;
-  arrastrada?: ClientRect;
+  draggedRect?: ClientRect;
   containers?: DroppableContainer[];
 }) {
   return boardCollision({
     active: { id: "task-1", data: { current: {} }, rect: { current: {} } },
-    collisionRect: arrastrada,
+    collisionRect: draggedRect,
     droppableRects: RECTS,
     droppableContainers: containers,
     pointerCoordinates: pointer,
@@ -54,21 +54,21 @@ describe("boardCollision · el panel de backlog superpuesto", () => {
    * tarea se agendaría en un día que no se ve.
    */
   it("con el puntero dentro del panel gana el panel, aunque la columna tapada esté más cerca", () => {
-    expect(colisionar({ pointer: { x: 60, y: 400 } })).toEqual([PANEL.id]);
+    expect(collide({ pointer: { x: 60, y: 400 } })).toEqual([PANEL.id]);
   });
 
   it("y devuelve solo el panel, no el panel y la columna", () => {
     // Devolver las dos dejaría el desempate en manos de dnd-kit otra vez.
-    expect(colisionar({ pointer: { x: 150, y: 400 } })).toHaveLength(1);
+    expect(collide({ pointer: { x: 150, y: 400 } })).toHaveLength(1);
   });
 
   it("con el puntero en una columna que el panel no tapa, gana la columna", () => {
-    const lejos = droppable("day-2026-08-22", "2026-08-22");
-    RECTS.set(lejos.id, rect(400, 636));
-    expect(colisionar({ pointer: { x: 500, y: 400 }, containers: [lejos, PANEL] })).toEqual([
-      lejos.id,
+    const uncovered = droppable("day-2026-08-22", "2026-08-22");
+    RECTS.set(uncovered.id, rect(400, 636));
+    expect(collide({ pointer: { x: 500, y: 400 }, containers: [uncovered, PANEL] })).toEqual([
+      uncovered.id,
     ]);
-    RECTS.delete(lejos.id);
+    RECTS.delete(uncovered.id);
   });
 });
 
@@ -81,8 +81,8 @@ describe("boardCollision · los fallbacks", () => {
    */
   it("con puntero, el backlog no se alcanza por descarte", () => {
     expect(
-      colisionar({ pointer: { x: 1000, y: 400 }, arrastrada: rect(250, 350) }),
-    ).toEqual([COLUMNA.id]);
+      collide({ pointer: { x: 1000, y: 400 }, draggedRect: rect(250, 350) }),
+    ).toEqual([COLUMN.id]);
   });
 
   /**
@@ -91,10 +91,10 @@ describe("boardCollision · los fallbacks", () => {
    * también acá, sería inalcanzable arrastrando con el teclado.
    */
   it("sin puntero (teclado) el backlog sí se alcanza por los fallbacks", () => {
-    expect(colisionar({ pointer: null, arrastrada: rect(250, 350) })).toEqual([PANEL.id]);
+    expect(collide({ pointer: null, draggedRect: rect(250, 350) })).toEqual([PANEL.id]);
   });
 
   it("sin puntero y sin superposición, la columna sigue ganando", () => {
-    expect(colisionar({ pointer: null, arrastrada: rect(0, 200) })[0]).toBe(COLUMNA.id);
+    expect(collide({ pointer: null, draggedRect: rect(0, 200) })[0]).toBe(COLUMN.id);
   });
 });

@@ -20,14 +20,14 @@ import {
  * Se exige que `date` **esté** en los datos: un droppable sin datos daría
  * `undefined == null` y pasaría por backlog sin ser ninguno.
  */
-function esBacklog(container: DroppableContainer): boolean {
+function isBacklog(container: DroppableContainer): boolean {
   const data = container.data.current;
   return data != null && "date" in data && data.date == null;
 }
 
-function alBacklog(collision: Collision): boolean {
+function hitsBacklog(collision: Collision): boolean {
   const container = (collision as CollisionDescriptor).data?.droppableContainer;
-  return container != null && esBacklog(container);
+  return container != null && isBacklog(container);
 }
 
 /**
@@ -59,8 +59,8 @@ function alBacklog(collision: Collision): boolean {
  */
 export const boardCollision: CollisionDetection = (args) => {
   const byPointer = pointerWithin(args);
-  const enBacklog = byPointer.filter(alBacklog);
-  if (enBacklog.length > 0) return enBacklog;
+  const backlogHits = byPointer.filter(hitsBacklog);
+  if (backlogHits.length > 0) return backlogHits;
   if (byPointer.length > 0) return byPointer;
 
   // Sin puntero (teclado) los fallbacks son el único camino, así que no se les
@@ -68,7 +68,7 @@ export const boardCollision: CollisionDetection = (args) => {
   const fallbackArgs =
     args.pointerCoordinates == null
       ? args
-      : { ...args, droppableContainers: args.droppableContainers.filter((c) => !esBacklog(c)) };
+      : { ...args, droppableContainers: args.droppableContainers.filter((c) => !isBacklog(c)) };
 
   const byRect = rectIntersection(fallbackArgs);
   if (byRect.length > 0) return byRect;

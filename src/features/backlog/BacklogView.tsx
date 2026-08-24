@@ -7,7 +7,7 @@ import { TaskModal } from "../tasks/TaskModal";
 import { formatMinutes } from "../../lib/capacity";
 import { isoWeekId, shortDate } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
-import { groupByContext } from "./agrupar";
+import { groupByContext } from "./grouping";
 
 /** Card no-arrastrable para el backlog (reutiliza estilos de .task-card). */
 function BacklogCard({

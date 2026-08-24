@@ -51,10 +51,10 @@ export function groupByContext(
   { includeEmpty }: { includeEmpty: boolean },
 ): ContextGroup[] {
   const byId = new Map(categories.map((c) => [c.id, c]));
-  const conContexto: ContextGroup[] = categories
+  const withFolder: ContextGroup[] = categories
     .filter((c) => c.parentId === null)
     .map((folder) => ({ folder, items: tasks.filter((t) => folderOf(t, byId) === folder.id) }))
     .filter((g) => includeEmpty || g.items.length > 0);
-  const sueltas = tasks.filter((t) => folderOf(t, byId) === null);
-  return sueltas.length > 0 ? [...conContexto, { folder: null, items: sueltas }] : conContexto;
+  const loose = tasks.filter((t) => folderOf(t, byId) === null);
+  return loose.length > 0 ? [...withFolder, { folder: null, items: loose }] : withFolder;
 }

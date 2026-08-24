@@ -172,8 +172,8 @@ export function useBoard(
   const moveTask = useCallback(
     async (id: number, date: string | null, position: number) => {
       // El origen se lee del espejo y **antes** de escribir (ver `tasksRef`).
-      const origen = tasksRef.current.find((t) => t.id === id)?.scheduledDate ?? null;
-      const tocaBacklog = date == null || origen == null;
+      const from = tasksRef.current.find((t) => t.id === id)?.scheduledDate ?? null;
+      const touchesBacklog = date == null || from == null;
 
       // Optimista **antes** de escribir: la lista tiene que quedar reordenada en
       // el mismo frame en que se suelta la card. Si se espera la escritura, el
@@ -195,7 +195,7 @@ export function useBoard(
       // son dos recargas completas por cada arrastre. Un reordenamiento dentro
       // de un día no invalida nada de eso, y por eso no despierta a la otra
       // ventana ni al taxímetro.
-      if (tocaBacklog) bumpData();
+      if (touchesBacklog) bumpData();
       else await reload();
     },
     [reload, bumpData],

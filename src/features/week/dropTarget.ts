@@ -79,8 +79,8 @@ export function resolveDrop({
     // Al final de la columna destino, salvo que la card ya esté en ella: la
     // cascada de colisión resuelve la columna en vez de una card al pasar por el
     // header o los márgenes, y ahí "al final" era un movimiento inventado.
-    const propio = list.findIndex((t) => t.id === task.id);
-    return { date, index: propio >= 0 ? propio : list.length };
+    const ownIndex = list.findIndex((t) => t.id === task.id);
+    return { date, index: ownIndex >= 0 ? ownIndex : list.length };
   }
 
   const found = list.findIndex((t) => t.id === taskIdFrom(overId));

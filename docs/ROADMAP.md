@@ -1826,12 +1826,12 @@ Dos cosas que ya estaban rotas y salieron a la luz al meter el backlog al board:
 sidebar iban a quedar mintiendo con cada arrastre al panel (ahora invalida cuando
 el movimiento toca el backlog, y el `bumpData()` **reemplaza** al `reload()`
 porque el efecto de carga ya depende de `dataVersion`); y el agrupado por contexto
-estaba escrito **tres veces**, ahora en `agrupar.ts` con un `includeEmpty`
+estaba escrito **tres veces**, ahora en `grouping.ts` con un `includeEmpty`
 explícito, porque la vista lo necesita en `true` (es su botón de crear) y el
 sidebar y el panel en `false`.
 
 Lo testeable se extrajo a dos funciones puras, que es lo único que jsdom puede
-mirar del DnD: `destino.ts` (`resolveDrop`, con los cinco guards) y la propia
+mirar del DnD: `dropTarget.ts` (`resolveDrop`, con los cinco guards) y la propia
 `boardCollision`, que hasta ahora **no tenía ningún test** y ahora se prueba con
 rectángulos falsos — incluido el caso de rectángulos superpuestos, que es el que
 destapa el problema 1. Se verificó que esos tests se ponen rojos con el arreglo

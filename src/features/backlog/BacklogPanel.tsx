@@ -4,7 +4,7 @@ import { Inbox, X } from "lucide-react";
 import { shortDate } from "../../lib/date";
 import type { Category, Task, TaskPatch } from "../../lib/types";
 import { TaskCard } from "../week/TaskCard";
-import { groupByContext } from "./agrupar";
+import { groupByContext } from "./grouping";
 
 interface Props {
   tasks: Task[];
@@ -69,7 +69,7 @@ export function BacklogPanel({
     data: { type: "column", date: null },
   });
 
-  const arrastrada = active?.data.current as
+  const dragged = active?.data.current as
     | { date?: string | null; status?: string }
     | undefined;
   /**
@@ -79,16 +79,16 @@ export function BacklogPanel({
    * inalcanzable). Un marco que se prende sobre un destino que va a rechazar el
    * drop promete algo que no pasa.
    */
-  const yaEstaAca = (arrastrada?.date ?? null) === null;
-  const completada = arrastrada?.status === "DONE";
-  const resaltar = isOver && !yaEstaAca && !completada;
+  const alreadyHere = (dragged?.date ?? null) === null;
+  const isDone = dragged?.status === "DONE";
+  const highlight = isOver && !alreadyHere && !isDone;
 
-  const grupos = groupByContext(tasks, categories, { includeEmpty: false });
+  const groups = groupByContext(tasks, categories, { includeEmpty: false });
 
   return (
     <aside
       ref={setNodeRef}
-      className={`backlog-panel${resaltar ? " is-over" : ""}${leaving ? " is-leaving" : ""}`}
+      className={`backlog-panel${highlight ? " is-over" : ""}${leaving ? " is-leaving" : ""}`}
       aria-label="Backlog"
     >
       {/* `panel-head` es la cabecera compartida con la agenda superpuesta: los dos
@@ -117,12 +117,12 @@ export function BacklogPanel({
          * dispara.
          */}
         <SortableContext items={tasks.map((t) => `task-${t.id}`)} strategy={() => null}>
-          {grupos.length === 0 && (
+          {groups.length === 0 && (
             <p className="backlog-panel__vacio">
               No hay nada en el backlog. Lo que quede pendiente de un día cae acá solo.
             </p>
           )}
-          {grupos.map((g) => (
+          {groups.map((g) => (
             <div className="backlog-panel__group" key={g.folder?.id ?? "none"}>
               <div className="backlog-panel__group-head">
                 {g.folder && (
@@ -136,7 +136,7 @@ export function BacklogPanel({
               <div className="backlog-panel__list">
                 {g.items.map((t) => (
                 <div
-                  className={`backlog-panel__item${rescued.get(t.id) ? " has-desde" : ""}`}
+                  className={`backlog-panel__item${rescued.get(t.id) ? " has-from" : ""}`}
                   key={t.id}
                 >
                   <TaskCard
@@ -155,7 +155,7 @@ export function BacklogPanel({
                    * contexto— pero saber que esto viene de un día cambia cómo se
                    * lee: no lo guardaste, se degradó solo. */}
                   {!!rescued.get(t.id) && (
-                    <span className="backlog-panel__desde">
+                    <span className="backlog-panel__from">
                       Desde el {shortDate(rescued.get(t.id)!)}
                     </span>
                   )}

@@ -33,10 +33,10 @@
   border-left: 1px solid var(--border);
   border-top-left-radius: var(--radius-lg);
   padding: 0 var(--space-4);
-  /* `panel-entra`, su reverso `panel-sale` y la regla de `.is-leaving` viven en
+  /* `panel-in`, su reverso `panel-out` y la regla de `.is-leaving` viven en
      week.css, junto a `.backlog-panel`: son los dos paneles de la misma tira y
      tienen que entrar y salir igual. */
-  animation: panel-entra 160ms var(--theme-ease);
+  animation: panel-in 160ms var(--theme-ease);
 }
 
 .rail__head {

@@ -2185,7 +2185,7 @@ button.tc__tag.is-empty {
      contra la tira, y redondearlas ahí abriría una muesca. */
   border-top-left-radius: var(--radius-lg);
   padding: 0 var(--space-4);
-  animation: panel-entra 160ms var(--theme-ease);
+  animation: panel-in 160ms var(--theme-ease);
 }
 /* Entrada y salida de los paneles de la tira. Son **la misma animación al
    derecho y al revés**: un panel que entra deslizándose y se va de golpe se
@@ -2194,13 +2194,13 @@ button.tc__tag.is-empty {
    Las usan `.backlog-panel` (acá) y `.rail--overlay` (rail.css), y la duración
    está espejada en `panelPresence.ts`, que es quien mantiene el panel montado
    mientras se va. Si cambia acá, cambia allá. */
-@keyframes panel-entra {
+@keyframes panel-in {
   from {
     transform: translateX(16px);
     opacity: 0;
   }
 }
-@keyframes panel-sale {
+@keyframes panel-out {
   to {
     transform: translateX(16px);
     opacity: 0;
@@ -2215,7 +2215,7 @@ button.tc__tag.is-empty {
 
      `forwards` la deja en el último fotograma hasta que React desmonta: sin eso
      el panel vuelve a su sitio en el frame anterior y da un salto. */
-  animation: panel-sale 160ms var(--theme-ease) forwards;
+  animation: panel-out 160ms var(--theme-ease) forwards;
   /* Ya se está yendo: un click acá caería sobre algo que no está, y mientras se
      va sigue siendo un droppable dentro del `DndContext`. */
   pointer-events: none;
@@ -2282,7 +2282,7 @@ button.tc__tag.is-empty {
   margin: 2px 0 0;
   padding-left: calc(14px + var(--space-2));
   font-size: 11px;
-  /* Ver el contraste medido en `.backlog-panel__desde`: `--faint` sobre estas
+  /* Ver el contraste medido en `.backlog-panel__from`: `--faint` sobre estas
      superficies queda por debajo de 2. */
   color: var(--muted);
 }
@@ -2315,7 +2315,7 @@ button.tc__tag.is-empty {
 }
 /* El hueco para el badge, y solo cuando lo hay: es la mitad de su alto, así que
    el badge queda partido por el borde superior de la card. */
-.backlog-panel__item.has-desde {
+.backlog-panel__item.has-from {
   padding-top: 9px;
 }
 /* Montado **sobre el borde superior de la card y centrado**, como una etiqueta
@@ -2326,7 +2326,7 @@ button.tc__tag.is-empty {
    Los 18px de alto —16 de `line-height` más los dos bordes— son los que hacen
    que `padding-top: 9px` lo deje exactamente a caballo. Si cambia el tamaño,
    cambian los dos. */
-.backlog-panel__desde {
+.backlog-panel__from {
   position: absolute;
   top: 0;
   left: 50%;

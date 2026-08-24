@@ -338,7 +338,7 @@ siguiente corrida.
     decorativa: el `KeyboardSensor` no tiene coordenadas, `pointerWithin` devuelve
     `[]` y los fallbacks son el único camino que le queda.
 
-  **La decisión de destino vive en `src/features/week/destino.ts`** (`resolveDrop`),
+  **La decisión de destino vive en `src/features/week/dropTarget.ts`** (`resolveDrop`),
   puro y testeado, y no inline en `WeekView`: jsdom no devuelve rectángulos, así
   que el gesto se verifica en el browser pero los guards se fijan con tests.
   El índice que se manda al soltar es **el de la card sobre la que se soltó, en
@@ -439,7 +439,7 @@ siguiente corrida.
 
 `list_backlog`: `scheduled_date IS NULL AND status = 'TODO' AND source_state =
 'ACTIVE'`, agrupado por contexto. El agrupado vive en
-**`src/features/backlog/agrupar.ts`** (`folderOf`, `groupByContext`), puro y
+**`src/features/backlog/grouping.ts`** (`folderOf`, `groupByContext`), puro y
 compartido por sus tres consumidores — la vista, el sidebar y el panel de la
 semana—; estaba escrito tres veces. `includeEmpty` es explícito porque los
 consumidores difieren: **la vista lo quiere en `true`** (un contexto vacío ahí
@@ -520,8 +520,8 @@ baja con ellos, o el panel colgaría por debajo de su propia perilla. Y el panel
 redondea **solo** su esquina superior izquierda, que es la única que queda suelta
 sobre el board.
 
-**Entran y salen con la misma animación** (`panel-entra` y su reverso
-`panel-sale`, en `week.css`): un panel que entra deslizándose y desaparece de
+**Entran y salen con la misma animación** (`panel-in` y su reverso
+`panel-out`, en `week.css`): un panel que entra deslizándose y desaparece de
 golpe se siente como si se hubiera roto, no como si se hubiera cerrado. Animar la
 salida obliga a que el panel siga montado mientras se va, y de eso se encarga
 `usePanelPresence`. Mientras sale lleva `pointer-events: none`: ya no está, y

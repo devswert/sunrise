@@ -171,70 +171,70 @@ describe("WeekView · agenda superpuesta", () => {
  * que se fija acá es el interruptor y su convivencia con la agenda.
  */
 describe("WeekView · panel de backlog", () => {
-  const botonBacklog = () => screen.getByRole("button", { name: /^Backlog$/ });
-  const botonAgenda = () => screen.getByRole("button", { name: /Agenda/ });
-  const elPanel = () => screen.queryByRole("complementary", { name: "Backlog" });
-  const laAgenda = () => screen.queryByRole("complementary", { name: "Agenda del día" });
+  const backlogButton = () => screen.getByRole("button", { name: /^Backlog$/ });
+  const agendaButton = () => screen.getByRole("button", { name: /Agenda/ });
+  const panel = () => screen.queryByRole("complementary", { name: "Backlog" });
+  const agenda = () => screen.queryByRole("complementary", { name: "Agenda del día" });
 
   it("arranca cerrado y se abre con su botón", async () => {
     render(<WeekView />);
-    expect(botonBacklog()).toHaveAttribute("aria-pressed", "false");
-    expect(elPanel()).toBeNull();
+    expect(backlogButton()).toHaveAttribute("aria-pressed", "false");
+    expect(panel()).toBeNull();
 
-    await userEvent.click(botonBacklog());
+    await userEvent.click(backlogButton());
 
-    expect(botonBacklog()).toHaveAttribute("aria-pressed", "true");
-    expect(elPanel()).toBeInTheDocument();
+    expect(backlogButton()).toHaveAttribute("aria-pressed", "true");
+    expect(panel()).toBeInTheDocument();
   });
 
   it("abrir uno cierra el otro: los dos se montan en el mismo lugar", async () => {
     render(<WeekView />);
 
-    await userEvent.click(botonAgenda());
-    expect(laAgenda()).toBeInTheDocument();
+    await userEvent.click(agendaButton());
+    expect(agenda()).toBeInTheDocument();
 
-    await userEvent.click(botonBacklog());
-    expect(elPanel()).toBeInTheDocument();
+    await userEvent.click(backlogButton());
+    expect(panel()).toBeInTheDocument();
     // El que se va sigue montado mientras dura su salida, así que se espera.
-    await waitFor(() => expect(laAgenda()).toBeNull());
+    await waitFor(() => expect(agenda()).toBeNull());
 
-    await userEvent.click(botonAgenda());
-    expect(laAgenda()).toBeInTheDocument();
-    await waitFor(() => expect(elPanel()).toBeNull());
+    await userEvent.click(agendaButton());
+    expect(agenda()).toBeInTheDocument();
+    await waitFor(() => expect(panel()).toBeNull());
   });
 
   it("el mismo botón lo cierra, y también el aspa del panel", async () => {
     render(<WeekView />);
 
-    await userEvent.click(botonBacklog());
-    await userEvent.click(botonBacklog());
-    await waitFor(() => expect(elPanel()).toBeNull());
+    await userEvent.click(backlogButton());
+    await userEvent.click(backlogButton());
+    await waitFor(() => expect(panel()).toBeNull());
 
-    await userEvent.click(botonBacklog());
+    await userEvent.click(backlogButton());
     await userEvent.click(screen.getByRole("button", { name: "Cerrar backlog" }));
-    await waitFor(() => expect(elPanel()).toBeNull());
+    await waitFor(() => expect(panel()).toBeNull());
   });
 
   it("Escape lo cierra", async () => {
     render(<WeekView />);
-    await userEvent.click(botonBacklog());
+    await userEvent.click(backlogButton());
 
     await userEvent.keyboard("{Escape}");
 
-    await waitFor(() => expect(elPanel()).toBeNull());
+    await waitFor(() => expect(panel()).toBeNull());
   });
 
   it("clickear la cabecera de un día trae la agenda, aunque esté el backlog", async () => {
     // El click en la cabecera es un pedido de ver ese día; dejarlo sin efecto
     // visible por tener el backlog abierto sería peor que el cambio de panel.
     render(<WeekView />);
-    await userEvent.click(botonBacklog());
+    await userEvent.click(backlogButton());
 
-    const cabecera = document.querySelector<HTMLElement>(".day-col__head button");
-    if (cabecera) {
-      await userEvent.click(cabecera);
-      expect(laAgenda()).toBeInTheDocument();
-      await waitFor(() => expect(elPanel()).toBeNull());
+    const dayHeader = document.querySelector<HTMLElement>(".day-col__head button");
+    if (dayHeader) {
+      await userEvent.click(dayHeader);
+      expect(agenda()).toBeInTheDocument();
+      await waitFor(() => expect(panel()).toBeNull());
     }
   });
 
@@ -246,19 +246,19 @@ describe("WeekView · panel de backlog", () => {
    */
   it("al cerrarse se queda un momento marcado como saliendo, y recién después se va", async () => {
     render(<WeekView />);
-    await userEvent.click(botonBacklog());
+    await userEvent.click(backlogButton());
     await userEvent.click(screen.getByRole("button", { name: "Cerrar backlog" }));
 
-    // Todavía en el DOM, ya marcado: es lo que dispara `panel-sale`.
-    expect(elPanel()).toHaveClass("is-leaving");
-    await waitFor(() => expect(elPanel()).toBeNull());
+    // Todavía en el DOM, ya marcado: es lo que dispara `panel-out`.
+    expect(panel()).toHaveClass("is-leaving");
+    await waitFor(() => expect(panel()).toBeNull());
   });
 
   it("no contamina el conteo de columnas del board", async () => {
     // El panel **no** reusa `.day-col`: con esa clase encima entraría en la
     // consulta que cuenta las 21 columnas y `dataset.date` saldría undefined.
     render(<WeekView />);
-    await userEvent.click(botonBacklog());
+    await userEvent.click(backlogButton());
 
     expect(document.querySelectorAll(".day-col")).toHaveLength(21);
   });

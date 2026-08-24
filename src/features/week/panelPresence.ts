@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 /**
  * Cuánto espera antes de desmontar un panel que se está yendo.
  *
- * **Es más que los 160 ms de `panel-sale` en `week.css`, y la holgura es el
+ * **Es más que los 160 ms de `panel-out` en `week.css`, y la holgura es el
  * punto.** El temporizador arranca cuando corre el efecto; la animación arranca
  * en el pintado siguiente, uno o dos frames después. Con el mismo número los dos,
  * el desmontaje llega antes de que la salida termine y se ve un corte — que es
@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
  */
 const MS = 240;
 
-function sinAnimacion(): boolean {
+function prefersReducedMotion(): boolean {
   return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
@@ -42,7 +42,7 @@ export function usePanelPresence(open: boolean): { mounted: boolean; leaving: bo
       return;
     }
     if (!mounted) return;
-    if (sinAnimacion()) {
+    if (prefersReducedMotion()) {
       setMounted(false);
       return;
     }

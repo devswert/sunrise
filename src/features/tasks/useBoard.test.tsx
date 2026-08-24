@@ -16,8 +16,8 @@ const moveTask = vi.fn(
 );
 let backlog: unknown[] = [];
 const listBacklog = vi.fn(async () => backlog);
-let rescates: unknown[] = [];
-const rescuedFromBacklog = vi.fn(async () => rescates);
+let rescues: unknown[] = [];
+const rescuedFromBacklog = vi.fn(async () => rescues);
 
 vi.mock("../../lib/ipc", () => ({
   isTauri: () => false,
@@ -191,7 +191,7 @@ describe("useBoard · reorden optimista", () => {
  */
 describe("useBoard · el backlog opt-in", () => {
   const hoy = todayISO();
-  const tarea = (id: number, scheduledDate: string | null, position = id) => ({
+  const task = (id: number, scheduledDate: string | null, position = id) => ({
     id,
     title: `t${id}`,
     status: "TODO",
@@ -208,9 +208,9 @@ describe("useBoard · el backlog opt-in", () => {
     rescuedFromBacklog.mockClear();
     moveTask.mockClear();
     soltarMove = null;
-    rango = [tarea(1, hoy, 0)];
-    backlog = [tarea(9, null, 1), tarea(8, null, 0)];
-    rescates = [{ taskId: 9, fromDate: "2026-08-14" }];
+    rango = [task(1, hoy, 0)];
+    backlog = [task(9, null, 1), task(8, null, 0)];
+    rescues = [{ taskId: 9, fromDate: "2026-08-14" }];
   });
 
   it("sin el flag no se le pide el backlog a nadie", async () => {
@@ -243,7 +243,7 @@ describe("useBoard · el backlog opt-in", () => {
   });
 
   it("los rescates llegan como mapa, salteando los que no traen día", async () => {
-    rescates = [{ taskId: 9, fromDate: "2026-08-14" }, { taskId: 8, fromDate: "" }];
+    rescues = [{ taskId: 9, fromDate: "2026-08-14" }, { taskId: 8, fromDate: "" }];
     const { Probe, verBoard } = await freshBoard(undefined, true);
     render(<Probe />);
     await waitFor(() => expect(verBoard().rescues.size).toBe(1));
@@ -260,7 +260,7 @@ describe("useBoard · el backlog opt-in", () => {
  */
 describe("useBoard · qué movimientos invalidan", () => {
   const hoy = todayISO();
-  const tarea = (id: number, scheduledDate: string | null, position = id) => ({
+  const task = (id: number, scheduledDate: string | null, position = id) => ({
     id,
     title: `t${id}`,
     status: "TODO",
@@ -275,16 +275,16 @@ describe("useBoard · qué movimientos invalidan", () => {
     demote.mockClear();
     moveTask.mockClear();
     soltarMove = null;
-    rango = [tarea(1, hoy, 0), tarea(2, hoy, 1)];
-    backlog = [tarea(9, null, 0)];
-    rescates = [];
+    rango = [task(1, hoy, 0), task(2, hoy, 1)];
+    backlog = [task(9, null, 0)];
+    rescues = [];
   });
 
-  async function mover(id: number, date: string | null) {
+  async function move(id: number, date: string | null) {
     const { Probe, useAppStore, verBoard } = await freshBoard(undefined, true);
     render(<Probe />);
     await waitFor(() => expect(verBoard().tasks.length).toBe(3));
-    const antes = useAppStore.getState().dataVersion;
+    const before = useAppStore.getState().dataVersion;
 
     await act(async () => {
       const p = verBoard().moveTask(id, date, 0);
@@ -292,18 +292,18 @@ describe("useBoard · qué movimientos invalidan", () => {
       await p;
     });
 
-    return useAppStore.getState().dataVersion - antes;
+    return useAppStore.getState().dataVersion - before;
   }
 
   it("mandar una tarea al backlog invalida", async () => {
-    expect(await mover(1, null)).toBeGreaterThan(0);
+    expect(await move(1, null)).toBeGreaterThan(0);
   });
 
   it("sacar una tarea del backlog invalida", async () => {
-    expect(await mover(9, hoy)).toBeGreaterThan(0);
+    expect(await move(9, hoy)).toBeGreaterThan(0);
   });
 
   it("reordenar dentro de un día no invalida", async () => {
-    expect(await mover(1, hoy)).toBe(0);
+    expect(await move(1, hoy)).toBe(0);
   });
 });
