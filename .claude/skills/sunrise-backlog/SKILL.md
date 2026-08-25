@@ -22,10 +22,15 @@ horas.
    grep -oE "^### Mej\.[0-9]+ 🔵.*" docs/ROADMAP.md
    ```
 
-   Los tres marcadores significan cosas distintas y confundirlos hace mentir a la
-   respuesta: **`🔵` abierto**, **`✅` hecho** (esos ya tienen su relato escrito
-   abajo), **`⬛` retirada** — decidida como fuera de alcance, con el texto
-   original guardado en un `<details>`. Una retirada **no** es pendiente.
+   Los marcadores significan cosas distintas y confundirlos hace mentir a la
+   respuesta: **`🔵` abierto** y **`⬛` retirada** — decidida como fuera de
+   alcance, con la razón en una línea. Una retirada **no** es pendiente.
+
+   **Los ítems cerrados ya no están en el archivo.** Se podaron: lo que se
+   aprendió en cada uno vive en `docs/DECISIONES.md`, organizado por tema, y el
+   relato original de cada ítem está en `git log -p docs/ROADMAP.md`. Si alguien
+   pregunta por qué se decidió algo, ese es el camino — no lo busques en el
+   ROADMAP.
 3. **Lee cada ítem abierto entero**, no su título. El título dice el qué; el
    cuerpo dice por qué importa, qué lo bloquea, cuánto hay hecho ya y qué se
    decidió al respecto. Eso es lo que hace útil la tabla.
@@ -98,3 +103,6 @@ datos, o desbloquea otro.
   commit.
 - **No inventa ítems.** Si algo que falta no está en el ROADMAP, la respuesta lo
   puede mencionar en el último bloque, pero anotarlo como ítem se pide aparte.
+- **No cosecha decisiones.** Cuando un ítem se cierra, su relato se poda y lo
+  aprendido se muda a `docs/DECISIONES.md`. Eso es parte de cerrar el ítem, no de
+  responder este menú.
