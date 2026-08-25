@@ -267,6 +267,54 @@ function selloDeAjuste(t: Task): string {
   return d.toISOString();
 }
 
+/**
+ * Espeja `repo::spread_cut`: reparte un recorte entre los días trabajados, sin
+ * dejar ninguno en negativo. Devuelve `[startedAt, segundos]` **ya negativos**.
+ *
+ * Primero el día de la tarea —es el que el ajuste dice corregir— y después el
+ * resto del más reciente al más viejo. Si el recorte supera todo lo repartido, el
+ * sobrante se descarta: una fila negativa sin saldo detrás es el bug que esto
+ * arregla. La razón larga está en el doc comment de Rust.
+ */
+function repartirRecorte(taskId: number, cut: number, stamp: string): Array<[string, number]> {
+  const localDay = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? null : toISODate(d);
+  };
+
+  // Saldo por día local, y el último tramo de cada día como sello: está dentro
+  // del día por construcción, y fabricar una medianoche puede caer en una hora
+  // que ese día no tuvo.
+  const balances = new Map<string, { stamp: string; balance: number }>();
+  for (const e of entries) {
+    if (e.taskId !== taskId || e.endedAt === null) continue;
+    const day = localDay(e.startedAt);
+    if (day === null) continue;
+    const cell = balances.get(day) ?? { stamp: e.startedAt, balance: 0 };
+    if (e.startedAt >= cell.stamp) cell.stamp = e.startedAt;
+    cell.balance += e.seconds;
+    balances.set(day, cell);
+  }
+
+  const target = localDay(stamp);
+  const order = [...balances.keys()].filter((d) => d !== target).sort((a, b) => (a < b ? 1 : -1));
+  if (target !== null) order.unshift(target);
+
+  let left = cut;
+  const out: Array<[string, number]> = [];
+  for (const day of order) {
+    if (left <= 0) break;
+    const cell = balances.get(day);
+    if (!cell) continue;
+    const take = Math.min(left, Math.max(0, cell.balance));
+    if (take > 0) {
+      out.push([cell.stamp, -take]);
+      left -= take;
+    }
+  }
+  return out;
+}
+
 export const mock = {
   ping: async () => "pong",
 
@@ -440,9 +488,11 @@ export const mock = {
     if (!t) return null;
     const value = Math.max(0, seconds);
     const delta = value - t.actualSeconds;
-    if (delta !== 0) {
-      const ts = selloDeAjuste(t);
-      entries.push({ id: nextId(), taskId, startedAt: ts, endedAt: ts, seconds: delta });
+    const ts = selloDeAjuste(t);
+    const filas: Array<[string, number]> =
+      delta > 0 ? [[ts, delta]] : delta < 0 ? repartirRecorte(taskId, -delta, ts) : [];
+    for (const [stamp, amount] of filas) {
+      entries.push({ id: nextId(), taskId, startedAt: stamp, endedAt: stamp, seconds: amount });
     }
     t.actualSeconds = value;
     t.updatedAt = nowISO();

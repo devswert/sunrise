@@ -68,6 +68,28 @@ describe("mockDb.setActualSeconds", () => {
     expect((await api.dayWork(hoy)).length).toBe(antesHoy);
   });
 
+  it("un recorte que desborda el día de la tarea sale del otro día", async () => {
+    // El gemelo de `un_recorte_que_desborda_el_dia_de_la_tarea_sale_del_otro_dia`.
+    // El trabajo quedó partido en dos días —un timer que cruzó la medianoche— y
+    // el recorte no cabe en uno solo: el sobrante tiene que salir del otro, o ese
+    // día sigue mostrando horas que ya no existen.
+    const ayerDate = new Date();
+    ayerDate.setDate(ayerDate.getDate() - 1);
+    const ayer = toISODate(ayerDate);
+    const hoy = todayISO();
+
+    const t = await api.createTask({ title: "timer olvidado", scheduledDate: ayer });
+    await api.setActualSeconds(t.id, 50_000); // se acredita a ayer
+    await api.moveTask(t.id, hoy, 0);
+    await api.setActualSeconds(t.id, 87_000); // los 37.000 nuevos, a hoy
+    await api.moveTask(t.id, ayer, 0);
+
+    await api.setActualSeconds(t.id, 10_800);
+
+    expect((await api.dayWork(ayer)).find((f) => f.taskId === t.id)?.seconds ?? 0).toBe(0);
+    expect((await api.dayWork(hoy)).find((f) => f.taskId === t.id)?.seconds).toBe(10_800);
+  });
+
   it("sin fecha se acredita a hoy, porque no hay otro día al que mandarlo", async () => {
     const hoy = todayISO();
     const t = await api.createTask({ title: "del backlog", scheduledDate: null });

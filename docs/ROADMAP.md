@@ -2044,6 +2044,56 @@ mediodía sin hora, backlog y futura a hoy, y el contador del taxímetro) y dos 
 seguido contando en el día equivocado. Mutation-checked los dos lados, y las dos
 suites corridas también con `TZ=UTC` — que en un cambio de fechas no es opcional.
 
+### Mej.29 ✅ Un recorte de tiempo dejaba días en negativo, y el rollup los tapaba — hecho
+
+Reportado desde la weekly review: la semana decía **15h 15m** con una tarea de 3
+horas adentro. El timer se había quedado prendido y cruzó la medianoche, así que
+`stop_timer` partió el trabajo en dos días locales —14h el domingo, 10h el lunes—;
+al bajar el total a 3 horas, `set_actual_seconds` metía **una sola** fila de
+−21h fechada el domingo (que es lo correcto según Mej.14). El domingo quedaba en
+−7h, el `max(0)` por tarea y día de `work_by_day` se comía ese sobrante, y el
+lunes nunca se enteraba: seguía mostrando las 10h del timer olvidado.
+
+Lo peor no era el número sino que **nada fallaba**. El total de la tarea cuadraba
+—la suma de todas sus entradas daba exactamente las 3 horas—, ningún test estaba
+rojo, y el piso en 0 hacía su trabajo de no dibujar barras negativas mientras
+escondía que el reparto por día estaba roto. Un piso que corrige el síntoma en el
+lector es un lugar cómodo para que se esconda un error de escritura.
+
+Ahora `spread_cut` reparte el recorte entre los días trabajados, topado al saldo
+de cada uno. El orden fue la decisión del ítem, y no está en los datos —un timer
+olvidado no deja evidencia de qué horas fueron reales—, así que se eligió con las
+dos alternativas y sus números a la vista:
+
+1. **Primero el día de la tarea.** Es la regla de Mej.14 extendida al desborde, y
+   deja la card y el día del rollup diciendo lo mismo. La semana del reporte pasa
+   a 8h.
+2. **Después el resto, del más reciente al más viejo**: el trabajo de la punta es
+   el candidato más probable a ser el que sobra.
+
+Drenar del más reciente hacia atrás era la otra opción: dejaba la semana en 4h59m
+y las 3 horas de la tarea en el día **anterior**, con la card mostrando un tiempo
+que su propio día no reconocía. Contradecía Mej.14 justo en el caso de borde.
+
+Dos cosas que el arreglo no hace:
+
+- **El sobrante se descarta** si el recorte supera todo lo repartido (una base
+  vieja donde `actual_seconds` no cuadra con las entradas). Escribirlo igual para
+  que la suma cierre es literalmente el bug de nuevo: una fila negativa que ningún
+  día puede respaldar. El total lo manda `actual_seconds` (I1), y las entradas
+  responden otra pregunta — qué día se trabajó.
+- **No hay migración.** Igual que en Mej.14, deducir qué filas viejas son ajustes
+  y re-repartirlas es adivinar sobre historial. La base de dev tenía tres días en
+  negativo; se reparó a mano solo el del reporte, con respaldo previo, y las dos
+  tareas de prueba de agosto quedaron como estaban. La de producción estaba
+  limpia.
+
+Tests: cuatro en `repo.rs` (el desborde, el orden, el sobrante descartado y que
+subir siga siendo una sola entrada) y uno en `mockDb.test.ts`, porque el mock
+estampaba el lump igual y el browser habría contado los días distinto que la app.
+Mutation-checked los dos lados —neutralizar el reparto pone rojos dos, invertir el
+orden otros dos— y corrido también con `TZ=UTC`.
+
 ### Mej.15 🔵 Los objetivos necesitan detalle, reparto de horas e histórico
 
 `WeeklyPlanningView` ancla en `new Date()` y no se mueve de ahí: **no hay forma de

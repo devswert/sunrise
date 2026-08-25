@@ -726,9 +726,13 @@ fn elapsed_seconds(start: &str, end: &str) -> i64 {
 
 /// Fija el tiempo real total de una tarea (ajuste manual).
 ///
-/// Además de guardar el total, registra la diferencia como una entrada cerrada
-/// de hoy: así el rollup semanal sigue cuadrando y el contador del día refleja
-/// el ajuste (p. ej. cuando olvidaste encender el taxímetro).
+/// Además de guardar el total, registra la diferencia como entradas cerradas: así
+/// el rollup semanal sigue cuadrando y el contador del día refleja el ajuste
+/// (p. ej. cuando olvidaste encender el taxímetro).
+///
+/// **Subir es una entrada; recortar pueden ser varias**, y eso no es simetría
+/// perdida sino la única forma de que el reparto por día quede bien: ver
+/// `spread_cut`.
 pub fn set_actual_seconds(conn: &Connection, task_id: i64, seconds: i64) -> Result<Option<Task>> {
     let seconds = seconds.max(0);
     let fila: Option<(i64, Option<String>, Option<String>)> = conn
@@ -741,12 +745,20 @@ pub fn set_actual_seconds(conn: &Connection, task_id: i64, seconds: i64) -> Resu
     let (current, date, time) = fila.unwrap_or((0, None, None));
 
     let delta = seconds - current;
-    if delta != 0 {
-        let ts = adjustment_stamp(date.as_deref(), time.as_deref());
+    let stamp = adjustment_stamp(date.as_deref(), time.as_deref());
+    let filas: Vec<(String, i64)> = match delta {
+        0 => Vec::new(),
+        d if d > 0 => vec![(stamp, d)],
+        d => spread_cut(conn, task_id, -d, &stamp)?
+            .into_iter()
+            .map(|(ts, cut)| (ts, -cut))
+            .collect(),
+    };
+    for (ts, amount) in filas {
         conn.execute(
             "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
              VALUES (?1, ?2, ?2, ?3)",
-            params![task_id, ts, delta],
+            params![task_id, ts, amount],
         )?;
     }
 
@@ -755,6 +767,95 @@ pub fn set_actual_seconds(conn: &Connection, task_id: i64, seconds: i64) -> Resu
         params![task_id, seconds, now()],
     )?;
     get_task(conn, task_id)
+}
+
+/// Reparte un recorte de tiempo entre los días que la tarea tiene trabajados, sin
+/// dejar ninguno en negativo. Devuelve `(started_at, segundos a restar)`, siempre
+/// positivos.
+///
+/// **Por qué no alcanza una sola fila.** El recorte se sella con el día de la
+/// tarea (Mej.14), pero el trabajo puede estar repartido en varios días: un timer
+/// que se quedó prendido cruza la medianoche y `stop_timer` lo parte en un tramo
+/// por día local. Un recorte de 21 horas fechado el domingo contra un domingo que
+/// solo tiene 14 dejaba ese día en −7 horas, y el piso en 0 de todo lo que agrupa
+/// por día (`work_by_day`, `seconds_today`) se comía el sobrante en silencio: el
+/// total de la tarea quedaba bien y el lunes seguía mostrando las horas del timer
+/// olvidado. Era el rollup semanal contando 15 horas de una tarea de 3.
+///
+/// **El orden importa y es una decisión, no un detalle.** No hay dato que diga
+/// qué horas fueron reales —un timer olvidado no deja evidencia—, así que:
+///
+/// 1. **Primero el día de la tarea**, que es el que el ajuste dice corregir. Es la
+///    regla de Mej.14 extendida al caso en que el recorte desborda.
+/// 2. **Después el resto, del más reciente al más viejo**: el trabajo de la punta
+///    es el candidato más probable a ser el que sobra.
+///
+/// Con eso, lo que queda vivo después del recorte se concentra en el trabajo más
+/// antiguo, y el día de la tarea muestra lo mismo que la card.
+///
+/// **Si el recorte supera todo lo que hay repartido, el sobrante se descarta.**
+/// Pasa en una base vieja donde `actual_seconds` dice más de lo que suman las
+/// entradas. Es tentador escribirlo igual para que la suma cuadre con el total,
+/// pero eso es literalmente el bug de arriba: una fila negativa sin saldo que la
+/// respalde deja el día bajo cero. Y no hace falta, porque `actual_seconds` es el
+/// total de la tarea por derecho propio —no se recalcula desde las entradas, que
+/// es lo que protege `ajuste_manual_del_tiempo_sobrevive_a_start_stop`—; las
+/// entradas responden otra pregunta, **qué día se trabajó**, y ahí no hay día que
+/// pueda hacerse cargo de horas que nunca se registraron.
+fn spread_cut(conn: &Connection, task_id: i64, cut: i64, stamp: &str) -> Result<Vec<(String, i64)>> {
+    use std::collections::HashMap;
+
+    /// El día local de un timestamp UTC, o `None` si no parsea.
+    fn local_day(s: &str) -> Option<String> {
+        to_utc(s).map(|t| t.with_timezone(&chrono::Local).date_naive().to_string())
+    }
+
+    // Saldo por día local, y con qué timestamp sellar el recorte de ese día: el
+    // último de sus tramos, que está dentro del día por construcción. Fabricar
+    // una medianoche sería pedirle una hora al calendario que en el cambio de
+    // horario puede no existir.
+    let mut stmt = conn.prepare(
+        "SELECT started_at, seconds FROM time_entries
+         WHERE task_id = ?1 AND ended_at IS NOT NULL ORDER BY started_at",
+    )?;
+    let rows = stmt.query_map([task_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+    })?;
+    let mut balances: HashMap<String, (String, i64)> = HashMap::new();
+    for row in rows {
+        let (started_at, seconds) = row?;
+        let Some(day) = local_day(&started_at) else { continue };
+        let cell = balances.entry(day).or_insert((started_at.clone(), 0));
+        cell.0 = started_at;
+        cell.1 += seconds;
+    }
+
+    let target = local_day(stamp);
+    let mut order: Vec<String> = balances
+        .keys()
+        .filter(|d| Some(*d) != target.as_ref())
+        .cloned()
+        .collect();
+    order.sort_by(|a, b| b.cmp(a));
+    if let Some(day) = target.clone() {
+        order.insert(0, day);
+    }
+
+    let mut left = cut;
+    let mut out = Vec::new();
+    for day in order {
+        if left <= 0 {
+            break;
+        }
+        let Some((ts, balance)) = balances.get(&day) else { continue };
+        let take = left.min((*balance).max(0));
+        if take > 0 {
+            out.push((ts.clone(), take));
+            left -= take;
+        }
+    }
+    // `left > 0` acá es el sobrante sin día: se descarta a propósito (ver arriba).
+    Ok(out)
 }
 
 /// Cuándo se acredita un ajuste manual de tiempo: **el día de la tarea**, no el
@@ -3794,6 +3895,132 @@ mod tests {
         let de_hoy = day_work(&c, &hoy).unwrap();
         assert_eq!(de_hoy.len(), 2);
         assert!(day_work(&c, &manana).unwrap().is_empty());
+    }
+
+    // --- Un recorte que desborda el día de la tarea -------------------------
+
+    /// Una entrada cerrada a una hora **local** de un día, como la que deja el
+    /// taxímetro. Las horas importan: agrupar por día local es justamente lo que
+    /// se está probando.
+    fn entrada(c: &Connection, task_id: i64, dia: &str, hora: u32, segundos: i64) {
+        let naive = chrono::NaiveDate::parse_from_str(dia, "%Y-%m-%d")
+            .unwrap()
+            .and_hms_opt(hora, 0, 0)
+            .unwrap();
+        let ts = chrono::Local
+            .from_local_datetime(&naive)
+            .earliest()
+            .unwrap()
+            .with_timezone(&Utc)
+            .to_rfc3339();
+        c.execute(
+            "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
+             VALUES (?1, ?2, ?2, ?3)",
+            params![task_id, ts, segundos],
+        )
+        .unwrap();
+    }
+
+    /// El total de la tarea sin pasar por `set_actual_seconds`: es lo que deja
+    /// montar el estado previo a un ajuste sin escribir entradas de ajuste.
+    fn set_seconds_directo(c: &Connection, task_id: i64, seconds: i64) {
+        c.execute(
+            "UPDATE tasks SET actual_seconds = ?2 WHERE id = ?1",
+            params![task_id, seconds],
+        )
+        .unwrap();
+    }
+
+    /// Lo que suma un día local para una tarea, **sin el piso en 0** de
+    /// `day_work`: es el único modo de ver si quedó en negativo.
+    fn saldo(c: &Connection, task_id: i64, dia: &str) -> i64 {
+        let (start, end) = {
+            let d = local_days(dia, 1);
+            (d[0].1.to_rfc3339(), d[0].2.to_rfc3339())
+        };
+        c.query_row(
+            "SELECT COALESCE(SUM(seconds), 0) FROM time_entries
+             WHERE task_id = ?1 AND started_at >= ?2 AND started_at < ?3",
+            params![task_id, start, end],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn un_recorte_que_desborda_el_dia_de_la_tarea_sale_del_otro_dia() {
+        // El caso del reporte: el timer se quedó prendido y cruzó la medianoche,
+        // así que `stop_timer` partió el trabajo en dos días. Bajar el total a
+        // mano metía **una** fila negativa en el día de la tarea, ese día se iba
+        // a −7 horas, el piso en 0 del rollup se comía el sobrante y el día
+        // siguiente seguía mostrando las horas del timer olvidado.
+        let c = conn();
+        let ayer = hace(1);
+        let hoy = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+        let t = create_task(&c, new_task("timer olvidado", Some(&ayer))).unwrap();
+        entrada(&c, t.id, &ayer, 14, 50_000);
+        entrada(&c, t.id, &hoy, 2, 37_000);
+        set_seconds_directo(&c, t.id, 87_000);
+
+        set_actual_seconds(&c, t.id, 10_800).unwrap();
+
+        // Ningún día en negativo, y el total repartido es el que se pidió.
+        assert_eq!(saldo(&c, t.id, &ayer), 0);
+        assert_eq!(saldo(&c, t.id, &hoy), 10_800);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 10_800);
+    }
+
+    #[test]
+    fn el_recorte_empieza_por_el_dia_de_la_tarea_aunque_no_sea_el_ultimo() {
+        // La regla de Mej.14 extendida: el ajuste corrige **el día de la tarea**,
+        // así que ese día es el primero en absorberlo. Acá el recorte cabe entero
+        // ahí, y el otro día no se toca.
+        let c = conn();
+        let ayer = hace(1);
+        let hoy = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+        let t = create_task(&c, new_task("dos días", Some(&ayer))).unwrap();
+        entrada(&c, t.id, &ayer, 14, 3_600);
+        entrada(&c, t.id, &hoy, 2, 3_600);
+        set_seconds_directo(&c, t.id, 7_200);
+
+        set_actual_seconds(&c, t.id, 5_400).unwrap();
+
+        assert_eq!(saldo(&c, t.id, &ayer), 1_800);
+        assert_eq!(saldo(&c, t.id, &hoy), 3_600);
+    }
+
+    #[test]
+    fn un_recorte_mayor_que_todo_lo_trabajado_descarta_el_sobrante() {
+        // Base vieja: `actual_seconds` dice más de lo que suman las entradas.
+        // Escribir el sobrante igual, para que la suma cuadre, es exactamente el
+        // bug de arriba: una fila negativa que ningún día puede respaldar. El
+        // total de la tarea lo manda `actual_seconds`, no las entradas.
+        let c = conn();
+        let ayer = hace(1);
+        let t = create_task(&c, new_task("descuadrada", Some(&ayer))).unwrap();
+        entrada(&c, t.id, &ayer, 14, 1_000);
+        set_seconds_directo(&c, t.id, 9_000);
+
+        set_actual_seconds(&c, t.id, 0).unwrap();
+
+        assert_eq!(saldo(&c, t.id, &ayer), 0);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 0);
+    }
+
+    #[test]
+    fn subir_el_tiempo_sigue_siendo_una_sola_entrada() {
+        // El reparto es cosa del recorte. Sumar tiempo se acredita entero al día
+        // de la tarea, como siempre.
+        let c = conn();
+        let ayer = hace(1);
+        let t = create_task(&c, new_task("sumar", Some(&ayer))).unwrap();
+        entrada(&c, t.id, &ayer, 14, 600);
+        set_seconds_directo(&c, t.id, 600);
+
+        set_actual_seconds(&c, t.id, 1_800).unwrap();
+
+        assert_eq!(list_time_entries(&c, t.id).unwrap().len(), 2);
+        assert_eq!(saldo(&c, t.id, &ayer), 1_800);
     }
 
     #[test]

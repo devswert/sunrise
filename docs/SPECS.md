@@ -1415,7 +1415,11 @@ Detalles que ya costaron algo:
 - **El piso en 0 va por tarea y por día.** Un ajuste manual hacia abajo se
   guarda como una entrada con delta negativo (I2); clavar el piso más arriba
   dejaría los segmentos de una barra sin sumar su total, y no ponerlo dibujaría
-  un segmento negativo.
+  un segmento negativo. Desde Mej.29 el recorte se reparte en la escritura y
+  ningún día debería llegar acá en negativo: **el piso quedó como red para las
+  bases que ya tienen filas viejas**, no como el mecanismo que hace cuadrar la
+  cuenta. Que un día siga saliendo negativo es un dato, no algo que este piso
+  tenga que arreglar.
 - **`category_id IS NULL` tiene su propio grupo** ("Sin channel"), y una
   categoría borrada conserva sus horas. Con un JOIN interno el donut deja de
   sumar el total y nadie se entera.
@@ -1458,6 +1462,19 @@ agregación no lo ve.
 > Antes usaba `now()`, y ajustar a mano una tarea de la semana pasada le acreditaba
 > las horas a hoy — la Regla 2 rota en el origen, no en la review. Sin fecha
 > (backlog) o con fecha futura sigue siendo hoy: mañana no se trabajó.
+
+> **Y un recorte se reparte entre los días trabajados (Mej.29).** Sellar el día
+> correcto no alcanza cuando el trabajo está en varios: un timer olvidado cruza la
+> medianoche y `stop_timer` lo parte en un tramo por día (I3.3), así que un recorte
+> de 21 horas contra un día que solo tiene 14 lo dejaba en −7 y el piso en 0 de acá
+> abajo se comía el sobrante **en silencio**. El día siguiente seguía mostrando las
+> horas del timer olvidado, y la review contaba 15 horas de una tarea de 3.
+> `spread_cut` reparte el recorte topándolo al saldo de cada día: **primero el día
+> de la tarea** —la regla de arriba extendida al desborde— y después el resto del
+> más reciente al más viejo, que es el candidato más probable a ser el que sobra.
+> Si el recorte supera todo lo repartido, el sobrante **se descarta**: escribirlo
+> igual para que la suma cuadre es el mismo bug otra vez, y el total de la tarea lo
+> manda `actual_seconds` (I1), no las entradas.
 
 ### 4.16 Bitácora y cierre del día (`DailyHighlightsView` / `DailyShutdownView`)
 
@@ -2821,7 +2838,10 @@ En `useFloatingWindow.ts`, ya pagadas:
 - **I2. Los ajustes manuales de tiempo pasan por `set_actual_seconds`**, que
   además inserta una **entrada cerrada con el delta** para que el rollup
   semanal siga cuadrando. Por eso `update_task` desvía `actual_seconds` a esa
-  función en vez de escribir la columna. No lo cortocircuites.
+  función en vez de escribir la columna. No lo cortocircuites. **Subir es una
+  entrada; recortar pueden ser varias** —una por día, topada a su saldo
+  (`spread_cut`, §4.15)—, porque el trabajo de una tarea puede estar repartido en
+  varios días y una sola fila negativa deja alguno bajo cero.
 - **I3. `base_seconds` es `seconds_today`, no el total histórico.** El contador
   del taxímetro cuenta lo trabajado **hoy**: una tarea arrastrada al día
   siguiente arranca en 0 aunque su acumulado sea mayor.

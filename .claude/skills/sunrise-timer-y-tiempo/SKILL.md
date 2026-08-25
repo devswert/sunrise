@@ -31,7 +31,8 @@ escribió a mano. Si necesitas el total, lee la columna.
 
 **Los ajustes manuales pasan por `set_actual_seconds`, no por `update_task`.**
 Esa función, además de guardar el total, inserta una **entrada cerrada con el
-delta** (`started_at = ended_at`, fechada en el día de la tarea — ver más abajo). Es lo que permite que el rollup
+delta** (`started_at = ended_at`, fechada en el día de la tarea — ver más abajo).
+**Subir es una entrada; recortar pueden ser varias**, una por día (`spread_cut`). Es lo que permite que el rollup
 semanal siga cuadrando cuando alguien corrige un tiempo porque se le olvidó
 encender el taxímetro. Por eso `update_task` detecta `actual_seconds` en el
 patch y **desvía** la escritura a `set_actual_seconds` en vez de escribir la
@@ -261,6 +262,26 @@ dejan de sumar su total.
 o es futura). Estampaba `now()`, y corregir el lunes las horas de una reunión del
 sábado se las acreditaba al lunes: la Regla 2 rota en la escritura. **Mediodía y no
 medianoche** porque en el salto de DST la medianoche local no existe.
+
+**Y un recorte se reparte entre los días trabajados, no va como una sola fila.**
+El día correcto no alcanza cuando el trabajo está en varios: un timer olvidado
+cruza la medianoche y `stop_timer` lo parte en un tramo por día, así que un recorte
+de 21 horas fechado en un día que solo tiene 14 lo dejaba en −7 y el piso en 0 de
+arriba se comía el sobrante **en silencio** — el otro día seguía mostrando las
+horas del timer olvidado y la review contaba 15 horas de una tarea de 3. Nada
+fallaba: el total de la tarea cuadraba y ningún test estaba rojo.
+
+`spread_cut` reparte el recorte topándolo al saldo de cada día: **primero el día de
+la tarea** (la regla de arriba extendida al desborde) y después el resto del más
+reciente al más viejo. Si el recorte supera todo lo repartido, el sobrante **se
+descarta** — escribirlo igual para que la suma cierre es el mismo bug otra vez, y
+el total lo manda `actual_seconds`, no las entradas. Está espejado en `mockDb.ts`,
+y ahí no es opcional: si solo lo sabe Rust, el browser atribuye los días distinto.
+
+Consecuencia para leer el código: **el piso en 0 de `work_by_day` y `seconds_today`
+quedó como red para las bases con filas viejas**, no como el mecanismo que hace
+cuadrar la cuenta. Si ves un día en negativo, eso es un dato — no algo que el piso
+tenga que tapar.
 
 Su otra cara es intencional: un ajuste sobre una tarea de otro día **no aparece en
 el contador del taxímetro**, que mide `started_at >= medianoche local`. Ese
