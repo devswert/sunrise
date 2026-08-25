@@ -25,12 +25,26 @@ devolviéndolo en tablas por categoría con una recomendación al final.
 de tocar código** — las skills cubren los dominios más frágiles, no todo el
 proyecto (por ejemplo el reconciler ICS de M3 no tiene skill todavía).
 
-- **[docs/SPECS.md](docs/SPECS.md)** — todo lo que existe hoy y cómo funciona,
-  con las invariantes (§6), la sincronización (§5) y la deuda conocida (§9).
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — qué falta, en orden.
+Los cuatro documentos, y cada uno responde una pregunta distinta:
 
-Si cambias una invariante o una regla, actualiza `docs/SPECS.md` **y la skill
-correspondiente** en el mismo commit.
+- **[docs/SPECS.md](docs/SPECS.md)** — *qué existe y cómo funciona*. Es la
+  entrada: el modelo de datos (§3), la sincronización (§5), las invariantes (§6),
+  las convenciones de UI (§7) y la deuda conocida (§9). El detalle por área (§4)
+  vive en **[docs/specs/](docs/specs/)**, un archivo por dominio, con el índice
+  en el §4 de SPECS. **La numeración no cambia al partirlo**: un `§4.12` en un
+  comentario del código sigue siendo válido.
+- **[docs/DECISIONES.md](docs/DECISIONES.md)** — *por qué es así*. Lo que se
+  descartó, lo que se midió y lo que se pagó caro, por tema. Léelo antes de
+  "arreglar" algo que se ve retorcido: lo más probable es que la versión derecha
+  esté descrita ahí, con el motivo por el que no sirvió.
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — *qué falta*, y **solo** eso. Los ítems
+  cerrados se podan; su relato queda en `git log -p docs/ROADMAP.md`.
+- **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — *qué cambió para quien la usa*. No
+  es decorativo: lo lee el código (§4.22).
+
+Si cambias una invariante o una regla, actualiza el archivo de `docs/specs/` que
+corresponda **y la skill** en el mismo commit. Y al cerrar un ítem del roadmap,
+lo que se aprendió va a `DECISIONES.md` — el ítem no se archiva, se poda.
 
 ## Comandos
 
@@ -39,7 +53,7 @@ pnpm tauri dev    # app + ventana flotante
 pnpm test         # Vitest + RTL
 pnpm test:rust    # cargo test (SQLite en memoria)
 pnpm test:all     # ambos
-pnpm dmg          # build de release + .app y .dmg (SPECS §4.19)
+pnpm dmg          # build de release + .app y .dmg (specs/distribucion.md §4.19)
 pnpm iconos       # regenera el icon set desde public/app-icon.svg
 ```
 
@@ -102,10 +116,10 @@ tests que se ponen rojos si algo de eso divergió.
 - **La llave privada del updater no entra al repo**, ni como archivo suelto ni
   pegada en un YAML: vive en los secrets de GitHub. La pública sí va versionada,
   en `tauri.conf.json`. Si se pierde la privada no se puede firmar una
-  actualización que las apps instaladas acepten. Detalle en SPECS §4.21.
+  actualización que las apps instaladas acepten. Detalle en `docs/specs/distribucion.md` §4.21.
 - **Dev y producción usan bases distintas** (`sunrise-dev.sqlite` vs
   `sunrise.sqlite`). El sidebar muestra `dev` cuando corresponde. Detalle en
-  SPECS §4.20.
+  `docs/specs/distribucion.md` §4.20.
 - **UI: la distribución no se rediseña sobre la marcha** (ante una duda, mira la
   vista hermana), autosave sin botón "Guardar", popovers en
   portal (`Popover.tsx`), selects con búsqueda (`SearchSelect.tsx`), slots de
