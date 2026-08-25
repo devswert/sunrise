@@ -1,6 +1,6 @@
 [package]
 name = "sunrise"
-version = "0.3.0"
+version = "0.4.0"
 description = "sunrise — planner diario de escritorio, con los datos en tu máquina"
 authors = ["Leonardo"]
 edition = "2021"
