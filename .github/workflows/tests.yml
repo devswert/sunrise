@@ -6,8 +6,8 @@
 # significaría darle permiso de escritura a cada PR.
 #
 # **Lo que agrega de verdad es que CI corre en UTC y la máquina del dev no.** Eso
-# ya encontró dos bugs de fecha que en Santiago pasaban por casualidad (ROADMAP
-# 5.5 y 5.7), pero los encontró al empujar el tag: con el release ya en marcha y
+# ya encontró dos bugs de fecha que en Santiago pasaban por casualidad (los dos
+# están en docs/DECISIONES.md §10), pero los encontró al empujar el tag: con el release ya en marcha y
 # el número de versión ya commiteado. Acá el mismo hallazgo llega en el push que
 # lo introdujo.
 name: tests

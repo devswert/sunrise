@@ -40,7 +40,7 @@ abajo, en `### Detalle`, y no llega al modal.
    publicar: alguien lo instala. Y si el cambio toca fechas, horas o zonas, corre
    además `TZ=UTC pnpm test:rust`: **CI corre en UTC** y ahí aparecen los supuestos
    de zona que en Santiago pasan por casualidad. Así falló el primer tag de la 0.1.0
-   (ROADMAP 5.5).
+   (los dos casos, en `docs/DECISIONES.md` §10).
 3. **Decide el número.** Semver, y **mayor que el publicado** o las apps
    instaladas no van a ver nada. `git tag --list` dice cuál fue el último.
 4. **Pídele al usuario el anuncio.** No lo inventes solo: es el texto que lee todo
@@ -99,7 +99,7 @@ y el `latest.json` apuntando a uno de ellos. Si ya lo instaló alguien del equip
 - **No firma con Apple Developer.** Decisión tomada: el bundle se firma **ad-hoc**
   (`signingIdentity: "-"`), que no evita el bloqueo de Gatekeeper pero lo deja
   levantable; la primera instalación pide `xattr -cr /Applications/sunrise.app` y
-  está escrito en el README. Detalle y el modo de falla en SPECS §4.19.
+  está escrito en el README. Detalle y el modo de falla en `docs/specs/distribucion.md` §4.19.
 - **No toca la llave privada del updater.** Vive en los secrets del repo. Si falta,
   los artefactos salen sin firmar y las apps los rechazan sin decir por qué.
 - **No decide el número por ti.** Un cambio que rompe datos o una migración que no

@@ -123,12 +123,13 @@ escribir en este repo.
 - **Corre `TZ=UTC pnpm test` además del normal si tocas algo con fechas.** CI corre
   en UTC y tu máquina no, así que entre las 20:00 y medianoche de Santiago el "hoy"
   de CI ya es el día siguiente. Dos veces seguidas eso encontró bugs de fecha que
-  en local pasaban por casualidad (ROADMAP 5.5 y 5.7).
+  en local pasaban por casualidad; los dos están contados en `docs/DECISIONES.md`
+  §10, y el segundo pasaba **solo los martes**.
 - **CI ya no es solo cosa de los tags.** `.github/workflows/tests.yml` corre
   `pnpm test:all` en cada push a `main` y en cada PR, así que un rojo aparece en el
   push que lo introdujo y no cuando alguien va a publicar. `release.yml` sigue
   corriendo las suites antes de empaquetar —eso no se toca— pero ya no es el primer
-  lugar donde se entera nadie. Detalle en SPECS §4.19.
+  lugar donde se entera nadie. Detalle en `docs/specs/distribucion.md` §4.19.
 
 ## Idioma: código en inglés, texto en español
 

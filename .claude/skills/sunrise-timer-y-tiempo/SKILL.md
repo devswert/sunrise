@@ -9,6 +9,12 @@ El tiempo trabajado está respaldado en la DB (`time_entries`), no en memoria.
 Estas reglas existen porque cada una ya se rompió o estuvo a punto: son
 deliberadas, y la mayoría tiene su comentario en `src-tauri/src/repo.rs`.
 
+**Dónde está escrito lo demás:** las invariantes en su forma corta viven en
+`docs/SPECS.md` §6 (I1 a I6), el detalle del taxímetro y del rollup en
+`docs/specs/tiempo.md` (§4.6, §4.7 y §4.15), y **por qué** cada regla es así —con
+las alternativas que se descartaron y los números— en `docs/DECISIONES.md` §1 y §2.
+Acá está lo que hay que saber para **editar** esto sin romperlo.
+
 ## Dónde vive cada cosa
 
 | Archivo | Qué |
@@ -44,21 +50,11 @@ El contador del taxímetro cuenta lo trabajado **hoy** (entradas cerradas con
 arrastrada al día siguiente arranca en 0 aunque su acumulado sea de horas. Si
 alguien reporta "el timer no recuerda mi tiempo", esto es el diseño, no un bug.
 
-Tres reglas sostienen ese "hoy", y las tres se pagaron con un taxímetro que
-mostró `-14:-17:-39`:
-
-1. **`seconds_today` tiene piso en 0** (`MAX(0, …)`). El delta de un ajuste
-   manual hacia abajo puede superar lo trackeado hoy y la suma se va a negativo.
-2. **Lo corrido se mide desde la medianoche, no desde `started_at`**
-   (`runSeconds` en `timerStore.ts`). Un timer olvidado toda la noche mostraba
-   las 15 horas a las 9 de la mañana.
-3. **`stop_timer` parte la corrida por día local** si cruza una medianoche
-   (`segments_by_local_day`, espejado en `mockDb`). Como el tiempo se atribuye por
-   `started_at`, una fila de 15h le acredita todo al día en que empezó. Esto le
-   importa igual al rollup diario de M3, que agrupa por día leyendo la tabla: se
-   arregla en la escritura, una vez, no en cada consulta. El último tramo absorbe
-   el resto de la división, para que la suma de las filas siga cuadrando con
-   `actual_seconds`.
+Tres reglas sostienen ese "hoy" —el piso en 0 de `seconds_today`, el recorte a
+medianoche de `runSeconds`, y el corte por día local de `stop_timer`— y están en
+SPECS §6 (I3), las tres pagadas con un taxímetro que mostró `-14:-17:-39`. Al
+editar, lo que hay que recordar es que **`segments_by_local_day` está espejado en
+`mockDb`**: si solo cambias Rust, el browser atribuye los días distinto.
 
 Y `hms()` pone el signo **una vez y adelante**: con `Math.floor` y `%` sobre un
 negativo cada componente salía con su propio signo. No recorta a cero a
@@ -149,7 +145,7 @@ Dos reglas que salen de la tabla:
 - **Si lo que agregas se pone al día solo, no le calcules el momento.** Un sueño
   calculado hay que invalidarlo, y olvidarse de invalidarlo no deja síntoma. El
   respaldo llegaba cinco minutos tarde por vivir en un `setInterval` de `main`
-  (SPECS §4.17): lo que se compró al moverlo fue que corra tapado, no precisión.
+  (`docs/specs/distribucion.md` §4.17): lo que se compró al moverlo fue que corra tapado, no precisión.
 - **Si no se pone al día, ponle borde de arriba.** El aviso de reunión exige que la
   reunión no haya empezado, y eso hace dos cosas a la vez: no manda un "en 5
   minutos" a las 09:30, y no deja que un Mac recién despertado vomite seis avisos
@@ -231,21 +227,16 @@ trabajo de un rango, usá esa función: escribir una segunda consulta es cómo e
 reglas se separan. El front solo dibuja. Si vas a tocarlo, estas cuatro reglas son las que se rompen sin que nada
 falle:
 
-- **Atribución por semana en que ocurrió:** el tiempo se atribuye por
-  `time_entries.started_at`, **NO** por `scheduled_date`. Mover una tarea a otra
-  semana no cambia las horas de semanas pasadas. Lo planificado sí sale de
+- **Atribución por `started_at`, nunca por `scheduled_date`.** Mover una tarea a
+  otra semana no cambia las horas de semanas pasadas. Lo planificado sí sale de
   `scheduled_date`: esa asimetría es correcta, no la "arregles".
-- **Meets sin `time_entries`** cuentan su duración de evento
-  (`event_end - event_start`). Con dos límites: **basta una entrada real** para
-  que dejen de usar el respaldo (si no, cuentan doble), y una reunión que
-  **todavía no empieza** no cuenta como trabajada.
-- **El rollup NO filtra `source_state = 'ACTIVE'`** para el tiempo. Es la única
-  excepción a I7: las `ORPHANED` son historial, y filtrarlas borra horas reales
-  de semanas pasadas.
+- **Meets sin `time_entries`** cuentan su duración de evento, con los dos límites
+  de `docs/specs/tiempo.md` §4.15.
+- **El rollup NO filtra `source_state = 'ACTIVE'`** para el tiempo: es la única
+  excepción a I7.
 - **El día es local.** Nunca `date(started_at)` ni `substr(started_at,1,10)`: los
   timestamps son UTC y en Chile todo lo trabajado después de las 20:00 se iría al
-  día siguiente. Se comparan los bordes de cada día local en UTC
-  (`local_days`), como ya hacía `day_work`.
+  día siguiente. Se comparan los bordes de cada día local en UTC (`local_days`).
 
 Y una que solo importa para el día de **hoy**: una tarea con el timer corriendo
 suma **0** en la base hasta que pares, así que el front le agrega lo del
@@ -256,27 +247,19 @@ Y un detalle que parece cosmético: **el piso en 0 va por tarea y por día**
 (un ajuste manual negativo, ver arriba). Más arriba, los segmentos de una barra
 dejan de sumar su total.
 
-**El ajuste manual se acredita al día de la tarea, no al día en que lo escribes.**
-`set_actual_seconds` estampa su entrada con el `scheduled_date` de la tarea y su
-`scheduled_time` si la tiene (mediodía local si no; hoy si la tarea no tiene fecha
-o es futura). Estampaba `now()`, y corregir el lunes las horas de una reunión del
-sábado se las acreditaba al lunes: la Regla 2 rota en la escritura. **Mediodía y no
-medianoche** porque en el salto de DST la medianoche local no existe.
+**El ajuste manual se acredita al día de la tarea, y un recorte se reparte entre
+los días trabajados** (`spread_cut`) en vez de ir como una sola fila. Las dos
+reglas, con los casos que las obligaron y el orden del reparto, están en
+`docs/DECISIONES.md` §1. Para editar, tres cosas:
 
-**Y un recorte se reparte entre los días trabajados, no va como una sola fila.**
-El día correcto no alcanza cuando el trabajo está en varios: un timer olvidado
-cruza la medianoche y `stop_timer` lo parte en un tramo por día, así que un recorte
-de 21 horas fechado en un día que solo tiene 14 lo dejaba en −7 y el piso en 0 de
-arriba se comía el sobrante **en silencio** — el otro día seguía mostrando las
-horas del timer olvidado y la review contaba 15 horas de una tarea de 3. Nada
-fallaba: el total de la tarea cuadraba y ningún test estaba rojo.
-
-`spread_cut` reparte el recorte topándolo al saldo de cada día: **primero el día de
-la tarea** (la regla de arriba extendida al desborde) y después el resto del más
-reciente al más viejo. Si el recorte supera todo lo repartido, el sobrante **se
-descarta** — escribirlo igual para que la suma cierre es el mismo bug otra vez, y
-el total lo manda `actual_seconds`, no las entradas. Está espejado en `mockDb.ts`,
-y ahí no es opcional: si solo lo sabe Rust, el browser atribuye los días distinto.
+- `set_actual_seconds` estampa `scheduled_date` + `scheduled_time`, **mediodía**
+  local si la tarea no tiene hora (en el salto de DST la medianoche local no
+  existe), y hoy si no tiene fecha o es futura.
+- Si el recorte supera todo lo repartido, el sobrante **se descarta**. Escribirlo
+  igual para que la suma cierre es el mismo bug otra vez: el total lo manda
+  `actual_seconds` (I1), y las entradas responden otra pregunta.
+- **Está espejado en `mockDb.ts` y ahí no es opcional**: si solo lo sabe Rust, el
+  browser atribuye los días distinto.
 
 Consecuencia para leer el código: **el piso en 0 de `work_by_day` y `seconds_today`
 quedó como red para las bases con filas viejas**, no como el mecanismo que hace

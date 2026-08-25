@@ -80,7 +80,7 @@ red** sin dejar de ser testeable:
 
 El comando (`sync_calendar_feed`) solo las encadena. Si te encuentras
 decidiendo algo ahí —qué evento entra, cómo se calcula una fecha— va en `ics`;
-si es cómo se guarda, en `repo`. Detalle de las reglas en SPECS §4.12.
+si es cómo se guarda, en `repo`. Detalle de las reglas en `docs/specs/calendario.md` §4.12.
 
 Dos cosas que se rompen fácil al tocar esto:
 
@@ -105,7 +105,7 @@ fuente de verdad en `migrations.rs` y el espejo en `src/lib/enums.ts`:
 | (solo front) `CapacityLevel` | `OK` · `WARN` · `OVER` |
 
 ¹ `CARRIED_OVER` es **histórico**: lo escribía el carry-over, reemplazado por la
-degradación diaria al backlog (SPECS §4.2). Nadie lo escribe más; sigue ahí
+degradación diaria al backlog (`docs/specs/tareas-y-tablero.md` §4.2). Nadie lo escribe más; sigue ahí
 porque hay tareas que lo tienen en su historial.
 
 Si agregas un estado, va en mayúsculas y se espeja en los dos archivos.
@@ -202,7 +202,7 @@ nueva. Consecuencias para cualquier cosa que escribas cerca:
   dispararía el diálogo de salida de §4.10).
 - **El archivo se resuelve con `db::file_name()`**, nunca con `db::PROD_FILE` ni con
   `"sunrise.sqlite"` escrito a mano. Dev y producción usan archivos distintos en el
-  mismo directorio (`sunrise-dev.sqlite` vs `sunrise.sqlite`, SPECS §4.20), así que
+  mismo directorio (`sunrise-dev.sqlite` vs `sunrise.sqlite`, `docs/specs/distribucion.md` §4.20), así que
   una ruta armada con la constante abre la base del **otro** perfil. La restauración
   tiene que escribir exactamente sobre el archivo en uso, y borrar sus `-wal`/`-shm`
   antes de reabrir.
@@ -217,14 +217,14 @@ nueva. Consecuencias para cualquier cosa que escribas cerca:
   `is_backup_name` es **el único permiso para borrar** que tiene la retención, y
   exige el prefijo del perfil propio: con eso los dos conjuntos son disjuntos y dev
   puede respaldar en la misma carpeta que producción sin poder borrarle nada. Es lo
-  que permitió encender el automático en dev (SPECS §4.20). Si algún día unificas
+  que permitió encender el automático en dev (`docs/specs/distribucion.md` §4.20). Si algún día unificas
   los nombres, estás reactivando esa pérdida de datos.
 
   **Y `db::is_dev()` es la única definición de "es dev" del backend.** La usan la
   base, el prefijo del respaldo y `profile()`. Un `cfg!(debug_assertions)` suelto en
   un cuarto lugar puede quedar en el lado equivocado sin que nada lo note.
 - Nada de esto se puede probar fuera de Tauri (el mock no tiene base). Lo que sí
-  está cubierto en `backup.rs` es todo el camino de archivos. Ver SPECS §4.17.
+  está cubierto en `backup.rs` es todo el camino de archivos. Ver `docs/specs/distribucion.md` §4.17.
 
 ## `settings`
 
