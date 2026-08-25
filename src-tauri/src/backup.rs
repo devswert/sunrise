@@ -868,10 +868,18 @@ mod tests {
 
         // Y la fecha se lee bien en los dos, que es donde el prefijo más largo
         // desalinearía los índices del nombre.
+        //
+        // El esperado se **deriva de `now()`** y no es un literal: el nombre del
+        // zip lleva la hora local (`file_name` formatea un `DateTime<Local>`),
+        // así que un literal fija el huso de la máquina donde se escribió el
+        // test. Pasaba en Chile y fallaba en CI, que corre en UTC —cuatro horas
+        // de diferencia—, y dejó la suite roja en `main` desde el commit que
+        // agregó los perfiles.
+        let esperado = now().format("%Y-%m-%dT%H:%M:%S").to_string();
         for perfil in [PROD, DEV] {
             let l = list(dir.path(), perfil).unwrap();
             assert_eq!(l.len(), 1);
-            assert_eq!(l[0].created_at, "2026-08-17T16:53:20");
+            assert_eq!(l[0].created_at, esperado);
         }
     }
 
