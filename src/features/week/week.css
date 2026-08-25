@@ -553,50 +553,6 @@
   background: var(--tag-bg);
 }
 
-/* Card del backlog (mantiene layout horizontal simple) */
-.backlog .task-card {
-  flex-direction: row;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-.backlog .task-card__check {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  margin-top: 1px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 1.5px solid var(--faint);
-  background: transparent;
-  color: #fff;
-  padding: 0;
-}
-.backlog .task-card__check.is-checked {
-  background: var(--mint-solid);
-  border-color: var(--mint-solid);
-}
-.backlog .task-card__body {
-  flex: 1;
-  min-width: 0;
-}
-.backlog .task-card__title {
-  font-size: 13px;
-  line-height: 1.35;
-}
-.backlog .task-card__meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: 4px;
-}
-.backlog .task-card__est {
-  font-size: 11px;
-  color: var(--muted);
-  margin-left: auto;
-}
-
 /* --- Objetivos de la semana --- */
 .objectives {
   display: flex;
@@ -680,35 +636,127 @@
   outline: none;
 }
 
-/* --- Backlog --- */
+/* --- Backlog (vista) --------------------------------------------------------
+
+   Un contexto por columna, con el chrome de `.day-col`: la card de la app vive a
+   236px y estirarla deja de leerse como la misma card (la misma razón por la que
+   el ritual diario fija ese ancho). Lo que la vista comparte con el panel de la
+   tira —el badge de origen, los rótulos, el pulso de la lista— está declarado una
+   sola vez más abajo, con los dos selectores juntos. Ver `BacklogView`. */
 .backlog {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  max-width: 720px;
+  height: 100%;
+  min-height: 0;
 }
-.backlog__group {
+/* Dos líneas, como `.panel-head`: el nombre de la vista y lo que está mostrando
+   son dos niveles distintos. El cuerpo es el de las otras vistas (22px/13px), no
+   el del panel: acá el título no compite con seis columnas al lado. */
+.backlog__head {
+  flex: none;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
-.backlog__group-head {
+.backlog__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-title);
+  font-size: 22px;
+  margin: 0;
+}
+.backlog__title > svg {
+  color: var(--faint);
+}
+/* Colgado del nombre y no del icono, igual que `.panel-head__sub`. */
+.backlog__sub {
+  margin: 4px 0 0;
+  padding-left: calc(19px + var(--space-2));
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* El buscador: la misma caja hundida y el mismo cuerpo que el buscador de los
+   selects (`.ss__search`), porque es el mismo gesto. Del ancho de una columna,
+   así el tablero de abajo no arranca con una medida que no se repite en ningún
+   lado. */
+.backlog__search {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: var(--font-title);
-  font-weight: 600;
-  font-size: 14px;
+  width: 236px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  color: var(--faint);
 }
-.backlog__dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+.backlog__search:focus-within {
+  border-color: var(--muted);
 }
-.backlog__list {
+.backlog__search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 13px;
+  outline: none;
+}
+.backlog__search input::placeholder {
+  color: var(--faint);
+}
+.backlog__search-clear {
+  display: inline-flex;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  padding: 0;
+}
+.backlog__search-clear:hover {
+  color: var(--ink);
+}
+
+/* El mismo scroller horizontal que el board de la semana. */
+.backlog__board {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 0;
+}
+/* Ancho fijo y no `flex: 1 0 236px` como en la semana: con pocos contextos el
+   grow estiraba las columnas hasta llenar la ventana, que es justo lo que hacía
+   irreconocible a la card. El aire que sobra a la derecha queda como aire. */
+.backlog__col {
+  flex: 0 0 236px;
+  max-width: 236px;
+}
+.backlog__board .backlog__col:last-of-type {
+  border-right: none;
+}
+/* El nombre del contexto lleva su punto de color, así que no puede ser el bloque
+   de texto pelado que es el nombre de un día. */
+.backlog__col-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.backlog__vacio {
+  margin: var(--space-3) 0;
+  max-width: 320px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 /* --- Settings --- */
@@ -2146,14 +2194,6 @@ button.tc__tag.is-empty {
   margin-top: 0;
 }
 
-.col-desde {
-  display: block;
-  margin: -2px 0 6px;
-  padding-left: 2px;
-  font-size: 10px;
-  color: var(--faint);
-}
-
 /* --- Panel de backlog -------------------------------------------------------
 
    Misma geometría que la agenda superpuesta (`.rail--overlay`): a la izquierda
@@ -2308,14 +2348,16 @@ button.tc__tag.is-empty {
    el rótulo tenía márgenes propios y rompía el pulso de la lista: una card con
    rótulo dejaba 14px hasta la siguiente y una sin rótulo 8px, justo en las tareas
    que traían más información. */
-.backlog-panel__item {
+.backlog-panel__item,
+.backlog__item {
   position: relative;
   display: flex;
   flex-direction: column;
 }
 /* El hueco para el badge, y solo cuando lo hay: es la mitad de su alto, así que
    el badge queda partido por el borde superior de la card. */
-.backlog-panel__item.has-from {
+.backlog-panel__item.has-from,
+.backlog__item.has-from {
   padding-top: 9px;
 }
 /* Montado **sobre el borde superior de la card y centrado**, como una etiqueta
@@ -2326,7 +2368,8 @@ button.tc__tag.is-empty {
    Los 18px de alto —16 de `line-height` más los dos bordes— son los que hacen
    que `padding-top: 9px` lo deje exactamente a caballo. Si cambia el tamaño,
    cambian los dos. */
-.backlog-panel__from {
+.backlog-panel__from,
+.backlog__from {
   position: absolute;
   top: 0;
   left: 50%;
@@ -2354,7 +2397,8 @@ button.tc__tag.is-empty {
   text-transform: uppercase;
   color: var(--faint);
 }
-.backlog-panel__dot {
+.backlog-panel__dot,
+.backlog__dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;

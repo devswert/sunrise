@@ -449,7 +449,38 @@ no crean nada.
 
 Se ve en tres lugares:
 
-- **La vista `/backlog`**, agrupada por contexto, con cards no arrastrables.
+- **La vista `/backlog`** (`BacklogView`): **un contexto por columna**, lado a
+  lado, con el chrome de `.day-col` (rótulo con su punto, cuántas tiene, y su
+  botón "Agregar tarea" arriba) y scroll horizontal como el board de la semana.
+
+  **La columna es de 236px**, el ancho de una columna de día, y eso es el punto:
+  la card es la misma de toda la app (`TaskCardStatic` con `hidePlaceholders`,
+  con el badge "Desde el X" cosido al borde superior como en el panel) y
+  estirarla deja de leerse como la misma card — la regla que ya estaba escrita
+  para el ritual diario. La vista la rompía dos veces: primero con un reskin
+  propio de `.task-card` (`.backlog .task-card`, borrado), después con una lista
+  vertical de 720px de ancho. Lo que comparte con el panel está declarado una
+  sola vez, con los dos selectores juntos (`.backlog-panel__item,
+  .backlog__item`, en `week.css`).
+
+  **Columnas y no una lista vertical** porque los contextos son pocos y cortos:
+  apilados, la mayor parte del scroll era aire entre rótulos y llegar al sexto
+  obligaba a pasar por los cinco anteriores.
+
+  Dos diferencias con el board de la semana, a propósito: **no arrastra** (acá no
+  hay días a los que soltar, y reordenar dentro del backlog no significa nada —
+  de ahí `TaskCardStatic`), y las columnas son de ancho **fijo** y no `flex: 1 0
+  236px`: con pocos contextos el grow las estiraba hasta llenar la ventana, que
+  es justo lo que hacía irreconocible a la card.
+
+  **El buscador de la cabecera** filtra por título (`includes` en minúsculas, el
+  mismo del buscador de los selects) y con él escrito los contextos sin
+  resultados **se esconden** — es lo contrario de perderlos: estás filtrando, y
+  una columna vacía no es un resultado. Sin filtro **sí se dibujan los contextos
+  vacíos**, que es donde vive el único botón que crea una tarea en un contexto
+  que todavía no tiene ninguna (de ahí el `includeEmpty: !filtro`). El subtítulo
+  deja el total al lado del filtrado ("1 de 12 pendientes"): el filtrado a secas
+  escondería cuántas hay en realidad.
 - **El sidebar**: solo el item, con el total en un **badge**. Cuenta todo,
   incluidas las tareas sin canal, para que el número coincida con la lista que
   abre. Es badge y no número suelto porque al lado del atajo, en la misma
@@ -555,8 +586,8 @@ todavía, así que las cards se llenaban de marcas de posición en vez de datos 
 numeral a 12px no se lee como "poner canal" sino como un glifo raro—. En una
 columna de día sí se muestran: ahí "sin estimar" es lo que no está contando para
 la capacidad. No se pierde nada, el reloj del pie abre los tiempos y el canal se
-cambia desde el detalle; es lo que ya hacía la vista Backlog, donde `CategoryTag`
-tampoco dibuja nada sin categoría.
+cambia desde el detalle. La vista `/backlog` pasa el mismo flag, por lo mismo:
+son la misma superficie.
 
 **Dos costos asumidos de que se superponga** (misma geometría que la agenda,
 `right: 44px`), los dos documentados en `BacklogPanel`:
@@ -1348,7 +1379,9 @@ cual quedó. Quien planifica decide si la tarea va a hoy, al backlog o se queda.
   `useBoard` solo carga hoy, así que abrir una del paso 1 no encontraba nada y el
   click quedaba sin efecto — peor que no ser clickeable.
 - **Las cards del repaso son las mismas del tablero** (`TaskCardStatic`: la card
-  de siempre, sin arrastre). Una lista de títulos al lado de un tablero de cards
+  de siempre, sin arrastre — misma marca de "corriendo" y mismo
+  `hidePlaceholders` que la arrastrable; lo único que le falta es el
+  `useSortable`). Una lista de títulos al lado de un tablero de cards
   se lee como otra app; y soltar ahí no significaría nada, porque el día anterior
   ya pasó.
 - El confeti se llama **imperativamente** desde `lib/confetti.ts`:

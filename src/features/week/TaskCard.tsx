@@ -77,16 +77,24 @@ export function TaskCardStatic({
   onToggle,
   onOpen,
   onPatch,
+  hidePlaceholders,
 }: TaskCardProps) {
   const done = task.status === "DONE";
+  const running = useTimerStore((s) => s.active?.taskId === task.id);
   return (
-    <div className={`task-card${done ? " is-done" : ""}`} onClick={() => onOpen?.(task)}>
+    <div
+      className={`task-card${done ? " is-done" : ""}${running ? " is-running" : ""}`}
+      onClick={() => onOpen?.(task)}
+    >
       <TaskCardContent
         task={task}
         category={category}
         categories={categories}
         onToggle={onToggle}
         onPatch={onPatch}
+        // Se pasa igual que en la card arrastrable: es la misma card, y sin esto
+        // la vista Backlog salía con los rellenos que el panel esconde.
+        hidePlaceholders={hidePlaceholders}
       />
     </div>
   );

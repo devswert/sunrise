@@ -46,8 +46,9 @@ describe("BacklogColumn · el grupo de las rescatadas", () => {
 
     // Un solo rótulo para las dos del mismo día, y el de las guardadas después.
     expect(rotulos()).toEqual(["Desde el 18 ago", "Guardadas"]);
-    // Y ninguna etiqueta suelta debajo de las cards, que es lo que se leía mal.
-    expect(document.querySelectorAll(".col-desde")).toHaveLength(0);
+    // Y ningún badge por card, que es lo que se leía mal: en la columna la fecha
+    // va una sola vez, en el rótulo del grupo.
+    expect(document.querySelectorAll(".backlog__from, .backlog-panel__from")).toHaveLength(0);
   });
 
   it("dos días distintos son dos grupos", () => {
