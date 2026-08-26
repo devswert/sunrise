@@ -43,6 +43,8 @@ function rollup(parcial: Partial<WeeklyRollup> = {}): WeeklyRollup {
     totalSeconds: 0,
     plannedMinutes: 0,
     unestimated: 0,
+    objectiveSeconds: 0,
+    byObjective: [],
     ...parcial,
   };
 }

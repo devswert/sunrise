@@ -57,7 +57,7 @@ locale de `date-fns` va **por llamada** y es fácil olvidarlo, y
 |---|---|
 | `src/components/Dialog.tsx` | todo diálogo chico de confirmar o avisar |
 | `src/components/Popover.tsx` | todo popover flotante |
-| `src/components/SearchSelect.tsx` | todo select con búsqueda (channel, objetivo) |
+| `src/components/SearchSelect.tsx` | todo select con búsqueda (channel, objetivo), simple o **multi** con `selected` |
 | `src/components/TimePicker.tsx` | elegir duraciones (planned / actual) |
 | `src/components/ThemeToggle.tsx` | switch de tema (solo ese: tiene sol y luna dibujados) |
 | `src/components/Switch.tsx` | cualquier otro interruptor on/off |
@@ -115,6 +115,27 @@ En los tres, Escape y ⌘Enter quedaban muertos sin ningún síntoma que apuntar
 foco. Cuélgalos de `window` en un `useEffect`, en **fase de burbuja** para que un
 control interno pueda quedarse con la tecla antes (`SearchSelect` corta el Enter con
 `stopPropagation`), y saltea el handler si el diálogo de salida está arriba.
+
+**Una lista corta de cosas comparables va en filas, no en cards en grilla.** Los
+objetivos de la semana pasaron por dos columnas de cards y no funcionó: con tres o
+cuatro ítems las cards desperdician ancho, obligan a saltar de una a otra para
+comparar el avance, y traen el problema de las alturas desiguales (que se intentó
+resolver dos veces: `align-items: start` deja el borde dentado, y el `stretch` con
+`margin-top: auto` mejora pero no convence). En filas de una línea, las barras
+quedan **una debajo de la otra** —que es cómo se comparan— y todas miden lo mismo
+por construcción. El detalle se despliega. Y **la barra lleva ancho fijo**: una que
+se estire con el largo del título haría ver distintos dos avances iguales.
+
+**Un `input` no hereda la tipografía.** Todo campo de texto necesita su
+`font-family: var(--font-title)` o `var(--font-body)` explícito, o sale en la
+fuente por defecto del webview mientras el resto de la app usa Sora/Manrope. Se
+pagó en el título del modal de objetivo, que es lo primero que se ve al abrirlo.
+
+**Para un select de varios, `SearchSelect` recibe `selected: Set<string>` y quien
+lo monta deja el popover abierto** (los filtros de la weekly review, §4.29). No
+escribas un dropdown multi aparte: duplicaría la búsqueda, el teclado y el foco
+dentro del portal, que es donde están las trampas. El componente no guarda estado
+— manda `onSelect` por cada click y quien lo usa prende o apaga.
 
 **Y enfoca el modal al abrirlo** (`tabIndex={-1}` + `focus()` en un efecto con deps
 vacías). No es solo accesibilidad: las cards del board llevan los `listeners` de

@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from "react";
-import { CalendarDays, Check, Clock, Hash, Pause, Play } from "lucide-react";
+import { CalendarDays, Check, Clock, Flag, Hash, Pause, Play } from "lucide-react";
 import type { Category, Task, TaskPatch } from "../../lib/types";
 import { chipVars } from "../tasks/chipVars";
 import { formatMinutes } from "../../lib/capacity";
-import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
+import { SearchSelect } from "../../components/SearchSelect";
+import { channelOptions } from "../tasks/channelOptions";
 import { TimePicker } from "../../components/TimePicker";
 import { Popover } from "../../components/Popover";
 import { useTimer, hms } from "../timer/useTimer";
@@ -63,16 +64,7 @@ export function TaskCardContent({
 
   const done = task.status === "DONE";
 
-  const channelOptions = useMemo<SearchOption[]>(() => {
-    const out: SearchOption[] = [];
-    for (const ctx of categories.filter((c) => c.parentId === null)) {
-      out.push({ value: String(ctx.id), label: ctx.name, color: ctx.color });
-      for (const ch of categories.filter((c) => c.parentId === ctx.id)) {
-        out.push({ value: String(ch.id), label: `#${ch.name}`, hint: ctx.name, color: ch.color });
-      }
-    }
-    return out;
-  }, [categories]);
+  const options = useMemo(() => channelOptions(categories), [categories]);
 
   const stop = (e: React.SyntheticEvent) => {
     e.stopPropagation();
@@ -155,6 +147,17 @@ export function TaskCardContent({
           <Clock size={12} />
         </button>
 
+        {/* Marca de "esto cuelga de un objetivo". **Solo el icono, sin el
+          * nombre**: en una card de 200px el título del objetivo compite con el de
+          * la tarea, y saber de cuál se trata es una pregunta del detalle, no de
+          * la lista. Por lo mismo no lleva relleno cuando no hay objetivo — no es
+          * un placeholder, así que tampoco depende de `hidePlaceholders`. */}
+        {task.objectiveId != null && (
+          <span className="tc__obj" title="Cuelga de un objetivo">
+            <Flag size={11} aria-label="Cuelga de un objetivo" />
+          </span>
+        )}
+
         {/* Canal editable desde la lista. Sin canal y con `hidePlaceholders` no se
           * dibuja: el chip vacío es solo un numeral, y en una lista de tareas sin
           * canal es una columna de glifos que no dice nada. */}
@@ -182,7 +185,7 @@ export function TaskCardContent({
           {picker === "channel" && (
             <Popover anchorRef={tagRef} align="right" onClose={() => setPicker(null)}>
               <SearchSelect
-                options={channelOptions}
+                options={options}
                 value={task.categoryId != null ? String(task.categoryId) : null}
                 placeholder="Buscar canal…"
                 clearLabel="Sin canal"

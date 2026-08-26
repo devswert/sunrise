@@ -220,7 +220,7 @@ export function useBoard(
 
   const toggleObjective = useCallback(
     async (o: Objective) => {
-      await api.updateObjective(o.id, undefined, !o.completed);
+      await api.updateObjective(o.id, { completed: !o.completed });
       await reload();
     },
     [reload],

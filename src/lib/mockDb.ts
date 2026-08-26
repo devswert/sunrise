@@ -8,6 +8,7 @@ import type {
   CalendarFeed,
   Category,
   Objective,
+  ObjectivePatch,
   Task,
   TaskEvent,
   TimeEntry,
@@ -686,6 +687,21 @@ export const mock = {
       .filter((c) => c.seconds > 0)
       .sort((a, b) => a.date.localeCompare(b.date) || (a.categoryId ?? 0) - (b.categoryId ?? 0));
 
+    // El corte objetivos/resto sale de la **misma** pasada que las celdas, igual
+    // que en `repo::weekly_rollup`: recorrer las entradas de nuevo por separado
+    // es cómo las dos reglas de atribución se terminan separando.
+    const porObjetivo = new Map<number, number>();
+    for (const [k, secs] of porTarea) {
+      const taskId = Number(k.split(":")[1]);
+      const objectiveId = tasks.find((t) => t.id === taskId)?.objectiveId ?? null;
+      if (objectiveId == null) continue;
+      porObjetivo.set(objectiveId, (porObjetivo.get(objectiveId) ?? 0) + Math.max(0, secs));
+    }
+    const byObjective = [...porObjetivo.entries()]
+      .filter(([, seconds]) => seconds > 0)
+      .map(([objectiveId, seconds]) => ({ objectiveId, seconds }))
+      .sort((a, b) => b.seconds - a.seconds || a.objectiveId - b.objectiveId);
+
     const completedTasks = tasks
       .filter((t) => t.status === "DONE" && indice(t.completedAt) >= 0)
       .sort((a, b) => (a.completedAt ?? "").localeCompare(b.completedAt ?? ""));
@@ -721,6 +737,8 @@ export const mock = {
       totalSeconds: rows.reduce((a, d) => a + d.seconds, 0),
       plannedMinutes: rows.reduce((a, d) => a + d.plannedMinutes, 0),
       unestimated: rows.reduce((a, d) => a + d.unestimated, 0),
+      objectiveSeconds: byObjective.reduce((a, o) => a + o.seconds, 0),
+      byObjective,
     };
   },
 
@@ -991,28 +1009,53 @@ export const mock = {
     /* fuera de Tauri no hay Ajustes del sistema que abrir */
   },
 
-  createObjective: async (isoWeek: string, title: string): Promise<Objective> => {
+  listObjectivesRange: async (fromWeek: string, toWeek: string): Promise<Objective[]> =>
+    objectives
+      .filter((o) => o.isoWeek >= fromWeek && o.isoWeek <= toWeek)
+      .sort((a, b) => a.isoWeek.localeCompare(b.isoWeek) || a.position - b.position),
+
+  createObjective: async (
+    isoWeek: string,
+    title: string,
+    categoryId: number | null = null,
+  ): Promise<Objective> => {
     const o: Objective = {
       id: nextId(),
       isoWeek,
       title,
       position: objectives.filter((x) => x.isoWeek === isoWeek).length,
       completed: false,
+      categoryId,
     };
     objectives.push(o);
     return o;
   },
 
-  updateObjective: async (id: number, title?: string, completed?: boolean): Promise<void> => {
+  updateObjective: async (id: number, patch: ObjectivePatch): Promise<void> => {
     const o = objectives.find((x) => x.id === id);
     if (!o) return;
-    if (title !== undefined) o.title = title;
-    if (completed !== undefined) o.completed = completed;
+    if (patch.isoWeek !== undefined && patch.isoWeek !== o.isoWeek) {
+      // Al final de la semana destino, como en `repo::update_objective`: con el
+      // `position` viejo quedaría empatado y se metería en medio de la lista.
+      o.position = objectives.filter((x) => x.isoWeek === patch.isoWeek).length;
+      o.isoWeek = patch.isoWeek;
+    }
+    if (patch.title !== undefined) o.title = patch.title;
+    if (patch.completed !== undefined) o.completed = patch.completed;
+    // `null` es "sacarle el channel", ausente es "no tocar".
+    if (patch.categoryId !== undefined) o.categoryId = patch.categoryId;
   },
 
   deleteObjective: async (id: number): Promise<void> => {
     const i = objectives.findIndex((x) => x.id === id);
     if (i >= 0) objectives.splice(i, 1);
+    // Espeja el `ON DELETE SET NULL` de la migración 1: las tareas sobreviven al
+    // objetivo, desligadas. Sin esto quedaban apuntando a un id que ya no existe
+    // y en el browser la card seguía mostrando la marca de objetivo (§4.29) de
+    // algo borrado — un dato fantasma que Rust no tiene.
+    for (const t of tasks) {
+      if (t.objectiveId === id) t.objectiveId = null;
+    }
   },
 
   createCategory: async (

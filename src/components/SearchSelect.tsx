@@ -16,6 +16,17 @@ export interface SearchOption {
 interface SearchSelectProps {
   options: SearchOption[];
   value: string | null;
+  /**
+   * Modo multi-selección: los `value` marcados con tilde, en vez de solo el de
+   * `value`. Quien lo use sigue recibiendo `onSelect` por cada click y decide si
+   * prende o apaga — el dropdown no guarda estado. **Y el popover no se cierra
+   * solo**: elegir un segundo filtro sin reabrirlo es todo el punto.
+   *
+   * Se agregó en vez de escribir un dropdown aparte para los filtros de la
+   * review: duplicarlo habría duplicado también la búsqueda, el teclado y el
+   * foco dentro del portal, que es donde están las trampas.
+   */
+  selected?: Set<string>;
   onSelect: (value: string | null) => void;
   placeholder?: string;
   /** Etiqueta de la opción "sin valor". Si se omite no se ofrece limpiar. */
@@ -31,6 +42,7 @@ interface SearchSelectProps {
 export function SearchSelect({
   options,
   value,
+  selected,
   onSelect,
   placeholder = "Buscar…",
   clearLabel,
@@ -43,6 +55,8 @@ export function SearchSelect({
   // el input está `visibility: hidden` mientras se mide la posición y un
   // `focus()` ahí no hace nada. Ver el comentario en `Popover.tsx`.
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const marcado = (v: string) => (selected ? selected.has(v) : value === v);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -111,9 +125,9 @@ export function SearchSelect({
             <button
               key={o.value}
               role="option"
-              aria-selected={value === o.value}
+              aria-selected={marcado(o.value)}
               className={`ss__opt${idx === cursor ? " is-cursor" : ""}${
-                value === o.value ? " is-selected" : ""
+                marcado(o.value) ? " is-selected" : ""
               }`}
               onMouseEnter={() => setCursor(idx)}
               onClick={() => onSelect(o.value)}
@@ -123,7 +137,7 @@ export function SearchSelect({
               )}
               <span className="ss__label">{o.label}</span>
               {o.hint && <span className="ss__hint">{o.hint}</span>}
-              {value === o.value && <Check size={13} className="ss__tick" />}
+              {marcado(o.value) && <Check size={13} className="ss__tick" />}
             </button>
           );
         })}

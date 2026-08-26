@@ -70,6 +70,91 @@ describe("WeeklyReviewView", () => {
     ).toBeInTheDocument();
   });
 
+  it("un objetivo se tildea desde la review", async () => {
+    // Es donde uno se acuerda de que cumplió algo: antes la lista era texto plano
+    // y había que ir a otra vista a marcarla.
+    const o = await api.createObjective(isoWeekId(new Date()), "revisar el rollup");
+    mount();
+
+    // Dentro de su propia fila: el mock acumula objetivos entre tests del
+    // archivo, así que el label solo no alcanza para distinguirlo.
+    const fila = (await screen.findByText("revisar el rollup")).closest("li")!;
+    await userEvent.click(within(fila).getByLabelText("Completar objetivo"));
+
+    await waitFor(async () => {
+      const [leido] = (await api.listObjectives(isoWeekId(new Date()))).filter((x) => x.id === o.id);
+      expect(leido.completed).toBe(true);
+    });
+  });
+
+  it("hacer click en un objetivo filtra lo que se cerró", async () => {
+    const semana = isoWeekId(new Date());
+    const o = await api.createObjective(semana, "el que filtra");
+    const suya = await worked("tarea del objetivo", 600);
+    await api.updateTask(suya.id, { objectiveId: o.id });
+    await api.setTaskStatus(suya.id, "DONE");
+    const ajena = await worked("tarea sin objetivo", 600);
+    await api.setTaskStatus(ajena.id, "DONE");
+    mount();
+    await screen.findByText("tarea sin objetivo");
+
+    await userEvent.click(screen.getByText("el que filtra"));
+
+    await waitFor(() => expect(screen.queryByText("tarea sin objetivo")).toBeNull());
+    expect(screen.getByText("tarea del objetivo")).toBeInTheDocument();
+
+    // Y el mismo click lo apaga.
+    await userEvent.click(screen.getByText("el que filtra"));
+    expect(await screen.findByText("tarea sin objetivo")).toBeInTheDocument();
+  });
+
+  it("el dropdown de channel filtra junto con el de objetivo, no en vez de", async () => {
+    const semana = isoWeekId(new Date());
+    const cats = await api.listCategories();
+    const o = await api.createObjective(semana, "objetivo compartido");
+    const calza = await worked("cumple las dos", 600);
+    await api.updateTask(calza.id, { objectiveId: o.id, categoryId: cats[0].id });
+    await api.setTaskStatus(calza.id, "DONE");
+    const soloObjetivo = await worked("solo el objetivo", 600);
+    await api.updateTask(soloObjetivo.id, { objectiveId: o.id, categoryId: cats[1].id });
+    await api.setTaskStatus(soloObjetivo.id, "DONE");
+    mount();
+    await screen.findByText("cumple las dos");
+
+    await userEvent.click(screen.getByText("objetivo compartido"));
+    await userEvent.click(screen.getByLabelText("Filtrar por channel"));
+    // Por rol: el nombre del channel también está en el chip de las cards.
+    const lista = await screen.findByRole("listbox");
+    await userEvent.click(within(lista).getByRole("option", { name: cats[0].name }));
+
+    await waitFor(() => expect(screen.queryByText("solo el objetivo")).toBeNull());
+    expect(screen.getByText("cumple las dos")).toBeInTheDocument();
+  });
+
+  it("separa el tiempo de objetivos del de lo demás", async () => {
+    // Es la pregunta que trae a la caja de objetivos: qué proporción del rato se
+    // fue en lo que uno se había propuesto.
+    const o = await api.createObjective(isoWeekId(new Date()), "el objetivo");
+    const ligada = await api.createTask({
+      title: "ligada",
+      scheduledDate: today(),
+      objectiveId: o.id,
+    });
+    await api.setActualSeconds(ligada.id, 3600);
+    // Contra el rollup y no contra números fijos: el mock arranca sembrado y los
+    // tests de más arriba dejaron sus propias horas de objetivo.
+    const r = await api.weeklyRollup(weekDates(new Date())[0]);
+
+    mount();
+
+    const split = await screen.findByText(/en objetivos ·/);
+    expect(split).toHaveTextContent(hours(r.objectiveSeconds));
+    // Y lo demás es el resto del total, no cero.
+    expect(split).toHaveTextContent(hours(r.totalSeconds - r.objectiveSeconds));
+    expect(r.objectiveSeconds).toBeGreaterThan(0);
+    expect(r.totalSeconds).toBeGreaterThan(r.objectiveSeconds);
+  });
+
   it("destildar desde el modal no lo hace desaparecer", async () => {
     // La vista solo lista lo cerrado: si el modal saliera de esa lista, se
     // cerraría solo a media edición. Mismo bicho que en el ritual de M3.4.

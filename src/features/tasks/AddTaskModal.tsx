@@ -6,6 +6,7 @@ import { api } from "../../lib/ipc";
 import type { Category, Objective } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
+import { channelOptions } from "./channelOptions";
 import { Popover } from "../../components/Popover";
 import { es } from "date-fns/locale";
 import { dateLabel, isToday, isoWeekId, parseISODate, toISODate, todayISO } from "../../lib/date";
@@ -63,21 +64,7 @@ export function AddTaskModal() {
   const selectedObj = objectiveId != null ? objectives.find((o) => o.id === objectiveId) : null;
 
   /** Opciones de canal: contexto (nivel 1) seguido de sus canales. */
-  const channelOptions = useMemo<SearchOption[]>(() => {
-    const out: SearchOption[] = [];
-    for (const ctx of categories.filter((c) => c.parentId === null)) {
-      out.push({ value: String(ctx.id), label: ctx.name, color: ctx.color });
-      for (const ch of categories.filter((c) => c.parentId === ctx.id)) {
-        out.push({
-          value: String(ch.id),
-          label: `#${ch.name}`,
-          hint: ctx.name,
-          color: ch.color,
-        });
-      }
-    }
-    return out;
-  }, [categories]);
+  const options = useMemo(() => channelOptions(categories), [categories]);
 
   const timeOptions = useMemo<SearchOption[]>(
     () =>
@@ -181,7 +168,7 @@ export function AddTaskModal() {
             {picker === "channel" && (
               <Popover anchorRef={chanRef} onClose={() => setPicker(null)}>
                 <SearchSelect
-                  options={channelOptions}
+                  options={options}
                   value={categoryId != null ? String(categoryId) : null}
                   placeholder="Buscar canal…"
                   clearLabel="Sin canal"

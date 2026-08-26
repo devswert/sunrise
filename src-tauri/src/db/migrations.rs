@@ -284,6 +284,21 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         UPDATE settings SET value = 'SUNRISE' WHERE key = 'bell_sound';
         "#,
     ),
+    (
+        13,
+        r#"
+        -- Los objetivos estrenan channel (Mej.15). No es un channel especial de
+        -- objetivos: es la **misma** tabla `categories` que usan las tareas, así
+        -- que un objetivo y las tareas que cuelgan de él pueden compartir color y
+        -- contexto sin duplicar nada.
+        --
+        -- Nace NULL para todos los objetivos existentes, que es "sin channel":
+        -- adivinarlo desde las tareas asociadas sería inventar un dato que nadie
+        -- eligió.
+        ALTER TABLE objectives ADD COLUMN category_id INTEGER
+            REFERENCES categories(id) ON DELETE SET NULL;
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.

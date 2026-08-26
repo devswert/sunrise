@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BarChart3,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Circle,
+  Hash,
   PieChart,
   Target,
   Trophy,
+  X,
 } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, Objective, Task, WeeklyRollup } from "../../lib/types";
@@ -20,6 +22,16 @@ import {
   weekDates,
 } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
+import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
+import { Popover } from "../../components/Popover";
+import { channelOptions } from "../tasks/channelOptions";
+import {
+  hayFiltro,
+  matchesFilter,
+  SIN_FILTRO,
+  toggleId,
+  type ReviewFilter,
+} from "./reviewFilter";
 import { TaskCardStatic } from "../week/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
 import { Donut } from "../../components/Donut";
@@ -34,6 +46,58 @@ import {
 import "./review.css";
 
 /** Una cifra de la cabecera: punto de color, número y su etiqueta, en una línea. */
+/**
+ * Un chip que abre un dropdown **multi-selección** y no se cierra al elegir:
+ * poner dos objetivos o dos channels sin reabrirlo es todo el punto del filtro.
+ * El contador va en el chip para que se note que hay filtro puesto aunque el
+ * popover esté cerrado.
+ */
+function FiltroSelect({
+  label,
+  icon,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  icon: ReactNode;
+  options: SearchOption[];
+  selected: Set<number>;
+  onToggle: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const marcados = useMemo(() => new Set([...selected].map(String)), [selected]);
+  return (
+    <div className="chip-wrap" ref={ref}>
+      <button
+        className={`review__filtro${selected.size > 0 ? " is-set" : ""}`}
+        aria-label={`Filtrar por ${label.toLowerCase()}`}
+        aria-pressed={selected.size > 0}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {icon}
+        {label}
+        {selected.size > 0 && <span className="review__filtro-n">{selected.size}</span>}
+      </button>
+      {open && (
+        <Popover anchorRef={ref} onClose={() => setOpen(false)}>
+          <SearchSelect
+            options={options}
+            value={null}
+            selected={marcados}
+            placeholder={`Buscar ${label.toLowerCase()}…`}
+            emptyLabel={`No hay ${label.toLowerCase()} esta semana`}
+            onSelect={(v) => {
+              if (v) onToggle(Number(v));
+            }}
+          />
+        </Popover>
+      )}
+    </div>
+  );
+}
+
 function Chip({
   color,
   value,
@@ -104,6 +168,34 @@ export function WeeklyReviewView() {
     bumpData();
   };
 
+  const toggleObjective = async (o: Objective) => {
+    await api.updateObjective(o.id, { completed: !o.completed });
+    bumpData();
+  };
+
+  /**
+   * El filtro, **uno solo para los dos controles**: la lista de objetivos
+   * clickeable y los dos dropdowns escriben acá y se leen entre sí. Dos
+   * mecanismos separados es cómo terminan mostrando cosas distintas.
+   */
+  const [filter, setFilter] = useState<ReviewFilter>(SIN_FILTRO);
+  const filtroActivo = hayFiltro(filter);
+  // Cambiar de semana limpia el filtro: los ids de objetivo son de la semana que
+  // se estaba mirando y en otra no seleccionan nada, así que quedaría una vista
+  // vacía sin explicación.
+  useEffect(() => {
+    setFilter(SIN_FILTRO);
+  }, [isoWeek]);
+
+  const toggleObjectiveFilter = (id: number) =>
+    setFilter((f) => ({ ...f, objectiveIds: toggleId(f.objectiveIds, id) }));
+
+  /** Cuántas cerradas sobreviven al filtro, para que un día vacío se explique. */
+  const visiblesFiltradas = useMemo(
+    () => (rollup?.completedTasks ?? []).filter((t) => matchesFilter(t, filter, catMap)).length,
+    [rollup, filter, catMap],
+  );
+
   const selectedTask =
     rollup?.completedTasks.find((t) => t.id === abierta?.id) ?? abierta;
   const esSemanaActual = dates.includes(todayISO());
@@ -140,6 +232,13 @@ export function WeeklyReviewView() {
                 color="var(--lavender-ink)"
                 value={`${cumplidos}/${objectives.length}`}
                 label="objetivos"
+              />
+            )}
+            {rollup.objectiveSeconds > 0 && (
+              <Chip
+                color="var(--apricot-ink)"
+                value={hours(rollup.objectiveSeconds)}
+                label="en objetivos"
               />
             )}
           </div>
@@ -259,6 +358,26 @@ export function WeeklyReviewView() {
               <h2 className="review__h2">
                 <Target size={14} aria-hidden /> Objetivos
               </h2>
+              {/* El corte del tiempo. Cuenta el trabajo de tareas colgadas de
+                  **algún** objetivo, no solo de los de esta semana: para esta
+                  pregunta lo que importa es si el rato era parte de un objetivo,
+                  no de cuál. Por eso puede haber horas acá con la lista vacía. */}
+              {rollup.totalSeconds > 0 && (
+                <div className="review__split">
+                  <div className="review__split-bar">
+                    <div
+                      className="review__split-obj"
+                      style={{
+                        width: `${Math.round((rollup.objectiveSeconds / rollup.totalSeconds) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="review__split-texto">
+                    {hours(rollup.objectiveSeconds)} en objetivos ·{" "}
+                    {hours(rollup.totalSeconds - rollup.objectiveSeconds)} en lo demás
+                  </p>
+                </div>
+              )}
               {objectives.length === 0 ? (
                 <div className="review__sin-objs">
                   <Target size={22} aria-hidden />
@@ -266,16 +385,46 @@ export function WeeklyReviewView() {
                 </div>
               ) : (
                 <ul className="review__objs">
-                  {objectives.map((o) => (
-                    <li key={o.id} className={o.completed ? "is-done" : ""}>
-                      {o.completed ? (
-                        <CheckCircle2 size={13} aria-hidden />
-                      ) : (
-                        <Circle size={13} aria-hidden />
-                      )}
-                      <span>{o.title}</span>
-                    </li>
-                  ))}
+                  {objectives.map((o) => {
+                    const trabajado =
+                      rollup.byObjective.find((x) => x.objectiveId === o.id)?.seconds ?? 0;
+                    const activo = filter.objectiveIds.has(o.id);
+                    return (
+                      <li
+                        key={o.id}
+                        className={`${o.completed ? "is-done" : ""}${activo ? " is-filtrando" : ""}`}
+                      >
+                        {/* Tildar se hace **acá**, que es donde uno se acuerda de
+                            que cumplió algo. Corta el click para no filtrar de
+                            paso: son dos gestos distintos sobre la misma fila. */}
+                        <button
+                          className="review__obj-check"
+                          aria-label={o.completed ? "Reabrir objetivo" : "Completar objetivo"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void toggleObjective(o);
+                          }}
+                        >
+                          {o.completed ? (
+                            <CheckCircle2 size={13} aria-hidden />
+                          ) : (
+                            <Circle size={13} aria-hidden />
+                          )}
+                        </button>
+                        {/* El resto de la fila filtra lo cerrado de más abajo. */}
+                        <button
+                          className="review__obj-title"
+                          aria-pressed={activo}
+                          onClick={() => toggleObjectiveFilter(o.id)}
+                        >
+                          {o.title}
+                        </button>
+                        {trabajado > 0 && (
+                          <span className="review__obj-h">{hours(trabajado)}</span>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>
@@ -283,10 +432,44 @@ export function WeeklyReviewView() {
 
           {/* Lo cerrado, día por día */}
           <section className="review__panel">
-            <h2 className="review__h2">Lo que se cerró</h2>
+            <header className="review__cerrado-head">
+              <h2 className="review__h2">Lo que se cerró</h2>
+              {/* Los filtros van **acá y no en la cabecera de la vista**: es lo
+                  único que filtran. Los gráficos de arriba siguen mostrando la
+                  semana entera a propósito — son la respuesta a "en qué se me fue
+                  el tiempo", que no cambia porque uno esté mirando un objetivo. */}
+              <FiltroSelect
+                label="Objetivo"
+                icon={<Target size={13} aria-hidden />}
+                options={objectives.map((o) => ({ value: String(o.id), label: o.title }))}
+                selected={filter.objectiveIds}
+                onToggle={toggleObjectiveFilter}
+              />
+              <FiltroSelect
+                label="Channel"
+                icon={<Hash size={13} aria-hidden />}
+                options={channelOptions(categories)}
+                selected={filter.categoryIds}
+                onToggle={(id) =>
+                  setFilter((f) => ({ ...f, categoryIds: toggleId(f.categoryIds, id) }))
+                }
+              />
+              {filtroActivo && (
+                <button className="btn-ghost" onClick={() => setFilter(SIN_FILTRO)}>
+                  <X size={13} aria-hidden /> Quitar filtros
+                </button>
+              )}
+            </header>
+            {filtroActivo && (
+              <p className="review__filtro-aviso">
+                Filtrado: {visiblesFiltradas} de {rollup.completedTasks.length} cerradas.
+              </p>
+            )}
             <div className="review__dias">
               {rollup.days.map((d) => {
-                const list: Task[] = closed.get(d.date) ?? [];
+                const list: Task[] = (closed.get(d.date) ?? []).filter((t: Task) =>
+                  matchesFilter(t, filter, catMap),
+                );
                 return (
                   <div key={d.date} className="review__dia">
                     <header className="review__dia-head">

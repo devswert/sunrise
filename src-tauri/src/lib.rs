@@ -200,6 +200,7 @@ pub fn run() {
             commands::delete_category,
             // objectives
             commands::list_objectives,
+            commands::list_objectives_range,
             commands::create_objective,
             commands::update_objective,
             commands::delete_objective,

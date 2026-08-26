@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronDown, Clock, Lock, PenLine, PieChart, Timer } from "lucide-react";
 import { api } from "../../lib/ipc";
-import type { Category, LogDay, Task } from "../../lib/types";
-import { dateLabel, isToday, weekdayLabel } from "../../lib/date";
+import type { Category, LogDay, Objective, Task } from "../../lib/types";
+import { dateLabel, isToday, isoWeekId, parseISODate, shiftWeeks, weekdayLabel } from "../../lib/date";
 import { formatMinutes } from "../../lib/capacity";
 import { groupBy } from "../../lib/segmentos";
 import { useAppStore } from "../../lib/store";
@@ -44,6 +44,7 @@ function reloj(seconds: number): string {
 export function DailyHighlightsView() {
   const [days, setDias] = useState<LogDay[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [objectives, setObjectives] = useState<Objective[]>([]);
   const [abierta, setAbierta] = useState<Task | null>(null);
   /** Qué días tienen el donut desplegado. Plegado por defecto. */
   const [analytics, setAnalytics] = useState<Set<string>>(new Set());
@@ -54,9 +55,21 @@ export function DailyHighlightsView() {
   const { runTotal } = useTimer();
 
   const load = useCallback(async () => {
-    const [b, cats] = await Promise.all([api.dailyLog(today, VENTANA), api.listCategories()]);
+    // Los objetivos van por **rango** y no por semana: la bitácora abarca 30
+    // días, o sea cinco semanas, y el detalle de una tarea de hace tres semanas
+    // tiene que poder mostrar —y cambiar— el objetivo del que cuelga. Con la
+    // lista de una sola semana el picker mentía; con `objectives={[]}`, que es
+    // como estaba, no ofrecía ninguno.
+    const anchor = parseISODate(today);
+    const desde = isoWeekId(shiftWeeks(anchor, -Math.ceil(VENTANA / 7)));
+    const [b, cats, objs] = await Promise.all([
+      api.dailyLog(today, VENTANA),
+      api.listCategories(),
+      api.listObjectivesRange(desde, isoWeekId(anchor)),
+    ]);
     setDias(b);
     setCategories(cats);
+    setObjectives(objs);
   }, [today]);
 
   useEffect(() => {
@@ -233,7 +246,7 @@ export function DailyHighlightsView() {
         <TaskModal
           task={abierta}
           categories={categories}
-          objectives={[]}
+          objectives={objectives}
           onClose={() => setAbierta(null)}
           onChanged={load}
         />

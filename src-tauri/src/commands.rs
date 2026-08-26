@@ -8,7 +8,7 @@ use crate::models::{
     ActiveTimer, AppUpdate, BackupFile, CalendarFeed, Category, LogDay, Objective,
     Profile, Rescue, RestoreResult, Task, TaskEvent, TimeEntry, DayWork, WeeklyRollup,
 };
-use crate::repo::{self, NewTask, TaskPatch};
+use crate::repo::{self, NewTask, ObjectivePatch, TaskPatch};
 
 fn e<E: std::fmt::Display>(err: E) -> String {
     err.to_string()
@@ -411,24 +411,34 @@ pub fn list_objectives(db: State<'_, Db>, iso_week: String) -> Result<Vec<Object
 }
 
 #[tauri::command]
+pub fn list_objectives_range(
+    db: State<'_, Db>,
+    from_week: String,
+    to_week: String,
+) -> Result<Vec<Objective>, String> {
+    let conn = db.0.lock().map_err(e)?;
+    repo::list_objectives_range(&conn, &from_week, &to_week).map_err(e)
+}
+
+#[tauri::command]
 pub fn create_objective(
     db: State<'_, Db>,
     iso_week: String,
     title: String,
+    category_id: Option<i64>,
 ) -> Result<Objective, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::create_objective(&conn, &iso_week, &title).map_err(e)
+    repo::create_objective(&conn, &iso_week, &title, category_id).map_err(e)
 }
 
 #[tauri::command]
 pub fn update_objective(
     db: State<'_, Db>,
     id: i64,
-    title: Option<String>,
-    completed: Option<bool>,
+    patch: ObjectivePatch,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::update_objective(&conn, id, title.as_deref(), completed).map_err(e)
+    repo::update_objective(&conn, id, patch).map_err(e)
 }
 
 #[tauri::command]

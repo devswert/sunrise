@@ -328,6 +328,45 @@ el modal "Lo nuevo" dejó de abrirse solo.
 **Un fallo no es rojo, y "estás al día" no es lo mismo que "no pude preguntar".** El
 segundo disfrazado del primero deja a alguien tranquilo en una versión vieja.
 
+**La tarea que crea el reparto de horas se llama como el objetivo** (Mej.15), sin
+el día pegado atrás. Se evaluó "Objetivo — Lun", que desambigua si uno mira las
+siete juntas en el backlog; se descartó porque el día ya lo dice la columna del
+tablero, y el título es lo único que se lee en una card. Duplicar ahí un dato que
+está al lado es ruido en el peor lugar posible.
+
+**Bajar los minutos de un día nunca borra la tarea generada.** Ajusta el estimado,
+y llevarla a "sin tiempo" la **desliga** del objetivo dejándola viva en su día. Es
+el mismo principio del carry-over de más arriba llevado al otro extremo: la app no
+decide por el usuario, y acá lo que estaría decidiendo es tirar tiempo trackeado
+que no está en ningún otro lado. El costo asumido y consciente es el opuesto —un
+reparto deshecho deja una tarea suelta en el tablero—, y se prefiere porque
+borrarla de más no se puede deshacer y borrarla de menos sí. Se descartó pedir
+confirmación: un diálogo por cada ajuste de minutos convierte el gesto rápido que
+justifica el modal en un trámite.
+
+**El filtro de la review es OR dentro de una dimensión y AND entre dimensiones.**
+Dos objetivos elegidos muestran los dos; un objetivo más un channel muestra lo que
+cumple los dos. La alternativa —AND en todo— vacía la vista al segundo click, que
+es exactamente lo contrario de lo que uno espera al seguir eligiendo. Y **filtra
+las cards de lo cerrado, no los gráficos**: esos responden "en qué se me fue el
+tiempo", que no cambia porque uno esté mirando un objetivo.
+
+**El objetivo que quedó en una semana pasada se trae a mano, no solo.** Es la
+misma línea del carry-over: la app no arrastra por su cuenta, pero tiene que dar
+la manija, y el botón vive donde uno se topa con el problema (mirando la semana
+pasada), igual que "traer a hoy" del ritual diario. **Sus tareas se quedan donde
+están** — reagendar lo que ya pasó es el error del carry-over de vuelta.
+
+**Una semana sin objetivos corta la racha del histórico en vez de contar como
+cumplida.** Con cero objetivos "todos cumplidos" es verdadero por vacuidad, y la
+cifra terminaría premiando justo a quien no se propuso nada.
+
+**El corte "objetivos vs lo demás" de la review cuenta cualquier objetivo, no solo
+los de esa semana.** La pregunta que trae a esa caja es si el rato era parte de algo
+propuesto, no de cuál; y una tarea de esta semana puede colgar de un objetivo de la
+anterior. La consecuencia se aceptó explícitamente: puede haber horas en el corte
+con la lista de la semana vacía.
+
 ---
 
 ## 7. UI: lo que se midió

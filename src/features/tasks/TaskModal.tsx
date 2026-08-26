@@ -18,7 +18,8 @@ import { abrirExterno } from "../calendar/MeetingLink";
 import { CalendarEventCard } from "../calendar/EventoDelCalendario";
 import { shortDuration, timeByDay } from "./timeByDay";
 import { formatMinutes } from "../../lib/capacity";
-import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
+import { SearchSelect } from "../../components/SearchSelect";
+import { channelOptions } from "./channelOptions";
 import { TimePicker } from "../../components/TimePicker";
 import { Popover } from "../../components/Popover";
 import { es } from "date-fns/locale";
@@ -237,16 +238,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const objective = objectiveId != null ? objectives.find((o) => o.id === objectiveId) : null;
   const links = extractLinks(notes);
 
-  const channelOptions = useMemo<SearchOption[]>(() => {
-    const out: SearchOption[] = [];
-    for (const ctx of categories.filter((c) => c.parentId === null)) {
-      out.push({ value: String(ctx.id), label: ctx.name, color: ctx.color });
-      for (const ch of categories.filter((c) => c.parentId === ctx.id)) {
-        out.push({ value: String(ch.id), label: `#${ch.name}`, hint: ctx.name, color: ch.color });
-      }
-    }
-    return out;
-  }, [categories]);
+  const options = useMemo(() => channelOptions(categories), [categories]);
 
   const toggle = (p: Picker) => setPicker((cur) => (cur === p ? null : p));
 
@@ -285,7 +277,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
             {picker === "channel" && (
               <Popover anchorRef={chanRef} onClose={() => setPicker(null)}>
                 <SearchSelect
-                  options={channelOptions}
+                  options={options}
                   value={categoryId != null ? String(categoryId) : null}
                   placeholder="Buscar canal…"
                   clearLabel="Sin canal"

@@ -36,6 +36,9 @@ pub struct Objective {
     pub title: String,
     pub position: i64,
     pub completed: bool,
+    /// El mismo channel de las tareas (`categories`), no uno propio. `None` es
+    /// "sin channel".
+    pub category_id: Option<i64>,
 }
 
 impl Objective {
@@ -46,6 +49,7 @@ impl Objective {
             title: r.get("title")?,
             position: r.get("position")?,
             completed: r.get::<_, i64>("completed")? != 0,
+            category_id: r.get("category_id")?,
         })
     }
 }
@@ -124,6 +128,19 @@ pub struct RollupDay {
     pub unestimated: i64,
 }
 
+/// Cuánto tiempo se fue en un objetivo durante la semana.
+///
+/// `objective_id` es el de la tarea, que **puede ser de otra semana**: una tarea
+/// de esta semana puede colgar de un objetivo de la anterior. La vista resuelve
+/// el título contra los objetivos que conoce y agrupa lo demás como "de otras
+/// semanas".
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectiveWork {
+    pub objective_id: i64,
+    pub seconds: i64,
+}
+
 /// El rollup de una semana, listo para graficar.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -138,6 +155,13 @@ pub struct WeeklyRollup {
     pub total_seconds: i64,
     pub planned_minutes: i64,
     pub unestimated: i64,
+    /// Del total, lo que se trabajó en tareas colgadas de **algún** objetivo. El
+    /// resto (`total_seconds - objective_seconds`) es lo demás. Se cuenta
+    /// cualquier objetivo, no solo los de esta semana: para el titular la
+    /// pregunta es "¿esto era parte de un objetivo?", no de cuál.
+    pub objective_seconds: i64,
+    /// El desglose de `objective_seconds`, un renglón por objetivo.
+    pub by_objective: Vec<ObjectiveWork>,
 }
 
 /// Un tramo del timeline de un día: en qué se trabajó, cuánto y desde cuándo.

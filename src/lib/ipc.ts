@@ -8,6 +8,7 @@ import type {
   CalendarFeed,
   Category,
   Objective,
+  ObjectivePatch,
   Task,
   TaskEvent,
   TimeEntry,
@@ -275,15 +276,21 @@ export const api = {
   listObjectives: (isoWeek: string) =>
     isTauri() ? invoke<Objective[]>("list_objectives", { isoWeek }) : mock.listObjectives(isoWeek),
 
-  createObjective: (isoWeek: string, title: string) =>
+  /** Inclusivo por los dos lados. Las semanas son `YYYY-Www`. */
+  listObjectivesRange: (fromWeek: string, toWeek: string) =>
     isTauri()
-      ? invoke<Objective>("create_objective", { isoWeek, title })
-      : mock.createObjective(isoWeek, title),
+      ? invoke<Objective[]>("list_objectives_range", { fromWeek, toWeek })
+      : mock.listObjectivesRange(fromWeek, toWeek),
 
-  updateObjective: (id: number, title?: string, completed?: boolean) =>
+  createObjective: (isoWeek: string, title: string, categoryId?: number | null) =>
     isTauri()
-      ? invoke<void>("update_objective", { id, title, completed })
-      : mock.updateObjective(id, title, completed),
+      ? invoke<Objective>("create_objective", { isoWeek, title, categoryId: categoryId ?? null })
+      : mock.createObjective(isoWeek, title, categoryId ?? null),
+
+  updateObjective: (id: number, patch: ObjectivePatch) =>
+    isTauri()
+      ? invoke<void>("update_objective", { id, patch })
+      : mock.updateObjective(id, patch),
 
   deleteObjective: (id: number) =>
     isTauri() ? invoke<void>("delete_objective", { id }) : mock.deleteObjective(id),

@@ -1,0 +1,231 @@
+/* Detalle del objetivo (Mej.15). Comparte el `.modal-overlay` con los otros dos
+   modales de la app y nada más: este no es un diálogo de confirmación sino una
+   vista, como `TaskModal`. */
+
+.omodal {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: min(680px, calc(100vw - var(--space-6)));
+  max-height: calc(100vh - var(--space-6));
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.omodal:focus {
+  outline: none;
+}
+
+.omodal__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.omodal__title {
+  flex: 1;
+  min-width: 0;
+  /* Un `input` **no hereda** la tipografía: sin esto el título salía en la fuente
+     por defecto del webview mientras el resto de la app usa Sora, y era lo
+     primero que se veía al abrir el modal. Mismo tratamiento que
+     `.tmodal__title`. */
+  font-family: var(--font-title);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+}
+
+.omodal__title:hover {
+  border-color: var(--border);
+}
+
+.omodal__title:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.omodal__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  position: relative;
+}
+
+.omodal__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.omodal__chip-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.omodal__chip-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.omodal__chip-value.is-set {
+  color: var(--text);
+}
+
+.omodal__totales {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.omodal__step-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+
+/* Las siete casillas de ancho igual: son una semana, y una que se ensanche con
+   su contenido rompe la lectura de "cuánto le puse a cada día". */
+.omodal__dias {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-2);
+}
+
+.omodal__dia-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+/* Altura fija: la línea de "2 tareas" aparece y desaparece, y sin el piso las
+   siete casillas se desalinean cuando una la tiene (SPECS §7). */
+.omodal__dia {
+  width: 100%;
+  min-height: 62px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--space-2) 4px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.omodal__dia:hover {
+  border-color: var(--accent);
+}
+
+/* El pastel al 35% y no entero, que es la convención de los chips de channel
+   (`.cat-tag`): el color a full con su propio `-ink` encima queda sin contraste,
+   y hay un test de tokens que lo vigila. */
+.omodal__dia.is-set {
+  background: color-mix(in srgb, var(--apricot) 35%, transparent);
+  border-color: color-mix(in srgb, var(--apricot-ink) 40%, transparent);
+}
+
+.omodal__dia-nombre {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.omodal__dia.is-set .omodal__dia-nombre {
+  color: var(--apricot-ink);
+}
+
+.omodal__dia-min {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.omodal__dia-count {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.omodal__pie {
+  margin: var(--space-2) 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.omodal__tareas {
+  display: flex;
+  flex-direction: column;
+}
+
+.omodal__vacio {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.omodal__tarea {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.omodal__tarea:last-child {
+  border-bottom: none;
+}
+
+.omodal__tarea-check {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--mint-ink);
+}
+
+.omodal__tarea.is-done .omodal__tarea-titulo {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.omodal__tarea-titulo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.omodal__tarea-dia,
+.omodal__tarea-tiempo {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}

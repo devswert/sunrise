@@ -428,6 +428,14 @@ tareas que traían más información. El `padding-top` del contenedor es la mita
 alto del badge, que es lo que lo deja a caballo del borde; si cambia uno, cambia
 el otro.
 
+**La card marca si la tarea cuelga de un objetivo, con el icono y sin el nombre**
+(`tc__obj`, §4.29). El título del objetivo compite con el de la tarea en una card
+de 200px, y de cuál se trata es una pregunta del detalle, no de la lista. Por lo
+mismo **no lleva relleno cuando no hay objetivo** y no depende de
+`hidePlaceholders`: solo se dibuja cuando hay algo que decir, así que nunca es una
+marca de posición. Tampoco es un botón — el objetivo se cambia desde el detalle, y
+un target clickeable ahí prometería algo que no hace.
+
 **Las cards del panel esconden los rellenos de los campos vacíos**
 (`hidePlaceholders` en `TaskCardContent`): ni el `--:--` de tiempos ni el chip `#`
 de canal. En el backlog la mayoría de las tareas no tiene ninguno de los dos

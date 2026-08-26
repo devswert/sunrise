@@ -17,6 +17,21 @@ export interface Objective {
   title: string;
   position: number;
   completed: boolean;
+  /** El mismo channel de las tareas (`categories`), no uno propio. */
+  categoryId: number | null;
+}
+
+/**
+ * Patch de edición de un objetivo (espeja `repo::ObjectivePatch`), con la misma
+ * semántica de tres estados que `TaskPatch`: ausente = no tocar · `null` = poner
+ * a NULL · valor = escribir.
+ */
+export interface ObjectivePatch {
+  title?: string;
+  /** Mover el objetivo a otra semana ISO. Lo reposiciona al final de la destino. */
+  isoWeek?: string;
+  completed?: boolean;
+  categoryId?: number | null;
 }
 
 export interface Task {
@@ -170,6 +185,16 @@ export interface WeeklyRollup {
   totalSeconds: number;
   plannedMinutes: number;
   unestimated: number;
+  /** Del total, lo trabajado en tareas colgadas de **algún** objetivo. */
+  objectiveSeconds: number;
+  /** El desglose de `objectiveSeconds`, un renglón por objetivo. */
+  byObjective: ObjectiveWork[];
+}
+
+/** Espeja `models::ObjectiveWork`. El objetivo puede ser de otra semana. */
+export interface ObjectiveWork {
+  objectiveId: number;
+  seconds: number;
 }
 
 export interface CalendarFeed {

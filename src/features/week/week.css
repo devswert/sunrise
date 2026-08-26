@@ -1573,53 +1573,46 @@
   flex-direction: column;
   gap: var(--space-5);
   max-width: 860px;
+  /* Centrado: sin esto el `max-width` deja la vista pegada al borde izquierdo y
+     medio ancho de pantalla vacío a la derecha. */
+  margin-inline: auto;
+  width: 100%;
 }
-.planning__step-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--faint);
-  margin-bottom: var(--space-2);
+/* Título de sección. Reemplaza al micro-label numerado (`1 · OBJETIVOS DE LA
+   SEMANA`): a 11px en mayúsculas y `--faint` no se leía como encabezado sino como
+   una etiqueta de formulario, y los números prometían pasos de un asistente que
+   no existen — las secciones no se recorren en orden.
+
+   Mismas medidas que `.review__h2` (review.css) a propósito: son las dos vistas
+   semanales y sus encabezados tienen que verse iguales. */
+.planning__seccion {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-title);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
 }
-.plan-obj {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
-  padding: var(--space-3);
-  margin-bottom: var(--space-3);
+/* La navegación de semanas de Weekly planning. Misma forma que `.review__nav`
+   (review.css): son el mismo gesto en dos vistas hermanas. */
+.planning__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
-.plan-obj__head {
+.planning__acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.planning__nav {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
 }
-.plan-obj__title {
-  flex: 1;
-  font-family: var(--font-title);
-  font-weight: 600;
-  font-size: 15px;
-}
-.plan-obj.is-done .plan-obj__title {
-  text-decoration: line-through;
-  color: var(--muted);
-}
-.plan-obj__progress {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--surface-sunken);
-  overflow: hidden;
-  margin-bottom: var(--space-2);
-}
-.plan-obj__bar {
-  height: 100%;
-  background: var(--mint-ink);
-  transition: width 0.3s ease;
-}
-.plan-obj__tasks {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.planning__nav .steps__pill:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .plan-task {
   display: flex;
@@ -1632,10 +1625,7 @@
   color: var(--muted);
   text-decoration: line-through;
 }
-.plan-count {
-  font-size: 12px;
-  color: var(--muted);
-}
+
 
 /* --- Card: título + tiempo alineados --- */
 .tc__main {
@@ -1668,6 +1658,16 @@
 }
 .tc__icon:hover {
   color: var(--ink);
+}
+
+/* La banderita de "cuelga de un objetivo". No es un botón: desde la card no se
+   cambia el objetivo —eso vive en el detalle—, así que un target clickeable ahí
+   prometería algo que no hace. Usa el mismo `--faint` que el reloj para que se
+   lea como una marca y no compita con el chip de canal. */
+.tc__obj {
+  display: inline-flex;
+  align-items: center;
+  color: var(--apricot-ink);
 }
 
 .tc__tagwrap {
@@ -2410,3 +2410,212 @@ button.tc__tag.is-empty {
   line-height: 1.5;
   color: var(--muted);
 }
+
+/* La lista de objetivos: una fila de una línea cada uno, las tareas al desplegar.
+
+   Se probaron dos columnas de cards y no convencieron. Son tres o cuatro objetivos
+   por semana: las cards desperdiciaban ancho, obligaban a saltar de una a otra
+   para comparar avances, y traían el problema de las alturas desiguales. Apiladas
+   en una columna las barras quedan una debajo de la otra —que es exactamente cómo
+   se comparan— y todas las filas miden lo mismo por construcción. */
+.plan-lista {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+.plan-fila + .plan-fila {
+  border-top: 1px solid var(--border);
+}
+.plan-fila__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  min-height: 40px;
+}
+.plan-fila.is-done .plan-fila__title-btn {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.plan-fila__caret {
+  background: transparent;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--faint);
+  cursor: pointer;
+  flex: none;
+}
+.plan-fila__caret svg {
+  transition: transform 0.15s ease;
+}
+.plan-fila__caret[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.plan-fila__title-btn {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-fila__title-btn:hover {
+  text-decoration: underline;
+}
+.plan-fila__channel {
+  font-size: 12px;
+  color: var(--muted);
+  flex: none;
+}
+/* Ancho fijo: una barra que se estire con el contenido de su fila haría que dos
+   avances iguales se vean distintos, que es justo lo que la columna sirve para
+   comparar. */
+.plan-fila__progress {
+  width: 84px;
+  height: 5px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+.plan-fila__bar {
+  height: 100%;
+  background: var(--mint-ink);
+  transition: width 0.3s ease;
+}
+.plan-fila__count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+  min-width: 30px;
+  text-align: right;
+}
+.plan-fila__confirm {
+  padding: 0 var(--space-3) var(--space-2);
+}
+.plan-fila__cuerpo {
+  padding: 0 var(--space-3) var(--space-3) calc(var(--space-3) + 21px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-fila__vacio {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.plan-fila__acciones {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: 2px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* El histórico de objetivos (Mej.15).
+
+   Empezó como ocho barras a lo ancho de la vista y se veía vacío con razón: dos
+   datos por semana no llenan esa superficie. Ahora es una tira de cuadros chicos
+   **tintados por proporción cumplida**, del ancho de su contenido y no del
+   contenedor. A 26px la intensidad se lee de un vistazo; una barra de 44px con
+   3px de relleno no. La racha se lleva el titular, que es lo único que se mira de
+   reojo, y el detalle de cada semana vive en el tooltip y en el `aria-label`. */
+.plan-racha {
+  /* Del ancho de su contenido y no de la vista: estirada a 860px la caja se leía
+     como un panel a medio llenar, que es exactamente lo que se veía. */
+  align-self: flex-start;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  padding: var(--space-3);
+}
+.plan-racha__cifra {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--muted);
+}
+.plan-racha__cifra strong {
+  font-family: var(--font-title);
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--lavender-ink);
+  font-variant-numeric: tabular-nums;
+}
+.plan-racha__streak {
+  margin: 0;
+  font-size: 12px;
+  color: var(--lavender-ink);
+}
+.plan-racha__vacio {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 42ch;
+}
+/* Del ancho de su contenido: estirarlo al contenedor es lo que hacía ver la caja
+   a medio llenar. */
+/* Pegada a la cifra, sin `margin-left: auto`: empujarla al borde derecho abría un
+   hueco en el medio, que era la mitad de la sensación de vacío. */
+.plan-racha__tira {
+  display: flex;
+  gap: 5px;
+}
+.plan-racha__semana {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  /* El fondo lo pone el tinte inline; acá va el piso de la semana en cero. */
+  background: var(--surface-sunken);
+  cursor: pointer;
+  padding: 0;
+}
+.plan-racha__semana:hover {
+  border-color: var(--accent);
+}
+.plan-racha__semana.is-current {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* Una semana sin objetivos se ve **hueca**, no en cero: es un dato distinto de
+   "me propuse cosas y no las cumplí", y la racha lo trata distinto. */
+.plan-racha__semana.is-vacia {
+  background: transparent;
+  border-style: dashed;
+}
+.plan-racha__id {
+  font-size: 9px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.plan-racha__semana.is-current .plan-racha__id {
+  color: var(--text);
+  font-weight: 600;
+}
+

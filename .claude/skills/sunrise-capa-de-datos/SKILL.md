@@ -125,6 +125,17 @@ ahí se cuentan a propósito, porque son historial y filtrarlas borraría horas
 reales de semanas pasadas. Si copias el `WHERE` de otro listado a una consulta de
 la review, la vas a romper sin que ningún test de los otros listados se entere.
 
+**`ObjectivePatch` sigue la misma regla de tres estados que `TaskPatch`** y por el
+mismo motivo: sin ella no se puede sacarle el channel a un objetivo, y tildarlo le
+pisaría el título. Si agregas un campo nullable a un patch, va `Option<Option<T>>`
+**y con `#[serde(default, deserialize_with = "double_option")]`**. El derive pelado
+no alcanza: un `null` cae en `visit_none()` del `Option` de afuera y llega como
+`None`, igual que un campo ausente, así que los tres estados quedan en dos. Estuvo
+roto en `TaskPatch` desde el principio —"Sin canal" y "Sin objetivo" no borraban
+nada dentro de Tauri— con las dos suites en verde, porque **un test que construye
+el patch en Rust no cruza serde y `mockDb` recibe el objeto de JS**. El test que
+sirve deserializa el JSON: `el_patch_distingue_null_de_ausente_como_lo_manda_el_front`.
+
 **`TaskPatch` distingue tres cosas, no dos.** En Rust
 `Option<Option<i64>>`, en TS `number | null` opcional:
 ausente = no tocar · `null` = poner a NULL · valor = escribir. Si aplanas eso a
@@ -160,6 +171,11 @@ Dos niveles vía `parent_id`. `parent_id IS NULL` ⇒ **contexto** (carpeta del
 backlog). Con `parent_id` ⇒ **channel** (el `#tag` de las cards). Una tarea puede
 apuntar a cualquiera de los dos niveles, así que para agrupar por contexto se
 resuelve `parentId ?? id`.
+
+**Un objetivo también apunta a un channel** (`objectives.category_id`, migración
+13), y es la **misma** tabla: no hay channels especiales de objetivos. La tarea que
+crea el reparto de horas nace con el del objetivo, que es lo que evita que un
+reparto deje siete tareas sin clasificar. Detalle en `docs/specs/objetivos.md` §4.29.
 
 `color` guarda un **token de la paleta** (`lavender`, `sky`, `mint`…), no un hex:
 se usa como `var(--${color})`. Si agregas un color, tiene que existir en

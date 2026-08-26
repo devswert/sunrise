@@ -36,47 +36,6 @@ cualquier momento, idealmente cuando se esté trabajando cerca.
 Los marcadores: **`🔵` abierto**, **`⬛` retirada** (decidida fuera de alcance).
 Los cerrados no se listan — están en `git log`.
 
-### Mej.15 🔵 Los objetivos necesitan detalle, reparto de horas e histórico
-
-`WeeklyPlanningView` ancla en `new Date()` y no se mueve de ahí: **no hay forma de
-ver ni editar los objetivos de otra semana**. La weekly review (M3.5) los muestra
-de cualquier semana, pero solo de lectura, y el título ni siquiera se puede
-corregir.
-
-Qué falta, de menos a más:
-
-- **Navegación de semanas en `WeeklyPlanningView`**, igual que la de la review
-  (`shiftWeeks` + "Esta semana"). Es lo que desbloquea todo lo demás y sale casi
-  gratis: la vista ya calcula `isoWeek` desde su ancla.
-- **Tildar y editar desde la review**: ahí es donde uno se acuerda de que cumplió
-  algo. Hoy la lista es texto plano; `updateObjective` ya existe.
-- **Modal de detalle del objetivo**, que es la pieza gorda: el objetivo con su
-  channel, sus tareas asociadas con actual/planned, y **una fila de siete casillas
-  Lun→Dom**. Al hacer click en un día se elige cuántos minutos dedicarle (5, 10,
-  15, 20, 25, 30, 45…), y **eso crea una tarea en ese día** ligada al objetivo. O
-  sea: el reparto de horas es la forma de bajar un objetivo semanal a tareas
-  diarias, en un solo gesto y sin escribir el título siete veces.
-  - Ojo: `tasks.objective_id` ya existe, así que **no hace falta migración** para
-    la parte de ligar. Lo que hay que decidir es de dónde sale el título de la
-    tarea generada (¿el del objetivo? ¿el del objetivo + el día?) y qué pasa al
-    bajarle los minutos a un día que ya tenía tarea con tiempo trackeado —
-    borrarla no puede ser la respuesta por defecto, y el precedente está en
-    DECISIONES §6: borrar es barato de equivocarse y caro de deshacer.
-- **Atajo en el detalle de tarea para colgarla de un objetivo activo.** El campo
-  ya existe en `TaskPatch`, pero hoy solo se asigna desde Weekly planning; la
-  tarea se crea en el tablero y ahí es donde uno se acuerda de a qué objetivo
-  pertenece. Con `SearchSelect` (ya existe) sale barato.
-- **Histórico**: cuántas semanas seguidas se cumplió, o al menos las últimas N con
-  su avance. `objectives.iso_week` ya lo permite sin migración —
-  `list_objectives` filtra por semana exacta, así que haría falta un listado por
-  rango.
-
-Ojo con una decisión que no está tomada: **qué pasa con un objetivo no cumplido al
-terminar la semana**. Hoy simplemente queda ahí. Copiarlo a la semana siguiente es
-tentador y es exactamente el error que se cometió con el carry-over de tareas
-(DECISIONES §6) — decidir por el usuario antes de que mire. Si se hace, que sea un
-gesto explícito desde el planning.
-
 ### Mej.3 ⬛ Avisar cuándo una tarea lleva días arrastrándose — retirada
 
 Se cae con la retirada del carry-over: ya no hay cadena de arrastres que contar.

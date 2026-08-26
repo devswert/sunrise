@@ -74,6 +74,20 @@ describe("TaskCard", () => {
 });
 
 describe("TaskCard · origen calendario", () => {
+  it("una tarea colgada de un objetivo lleva su marca, sin el nombre", () => {
+    // El nombre del objetivo compite con el título de la tarea en una card de
+    // 200px; de cuál se trata es una pregunta del detalle.
+    renderCard(makeTask({ objectiveId: 7 }));
+    expect(screen.getByLabelText("Cuelga de un objetivo")).toBeInTheDocument();
+  });
+
+  it("una tarea sin objetivo no lleva ningún relleno en su lugar", () => {
+    // No es un placeholder: un glifo apagado en cada card sería una columna de
+    // marcas que no dicen nada, que es el problema que ya tuvo el chip de canal.
+    renderCard(makeTask());
+    expect(screen.queryByLabelText("Cuelga de un objetivo")).toBeNull();
+  });
+
   it("una reunión importada se distingue de una tarea escrita a mano", () => {
     // Una reunión no se planifica igual: no la puedes achicar ni moverla sin
     // avisarle a alguien. El icono lo dice sin ocupar una línea.

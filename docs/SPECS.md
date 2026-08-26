@@ -168,6 +168,7 @@ válidos. Este índice dice en qué archivo cayó cada uno.
 |---|---|
 | [Tareas y tablero](specs/tareas-y-tablero.md) | §4.1 Tareas (CRUD) · §4.2 Degradación diaria al backlog · §4.3 Vista semana y Today · §4.4 Modal de detalle · §4.5 Backlog |
 | [Tiempo: timer, Focus y rollup](specs/tiempo.md) | §4.6 Timer / taxímetro · §4.7 Focus Mode · §4.15 Weekly review |
+| [Objetivos semanales](specs/objetivos.md) | §4.29 Objetivos, reparto de horas e histórico |
 | [Calendario: feeds ICS y rail](specs/calendario.md) | §4.12 Feeds de calendario (ICS) · §4.13 Rail de calendario |
 | [Rituales del día](specs/rituales.md) | §4.14 Planificación diaria · §4.16 Bitácora y cierre del día |
 | [El marco de la app y sus ajustes](specs/app-y-ajustes.md) | §4.8 Settings · §4.9 Atajos de teclado · §4.10 Cierre de la app · §4.11 Tema · §4.24 Dev Tools · §4.28 Apariencia |

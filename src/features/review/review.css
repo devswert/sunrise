@@ -135,22 +135,20 @@
 
 .review__objs li {
   display: flex;
-  align-items: flex-start;
+  /* Centrado desde que el título es un input: con `flex-start` el check quedaba
+     dos píxeles más arriba que el texto de su propia línea. */
+  align-items: center;
   gap: 7px;
 }
 
-.review__objs li > svg {
+/* El icono ahora cuelga del botón que tildea, no del `li`. */
+.review__objs li svg {
   flex: 0 0 auto;
-  margin-top: 2px;
   color: var(--faint);
 }
 
 .review__objs .is-done {
   color: var(--faint);
-}
-
-.review__objs .is-done > span {
-  text-decoration: line-through;
 }
 
 .review__objs .is-done > svg {
@@ -175,23 +173,31 @@
 }
 
 /* Los dos gráficos, lado a lado mientras quepan. */
+/* Los tres paneles a un tercio cada uno. Antes los objetivos iban angostos
+   (`flex: 0 1 220px`) porque eran una lista de texto corto; dejaron de serlo: la
+   caja ahora carga el corte de horas, el tiempo por objetivo y el click que
+   filtra lo cerrado de más abajo, así que se gana el tercio.
+
+   Grid y no `flex-wrap`: con `flex: 1 1 340px` los tres solo caben en una fila si
+   la ventana da 1020px, y por debajo el tercero se iba solo a la línea siguiente
+   a lo ancho — justo el reparto que había que arreglar. El `minmax(0, 1fr)` es lo
+   que deja que el contenido ancho se recorte en vez de estirar su columna. */
 .review__graficos {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-4);
-  flex-wrap: wrap;
+  align-items: start;
 }
 
 .review__graficos > .review__panel {
-  flex: 1 1 340px;
   min-width: 0;
 }
 
-/* Los objetivos son texto corto: no se reparten el ancho con los gráficos. Va
-   con el mismo `>` que la regla de arriba, o esa gana por especificidad y el
-   panel se lleva un `flex-basis` de gráfico —con el que ya no entran tres en la
-   fila y éste se va solo a la línea de abajo, a lo ancho. */
-.review__graficos > .review__panel--objs {
-  flex: 0 1 220px;
+/* Por debajo de eso tres columnas dejan el donut sin diámetro legible. */
+@media (max-width: 1000px) {
+  .review__graficos {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* --- Barras apiladas --- */
@@ -386,4 +392,133 @@
 .review__dia-h {
   color: var(--faint);
   font-variant-numeric: tabular-nums;
+}
+
+/* El corte objetivos/resto de la semana (Mej.15). Va arriba de la lista y no
+   como cifra suelta: la barra dice de un vistazo qué proporción del tiempo se
+   fue en lo que uno se había propuesto, que es la pregunta que trae a esta
+   caja. */
+.review__split {
+  margin-bottom: var(--space-3);
+}
+
+.review__split-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.review__split-obj {
+  height: 100%;
+  background: var(--apricot-ink);
+}
+
+.review__split-texto {
+  margin: var(--space-2) 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* La lista dejó de ser texto plano: el check tildea y el título se corrige en
+   el lugar. El input no se pinta como campo hasta que se lo toca — la lista se
+   lee mucho más de lo que se edita. */
+.review__obj-check {
+  background: transparent;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: inherit;
+  flex: none;
+}
+
+/* El título filtra lo cerrado de más abajo. Se dibuja como texto y no como
+   botón: en una lista de cuatro renglones, cuatro botones con borde se leen como
+   un formulario. El estado activo sí se marca fuerte — un filtro puesto que no se
+   ve es una vista que parece rota. */
+.review__obj-title {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 1px 4px;
+  cursor: pointer;
+}
+
+.review__obj-title:hover {
+  background: var(--surface-sunken);
+}
+
+.review__objs li.is-filtrando .review__obj-title {
+  background: color-mix(in srgb, var(--lavender) 35%, transparent);
+  color: var(--lavender-ink);
+  font-weight: 600;
+}
+
+.review__objs li.is-done .review__obj-title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+/* --- Filtros de "lo que se cerró" --- */
+.review__cerrado-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+
+.review__cerrado-head .review__h2 {
+  margin: 0;
+  margin-right: auto;
+}
+
+.review__filtro {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.review__filtro:hover {
+  border-color: var(--accent);
+}
+
+.review__filtro.is-set {
+  color: var(--lavender-ink);
+  background: color-mix(in srgb, var(--lavender) 35%, transparent);
+  border-color: color-mix(in srgb, var(--lavender-ink) 40%, transparent);
+}
+
+.review__filtro-n {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Sin esta línea, filtrar hasta dejar la semana vacía se lee como un bug. */
+.review__filtro-aviso {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.review__obj-h {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex: none;
 }

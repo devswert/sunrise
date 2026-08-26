@@ -5,8 +5,28 @@ use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
 
+/// Lee un campo `Option<Option<T>>` **distinguiendo `null` de ausente**.
+///
+/// Con el derive pelado no se distinguen: un `null` entra por el visitor del
+/// `Option` de afuera, cae en `visit_none()` y llega como `None`, igual que un
+/// campo que no vino. O sea que los tres estados de `TaskPatch` (§4.1) eran dos
+/// en la práctica, y **"Sin canal" / "Sin objetivo" nunca borraron nada dentro de
+/// Tauri** — fuera sí, porque `mockDb` recibe el objeto de JS y ahí `null` y
+/// `undefined` sí son distintos. Ese es exactamente el modo de falla que la skill
+/// de la capa de datos describe: el mock y el front de acuerdo, los dos
+/// equivocados, y ninguna de las dos suites enterada.
+///
+/// El `#[serde(default)]` sigue haciendo falta: es lo que cubre el campo ausente.
+fn double_option<'de, D, T>(de: D) -> std::result::Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::deserialize(de).map(Some)
+}
+
 use crate::models::{
-    ActiveTimer, CalendarFeed, Category, LogDay, DoneTask, Objective, Attendee,
+    ActiveTimer, CalendarFeed, Category, LogDay, DoneTask, Objective, ObjectiveWork, Attendee,
     Rescue, RollupCell, RollupDay, Task, TaskEvent, TimeEntry, DayWork, DaySegment,
     WeeklyRollup,
 };
@@ -47,13 +67,13 @@ pub struct TaskPatch {
     pub title: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "double_option")]
     pub category_id: Option<Option<i64>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "double_option")]
     pub objective_id: Option<Option<i64>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "double_option")]
     pub scheduled_time: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "double_option")]
     pub estimated_minutes: Option<Option<i64>>,
     #[serde(default)]
     pub actual_seconds: Option<i64>,
@@ -1060,6 +1080,11 @@ struct TrabajoFila {
     title: String,
     category_id: Option<i64>,
     context_id: Option<i64>,
+    /// El objetivo del que cuelga la tarea, para el corte objetivos/resto de la
+    /// review. Va en las **dos** consultas de abajo: si solo estuviera en la de
+    /// `time_entries`, una reunión de calendario nunca contaría como trabajo de
+    /// objetivo.
+    objective_id: Option<i64>,
     /// Segundos de las entradas **cerradas**, con piso en 0.
     seconds: i64,
     /// Hay una corrida abierta de ese día: sus segundos los suma el front desde
@@ -1097,6 +1122,7 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
         "SELECT e.task_id, e.started_at, e.ended_at, e.seconds,
                 t.title AS title,
                 t.category_id AS category_id,
+                t.objective_id AS objective_id,
                 COALESCE(c.parent_id, c.id) AS context_id
            FROM time_entries e
            JOIN tasks t ON t.id = e.task_id
@@ -1111,11 +1137,13 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
             r.get::<_, i64>("seconds")?,
             r.get::<_, String>("title")?,
             r.get::<_, Option<i64>>("category_id")?,
+            r.get::<_, Option<i64>>("objective_id")?,
             r.get::<_, Option<i64>>("context_id")?,
         ))
     })?;
     for row in rows {
-        let (task_id, started_at, ended_at, seconds, title, category_id, context_id) = row?;
+        let (task_id, started_at, ended_at, seconds, title, category_id, objective_id, context_id) =
+            row?;
         let Some(t) = to_utc(&started_at) else { continue };
         let Some(i) = day_index(days, t) else { continue };
         let entry = acc.entry((i, task_id)).or_insert(TrabajoFila {
@@ -1124,6 +1152,7 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
             title,
             category_id,
             context_id,
+            objective_id,
             seconds: 0,
             running: false,
             start: started_at.clone(),
@@ -1144,6 +1173,7 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
     let mut stmt = conn.prepare(
         "SELECT t.id, t.title AS title, t.event_start, t.event_end,
                 t.category_id AS category_id,
+                t.objective_id AS objective_id,
                 COALESCE(c.parent_id, c.id) AS context_id
            FROM tasks t
            LEFT JOIN categories c ON c.id = t.category_id
@@ -1159,11 +1189,12 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
             r.get::<_, String>("event_start")?,
             r.get::<_, String>("event_end")?,
             r.get::<_, Option<i64>>("category_id")?,
+            r.get::<_, Option<i64>>("objective_id")?,
             r.get::<_, Option<i64>>("context_id")?,
         ))
     })?;
     for row in meetings {
-        let (id, title, start, end, category_id, context_id) = row?;
+        let (id, title, start, end, category_id, objective_id, context_id) = row?;
         let (Some(a), Some(b)) = (to_utc(&start), to_utc(&end)) else { continue };
         if a > now {
             continue;
@@ -1177,6 +1208,7 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
                 title,
                 category_id,
                 context_id,
+                objective_id,
                 seconds: (b - a).num_seconds().max(0),
                 running: false,
                 start: start,
@@ -1264,17 +1296,43 @@ pub fn weekly_rollup(conn: &Connection, week_start: &str) -> Result<WeeklyRollup
             total_seconds: 0,
             planned_minutes: 0,
             unestimated: 0,
+            objective_seconds: 0,
+            by_objective: Vec::new(),
         });
     }
 
     // (día, categoría) → segundos, con el piso por tarea ya aplicado.
     let mut accumulated: HashMap<(usize, Option<i64>), (Option<i64>, i64)> = HashMap::new();
+    // objetivo → segundos. Se llena en la misma pasada para no escribir una
+    // segunda consulta del trabajo: las reglas de atribución viven en
+    // `work_by_day` y duplicarlas es cómo se separan.
+    let mut per_objective: HashMap<i64, i64> = HashMap::new();
     for f in work_by_day(conn, &week)? {
         let entry = accumulated
             .entry((f.day, f.category_id))
             .or_insert((f.context_id, 0));
         entry.1 += f.seconds;
+        if let Some(objective_id) = f.objective_id {
+            *per_objective.entry(objective_id).or_insert(0) += f.seconds;
+        }
     }
+
+    let mut by_objective: Vec<ObjectiveWork> = per_objective
+        .into_iter()
+        .filter(|(_, seconds)| *seconds > 0)
+        .map(|(objective_id, seconds)| ObjectiveWork {
+            objective_id,
+            seconds,
+        })
+        .collect();
+    // Orden estable: el más trabajado primero, y el id desempata para que la
+    // lista no cambie de orden entre recargas.
+    by_objective.sort_by(|a, b| {
+        b.seconds
+            .cmp(&a.seconds)
+            .then(a.objective_id.cmp(&b.objective_id))
+    });
+    let objective_seconds: i64 = by_objective.iter().map(|o| o.seconds).sum();
 
     let mut cells: Vec<RollupCell> = accumulated
         .into_iter()
@@ -1324,6 +1382,8 @@ pub fn weekly_rollup(conn: &Connection, week_start: &str) -> Result<WeeklyRollup
         total_seconds: days.iter().map(|d| d.seconds).sum(),
         planned_minutes: days.iter().map(|d| d.planned_minutes).sum(),
         unestimated: days.iter().map(|d| d.unestimated).sum(),
+        objective_seconds,
+        by_objective,
         days,
         cells,
         completed_tasks,
@@ -1662,16 +1722,60 @@ pub fn delete_category(conn: &Connection, id: i64) -> Result<()> {
 // Objectives
 // ---------------------------------------------------------------------------
 
+const OBJECTIVE_COLS: &str = "id, iso_week, title, position, completed, category_id";
+
+/// Patch de edición, con la misma semántica de tres estados que `TaskPatch`:
+/// ausente = no tocar · `null` = poner a NULL · valor = escribir. Sin eso no
+/// habría forma de **sacarle** el channel a un objetivo.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectivePatch {
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Mover el objetivo a otra semana ISO. Lo usa "traer a esta semana" desde el
+    /// planning de una semana pasada.
+    #[serde(default)]
+    pub iso_week: Option<String>,
+    #[serde(default)]
+    pub completed: Option<bool>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub category_id: Option<Option<i64>>,
+}
+
 pub fn list_objectives(conn: &Connection, iso_week: &str) -> Result<Vec<Objective>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, iso_week, title, position, completed FROM objectives
-         WHERE iso_week = ?1 ORDER BY position, id",
-    )?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {OBJECTIVE_COLS} FROM objectives WHERE iso_week = ?1 ORDER BY position, id"
+    ))?;
     let rows = stmt.query_map([iso_week], Objective::from_row)?.collect();
     rows
 }
 
-pub fn create_objective(conn: &Connection, iso_week: &str, title: &str) -> Result<Objective> {
+/// Los objetivos de un rango de semanas ISO, inclusivo por los dos lados.
+///
+/// El `BETWEEN` compara strings y funciona porque `iso_week` es siempre
+/// `YYYY-Www` con la semana en dos dígitos (`isoWeekId` en el front la rellena):
+/// sin el cero a la izquierda, `2026-W9` caería después de `2026-W10`.
+pub fn list_objectives_range(
+    conn: &Connection,
+    from_week: &str,
+    to_week: &str,
+) -> Result<Vec<Objective>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {OBJECTIVE_COLS} FROM objectives
+         WHERE iso_week BETWEEN ?1 AND ?2 ORDER BY iso_week, position, id"
+    ))?;
+    let rows = stmt
+        .query_map(params![from_week, to_week], Objective::from_row)?
+        .collect();
+    rows
+}
+
+pub fn create_objective(
+    conn: &Connection,
+    iso_week: &str,
+    title: &str,
+    category_id: Option<i64>,
+) -> Result<Objective> {
     let position: i64 = conn
         .query_row(
             "SELECT COALESCE(MAX(position), -1) + 1 FROM objectives WHERE iso_week = ?1",
@@ -1680,30 +1784,48 @@ pub fn create_objective(conn: &Connection, iso_week: &str, title: &str) -> Resul
         )
         .unwrap_or(0);
     conn.execute(
-        "INSERT INTO objectives (iso_week, title, position) VALUES (?1, ?2, ?3)",
-        params![iso_week, title, position],
+        "INSERT INTO objectives (iso_week, title, position, category_id) VALUES (?1, ?2, ?3, ?4)",
+        params![iso_week, title, position, category_id],
     )?;
     let id = conn.last_insert_rowid();
     conn.query_row(
-        "SELECT id, iso_week, title, position, completed FROM objectives WHERE id=?1",
+        &format!("SELECT {OBJECTIVE_COLS} FROM objectives WHERE id=?1"),
         [id],
         Objective::from_row,
     )
 }
 
-pub fn update_objective(
-    conn: &Connection,
-    id: i64,
-    title: Option<&str>,
-    completed: Option<bool>,
-) -> Result<()> {
-    if let Some(t) = title {
+pub fn update_objective(conn: &Connection, id: i64, patch: ObjectivePatch) -> Result<()> {
+    if let Some(week) = patch.iso_week {
+        // Se **reposiciona al final** de la semana destino. Arrastrar el
+        // `position` viejo lo dejaría empatado con un objetivo que ya está ahí, y
+        // el `ORDER BY position, id` de `list_objectives` desempataría por id: el
+        // recién llegado se metería en medio de la lista sin que nadie lo pida.
+        let position: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM objectives WHERE iso_week = ?1",
+                [&week],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        conn.execute(
+            "UPDATE objectives SET iso_week=?2, position=?3 WHERE id=?1",
+            params![id, week, position],
+        )?;
+    }
+    if let Some(t) = patch.title {
         conn.execute("UPDATE objectives SET title=?2 WHERE id=?1", params![id, t])?;
     }
-    if let Some(c) = completed {
+    if let Some(c) = patch.completed {
         conn.execute(
             "UPDATE objectives SET completed=?2 WHERE id=?1",
             params![id, c as i64],
+        )?;
+    }
+    if let Some(cat) = patch.category_id {
+        conn.execute(
+            "UPDATE objectives SET category_id=?2 WHERE id=?1",
+            params![id, cat],
         )?;
     }
     Ok(())
@@ -3515,6 +3637,180 @@ mod tests {
             .map(|x| x.seconds)
             .sum();
         assert_eq!(ctx, 5400);
+    }
+
+    #[test]
+    fn el_patch_distingue_null_de_ausente_como_lo_manda_el_front() {
+        // El test de abajo construye el patch en Rust, así que **no cruza serde**,
+        // que es justo el lado donde el front escribe `null`. Sin este, un `null`
+        // que colapse a "no tocar" dejaría "Sin canal" mudo solo dentro de Tauri,
+        // con las dos suites en verde (van contra `mockDb`).
+        let sacar: ObjectivePatch = serde_json::from_str(r#"{"categoryId": null}"#).unwrap();
+        assert!(
+            matches!(sacar.category_id, Some(None)),
+            "null tiene que llegar como «sácaselo»"
+        );
+        let no_tocar: ObjectivePatch = serde_json::from_str(r#"{"title": "x"}"#).unwrap();
+        assert!(matches!(no_tocar.category_id, None));
+
+        // Lo mismo para `TaskPatch`, que es de donde salió la regla: si acá se
+        // cae, "Sin objetivo" y "Sin canal" del detalle de tarea nunca borraron
+        // nada en la app real.
+        let tarea: TaskPatch = serde_json::from_str(r#"{"objectiveId": null}"#).unwrap();
+        assert!(matches!(tarea.objective_id, Some(None)));
+    }
+
+    #[test]
+    fn el_channel_de_un_objetivo_se_puede_poner_y_sacar() {
+        // Es la razón de que `ObjectivePatch.category_id` sea `Option<Option<i64>>`:
+        // aplanado a `Option<i64>` no habría forma de expresar "sácaselo".
+        let c = conn();
+        let cat = create_category(&c, None, "Producto", "sky").unwrap();
+        let o = create_objective(&c, "2026-W33", "cerrar Mej.15", Some(cat.id)).unwrap();
+        assert_eq!(o.category_id, Some(cat.id));
+
+        // Tildarlo no toca el channel: el campo ausente es "no tocar".
+        update_objective(
+            &c,
+            o.id,
+            ObjectivePatch {
+                completed: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let leido = &list_objectives(&c, "2026-W33").unwrap()[0];
+        assert!(leido.completed);
+        assert_eq!(leido.category_id, Some(cat.id));
+
+        // `null` explícito sí lo borra.
+        update_objective(
+            &c,
+            o.id,
+            ObjectivePatch {
+                category_id: Some(None),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(list_objectives(&c, "2026-W33").unwrap()[0].category_id, None);
+    }
+
+    #[test]
+    fn traer_un_objetivo_a_otra_semana_lo_manda_al_final_de_esa_lista() {
+        // Arrastrar el `position` viejo lo dejaría empatado con uno que ya está
+        // ahí, y el recién llegado se metería en medio de la lista.
+        let c = conn();
+        let primero = create_objective(&c, "2026-W34", "el que ya estaba", None).unwrap();
+        let rezagado = create_objective(&c, "2026-W33", "el que quedó atrás", None).unwrap();
+        assert_eq!(rezagado.position, 0);
+
+        update_objective(
+            &c,
+            rezagado.id,
+            ObjectivePatch {
+                iso_week: Some("2026-W34".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(list_objectives(&c, "2026-W33").unwrap().is_empty());
+        let destino = list_objectives(&c, "2026-W34").unwrap();
+        let ids: Vec<i64> = destino.iter().map(|o| o.id).collect();
+        assert_eq!(ids, vec![primero.id, rezagado.id]);
+        assert_eq!(destino[1].position, 1);
+    }
+
+    #[test]
+    fn traer_un_objetivo_no_le_mueve_las_tareas() {
+        // Reagendar lo que ya está en el calendario de otra semana es el error del
+        // carry-over (DECISIONES §6): el objetivo llega con su historia atrás.
+        let c = conn();
+        let o = create_objective(&c, "2026-W33", "arrastrado", None).unwrap();
+        let t = create_task(&c, new_task("hecha la semana pasada", Some("2026-08-11"))).unwrap();
+        update_task(
+            &c,
+            t.id,
+            TaskPatch {
+                objective_id: Some(Some(o.id)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        update_objective(
+            &c,
+            o.id,
+            ObjectivePatch {
+                iso_week: Some("2026-W34".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let leida = get_task(&c, t.id).unwrap().unwrap();
+        assert_eq!(leida.scheduled_date.as_deref(), Some("2026-08-11"));
+        assert_eq!(leida.objective_id, Some(o.id));
+    }
+
+    #[test]
+    fn el_rango_de_objetivos_ordena_por_semana_y_no_se_confunde_con_la_w9() {
+        // El `BETWEEN` compara strings: sin el cero a la izquierda de `isoWeekId`
+        // la semana 9 caería después de la 10 y el histórico saldría barajado.
+        let c = conn();
+        create_objective(&c, "2026-W09", "nueve", None).unwrap();
+        create_objective(&c, "2026-W10", "diez", None).unwrap();
+        create_objective(&c, "2026-W11", "once", None).unwrap();
+        create_objective(&c, "2026-W12", "doce", None).unwrap();
+
+        let r = list_objectives_range(&c, "2026-W09", "2026-W11").unwrap();
+        let semanas: Vec<&str> = r.iter().map(|o| o.iso_week.as_str()).collect();
+        assert_eq!(semanas, vec!["2026-W09", "2026-W10", "2026-W11"]);
+    }
+
+    #[test]
+    fn el_rollup_separa_el_tiempo_de_objetivos_del_resto() {
+        let c = conn();
+        let o = create_objective(&c, "2026-W33", "cerrar Mej.15", None).unwrap();
+        let ligada = create_task(&c, new_task("ligada", Some("2026-08-11"))).unwrap();
+        update_task(
+            &c,
+            ligada.id,
+            TaskPatch {
+                objective_id: Some(Some(o.id)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let suelta = create_task(&c, new_task("suelta", Some("2026-08-11"))).unwrap();
+        entry(&c, ligada.id, "2026-08-11", 9, 600);
+        entry(&c, suelta.id, "2026-08-11", 11, 900);
+
+        let r = weekly_rollup(&c, "2026-08-10").unwrap();
+        assert_eq!(r.total_seconds, 1500);
+        assert_eq!(r.objective_seconds, 600);
+        assert_eq!(r.by_objective.len(), 1);
+        assert_eq!(r.by_objective[0].objective_id, o.id);
+        assert_eq!(r.by_objective[0].seconds, 600);
+    }
+
+    #[test]
+    fn una_reunion_sin_entradas_tambien_cuenta_para_su_objetivo() {
+        // La Regla 3 vive en una segunda consulta: si `objective_id` faltara ahí,
+        // el tiempo de objetivo se perdería justo en las reuniones.
+        let c = conn();
+        let o = create_objective(&c, "2026-W33", "comité", None).unwrap();
+        let t = create_task(&c, new_task("reunión", Some("2026-08-11"))).unwrap();
+        c.execute(
+            "UPDATE tasks SET source = 'CALENDAR', objective_id = ?2,
+                 event_start = ?3, event_end = ?4 WHERE id = ?1",
+            params![t.id, o.id, local("2026-08-11", 9), local("2026-08-11", 10)],
+        )
+        .unwrap();
+
+        let r = weekly_rollup(&c, "2026-08-10").unwrap();
+        assert_eq!(r.objective_seconds, 3600);
     }
 
     #[test]

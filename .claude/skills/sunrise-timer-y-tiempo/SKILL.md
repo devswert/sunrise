@@ -234,6 +234,11 @@ falle:
   de `docs/specs/tiempo.md` §4.15.
 - **El rollup NO filtra `source_state = 'ACTIVE'`** para el tiempo: es la única
   excepción a I7.
+- **`work_by_day` tiene DOS consultas y todo campo nuevo va en las dos.** La de
+  `time_entries` y la de la Regla 3 (reuniones sin entradas). El corte
+  objetivos/resto de la review (`objective_seconds`, §4.29) se pagó justo ahí: con
+  `objective_id` solo en la primera, una reunión de calendario ligada a un objetivo
+  no contaba y el número quedaba corto sin que nada fallara.
 - **El día es local.** Nunca `date(started_at)` ni `substr(started_at,1,10)`: los
   timestamps son UTC y en Chile todo lo trabajado después de las 20:00 se iría al
   día siguiente. Se comparan los bordes de cada día local en UTC (`local_days`).
