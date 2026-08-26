@@ -1592,6 +1592,31 @@
   font-weight: 600;
   color: var(--muted);
 }
+/* Título con icono a 22px, las mismas medidas que `.review__title` y
+   `.daily-plan__title`: son los encabezados de las tres vistas de ritual y no
+   tienen por qué verse distintos. Reemplaza a un `h1` con `font-size` inline y
+   sin icono, que era el único de los tres sin marca. */
+.planning__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-title);
+  font-size: 22px;
+  margin: 0;
+}
+.planning__sub {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+/* El recordatorio de los tres objetivos, más apagado que la bajada: es un
+   consejo, no una instrucción, y al mismo peso los dos competirían. */
+.planning__foco {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--faint);
+  font-style: italic;
+}
+
 /* La navegación de semanas de Weekly planning. Misma forma que `.review__nav`
    (review.css): son el mismo gesto en dos vistas hermanas. */
 .planning__head {
@@ -2526,27 +2551,35 @@ button.tc__tag.is-empty {
   align-items: center;
 }
 
-/* El histórico de objetivos (Mej.15).
+/* La tira de las últimas semanas (Mej.15).
 
-   Empezó como ocho barras a lo ancho de la vista y se veía vacío con razón: dos
+   Empezó como ocho barras a lo ancho de la vista y se veía vacía con razón: dos
    datos por semana no llenan esa superficie. Ahora es una tira de cuadros chicos
-   **tintados por proporción cumplida**, del ancho de su contenido y no del
-   contenedor. A 26px la intensidad se lee de un vistazo; una barra de 44px con
-   3px de relleno no. La racha se lleva el titular, que es lo único que se mira de
-   reojo, y el detalle de cada semana vive en el tooltip y en el `aria-label`. */
+   **tintados por proporción cumplida**. A 26px la intensidad se lee de un vistazo;
+   una barra de 44px con 3px de relleno no.
+
+   Va **arriba de los objetivos**: es el contexto con el que uno decide qué
+   proponerse. Abajo, además, rebotaba — el estado vacío y la tira tenían alturas
+   distintas y la vista saltaba según si las últimas semanas tenían objetivos. Por
+   eso la tira se dibuja siempre, con las vacías huecas: una sola forma, una sola
+   altura, sin salto.
+
+   El degradado es al 60% del tinte y en diagonal: a plano se leía como un panel
+   de formulario, y con el color entero competía con las filas de objetivo, que es
+   donde está el trabajo. */
 .plan-racha {
-  /* Del ancho de su contenido y no de la vista: estirada a 860px la caja se leía
-     como un panel a medio llenar, que es exactamente lo que se veía. */
-  align-self: flex-start;
-  max-width: 100%;
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
   flex-wrap: wrap;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--lavender-ink) 22%, var(--border));
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
-  padding: var(--space-3);
+  background: linear-gradient(
+    115deg,
+    color-mix(in srgb, var(--lavender) 26%, var(--surface-raised)),
+    var(--surface-raised) 60%
+  );
+  padding: var(--space-3) var(--space-4);
 }
 .plan-racha__cifra {
   display: flex;
@@ -2555,32 +2588,38 @@ button.tc__tag.is-empty {
   font-size: 11px;
   line-height: 1.25;
   color: var(--muted);
+  flex: none;
 }
 .plan-racha__cifra strong {
   font-family: var(--font-title);
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 600;
   color: var(--lavender-ink);
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
+/* La racha va como pastilla y no como texto suelto: es el único dato del banner
+   que puede no estar, y sin borde su aparición y desaparición se leían como que
+   el bloque cambiaba de forma. */
 .plan-racha__streak {
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 12px;
   color: var(--lavender-ink);
+  background: color-mix(in srgb, var(--lavender) 40%, transparent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  flex: none;
 }
-.plan-racha__vacio {
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
-  max-width: 42ch;
-}
-/* Del ancho de su contenido: estirarlo al contenedor es lo que hacía ver la caja
-   a medio llenar. */
-/* Pegada a la cifra, sin `margin-left: auto`: empujarla al borde derecho abría un
-   hueco en el medio, que era la mitad de la sensación de vacío. */
+/* A la derecha, separada de la cifra: el `auto` la pega al borde y deja el
+   respiro en el medio, que es donde entra la pastilla de la racha. */
 .plan-racha__tira {
   display: flex;
   gap: 5px;
+  margin-left: auto;
+  flex: none;
 }
 .plan-racha__semana {
   width: 26px;
@@ -2595,9 +2634,11 @@ button.tc__tag.is-empty {
   background: var(--surface-sunken);
   cursor: pointer;
   padding: 0;
+  transition: transform 0.12s ease;
 }
 .plan-racha__semana:hover {
   border-color: var(--accent);
+  transform: translateY(-1px);
 }
 .plan-racha__semana.is-current {
   outline: 2px solid var(--accent);
@@ -2609,13 +2650,18 @@ button.tc__tag.is-empty {
   background: transparent;
   border-style: dashed;
 }
+/* `--ink` y no `--muted`, siempre. El número va **encima** del tinte, y contra
+   `--muted` el contraste se cae en cuanto el cuadro se pinta: medido en tema
+   oscuro con el tinte al techo daba 2.12:1, bajo cualquier umbral legible.
+   Con `--ink` el peor caso de los cuatro (dos temas × tintado/sin tintar) queda en
+   4.93:1. La semana actual se distingue por el `outline` y la negrita, no por
+   tener otro color. */
 .plan-racha__id {
   font-size: 9px;
-  color: var(--muted);
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 .plan-racha__semana.is-current .plan-racha__id {
-  color: var(--text);
   font-weight: 600;
 }
 

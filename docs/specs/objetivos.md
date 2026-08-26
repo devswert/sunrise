@@ -66,6 +66,16 @@ Un objetivo es lo que uno se propone para una semana ISO. Vive en `objectives`
     contenedor sin filas dejaba una línea suelta bajo el texto del estado vacío.
 - **La vista va centrada** (`margin-inline: auto` sobre el `max-width`): sin eso el
   ancho máximo la dejaba pegada al borde izquierdo con media pantalla vacía.
+- **El `h1` lleva icono y va a 22px**, las mismas medidas que `.review__title` y
+  `.daily-plan__title`: eran los encabezados de las tres vistas de ritual y éste era
+  el único sin marca y con `font-size` inline. El icono es `CalendarRange`, el mismo
+  del sidebar desde donde se llega; `Target` está tomado por las filas de objetivo y
+  repetirlo diluiría las dos marcas.
+- **La bajada trae el recordatorio de los tres objetivos**, fijo y no como aviso al
+  pasarse: regañar después de que alguien escribió el cuarto llega tarde y se siente
+  como un reto. Se lee **antes** de empezar, que es cuando todavía se puede elegir.
+  Y está redactado como **sugerencia**, no como regla: nada en la app limita la
+  cantidad, y un texto que suene a límite prometería una validación que no existe.
 - **Las secciones llevan `<h2>`, no un micro-label numerado.** Eran
   `1 · OBJETIVOS DE LA SEMANA` en mayúsculas a 11px: a ese tamaño no se leía como
   encabezado sino como etiqueta de formulario, y los números prometían pasos de un
@@ -95,6 +105,21 @@ Un objetivo es lo que uno se propone para una semana ISO. Vive en `objectives`
   semana sin objetivos **aparece igual**, en cero: saltearla haría ver como
   continua una racha que tuvo un hueco. La cuenta es pura y vive en
   `objectiveHistory.ts`.
+- **La tira va arriba de los objetivos y siempre se dibuja.** Es el contexto con el
+  que uno decide qué proponerse, no un resumen de cierre. Y abajo rebotaba: el estado
+  vacío y la tira tienen alturas distintas, así que la vista saltaba según si las
+  últimas semanas tenían objetivos. Ahora las semanas sin objetivos se dibujan huecas
+  y no hay un segundo estado — una sola forma, una sola altura.
+- **El tinte del cuadro va acotado a 12–40%, no 0–100%.** El número de la semana va
+  **encima**, y a full el lavanda se lo come. El techo salió de medir el contraste en
+  los dos temas y quedarse con el peor: en claro el texto es oscuro y más tinte lo
+  ayuda, en oscuro el texto es claro y más tinte lo tapa, así que manda el oscuro.
+  El rango conserva el orden, que es lo único que la tira promete.
+- **El número de la semana va en `--ink`, nunca en `--muted`.** Contra `--muted` el
+  contraste se cae en cuanto el cuadro se pinta: medido en oscuro con el tinte al
+  techo daba 2.12:1. Con `--ink` el peor de los ocho casos (dos temas × cuatro
+  estados) queda en 4.93:1. La semana actual se distingue por el `outline` y la
+  negrita, no por tener otro color.
 - **La tira son cuadros chicos tintados por proporción cumplida, no barras.** Ocho
   barras a lo ancho de la vista se veían vacías con razón: dos datos por semana no
   llenan esa superficie. A 26px la intensidad se lee de un vistazo; una barra de

@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronLeft, ChevronRight, Plus, Target, Trash2 } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarRange,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Flame,
+  Plus,
+  Target,
+  Trash2,
+} from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, Objective, Task } from "../../lib/types";
 import { isoWeekId, parseISODate, shiftWeeks, todayISO, weekDates } from "../../lib/date";
@@ -98,7 +108,6 @@ export function WeeklyPlanningView() {
   const objetivoAbierto = objectives.find((o) => o.id === abierto) ?? null;
   const racha = streak(historia);
   const conObjetivos = historia.filter((s) => s.total > 0).length;
-  const historiaVacia = conObjetivos === 0;
 
   /**
    * Crea con un nombre genérico y abre el detalle de una.
@@ -153,9 +162,25 @@ export function WeeklyPlanningView() {
     <div className="planning">
       <div className="planning__head">
         <div>
-          <h1 style={{ fontSize: 24, marginBottom: 4 }}>Weekly planning</h1>
-          <p style={{ color: "var(--muted)", marginTop: 0 }}>
+          {/* Con icono y a 22px, como los `h1` de la weekly review y del ritual
+              diario. `CalendarRange` es el mismo del sidebar: se llega desde ahí y
+              la marca tiene que ser la misma. `Target` está tomado por las filas
+              de objetivo, y repetirlo diluiría las dos. */}
+          <h1 className="planning__title">
+            <CalendarRange size={20} aria-hidden /> Weekly planning
+          </h1>
+          <p className="planning__sub">
             Semana {isoWeek}. Define objetivos, asígnales tareas y sigue el progreso.
+          </p>
+          {/* El recordatorio del foco es fijo y no un aviso al pasarse de tres:
+              regañar después de que alguien escribió el cuarto llega tarde y se
+              siente como un reto. Acá se lee **antes** de empezar, que es cuando
+              todavía se puede elegir.
+
+              Y dice **sugerencia**, no regla: nada en la app limita la cantidad, y
+              un texto que suene a límite prometería una validación que no existe. */}
+          <p className="planning__foco">
+            Como sugerencia, 3 como máximo, pero eres libre de setear los que quieras
           </p>
         </div>
 
@@ -188,6 +213,71 @@ export function WeeklyPlanningView() {
           </button>
         </div>
       </div>
+
+      {/* La tira de semanas va **arriba**: es el contexto con el que uno decide
+          qué proponerse, no un resumen de cierre. Abajo, además, rebotaba — el
+          estado vacío y la tira tienen alturas distintas, así que la vista saltaba
+          según si las últimas semanas tenían objetivos. Por eso ahora **siempre se
+          dibuja la tira**, con las semanas sin objetivos huecas: una sola forma,
+          una sola altura. */}
+      <section className="plan-racha">
+        <div className="plan-racha__cifra">
+          <strong>{conObjetivos}</strong>
+          <span>
+            de {HISTORY_WEEKS} semanas
+            <br />
+            con objetivos
+          </span>
+        </div>
+        {racha > 0 && (
+          <p className="plan-racha__streak">
+            <Flame size={13} aria-hidden />
+            {racha} {racha === 1 ? "semana seguida" : "semanas seguidas"} cumpliendo todo
+          </p>
+        )}
+        {/* Cuadros chicos tintados por avance, no barras: a este tamaño la
+            intensidad se lee de un vistazo y una barra de 44px con 3px de relleno
+            no. Sin el `done/total` bajo cada uno — ocho fracciones son ruido, y el
+            dato completo va en el `aria-label` y en el tooltip. */}
+        <div className="plan-racha__tira">
+          {historia.map((s, i) => {
+            const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
+            const detalle = s.total === 0 ? "sin objetivos" : `${s.done} de ${s.total} objetivos`;
+            return (
+              <button
+                key={s.isoWeek}
+                className={`plan-racha__semana${s.isoWeek === isoWeek ? " is-current" : ""}${
+                  s.total === 0 ? " is-vacia" : ""
+                }`}
+                // Clickeable: es lo que le da un trabajo a la tira más allá de
+                // decorar — es la forma rápida de ir a mirar una semana floja.
+                aria-label={`Ir a ${s.isoWeek}: ${detalle}`}
+                aria-current={s.isoWeek === isoWeek}
+                title={`${s.isoWeek} · ${detalle}`}
+                onClick={() => setAnchor(anclas[i])}
+                style={{
+                  // El tinte por proporción va inline porque es un valor continuo:
+                  // una clase por escalón mentiría sobre el dato.
+                  //
+                  // Acotado a 12–40% y no 0–100: el número de la semana va
+                  // **encima** del tinte, y a full el lavanda se lo come. El techo
+                  // sale de medir el contraste en los dos temas y quedarse con el
+                  // peor: en claro el texto es oscuro y más tinte lo ayuda, pero en
+                  // oscuro el texto es claro y más tinte lo tapa — así que el que
+                  // manda es el oscuro. El rango conserva el orden, que es lo único
+                  // que la tira promete; el dato exacto está en el tooltip.
+                  background:
+                    pct > 0
+                      ? `color-mix(in srgb, var(--lavender-ink) ${12 + pct * 0.28}%, transparent)`
+                      : undefined,
+                }}
+              >
+                <span className="plan-racha__id">{s.isoWeek.replace(/^\d+-/, "")}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       <section>
         <h2 className="planning__seccion">Objetivos de la semana</h2>
@@ -333,76 +423,6 @@ export function WeeklyPlanningView() {
                     </div>
                   )}
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* El histórico va último porque se consulta, no se opera. */}
-      <section className="plan-racha">
-        <div>
-          <h2 className="planning__seccion" style={{ marginBottom: 4 }}>
-            Últimas {HISTORY_WEEKS} semanas
-          </h2>
-          {/* El titular es **cuántas de las últimas semanas tuvieron objetivos**,
-              no la racha: la pregunta que trae acá es "¿le estoy poniendo
-              objetivos a mis semanas?", y la racha con un 0 gigante era una
-              respuesta a algo que nadie preguntó. La racha baja a segunda línea y
-              **solo cuando existe** — "0 semanas seguidas" no es un dato. */}
-          <div className="plan-racha__cifra">
-            <strong>{conObjetivos}</strong>
-            <span>
-              de {HISTORY_WEEKS} semanas
-              <br />
-              con objetivos
-            </span>
-          </div>
-          {racha > 0 && (
-            <p className="plan-racha__streak">
-              {racha} {racha === 1 ? "semana seguida" : "semanas seguidas"} cumpliendo todo
-            </p>
-          )}
-        </div>
-
-        {historiaVacia ? (
-          // Sin datos, ocho cuadros no son un gráfico vacío: son ruido. Hay que
-          // decirlo con palabras.
-          <p className="plan-racha__vacio">
-            Todavía no hay semanas con objetivos que comparar. Acá va a salir el avance de cada una.
-          </p>
-        ) : (
-          // Cuadros chicos tintados por avance, no barras: a este tamaño la
-          // intensidad se lee de un vistazo y una barra de 44px con 3px de relleno
-          // no. Sin el `done/total` bajo cada uno — ocho fracciones son ruido, y el
-          // dato completo va en el `aria-label` y en el tooltip.
-          <div className="plan-racha__tira">
-            {historia.map((s, i) => {
-              const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
-              const detalle = s.total === 0 ? "sin objetivos" : `${s.done} de ${s.total} objetivos`;
-              return (
-                <button
-                  key={s.isoWeek}
-                  className={`plan-racha__semana${s.isoWeek === isoWeek ? " is-current" : ""}${
-                    s.total === 0 ? " is-vacia" : ""
-                  }`}
-                  // Clickeable: es lo que le da un trabajo a la tira más allá de
-                  // decorar — es la forma rápida de ir a mirar una semana floja.
-                  aria-label={`Ir a ${s.isoWeek}: ${detalle}`}
-                  aria-current={s.isoWeek === isoWeek}
-                  title={`${s.isoWeek} · ${detalle}`}
-                  onClick={() => setAnchor(anclas[i])}
-                  style={{
-                    // El tinte por proporción va inline porque es un valor
-                    // continuo: una clase por escalón mentiría sobre el dato.
-                    background:
-                      pct > 0
-                        ? `color-mix(in srgb, var(--lavender-ink) ${pct}%, transparent)`
-                        : undefined,
-                  }}
-                >
-                  <span className="plan-racha__id">{s.isoWeek.replace(/^\d+-/, "")}</span>
-                </button>
               );
             })}
           </div>

@@ -126,6 +126,18 @@ quedan **una debajo de la otra** —que es cómo se comparan— y todas miden lo
 por construcción. El detalle se despliega. Y **la barra lleva ancho fijo**: una que
 se estire con el largo del título haría ver distintos dos avances iguales.
 
+**El token del texto es `--ink`, no `--text`.** `--text` no existe, y escribirlo no
+deja síntoma: `color` es heredada, así que un `var()` inválido cae en "hereda del
+padre" y casi siempre se ve bien. Sobrevive hasta que alguien pone ese texto sobre
+un fondo distinto del de su contenedor. Los tres del texto son `--ink`, `--muted` y
+`--faint`.
+
+**Texto sobre un fondo tintado va en `--ink`, no en `--muted`.** `--muted` está
+pensado para el fondo de la superficie; sobre un pastel se cae. En la tira de
+semanas del planning, medido en oscuro con el tinte al techo, daba 2.12:1 contra
+4.93:1 con `--ink`. Y si el tinte es un valor continuo, **acótalo**: el techo lo
+manda el tema oscuro, donde más tinte tapa el texto claro en vez de ayudarlo.
+
 **Un `input` no hereda la tipografía.** Todo campo de texto necesita su
 `font-family: var(--font-title)` o `var(--font-body)` explícito, o sale en la
 fuente por defecto del webview mientras el resto de la app usa Sora/Manrope. Se

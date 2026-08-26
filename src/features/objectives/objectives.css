@@ -36,7 +36,7 @@
   font-family: var(--font-title);
   font-size: 18px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--ink);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -85,7 +85,7 @@
 }
 
 .omodal__chip-value.is-set {
-  color: var(--text);
+  color: var(--ink);
 }
 
 .omodal__totales {
@@ -157,7 +157,7 @@
 .omodal__dia-min {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
