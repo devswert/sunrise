@@ -32,6 +32,7 @@ function task(over: Partial<Task> & { id: number }): Task {
     meetingUrl: null,
     eventDescription: null,
     attendees: [],
+    railOnly: false,
     createdAt: `${DIA}T09:00:00Z`,
     updatedAt: `${DIA}T09:00:00Z`,
     ...over,
@@ -174,3 +175,18 @@ describe("repasoDelDia", () => {
     expect(r.planned).toBe(105);
   });
 });
+describe("lastDayWithTasks · eventos ignorados", () => {
+  it("un día cuyo único contenido es un evento ignorado no se repasa", () => {
+    // §4.12: ignorar es literal. El ritual repasa días de trabajo, y el almuerzo
+    // no lo es.
+    const soloAlmuerzo = task({
+      id: 1,
+      scheduledDate: "2026-08-14",
+      scheduledTime: "13:15",
+      railOnly: true,
+    });
+    const conTrabajo = task({ id: 2, scheduledDate: "2026-08-13" });
+    expect(lastDayWithTasks([soloAlmuerzo, conTrabajo], "2026-08-17")).toBe("2026-08-13");
+  });
+});
+

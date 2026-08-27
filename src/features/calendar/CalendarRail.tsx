@@ -44,7 +44,12 @@ interface Props {
  * Es una **columna de referencia, de solo lectura**: sirve para planificar
  * alrededor de las reuniones, no para reprogramarlas. Por eso no es zona de
  * drop —arrastrar acá tendría que escribir `scheduled_time`, y `boardCollision`
- * está afinada para el board— y por eso un bloque solo abre el detalle.
+ * está afinada para el board— y por eso un bloque solo abre el detalle,
+ * **también el de un evento ignorado** (§4.12): ese detalle es la única puerta
+ * que le queda a una tarea sin tarjeta, y es donde vive el switch para dejar de
+ * ignorarla. Hubo una versión con un popover propio para eso y se descartó:
+ * agregaba un comportamiento que hay que aprender y le daba al rail un camino de
+ * escritura, cuando el control de volver atrás ya estaba en el detalle.
  *
  * Recibe las tareas por props, las mismas que la columna del día, para que las
  * dos vistas del mismo día no puedan divergir. Daily planning (3.4) lo usa igual.
@@ -139,7 +144,7 @@ export function CalendarRail({
             <button
               key={t.id}
               type="button"
-              className="rail__chip"
+              className={`rail__chip${t.railOnly ? " is-ignorado" : ""}`}
               onClick={() => onOpen?.(t)}
               style={colorDe(t, categoryMap)}
             >
@@ -177,6 +182,7 @@ export function CalendarRail({
                     (t.status === "DONE" ? " is-done" : "") +
                     (b.kind === "PROYECTADO" ? " is-proyectado" : "") +
                     (b.kind === "REAL" ? " is-real" : "") +
+                    (t.railOnly ? " is-ignorado" : "") +
                     ((b.endMin - b.startMin) * PX_POR_MINUTO < ALTO_COMPACTO ? " is-corto" : "")
                   }
                   style={{ ...geometria(b, y), ...colorDe(t, categoryMap) }}
@@ -185,7 +191,8 @@ export function CalendarRail({
                     `${hourLabel(b.startMin)} – ${hourLabel(b.endMin)} · ${t.title}` +
                     (b.parts > 1 ? ` (tramo ${b.part} de ${b.parts})` : "") +
                     (b.kind === "PROYECTADO" ? " · proyectado" : "") +
-                    (b.kind === "REAL" ? " · trabajado" : "")
+                    (b.kind === "REAL" ? " · trabajado" : "") +
+                    (t.railOnly ? " · ignorado" : "")
                   }
                 >
                   <span className="rail__bloque-hora">
@@ -225,6 +232,7 @@ export function CalendarRail({
           </div>
         </div>
       </div>
+
     </aside>
   );
 }

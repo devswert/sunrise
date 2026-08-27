@@ -212,7 +212,13 @@ siguiente corrida.
   `DayColumn` y de `BacklogColumn` compara el día de `active` con el propio: sin
   eso, reordenar dentro de un día prende y apaga el marco damasco anunciando un
   cambio que no está pasando.
-- **Contador de capacidad** por día: suma de `estimatedMinutes` vs objetivo
+- **El orden de la columna es `position`, y es el plan del día**: para eso se
+  arrastran las cards, y el rail proyecta en ese mismo orden (§4.13). Las tareas
+  del calendario entran ubicadas por su hora —ordenadas **entre ellas**, sin
+  desplazar lo que pusiste vos—: lo escribe `repo::place_by_time` al importar, no
+  el front al dibujar. Detalle y motivo en §4.12.
+- **Contador de capacidad** por día: suma de `estimatedMinutes` de lo que hay en
+  la columna, así que **los eventos ignorados no cuentan** (§4.12), vs objetivo
   (de `settings`, default 480), semáforo por `computeCapacityLevel`:
   `> target` ⇒ `OVER` (rojo); `>= target * 0.85` ⇒ `WARN` (amarillo); resto
   `OK` (gris). `target <= 0` ⇒ siempre `OK`.

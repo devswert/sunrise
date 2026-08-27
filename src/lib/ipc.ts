@@ -52,6 +52,17 @@ export const api = {
       ? invoke<Task | null>("set_task_status", { id, status })
       : mock.setTaskStatus(id, status),
 
+  /**
+   * Ignora (o deja de ignorar) la serie de esta reunión: pasa a ocupar solo su
+   * hora en el rail. **No toca las repeticiones que ya trabajaste** — ver
+   * `repo::set_series_rail_only`. La clave del `invoke` es `railOnly` porque el
+   * parámetro de Rust es `rail_only`.
+   */
+  setTaskRailOnly: (id: number, railOnly: boolean) =>
+    isTauri()
+      ? invoke<Task | null>("set_task_rail_only", { id, railOnly })
+      : mock.setTaskRailOnly(id, railOnly),
+
   moveTask: (id: number, date: string | null, position: number) =>
     isTauri()
       ? invoke<Task | null>("move_task", { id, date, position })

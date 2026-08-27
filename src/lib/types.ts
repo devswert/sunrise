@@ -59,6 +59,13 @@ export interface Task {
   eventDescription: string | null;
   /** Organizador e invitados. Vacío si el feed no los trae. */
   attendees: Attendee[];
+  /**
+   * **Solo ocupa la agenda**: se dibuja en el rail para planificar alrededor,
+   * pero no es una tarjeta del tablero y no suma a la carga del día. Es la forma
+   * de un "focus time" del calendario (el almuerzo, un bloque de concentración).
+   * La marca es de la **serie**, no de la repetición.
+   */
+  railOnly: boolean;
   createdAt: string;
   updatedAt: string;
 }

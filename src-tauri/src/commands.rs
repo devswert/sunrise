@@ -49,6 +49,20 @@ pub fn set_task_status(
     repo::set_task_status(&conn, id, &status).map_err(e)
 }
 
+/// Marca (o desmarca) la serie de esta reunión como **bloque de agenda**: sigue
+/// en el rail, deja de ser tarjeta del tablero y deja de sumar carga. Ver
+/// `repo::set_series_rail_only`.
+#[tauri::command]
+pub fn set_task_rail_only(
+    db: State<'_, Db>,
+    id: i64,
+    rail_only: bool,
+) -> Result<Option<Task>, String> {
+    let conn = db.0.lock().map_err(e)?;
+    repo::set_series_rail_only(&conn, id, rail_only).map_err(e)?;
+    repo::get_task(&conn, id).map_err(e)
+}
+
 #[tauri::command]
 pub fn move_task(
     db: State<'_, Db>,

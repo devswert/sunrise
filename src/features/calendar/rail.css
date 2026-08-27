@@ -292,3 +292,12 @@
     display: none;
   }
 }
+
+/* Bloque ignorado (§4.12): ocupa su hora y nada más. Se ve atenuado y con borde
+   punteado —el mismo idioma que lo proyectado, "esto no es un compromiso de
+   trabajo"— pero conserva su color para no perder de qué es. */
+.rail__bloque.is-ignorado,
+.rail__chip.is-ignorado {
+  opacity: 0.55;
+  border-style: dashed;
+}

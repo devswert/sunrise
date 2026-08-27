@@ -9,6 +9,7 @@ const startTimer = vi.fn(async () => {});
 const stopTimer = vi.fn(async () => null);
 const updateTask = vi.fn(async (_id: number, _patch: unknown) => null);
 const listTimeEntries = vi.fn(async (): Promise<TimeEntry[]> => []);
+const setTaskRailOnly = vi.fn(async (_id: number, _railOnly: boolean) => null);
 
 /** Entrada cerrada de `seconds` segundos que arranca ese día a las 09:00 local. */
 function entry(id: number, day: string, seconds: number): TimeEntry {
@@ -48,6 +49,7 @@ vi.mock("../../lib/ipc", () => ({
     updateTask: (id: number, patch: unknown) => updateTask(id, patch),
     setTaskStatus: vi.fn(async () => null),
     setActualSeconds: vi.fn(async () => null),
+    setTaskRailOnly: (id: number, railOnly: boolean) => setTaskRailOnly(id, railOnly),
     moveTask: vi.fn(async () => null),
     deleteTask: vi.fn(async () => undefined),
   },
@@ -75,6 +77,7 @@ const baseTask: Task = {
   meetingUrl: null,
   eventDescription: null,
   attendees: [],
+  railOnly: false,
   createdAt: "2026-08-11T09:00:00Z",
   updatedAt: "2026-08-11T09:00:00Z",
 };
@@ -260,5 +263,59 @@ describe("TaskModal · play", () => {
     await waitFor(() => expect(startTimer).toHaveBeenCalledWith(baseTask.id));
     expect(onClose).toHaveBeenCalled();
     expect(await screen.findByText("VISTA FOCUS")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Un evento ignorado (§4.12) no es trabajo, así que el detalle esconde todo lo
+ * que lo trataría como tal. El play es el que importa: sobre una tarea sin
+ * tarjeta en ninguna columna dejaría el taxímetro corriendo donde no se puede
+ * ver ni detener.
+ */
+describe("TaskModal · un evento ignorado", () => {
+  const delCalendario = (railOnly: boolean): Task => ({
+    ...baseTask,
+    title: "Lunch",
+    source: "CALENDAR",
+    feedId: 1,
+    calendarUid: "lunch@x#1",
+    scheduledTime: "13:15",
+    railOnly,
+  });
+
+  beforeEach(() => setTaskRailOnly.mockClear());
+
+  it("esconde el play, completar y los dos ajustes de tiempo", async () => {
+    renderModal(vi.fn(), delCalendario(true));
+    // El modal carga historial y entradas al montar: se espera algo del render
+    // final para no afirmar sobre un árbol a medio actualizar.
+    expect(await screen.findByRole("switch", { name: "Ignorar este evento" })).toBeTruthy();
+
+    expect(screen.queryByLabelText("Iniciar")).toBeNull();
+    expect(screen.queryByLabelText("Marcar como completada")).toBeNull();
+    expect(screen.queryByLabelText("Ajustar tiempo real")).toBeNull();
+    expect(screen.queryByText("Estimado")).toBeNull();
+  });
+
+  it("sin ignorar, las acciones de trabajo están donde siempre", async () => {
+    renderModal(vi.fn(), delCalendario(false));
+
+    expect(await screen.findByLabelText("Iniciar")).toBeTruthy();
+    expect(screen.getByLabelText("Marcar como completada")).toBeTruthy();
+    expect(screen.getByLabelText("Ajustar tiempo real")).toBeTruthy();
+  });
+
+  it("el switch escribe la marca para toda la serie", async () => {
+    renderModal(vi.fn(), delCalendario(false));
+
+    await userEvent.click(screen.getByRole("switch", { name: "Ignorar este evento" }));
+
+    expect(setTaskRailOnly).toHaveBeenCalledWith(7, true);
+  });
+
+  it("una tarea a mano no ofrece el switch", async () => {
+    renderModal();
+    expect(await screen.findByLabelText("Iniciar")).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "Ignorar este evento" })).toBeNull();
   });
 });

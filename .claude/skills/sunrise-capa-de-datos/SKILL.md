@@ -85,11 +85,26 @@ si es cómo se guarda, en `repo`. Detalle de las reglas en `docs/specs/calendari
 Dos cosas que se rompen fácil al tocar esto:
 
 - **El upsert no pisa lo que el usuario tocó**: ni `status`, ni
-  `actual_seconds`, ni `position`, ni `category_id`. El poller vuelve a pasar
+  `actual_seconds`, ni `category_id`, ni `notes`. El poller vuelve a pasar
   cada 15 minutos, así que un `INSERT OR REPLACE` tira el trabajo hecho sobre una
-  reunión tres veces por hora.
+  reunión tres veces por hora. **`position` es la única excepción, y solo si el
+  evento cambió de día o de hora**: ahí `place_by_time` lo reubica entre **los
+  demás eventos** —nunca desplaza una tarea a mano, porque la columna del día es
+  el plan del día—. Si no cambió de día ni de hora, no se toca.
+- **`rail_only = 1` significa "ignorar", y son seis lecturas.** Un evento
+  ignorado (§4.12) sigue siendo una fila de `tasks` —el rail la necesita para
+  dibujar su hora— pero queda fuera de la columna del día (lo filtra `useBoard`),
+  de `plan_by_day`, de `focus_queue`, de `meetings_for_date`, de la regla 3 del
+  rollup y de `last_day_with_tasks`. **Si agregas una consulta sobre `tasks` que
+  no sea la del rail, pregúntate si le corresponde `AND rail_only = 0`**: el modo
+  de falla es silencioso y se ve como "el almuerzo cuenta como trabajo". Y
+  **marcar no toca las repeticiones con `time_entries` o `DONE`**, por lo mismo
+  que `reconcile_feed` no toca una tarea con el taxímetro corriendo.
 - **`import_events` devuelve los UIDs que vio.** No es decoración: es lo que el
-  reconciler (M3.2) necesita para saber qué dejó de venir en el feed.
+  reconciler (M3.2) necesita para saber qué dejó de venir en el feed. Y
+  `reconcile_feed` devuelve **`Reconciled`, con los títulos** de lo que borró,
+  liberó y dejó `ORPHANED`: el log los emite porque después no hay forma de
+  reconstruirlos. Si necesitas los dos números de antes, `.totals()`.
 
 ## Enums: SIEMPRE EN MAYÚSCULAS
 
@@ -154,7 +169,9 @@ destino se **renumera entero** (0..n, sin huecos ni empates); antes corría +1 l
 tareas `>= position`, que se equivoca en uno al reordenar dentro del mismo día
 —la tarea que se mueve deja libre su lugar— y ese era el bug de Mej.12. El índice
 se cuenta contra la lista **visible**, así que la renumeración incluye a las
-`ORPHANED` (para no empatar posiciones) pero las saltea al ubicar. Fuera de rango
+`ORPHANED` y a los eventos ignorados (`rail_only`, §4.12) —para no empatar
+posiciones— pero los saltea al ubicar. Olvidar uno de los dos filtros deja la
+card un lugar más abajo de donde se soltó. Fuera de rango
 es "al final". `mockDb.moveTask` hace exactamente lo mismo, y hay un test a cada
 lado.
 

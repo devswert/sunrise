@@ -162,6 +162,7 @@ pub fn run() {
             commands::update_task,
             commands::delete_task,
             commands::set_task_status,
+            commands::set_task_rail_only,
             commands::move_task,
             commands::demote_pending,
             commands::list_tasks_for_range,

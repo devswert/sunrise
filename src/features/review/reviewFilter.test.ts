@@ -32,6 +32,7 @@ function task(id: number, categoryId: number | null, objectiveId: number | null)
     meetingUrl: null,
     eventDescription: null,
     attendees: [],
+    railOnly: false,
     createdAt: "",
     updatedAt: "",
   };

@@ -139,7 +139,12 @@ export function useBoard(
     [tasks],
   );
 
-  const tasksByDate = useMemo(() => {
+  /**
+   * Todo lo del día, **bloques de agenda incluidos**. Es lo que recibe el rail:
+   * un focus time del calendario (el almuerzo) tiene que estar ahí para poder
+   * planificar alrededor, aunque no sea una tarjeta del tablero.
+   */
+  const agendaByDate = useMemo(() => {
     const by: Record<string, Task[]> = {};
     for (const t of tasks) {
       if (!t.scheduledDate) continue;
@@ -148,6 +153,24 @@ export function useBoard(
     for (const d of Object.keys(by)) by[d].sort((a, b) => a.position - b.position);
     return by;
   }, [tasks]);
+
+  /**
+   * Lo del día que **es tarjeta**: la agenda menos los bloques que solo ocupan
+   * el rail (§4.12). Es lo que dibuja la columna y lo que cuenta para la carga
+   * del día.
+   *
+   * Que el rail reciba otra lista es una excepción a "las dos lecturas del mismo
+   * día no pueden divergir" (§4.13), y la única: las dos salen del mismo arreglo
+   * y difieren **solo** en `railOnly`, así que no hay forma de que una tarea
+   * aparezca en una y falte en la otra por accidente.
+   */
+  const tasksByDate = useMemo(() => {
+    const by: Record<string, Task[]> = {};
+    for (const [d, list] of Object.entries(agendaByDate)) {
+      by[d] = list.filter((t) => !t.railOnly);
+    }
+    return by;
+  }, [agendaByDate]);
 
   // --- acciones de tareas ---
   const addTask = useCallback(
@@ -240,6 +263,7 @@ export function useBoard(
     objectives,
     categoryMap,
     tasksByDate,
+    agendaByDate,
     backlogTasks,
     rescues,
     isoWeek,

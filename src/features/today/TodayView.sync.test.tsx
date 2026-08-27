@@ -36,6 +36,7 @@ const db: Task[] = [
   meetingUrl: null,
   eventDescription: null,
   attendees: [],
+  railOnly: false,
     createdAt: "2026-08-11T09:00:00Z",
     updatedAt: "2026-08-11T09:00:00Z",
   },

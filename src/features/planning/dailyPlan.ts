@@ -81,10 +81,15 @@ export function daySummary(
  * con algo dentro. Es **el mismo día que preserva `demote_pending`** en
  * Rust: si los dos criterios divergen, el ritual repasaría un día del que ya se
  * llevaron tareas.
+ *
+ * Los **eventos ignorados no cuentan** (§4.12): un día cuyo único contenido es el
+ * almuerzo no es un día que haya que repasar. Mismo criterio que
+ * `repo::last_day_with_tasks`.
  */
 export function lastDayWithTasks(tasks: Task[], antesDe: string): string | null {
   let mejor: string | null = null;
   for (const t of tasks) {
+    if (t.railOnly) continue;
     const d = t.scheduledDate;
     if (!d || d >= antesDe) continue;
     if (mejor == null || d > mejor) mejor = d;

@@ -109,6 +109,8 @@ export function DailyPlanningView() {
   }, [load, dataVersion]);
 
   const tasks = board.tasksByDate[today] ?? [];
+  // El rail ve además los bloques de agenda (§4.12), que no son tarjetas.
+  const agenda = board.agendaByDate[today] ?? [];
   const summary = daySummary(tasks, capacity.target, capacity.warnRatio);
 
   /**
@@ -367,7 +369,7 @@ export function DailyPlanningView() {
         <CalendarRail
           date={today}
           today={today}
-          tasks={tasks}
+          tasks={agenda}
           categoryMap={board.categoryMap}
           workStart={workday.start}
           workEnd={workday.end}
