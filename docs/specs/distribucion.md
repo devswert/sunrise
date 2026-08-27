@@ -114,7 +114,7 @@ Reemplaza **todo**: no mezcla nada. Pasa por un `alertdialog` que lo dice, y de
 paso dice las otras dos cosas que no son obvias — que la app guarda antes una
 copia de la base que va a pisar (`antes-de-restaurar-…`, con nombre que la
 retención **nunca** borra), y que un timer corriendo va a quedar apuntando a la
-base nueva. El botón de confirmar queda en spinner (`.is-spinning`, el mismo del
+base nueva. El botón de confirmar queda en spinner (`<Spinner>`, el mismo del
 sync) mientras corre.
 
 **Al terminar se abre un segundo diálogo, no un aviso que se va solo.** Es la

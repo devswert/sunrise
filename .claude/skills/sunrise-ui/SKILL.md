@@ -61,6 +61,7 @@ locale de `date-fns` va **por llamada** y es fácil olvidarlo, y
 | `src/components/TimePicker.tsx` | elegir duraciones (planned / actual) |
 | `src/components/ThemeToggle.tsx` | switch de tema (solo ese: tiene sol y luna dibujados) |
 | `src/components/Switch.tsx` | cualquier otro interruptor on/off |
+| `src/components/Spinner.tsx` | el icono de "esto está corriendo" |
 | `src/components/SunriseMark.tsx` | la marca dentro de la app |
 | `src/components/plainInput.ts` | `PLAIN_INPUT`, para un campo que no es prosa |
 | `src/features/week/DayColumn.tsx` | columna de un día (la reusa Today) |
@@ -80,6 +81,42 @@ la feature en su propio CSS (el amanecer del modal "Lo nuevo" vive en
 trampa de arriba. Y ojo con el orden: `Dialog` dibuja el `<h2>` **antes** que sus
 hijos, así que un bloque que va arriba del título se sube con `order: -1` —el
 diálogo es un flex en columna— y no metiéndolo dentro del encabezado.
+
+**Lo que está corriendo cambia de icono, no gira el suyo.** `<Spinner>` va
+**reemplazando** el icono en reposo del botón:
+
+```tsx
+{sincronizando ? <Spinner size={13} /> : <CalendarSync size={13} aria-hidden />}
+```
+
+Antes cada botón giraba su propio icono y se leía como un chiste — el sync hacía
+dar vueltas un calendario, que rotando no significa nada. El anillo abierto sí es
+la forma que todo el mundo lee como "espera".
+
+**`.is-spinning` lleva `overflow: visible`, y sacarlo devuelve un bug sutil.**
+Un `<svg>` recorta por defecto. En reposo no se nota, porque los iconos de lucide
+caben en su viewBox de 24 — pero **girando, la tinta que estaba en las esquinas
+sale por los lados**, y el borde se la come y se la devuelve dos veces por
+vuelta. En `RefreshCw` las puntas de flecha quedan a 13.7 unidades del centro
+contra las 12 que mide el medio viewBox: medido, 8.6% de variación de tinta a lo
+largo del giro. Se lee como que el icono late.
+
+**Y hay algo que el CSS no arregla, así que no lo busques ahí.** Una marca
+asimétrica que gira lleva su centro de masa fuera del centro de rotación, y la
+mancha orbita aunque la caja no se mueva un píxel —está medido: la caja del
+`<svg>` rotada 45° tiene exactamente el mismo centro que en reposo—. En el
+`Loader2` esa órbita es del **21% del ancho del icono**, igual a 13px que a 96px,
+igual con recorte que sin él. Si el spinner se ve "bailar" al lado del texto
+quieto del botón, esa es la razón, y la salida es cambiar la forma (una marca
+simétrica a 180°, como `RefreshCw`), no seguir tocando estilos.
+
+La animación se apaga con `prefers-reduced-motion`, así que **el estado tiene que
+estar también en palabras**: el texto del botón ("Sincronizando…", "Respaldando…",
+"Agregando…") y, en los botones que no tienen texto, `aria-busy` más un `title`
+que lo diga. Un icono quieto y nada más no cuenta nada.
+
+La excepción es el updater, que **no** lleva spinner a propósito: ahí manda la
+barra de progreso, que además dice cuánto queda.
 
 **Para pisar algo del componente compartido, la variante necesita dos clases**
 (`.dialog.dialog--loquesea`): el CSS de la feature se importa **antes** que

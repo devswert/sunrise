@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
+import { Spinner } from "../../components/Spinner";
 import { PLAIN_INPUT } from "../../components/plainInput";
 
 /** Mismo piso que `POLL_MINIMO` en `repo.rs`. */
@@ -207,7 +208,8 @@ export function AddFeedModal({
               disabled={!urlValida || guardando}
               onClick={() => void save()}
             >
-              <Plus size={14} aria-hidden /> {guardando ? "Agregando…" : "Agregar"}
+              {guardando ? <Spinner size={14} /> : <Plus size={14} aria-hidden />}{" "}
+              {guardando ? "Agregando…" : "Agregar"}
             </button>
           </div>
         </footer>

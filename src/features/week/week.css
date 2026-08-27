@@ -1027,16 +1027,29 @@
   color: var(--faint);
   font-size: 11px;
 }
+/* La animación de `<Spinner>` (components/Spinner.tsx). Va acá y no junto al
+ * componente porque week.css se importa una sola vez para toda la app; moverla
+ * a un archivo propio es renombrar por renombrar y las clases CSS no las revisa
+ * nadie. Solo la usa ese componente: el icono en reposo de un botón nunca gira. */
 .is-spinning {
   animation: feed-spin 0.9s linear infinite;
+  /* **Un `<svg>` recorta por defecto**, y girándolo eso se nota: la tinta que en
+   * reposo cabe en el viewBox de 24 se sale al rotar, y el borde se la come y se
+   * la devuelve dos veces por vuelta. Medido en `RefreshCw`, cuyas puntas de
+   * flecha quedan a 13.7 unidades del centro contra las 12 que mide el medio
+   * viewBox: la tinta pintada varía un 8.6% a lo largo del giro. Se lee como que
+   * el icono late. No hay overflow que consuma espacio —el `<svg>` sigue
+   * midiendo lo mismo—, solo deja de cortar. */
+  overflow: visible;
 }
 @keyframes feed-spin {
   to {
     transform: rotate(360deg);
   }
 }
-/* Sin animación para quien la pidió apagada; el estado se lee en el texto
- * ("Sincronizando…"). */
+/* Sin animación para quien la pidió apagada. Ahí el estado lo cuenta el texto
+ * ("Sincronizando…"); los botones que no tienen texto llevan `aria-busy` y un
+ * `title` que lo diga, porque para ellos el icono quieto no alcanza. */
 @media (prefers-reduced-motion: reduce) {
   .is-spinning {
     animation: none;

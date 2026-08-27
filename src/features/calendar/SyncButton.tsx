@@ -1,4 +1,5 @@
 import { CalendarSync } from "lucide-react";
+import { Spinner } from "../../components/Spinner";
 import { useCalendarSync } from "../../lib/calendarSync";
 import { relativeTime } from "../../lib/date";
 
@@ -31,11 +32,7 @@ export function SyncButton({ className = "" }: { className?: string }) {
           : "Todavía no se ha sincronizado"
       }
     >
-      <CalendarSync
-        size={13}
-        className={sincronizando ? "is-spinning" : undefined}
-        aria-hidden
-      />
+      {sincronizando ? <Spinner size={13} /> : <CalendarSync size={13} aria-hidden />}
       <span className="sync-btn__texto">
         {sincronizando ? "Sincronizando…" : "Sync"}
       </span>

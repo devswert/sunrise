@@ -4,6 +4,7 @@ import { api } from "../../lib/ipc";
 import type { CalendarFeed, Category } from "../../lib/types";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
+import { Spinner } from "../../components/Spinner";
 import { relativeTime } from "../../lib/date";
 import { useCalendarSync } from "../../lib/calendarSync";
 import { sectionIcon } from "../settings/secciones";
@@ -199,14 +200,17 @@ function FeedItem({
         />
 
         <div className="feed__acciones">
+          {/* Botón sin texto: el estado va en los atributos, porque con la
+            * animación apagada el icono no cuenta nada por sí solo. */}
           <button
             className="set-row__icon"
             aria-label={`Sincronizar ${feed.name}`}
-            title="Sincronizar solo este calendario"
+            title={sincronizando ? "Sincronizando…" : "Sincronizar solo este calendario"}
             disabled={sincronizando}
+            aria-busy={sincronizando}
             onClick={onSync}
           >
-            <RefreshCw size={14} className={sincronizando ? "is-spinning" : undefined} />
+            {sincronizando ? <Spinner size={14} /> : <RefreshCw size={14} />}
           </button>
           {confirmar ? (
             <span className="confirm">

@@ -4,7 +4,6 @@ import {
   Archive,
   FolderOpen,
   HardDriveDownload,
-  Loader2,
   RotateCcw,
   ShieldCheck,
 } from "lucide-react";
@@ -16,6 +15,7 @@ import { SETTING_DEFAULTS, SettingKey, backupSettings, useSettingsStore } from "
 import { minutesFromTime } from "../calendar/railLayout";
 import { sectionIcon } from "../settings/secciones";
 import { Dialog } from "../../components/Dialog";
+import { Spinner } from "../../components/Spinner";
 import type { BackupFile, RestoreResult } from "../../lib/types";
 import { readableDate, formatBytes, readableMoment } from "./backup";
 
@@ -77,11 +77,7 @@ function ConfirmarRestore({
           {/* `is-solid`: es la acción más destructiva de la app y tiene que
               verse como tal, no como un botón secundario más. */}
           <button className="btn-danger is-solid" onClick={onConfirm} disabled={restaurando}>
-            {restaurando ? (
-              <Loader2 size={14} className="is-spinning" aria-hidden />
-            ) : (
-              <HardDriveDownload size={14} aria-hidden />
-            )}
+            {restaurando ? <Spinner size={14} /> : <HardDriveDownload size={14} aria-hidden />}
             {restaurando ? "Restaurando…" : "Restaurar y reemplazar"}
           </button>
         </>
@@ -385,7 +381,7 @@ export function BackupCard() {
             disabled={respaldando || !settings.active}
             title={settings.active ? undefined : "Elige una carpeta primero"}
           >
-            <Archive size={13} aria-hidden />
+            {respaldando ? <Spinner size={13} /> : <Archive size={13} aria-hidden />}
             <span className="resp-btn__texto">
               {respaldando ? "Respaldando…" : "Respaldar ahora"}
             </span>

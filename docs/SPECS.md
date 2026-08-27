@@ -756,6 +756,21 @@ En `useFloatingWindow.ts`, ya pagadas:
 - Fuentes de fábrica: **Sora** (títulos) + **Manrope** (cuerpo), auto-hospedadas
   (`@fontsource`) para funcionar offline. Paleta pastel en tokens CSS con tema
   claro/oscuro.
+- **Lo que está corriendo cambia de icono, no gira el suyo.** Un botón que espera
+  reemplaza su icono en reposo por `<Spinner>` (`src/components/Spinner.tsx`).
+  Rotar el icono propio era lo que había y se leía como un chiste: el botón de
+  sync hacía dar vueltas un calendario, que rotando no significa nada. El anillo
+  abierto girando sí es la forma que se lee como "espera".
+  `.is-spinning` lleva `overflow: visible`, y no es cosmético: **un `<svg>`
+  recorta por defecto**, así que la tinta que en reposo cabe en el viewBox de 24
+  se sale al girar y el borde se la come y se la devuelve dos veces por vuelta.
+  Medido en `RefreshCw`, cuyas puntas de flecha quedan a 13.7 unidades del centro
+  contra las 12 que mide el medio viewBox: 8.6% de variación de tinta a lo largo
+  del giro, que se lee como que el icono late. La animación se apaga con `prefers-reduced-motion`, así que el estado
+  tiene que estar también en palabras: el texto del botón ("Sincronizando…",
+  "Respaldando…"), y en los botones que no tienen texto, `aria-busy` más un
+  `title` que lo diga. La excepción es el updater, que **no** lleva spinner a
+  propósito: ahí manda la barra de progreso, que dice cuánto queda (§4.23).
 
 ---
 

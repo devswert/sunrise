@@ -6,6 +6,7 @@ import type { AppUpdate, Category } from "../../lib/types";
 import { formatMinutes, parseDuration } from "../../lib/capacity";
 import { Popover } from "../../components/Popover";
 import { Switch } from "../../components/Switch";
+import { Spinner } from "../../components/Spinner";
 import { FeedsCard } from "../calendar/FeedsCard";
 import { AppearanceCard } from "../appearance/AppearanceCard";
 import { NotificationsCard } from "../notifications/NotificationsCard";
@@ -398,7 +399,7 @@ function Actualizaciones() {
             </button>
           )}
           <button type="button" className="resp-btn" onClick={() => void buscar()} disabled={busy}>
-            <RotateCcw size={13} aria-hidden className={busy ? "is-spinning" : undefined} />
+            {status.kind === "buscando" ? <Spinner size={13} /> : <RotateCcw size={13} aria-hidden />}
             <span className="resp-btn__texto">
               {status.kind === "buscando" ? "Buscando…" : "Buscar"}
             </span>

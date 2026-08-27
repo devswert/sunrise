@@ -5,6 +5,7 @@ import { FontChoice, SUNRISE_BELL } from "../../lib/enums";
 import { SettingKey, bellSound, fontChoice, useSettingsStore } from "../../lib/settings";
 import { Popover } from "../../components/Popover";
 import { SearchSelect } from "../../components/SearchSelect";
+import { Spinner } from "../../components/Spinner";
 import { sectionIcon } from "../settings/secciones";
 
 const SectionIcon = sectionIcon("apariencia");
@@ -109,10 +110,13 @@ export function AppearanceCard() {
               type="button"
               className="resp-btn"
               disabled={outsideApp || instalando}
+              aria-busy={instalando}
               onClick={() => void elegirCampana()}
             >
-              <Upload size={13} aria-hidden />
-              <span className="resp-btn__texto">Elegir un audio</span>
+              {instalando ? <Spinner size={13} /> : <Upload size={13} aria-hidden />}
+              <span className="resp-btn__texto">
+                {instalando ? "Instalando…" : "Elegir un audio"}
+              </span>
             </button>
             {propia && (
               <button
