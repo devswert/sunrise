@@ -32,6 +32,7 @@ function task(over: Partial<Task> & { id: number }): Task {
     meetingUrl: null,
     eventDescription: null,
     attendees: [],
+    railOnly: false,
     createdAt: `${DIA}T09:00:00Z`,
     updatedAt: `${DIA}T09:00:00Z`,
     ...over,
@@ -39,7 +40,12 @@ function task(over: Partial<Task> & { id: number }): Task {
 }
 
 /** Evento importado: hora local + duración, como los deja `import_events`. */
-function event(id: number, hour: string | null, minutes: number | null): Task {
+function event(
+  id: number,
+  hour: string | null,
+  minutes: number | null,
+  over: Partial<Task> = {},
+): Task {
   return task({
     id,
     source: "CALENDAR",
@@ -51,6 +57,7 @@ function event(id: number, hour: string | null, minutes: number | null): Task {
     // los mirara, los bloques se irían de lugar.
     eventStart: hour ? `${DIA}T23:30:00+00:00` : null,
     eventEnd: hour ? `${DIA}T23:45:00+00:00` : null,
+    ...over,
   });
 }
 
@@ -367,6 +374,51 @@ describe("armarRail · lo que ya se trabajó", () => {
  * ensuciarla haría imposible distinguir lo comprometido de lo estimado.
  */
 describe("armarRail · proyección de las tareas sin hora", () => {
+  it("una tarea puesta debajo de una reunión no se proyecta antes de ella", () => {
+    // El punto de poder ordenar las cards: la columna dice cómo se va a ver el
+    // día. Con la reunión de las 15:00 arriba, la tarea va después, aunque la
+    // mañana esté entera libre. Sin esta regla el rail dibujaba el mismo día
+    // para dos órdenes distintos y ordenar cards no servía para nada.
+    const r = buildRail(
+      [event(9, "15:00", 60), task({ id: 1, position: 1, estimatedMinutes: 60 })],
+      "09:00",
+      "18:00",
+    );
+    expect(bloqueDe(r, 9)).toMatchObject({ startMin: 15 * 60, kind: "FIJO" });
+    expect(bloqueDe(r, 1)).toMatchObject({ startMin: 16 * 60, kind: "PROYECTADO" });
+  });
+
+  it("la misma tarea arriba de la reunión sí se proyecta en la mañana", () => {
+    // La otra mitad de la regla: el orden de las cards es lo que decide, así que
+    // el mismo día con las cards al revés se dibuja distinto.
+    const r = buildRail(
+      [
+        task({ id: 1, position: 0, estimatedMinutes: 60 }),
+        event(9, "15:00", 60, { position: 1 }),
+      ],
+      "09:00",
+      "18:00",
+    );
+    expect(bloqueDe(r, 1)).toMatchObject({ startMin: 9 * 60, kind: "PROYECTADO" });
+  });
+
+  it("lo que no cabe antes de medianoche no arrastra a la reunión de más abajo", () => {
+    // La proyección recorre la columna en un solo paso, y las fijas están en ese
+    // mismo recorrido: cortar por "ya no cabe el día" no puede borrar el bloque
+    // de una reunión que venía después en el orden.
+    const r = buildRail(
+      [
+        task({ id: 1, position: 0, estimatedMinutes: 20 * 60 }),
+        event(9, "23:30", 30, { position: 1 }),
+        task({ id: 2, position: 2, estimatedMinutes: 60 }),
+      ],
+      "09:00",
+      "18:00",
+    );
+    expect(bloqueDe(r, 9)).toMatchObject({ startMin: 23 * 60 + 30, kind: "FIJO" });
+    expect(r.blocks.some((b) => b.taskId === 2)).toBe(false);
+  });
+
   it("las encadena desde el inicio de la jornada, en orden de tablero", () => {
     const r = buildRail(
       [

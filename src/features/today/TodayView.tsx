@@ -19,6 +19,8 @@ export function TodayView() {
   const { work, segundosEnCurso } = useDayWork(today);
 
   const tasks = board.tasksByDate[today] ?? [];
+  // El rail ve además los bloques de agenda (§4.12), que no son tarjetas.
+  const agenda = board.agendaByDate[today] ?? [];
   // Deriva de los datos frescos: así el modal refleja al instante lo guardado.
   const selectedTask =
     selectedId != null ? (board.tasks.find((t) => t.id === selectedId) ?? null) : null;
@@ -51,7 +53,7 @@ export function TodayView() {
         <CalendarRail
           date={today}
           today={today}
-          tasks={tasks}
+          tasks={agenda}
           categoryMap={board.categoryMap}
           workStart={workday.start}
           workEnd={workday.end}

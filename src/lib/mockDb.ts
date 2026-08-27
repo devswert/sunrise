@@ -109,6 +109,7 @@ function blankTask(input: NewTaskInput, position: number): Task {
     meetingUrl: null,
     eventDescription: null,
     attendees: [],
+    railOnly: false,
     createdAt: nowISO(),
     updatedAt: nowISO(),
   };
@@ -236,7 +237,7 @@ function logEvent(
     { title: "Feriado regional", scheduledTime: null, estimatedMinutes: null },
   ];
   for (const [i, r] of reuniones.entries()) {
-    const t = blankTask({ title: r.title, scheduledDate: today }, nextPosition(today));
+    const t = blankTask({ title: r.title, scheduledDate: today }, 0);
     tasks.push(
       Object.assign(t, r, {
         source: "CALENDAR" as const,
@@ -245,10 +246,49 @@ function logEvent(
         scheduledDate: today,
       }),
     );
+    // **No al final: en el lugar que le daría el import.** `place_by_time` no
+    // tiene gemelo acá porque el browser no sincroniza nada, así que sin esto la
+    // semilla dejaba las reuniones al fondo de la columna mientras el rail las
+    // ordenaba por hora: el preview mostraba justo lo contrario de lo que hace la
+    // app (§4.12).
+    colocarPorHora(t, today);
     logEvent(t.id, "CREATED", null, today);
   }
 })();
 
+
+/**
+ * Espeja `repo::place_by_time` para la semilla: ubica una tarea del calendario
+ * por su hora dentro de su día, sin desplazar lo que no tiene hora.
+ *
+ * La regla es la misma de Rust: entra **delante del primer evento posterior a su
+ * hora** y, si no hay ninguno, al final; un evento de día completo va arriba de
+ * todo, que es donde el rail lo dibuja. Vive acá y no en `mock` porque el browser
+ * no importa nada: es solo para que el preview se vea como la app.
+ */
+function colocarPorHora(t: Task, date: string) {
+  const delDia = tasks
+    .filter((x) => x.scheduledDate === date && x.id !== t.id)
+    .sort((a, b) => a.position - b.position || a.id - b.id);
+  const todoElDia = (x: Task) => x.scheduledTime == null && x.feedId != null;
+
+  const at =
+    t.scheduledTime == null
+      ? delDia.findIndex((x) => !todoElDia(x)) === -1
+        ? delDia.length
+        : delDia.findIndex((x) => !todoElDia(x))
+      : (() => {
+          const i = delDia.findIndex(
+            (x) => x.scheduledTime != null && x.scheduledTime > t.scheduledTime!,
+          );
+          return i === -1 ? delDia.length : i;
+        })();
+
+  delDia.splice(at, 0, t);
+  delDia.forEach((x, i) => {
+    x.position = i;
+  });
+}
 
 /**
  * Espeja `repo::adjustment_stamp`: un ajuste manual de tiempo se acredita **al
@@ -386,6 +426,30 @@ export const mock = {
     return t;
   },
 
+  /**
+   * Espeja `repo::set_series_rail_only`: la marca es de la **serie**, así que se
+   * la llevan todas las tareas del mismo feed cuyo `calendarUid` comparta la
+   * parte anterior al `#`.
+   */
+  setTaskRailOnly: async (id: number, railOnly: boolean): Promise<Task | null> => {
+    const t = tasks.find((x) => x.id === id);
+    if (!t || t.feedId == null || t.calendarUid == null) return null;
+    const serie = t.calendarUid.split("#")[0];
+    for (const otra of tasks) {
+      if (otra.feedId !== t.feedId || otra.calendarUid == null) continue;
+      if (otra.calendarUid.split("#")[0] !== serie) continue;
+      // Al marcar, las que ya trabajaste no se tocan: ignorar las sacaría del
+      // tablero y de Focus, y una con el taxímetro corriendo quedaría contando
+      // sin dónde pararla. Al desmarcar sí se tocan todas.
+      if (railOnly && (otra.status === "DONE" || entries.some((e) => e.taskId === otra.id))) {
+        continue;
+      }
+      otra.railOnly = railOnly;
+      otra.updatedAt = nowISO();
+    }
+    return t;
+  },
+
   moveTask: async (id: number, date: string | null, position: number): Promise<Task | null> => {
     const t = tasks.find((x) => x.id === id);
     if (!t) return null;
@@ -400,10 +464,13 @@ export const mock = {
     // Se renumera con las `ORPHANED` incluidas —si no, quedan dos con la misma
     // posición— pero el índice que llega se cuenta contra la lista que se ve,
     // que las filtra: `at` es el primer punto que deja `position` visibles atrás.
+    // Los **bloques de agenda** (§4.12) tampoco se ven, y por lo mismo tampoco
+    // cuentan.
+    const seVe = (x: Task) => x.sourceState === "ACTIVE" && !x.railOnly;
     const orden = tasks
       .filter((x) => x.id !== id && x.scheduledDate === date)
       .sort((a, b) => a.position - b.position || a.id - b.id);
-    const visibles = orden.filter((x) => x.sourceState === "ACTIVE").length;
+    const visibles = orden.filter(seVe).length;
     const delante = Math.min(Math.max(position, 0), visibles);
     let at = orden.length;
     if (delante === 0) {
@@ -411,7 +478,7 @@ export const mock = {
     } else {
       let vistas = 0;
       for (let i = 0; i < orden.length; i++) {
-        if (orden[i].sourceState !== "ACTIVE") continue;
+        if (!seVe(orden[i])) continue;
         vistas += 1;
         if (vistas === delante) {
           at = i + 1;
@@ -658,7 +725,7 @@ export const mock = {
 
     const now = Date.now();
     for (const t of tasks) {
-      if (t.source !== "CALENDAR" || t.sourceState !== "ACTIVE") continue;
+      if (t.source !== "CALENDAR" || t.sourceState !== "ACTIVE" || t.railOnly) continue;
       if (!t.eventStart || !t.eventEnd) continue;
       if (entries.some((e) => e.taskId === t.id)) continue;
       const ini = new Date(t.eventStart).getTime();
@@ -707,7 +774,9 @@ export const mock = {
       .sort((a, b) => (a.completedAt ?? "").localeCompare(b.completedAt ?? ""));
 
     const rows: RollupDay[] = days.map((date, i) => {
-      const delDia = tasks.filter((t) => t.sourceState === "ACTIVE" && t.scheduledDate === date);
+      const delDia = tasks.filter(
+        (t) => t.sourceState === "ACTIVE" && !t.railOnly && t.scheduledDate === date,
+      );
       let plannedMinutes = 0;
       let unestimated = 0;
       for (const t of delDia) {
@@ -808,7 +877,9 @@ export const mock = {
       const segments = [...acc.values()]
         .filter((x) => x.date === date)
         .sort((a, b) => a.start.localeCompare(b.start) || a.taskId - b.taskId);
-      const delDia = tasks.filter((t) => t.sourceState === "ACTIVE" && t.scheduledDate === date);
+      const delDia = tasks.filter(
+        (t) => t.sourceState === "ACTIVE" && !t.railOnly && t.scheduledDate === date,
+      );
       let plannedMinutes = 0;
       let unestimated = 0;
       for (const t of delDia) {
@@ -913,7 +984,14 @@ export const mock = {
 
   focusQueue: async (date: string, nowHhmm: string): Promise<Task[]> =>
     tasks
-      .filter((t) => t.sourceState === "ACTIVE" && t.status === "TODO" && t.scheduledDate === date)
+      // `railOnly` fuera: un bloque de agenda se ignora por completo (§4.12).
+      .filter(
+        (t) =>
+          t.sourceState === "ACTIVE" &&
+          t.status === "TODO" &&
+          t.scheduledDate === date &&
+          !t.railOnly,
+      )
       .sort((a, b) => {
         const late = (t: Task) => (t.scheduledTime && t.scheduledTime > nowHhmm ? 1 : 0);
         if (late(a) !== late(b)) return late(a) - late(b);

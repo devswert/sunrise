@@ -1,6 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ArrowUpDown, ChevronsRightLeft, Plus } from "lucide-react";
+import { ChevronsRightLeft, Plus } from "lucide-react";
 import type { Category, Task, TaskPatch } from "../../lib/types";
 import { TaskCard } from "./TaskCard";
 import { computeCapacityLevel, formatMinutes } from "../../lib/capacity";
@@ -197,7 +197,6 @@ export function DayColumn({
           <Plus size={14} aria-hidden />
           <span className="add-task__label">Agregar tarea</span>
         </button>
-        <ArrowUpDown size={13} className="day-col__sort" aria-hidden />
         {plannedTotal > 0 && (
           <span className={`day-col__cap ${LEVEL_CLASS[level]}`}>
             {formatMinutes(plannedTotal)}

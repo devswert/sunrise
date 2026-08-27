@@ -38,6 +38,19 @@ feature:
   el `UNIQUE(feed_id, calendar_uid)` usarlo pelado colapsaría el mes en una fila.
   Una instancia editada llega como un VEVENT aparte con `RECURRENCE-ID`: su clave
   es la de la repetición que reemplaza, así el upsert deja una sola.
+  - **Y la repetición del maestro se descarta**, en una primera pasada que junta
+    todos los `RECURRENCE-ID` del archivo antes de expandir nada. Compartir clave
+    alcanzaba para no mostrar la reunión dos veces, pero no para decidir cuál de
+    las dos gana: eso lo decidía el orden de los VEVENT, y **Google lo cambia
+    entre descargas** (medido: dos `curl` seguidos al mismo feed dejan al maestro
+    antes y después de la instancia editada). Por eso una reunión movida saltaba
+    entre su hora vieja y la nueva de una sincronización a otra. Dos detalles de
+    esa pasada que no son opcionales: **no filtra por ventana** —una instancia
+    movida a dentro de un mes no se importa, pero su repetición original sí cae
+    en la ventana y sin suprimirla la reunión queda clavada en el horario del que
+    la sacaste— y **`STATUS:CANCELLED` también suprime**, porque borrar una sola
+    repetición llega así y no como `EXDATE` (el `EXDATE` es solo para las que
+    borraste antes de que existiera la instancia).
   - **El `TZID` del `RECURRENCE-ID` vive en sus parámetros, no en su valor.**
     `property_value` devuelve el valor pelado, y leerlo así lo interpreta en la zona
     **del computador**: en cuanto tu máquina no está en la misma zona que el
@@ -56,9 +69,44 @@ feature:
 - **Día completo = sin reloj**: sin `scheduled_time`, sin `event_start`/`_end` y
   sin `estimated_minutes`. Un feriado no son 24 horas trabajadas, y con la regla
   3 del rollup semanal lo serían.
-- **`STATUS:CANCELLED` se descarta.** `PARTSTAT=DECLINED` **no**: para saber cuál
-  de los invitados eres tú hace falta tu email en `settings`, así que hoy una
-  reunión rechazada se importa igual. Es una limitación conocida, no un olvido.
+- **`STATUS:CANCELLED` se descarta, y `PARTSTAT=DECLINED` también**: lo que
+  rechazaste no entra. Saber cuál de los invitados eres tú **no necesita
+  configurar nada**: Google emite `X-WR-CALNAME` con la dirección del calendario
+  (`ics::my_email`). Cuatro detalles que hacen que la regla no muerda:
+  - **Se lee del `ATTENDEE` crudo, no de `attendees`.** En la lista que se guarda,
+    el organizador y el invitado se deduplican, así que justo en los eventos que
+    organizas tú —donde tu respuesta importa igual— quedaría una sola fila.
+  - **Solo `DECLINED`.** `NEEDS-ACTION` y `TENTATIVE` siguen entrando: son tiempo
+    que quizás gastes, y no responder no es no ir.
+  - **Si no se puede saber de quién es el calendario, no se filtra nada.**
+    `X-WR-CALNAME` es el *nombre* del calendario: en el primario de Google es la
+    dirección, pero en uno secundario puede ser "Cumpleaños". Se exige que
+    parezca un correo, y ante la duda se importa: equivocarse identificando al
+    dueño borraría reuniones de verdad en silencio.
+  - **No hay lista negra, y no hace falta.** La respuesta viene en **cada**
+    pasada, así que el feed ya es la fuente de verdad; guardar una lista sería una
+    segunda copia que puede quedar desincronizada. Si vuelves a aceptar, la
+    siguiente sincronización la importa de nuevo, y si la tarea ya existía,
+    `reconcile_feed` la resuelve con sus reglas normales. Rechazar **una sola
+    repetición** funciona igual: llega como instancia propia con `RECURRENCE-ID`,
+    y por eso el filtro va **después** de la pasada que junta los
+    `RECURRENCE-ID` — si esa instancia no suprimiera la repetición del maestro, la
+    reunión rechazada se volvería a dibujar.
+- **El `_R<instante>` de una serie partida se recorta** (`ics::base_uid`). Cuando
+  alguien edita una recurrente con "este evento y los siguientes", Google **parte
+  la serie**: la vieja queda con un `UNTIL` justo antes del corte y aparece un UID
+  nuevo, el mismo con un `_R<instante-del-corte>` metido antes del `@`. Para la app
+  eso era una serie **nueva**: cambiaba la clave de cada repetición futura, así que
+  el reconciler borraba las tareas y el import creaba otras. Y borrar e insertar no
+  es actualizar — se perdía todo lo tocado a mano (canal, notas, posición), y una
+  instancia con tiempo trackeado se soltaba del feed **y** volvía a entrar con el
+  UID nuevo, dejando la misma reunión dos veces en el tablero. Normalizando el UID
+  la clave no se mueve y el upsert actualiza en su lugar, que es lo que un cambio
+  de horario tiene que hacer. Se recorta **solo** la forma exacta del sello
+  (`<8 dígitos>T<6 dígitos>`, `Z` opcional, o **solo la fecha** en un evento de día
+  completo, cuyo `RECURRENCE-ID` no tiene reloj); un `_R` en el medio de un UID
+  cualquiera no se toca. La **migración 15** alinea los `calendar_uid` ya
+  guardados, para que la primera sincronización actualice en vez de borrar y crear.
 - **`import_as_tasks = 0` baja el feed pero no escribe**, para que una URL
   revocada siga apareciendo como error en vez de quedar muda.
 
@@ -93,7 +141,11 @@ columnas propias y la sync las refresca sin tocar `notes`. `attendees` guarda
 muestra completo junto a su tarea; un JSON ilegible se lee como "sin
 participantes" en vez de tumbar la lectura de la tarea. El organizador va
 primero y marcado, y si además está invitado se deduplica por correo (Google lo
-manda en las dos propiedades).
+manda en las dos propiedades) — **pero conservando su `PARTSTAT`**, que es lo que
+trae la fila de `ATTENDEE` y no la de `ORGANIZER`. Descartarla sin más borraba tu
+propia respuesta en **todos** los eventos que organizas tú (Google te pone como
+invitado en ellos), así que el detalle te mostraba "sin responder" incluso
+habiendo rechazado.
 
 > **Un calendario compartido "ocultando los detalles" no trae nada de esto.** Es
 > la restricción de Google —y la que suele imponer un Workspace que no permite
@@ -102,6 +154,93 @@ manda en las dos propiedades).
 > aprovechable es cuándo y cuánto duran. No hay nada que la app pueda hacer con
 > eso: el dato no existe del otro lado. **Para tener detalles hace falta la
 > dirección secreta del calendario**, que es lo único que emite el feed completo.
+
+**Eventos ignorados: los que solo ocupan la agenda** (`tasks.rail_only`,
+migración 14). Un "focus time" del calendario —el almuerzo, un rato de
+concentración— es espacio reservado, no trabajo. Con la marca la app lo **ignora
+por completo**: lo único que sigue haciendo es ocupar su hora en el rail, que es
+para lo que sirve —planificar alrededor—. Sin esto, hora y cuarto de almuerzo se
+leían como hora y cuarto de trabajo planificado y el semáforo de capacidad mentía
+todos los días.
+
+"Ignorar" es literal, y son **cinco exclusiones** además de la tarjeta:
+
+| Lectura | Qué se excluye | Por qué |
+|---|---|---|
+| columna del día (`tasksByDate`) | la tarjeta | no es trabajo que ordenar |
+| capacidad / `plan_by_day` | sus minutos | no es carga |
+| `focus_queue` | la tarea | no es algo que "hacer ahora" |
+| `meetings_for_date` | el aviso | no interrumpe para anunciar el almuerzo |
+| rollup semanal (regla 3) | su duración | una reunión sin trackear no se cuenta como trabajada |
+| `last_day_with_tasks` | el día | un día con solo un almuerzo no es un día que repasar |
+
+La fila sigue existiendo en `tasks` y **sigue siendo del feed**: la sincronización
+la actualiza como a cualquier otra, así que si mueves el almuerzo en Google el
+bloque se mueve. Lo que no existe es ninguna puerta para trabajarla —no hay
+tarjeta, no está en Focus—, así que no puede acumular tiempo nuevo.
+
+**Y por eso ignorar no toca las repeticiones que ya trabajaste** (con
+`time_entries` o `DONE`): se quedan como tarjetas normales. Son dos trampas de una
+sola regla, las dos con precedente:
+
+- Con el **taxímetro corriendo**, ignorarla la saca del tablero *y* de Focus, así
+  que el timer seguiría contando sobre algo que no podés ver ni detener desde ahí
+  — exactamente lo que `reconcile_feed` decidió no hacer ni para marcar
+  `ORPHANED`. Una corrida abierta es una `time_entry`, así que el mismo filtro la
+  cubre.
+- Una **trabajada o completada** escondida de la columna deja su tiempo contado en
+  la review: el estado partido del que salió la migración 6. Ese tiempo es tuyo.
+
+Al **desmarcar** sí se tocan todas, o alguna podría quedarse ignorada para
+siempre. Y la consecuencia a tener presente: el día que trabajaste el almuerzo, esa
+tarjeta se queda en la columna con su tiempo — es lo correcto, pero se nota.
+
+- **La marca la pone el usuario, no el feed.** El ICS de Google **no distingue**
+  un focus time de una reunión cualquiera: no emite `X-GOOGLE-EVENT-TYPE`, y el
+  VEVENT del almuerzo es idéntico al de un evento suelto (medido sobre un feed
+  real: ni participantes ni `TRANSP` sirven de pista). No hay nada que importar,
+  así que la sincronización tampoco lo pisa.
+- **Es de la serie, no de la repetición** (`calendar_series_prefs`). El almuerzo
+  es semanal: con la marca en la tarea habría que volver a ponerla cada vez que
+  entra una repetición nueva, para siempre. La clave es el UID pelado —lo que va
+  antes del `#`—, y `import_events` la hereda al insertar. Se guarda además en
+  `tasks.rail_only` porque la preferencia sola no cambiaría nada de lo ya
+  importado.
+- **Columna propia y no un `source_state`.** `ORPHANED` ya significó a la vez "no
+  la planifiques" y "no la muestres", y desenredar esas dos costó la migración 6.
+- **Al soltarse del feed la marca se cae** (`reconcile_feed`): una tarea sin feed
+  que la conservara quedaría invisible en el tablero, con su tiempo trackeado
+  encima y sin forma de recuperarla desde ahí.
+- **No cuenta al reordenar.** El índice que manda la vista se cuenta contra las
+  cards que se ven, así que `move_task` descuenta los bloques de agenda igual que
+  las `ORPHANED`; si no, una card soltada debajo del almuerzo aterrizaba un lugar
+  más abajo. `place_by_time` no los ubica: no están en la columna.
+- **Se marca y se desmarca en el detalle**, con un switch **en el pie, a la
+  derecha** (el mismo de Configs, `components/Switch`, y no un checkbox nativo:
+  en macOS no se puede estilar sin redibujarlo entero). Ese lugar lo ocupaba
+  "los cambios se guardan automáticamente", un texto que no decía nada que
+  hiciera falta —el autosave se nota usándolo— y era el único espacio del modal
+  que no hacía nada. Abajo queda además lejos del título y de las notas: es una
+  decisión sobre el evento, no un campo que se edita. El rótulo es **"Ignorar
+  como tarea"**, y dice justo lo que pasa: el evento no desaparece, deja de ser
+  una tarea. Sin explicación al lado — un renglón de ayuda en una barra de una
+  línea se desparrama hacia la izquierda y choca con el botón de eliminar.
+  Ignorada, la tarea no tiene tarjeta, pero el detalle sigue
+  siendo alcanzable: **su bloque del rail lo abre igual que cualquier otro**.
+  Hubo una versión con un popover propio en el rail para desmarcarla, y se
+  descartó: agregaba un comportamiento que hay que aprender y le daba al rail un
+  camino de escritura, cuando el control de volver atrás ya estaba en el detalle.
+- **El detalle de una ignorada esconde las acciones de trabajo**: completar, el
+  play y los dos ajustes de tiempo. El play es el que importa: sobre una tarea sin
+  tarjeta en ninguna columna dejaría el taxímetro corriendo donde no se puede ver
+  ni detener — la misma trampa que `set_series_rail_only` evita al no tocar lo ya
+  trabajado. Quedan sus datos del evento, sus notas, el canal y el switch. El
+  lugar del círculo de completar **no** se reserva: se probó reservarlo para que
+  el título no perdiera la sangría, y el hueco vacío se veía peor que el título
+  pegado al borde.
+- **Se ve atenuado y con borde punteado**, el mismo idioma que lo proyectado
+  ("esto no es un compromiso de trabajo"), pero conserva su color: si no, no hay
+  cómo saber de qué es el bloque.
 
 **En la UI:**
 
@@ -133,9 +272,44 @@ manda en las dos propiedades).
   markdown, que no es lo mismo que HTML. La conversión va **al mostrar y no al
   importar**, para no perder el original.
 
+**Las reuniones entran ordenadas por hora** (`repo::place_by_time`). El feed las
+entrega en el orden que se le antoja a Google, y entrando al final de su día la
+semana mostraba la agenda desordenada mientras el rail —que ordena por hora—
+mostraba otra cosa.
+
+**Pero solo se ordenan entre ellas: lo que no tiene hora no se mueve.** Esa es la
+mitad del punto. La columna del día **es el plan del día** —para eso se arrastran
+las cards— y dónde va una tarea a mano entre dos reuniones lo decide el usuario;
+el rail proyecta en ese mismo orden (§4.13), así que la columna y el rail cuentan
+la misma historia. Un orden impuesto del tipo "reuniones primero, tareas después"
+haría imposible planificar con las cards.
+
+La regla exacta: un evento entra **justo delante del primer evento posterior a su
+hora**, y si no hay ninguno, al final. Dicho de otro modo, **un evento nuevo se
+abre paso entre otros eventos y nunca desplaza una tarea tuya**. Entre reuniones
+el resultado es idéntico a ordenarlas por hora; la diferencia aparece cuando
+arrastraste algo a un hueco, y ahí gana lo que arrastraste. Un evento de **día
+completo** no tiene reloj: va arriba de todo, que es donde el rail lo dibuja (una
+franja sobre la grilla, no un bloque).
+
+Se ubica **al importar y cuando el evento cambia de día o de hora**, no en cada
+pasada: después de eso la columna es del usuario, y reubicar cada cinco minutos
+borraría cualquier arrastre. Ordenar solo al dibujar no servía —el índice que
+escribe un arrastre se cuenta contra la lista que se ve, y con la vista ordenada
+distinto de `position` la card aterrizaba donde no la soltaste—; por eso el orden
+se guarda en `position` y no se calcula en el front.
+
+La **migración 14** lo aplica de una vez a lo ya importado, con el mismo criterio:
+toma los lugares que hoy ocupan las tareas **con** hora y los reparte entre ellas
+en orden de reloj; los lugares de las demás quedan intactos. Los eventos de **día
+completo** son la excepción y suben al tope de su día: son la franja de arriba del
+rail, no trabajo con un lugar en el plan, así que no hay nada del usuario que
+preservar.
+
 **El upsert no pisa lo que tocaste a mano.** Actualiza título, fecha, hora y
 horario del evento —lo que cambia cuando alguien mueve la reunión— y deja
-intactos `status`, `actual_seconds`, `position`, `category_id` y `notes`. Si no, cada
+intactos `status`, `actual_seconds`, `category_id` y `notes`. `position` es la
+excepción, y solo cuando el evento se movió de día o de hora: ver arriba. Si no, cada
 pasada del poller (cada 15 minutos) tiraría a la basura el trabajo hecho sobre
 una tarea de calendario. La categoría por defecto del feed es un **valor
 inicial**, no una imposición.
@@ -208,7 +382,11 @@ a ser tareas normales. Con cascada se irían reuniones ya completadas y con tiem
 trackeado encima.
 
 **Lo que desaparece del feed** lo resuelve `reconcile_feed`, que corre después
-de cada import con los UIDs que este acaba de ver. La regla es **asimétrica a
+de cada import con los UIDs que este acaba de ver. **Devuelve nombres y no solo
+números** (`Reconciled`), y el log los emite: un "3 borradas" a secas no se puede
+reconstruir después, porque las filas ya no existen. Y lo que desaparece del feed
+casi nunca es un evento borrado —Google parte series, cambia UIDs, mueve
+instancias—, así que el log es lo único que queda para entender qué pasó. La regla es **asimétrica a
 propósito, porque borrar es barato de equivocarse y caro de deshacer**. Se borra
 solo lo intacto y por venir:
 
@@ -309,6 +487,14 @@ ocupa espacio para la siguiente:
   sin él `DURACION_POR_DEFECTO` es un número inventado por el rail, y decir "te
   faltan 11 minutos" sobre algo que nunca estimaste es peor que no decir nada.
   Una completada no debe nada, por mucho que el estimado fuera mayor.
+  - **Las reuniones que están más arriba en la columna son una barrera, no solo
+    un obstáculo.** Una tarea arrastrada debajo de la de las 15:00 se proyecta
+    después de las 15:00, aunque la mañana esté entera libre; la misma tarea
+    arrastrada arriba se proyecta a las 9:00. Sin esa regla el rail dibujaba el
+    mismo día para dos órdenes distintos, y entonces ordenar las cards no servía
+    para lo único que sirve: decir cómo se va a ver el día. La proyección hace un
+    solo recorrido por la columna en orden de `position`, colocando las
+    pendientes y corriendo el cursor al pasar por una fija.
 - **Nada pendiente se proyecta antes de lo ya trabajado.** El arranque de la
   proyección es el mayor entre el inicio de la jornada, "ahora" (solo hoy) y el
   fin del último bloque `REAL`: planificar hacia atrás de lo que ya hiciste no
@@ -387,9 +573,15 @@ ocupa espacio para la siguiente:
   Escape cerraría los dos de una.
 - **Es de solo lectura y queda fuera del `DndContext`.** Soltar ahí tendría que
   escribir `scheduled_time`, y `boardCollision` está afinada para el board
-  (§4.3). Un bloque solo abre el detalle.
+  (§4.3). Un bloque solo abre el detalle, **también el de un evento ignorado**
+  (§4.12): ese detalle es la única puerta que le queda a una tarea sin tarjeta, y
+  es donde vive el switch para dejar de ignorarla.
 - Recibe **la misma lista** que la columna del día, para que las dos lecturas del
-  mismo día no puedan divergir.
+  mismo día no puedan divergir. La única excepción son los **bloques de agenda**
+  (§4.12): el rail recibe `agendaByDate` y la columna `tasksByDate`, que es la
+  misma lista filtrada por `railOnly`. Las dos salen del mismo arreglo y difieren
+  **solo** en ese campo, así que no hay forma de que una tarea aparezca en una y
+  falte en la otra por accidente.
 - La línea de "ahora" solo se dibuja en el día de hoy, y relee el reloj en vez de
   acumular: macOS agrupa los temporizadores al suspender (mismo criterio que
   `checkDayChange`, §5.3.1).

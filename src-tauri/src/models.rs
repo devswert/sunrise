@@ -293,6 +293,11 @@ pub struct Task {
     pub event_description: Option<String>,
     /// Invitados a la reunión. Vacío si el evento no los trae.
     pub attendees: Vec<Attendee>,
+    /// **Solo ocupa la agenda**: se dibuja en el rail para planificar alrededor,
+    /// pero no es una tarjeta del tablero y no suma a la carga del día. Es la
+    /// forma de un "focus time" del calendario (el almuerzo, un bloque de
+    /// concentración). Dato nuestro, no del feed: la sync no lo pisa.
+    pub rail_only: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -326,6 +331,7 @@ impl Task {
                 .get::<_, Option<String>>("attendees")?
                 .and_then(|j| serde_json::from_str(&j).ok())
                 .unwrap_or_default(),
+            rail_only: r.get("rail_only")?,
             created_at: r.get("created_at")?,
             updated_at: r.get("updated_at")?,
         })

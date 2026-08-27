@@ -299,6 +299,174 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
             REFERENCES categories(id) ON DELETE SET NULL;
         "#,
     ),
+    (
+        14,
+        r#"
+        -- **Bloques que solo ocupan la agenda.** Un "focus time" del calendario
+        -- —el almuerzo, un bloque de concentración— es un espacio reservado, no
+        -- trabajo. Con la marca la app lo **ignora por completo**: no es tarjeta
+        -- del tablero, no suma a la carga del día, no entra a la cola de Focus,
+        -- no avisa antes de empezar y no cuenta en la review. Lo único que hace
+        -- es ocupar su hora en el rail, que es para lo que sirve: planificar
+        -- alrededor. Sin esto, hora y cuarto de almuerzo se leían como hora y
+        -- cuarto de trabajo planificado y el semáforo de capacidad mentía todos
+        -- los días.
+        --
+        -- **Columna propia y no un `source_state`.** `ORPHANED` ya significó a la
+        -- vez "no la planifiques" y "no la muestres", y desenredar esas dos
+        -- costó una migración (la 6): meter acá una tercera lectura repetiría
+        -- exactamente ese error.
+        --
+        -- Es dato **nuestro**, no del feed: el ICS de Google no distingue un
+        -- focus time de una reunión cualquiera (no emite `X-GOOGLE-EVENT-TYPE`,
+        -- medido sobre un feed real), así que no hay nada que importar. Por lo
+        -- mismo la sincronización no lo pisa, igual que `status` o `notes`.
+        ALTER TABLE tasks ADD COLUMN rail_only INTEGER NOT NULL DEFAULT 0;
+
+        -- La marca se guarda **por serie, no por instancia**. El almuerzo es un
+        -- evento semanal: con la marca en la tarea habría que volver a ponerla
+        -- cada vez que entra una repetición nueva, para siempre. La clave es el
+        -- UID pelado —lo que va antes del `#` en `calendar_uid`—, que es el
+        -- mismo para todas las repeticiones de una serie.
+        CREATE TABLE calendar_series_prefs (
+            feed_id    INTEGER NOT NULL REFERENCES calendar_feeds(id) ON DELETE CASCADE,
+            series_uid TEXT    NOT NULL,
+            rail_only  INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (feed_id, series_uid)
+        );
+
+        -- **Las tareas con hora se ordenan entre sí por hora**, de una vez para
+        -- lo que ya está importado. Las reuniones entraban al final de su día y
+        -- el feed las entrega en el orden que se le antoja a Google, así que la
+        -- semana mostraba la agenda desordenada mientras el rail —que ordena por
+        -- hora— mostraba otra cosa. De acá en adelante lo mantiene
+        -- `repo::place_by_time`, que corre al importar y cuando un evento cambia
+        -- de día o de hora.
+        --
+        -- **Las que no tienen hora no se mueven**, y eso es la mitad del punto:
+        -- la columna del día es el plan del día, y el lugar de una tarea a mano
+        -- entre dos reuniones lo eliges arrastrando. Lo que se hace es tomar los
+        -- lugares que hoy ocupan las tareas con hora y repartirlos entre ellas en
+        -- orden de reloj; los lugares de las demás quedan intactos.
+        WITH base AS (
+            SELECT id,
+                   scheduled_date,
+                   scheduled_time,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY scheduled_date ORDER BY position, id
+                   ) AS lugar
+              FROM tasks
+             WHERE scheduled_date IS NOT NULL
+        ),
+        -- Los lugares que hoy ocupan las que tienen hora, en orden.
+        lugares AS (
+            SELECT scheduled_date, lugar,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY scheduled_date ORDER BY lugar
+                   ) AS k
+              FROM base
+             WHERE scheduled_time IS NOT NULL
+        ),
+        -- Las que tienen hora, en orden de reloj.
+        con_hora AS (
+            SELECT id, scheduled_date,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY scheduled_date ORDER BY scheduled_time, lugar
+                   ) AS k
+              FROM base
+             WHERE scheduled_time IS NOT NULL
+        ),
+        nueva AS (
+            SELECT b.id,
+                   CASE
+                       WHEN b.scheduled_time IS NULL THEN b.lugar - 1
+                       ELSE (
+                           SELECT l.lugar - 1
+                             FROM con_hora c
+                             JOIN lugares l
+                               ON l.scheduled_date = c.scheduled_date AND l.k = c.k
+                            WHERE c.id = b.id
+                       )
+                   END AS pos
+              FROM base b
+        )
+        UPDATE tasks
+           SET position = (SELECT pos FROM nueva WHERE nueva.id = tasks.id)
+         WHERE scheduled_date IS NOT NULL;
+
+        -- Y los eventos de **día completo** suben al tope de su día. Son la
+        -- franja de arriba del rail, no trabajo con un lugar en el plan, así que
+        -- acá no hay nada del usuario que preservar — y sin esta pasada quedaban
+        -- donde estuvieran, con lo que un evento nuevo podía entrar por encima y
+        -- dejar el feriado colgado en la mitad de la columna. `place_by_time`
+        -- ubica los nuevos igual: arriba.
+        WITH orden AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY scheduled_date
+                       ORDER BY CASE
+                                    WHEN feed_id IS NOT NULL AND scheduled_time IS NULL THEN 0
+                                    ELSE 1
+                                END,
+                                position,
+                                id
+                   ) - 1 AS pos
+              FROM tasks
+             WHERE scheduled_date IS NOT NULL
+        )
+        UPDATE tasks
+           SET position = (SELECT pos FROM orden WHERE orden.id = tasks.id)
+         WHERE scheduled_date IS NOT NULL;
+        "#,
+    ),
+    (
+        15,
+        r#"
+        -- **Series partidas: se recorta el `_R<instante>` del `calendar_uid`.**
+        --
+        -- Cuando alguien edita una recurrente con "este evento y los siguientes",
+        -- Google parte la serie: la vieja queda con un `UNTIL` antes del corte y
+        -- aparece un UID nuevo, el mismo con un `_R<instante>` metido antes del
+        -- `@`. Para la app eso era una serie nueva, así que borraba las tareas
+        -- futuras y creaba otras — perdiendo lo que hubieras tocado a mano, y
+        -- dejando dos tarjetas de la misma reunión si alguna tenía tiempo
+        -- trackeado. `ics::base_uid` ahora normaliza el UID al interpretar el
+        -- feed; esto alinea lo que ya está en la base para que la primera
+        -- sincronización actualice en su lugar en vez de borrar y volver a crear.
+        --
+        -- El `LIKE` no alcanza para reconocer la forma exacta (8 dígitos, `T`, 6
+        -- dígitos), pero sí para no tocar nada que no la tenga: los `_` del LIKE
+        -- son comodines de un carácter, y el rango de posiciones lo fija el resto
+        -- del patrón. Un falso positivo acá solo cuesta una sincronización que
+        -- borra y recrea, que es exactamente lo que pasaba antes.
+        --
+        -- **`UPDATE OR IGNORE`**: si la fila normalizada ya existe (quedaron las
+        -- dos, la vieja y la nueva), el `UNIQUE(feed_id, calendar_uid)` rechazaría
+        -- la escritura y con `OR IGNORE` esa fila se queda como está — la próxima
+        -- pasada la resuelve con las reglas del reconciler.
+        -- Tres sentencias y no una, porque el sello tiene tres largos: con `Z`,
+        -- sin `Z`, y solo fecha (un evento de día completo, cuyo `RECURRENCE-ID`
+        -- no tiene reloj). Los patrones son excluyentes entre sí, porque cada uno
+        -- fija qué carácter viene pegado al `@`.
+        UPDATE OR IGNORE tasks
+           SET calendar_uid =
+                   substr(calendar_uid, 1, instr(calendar_uid, '_R') - 1)
+                || substr(calendar_uid, instr(calendar_uid, '_R') + 17)
+         WHERE calendar_uid LIKE '%\_R________T______@%' ESCAPE '\';
+
+        UPDATE OR IGNORE tasks
+           SET calendar_uid =
+                   substr(calendar_uid, 1, instr(calendar_uid, '_R') - 1)
+                || substr(calendar_uid, instr(calendar_uid, '_R') + 18)
+         WHERE calendar_uid LIKE '%\_R________T______Z@%' ESCAPE '\';
+
+        UPDATE OR IGNORE tasks
+           SET calendar_uid =
+                   substr(calendar_uid, 1, instr(calendar_uid, '_R') - 1)
+                || substr(calendar_uid, instr(calendar_uid, '_R') + 10)
+         WHERE calendar_uid LIKE '%\_R________@%' ESCAPE '\';
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.

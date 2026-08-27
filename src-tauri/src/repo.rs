@@ -82,7 +82,7 @@ pub struct TaskPatch {
 const TASK_COLS: &str = "id, title, notes, category_id, objective_id, scheduled_date, \
     scheduled_time, position, estimated_minutes, actual_seconds, status, completed_at, \
     source, source_state, feed_id, calendar_uid, event_start, event_end, meeting_url, \
-    event_description, attendees, created_at, updated_at";
+    event_description, attendees, rail_only, created_at, updated_at";
 
 pub fn get_task(conn: &Connection, id: i64) -> Result<Option<Task>> {
     conn.query_row(
@@ -267,20 +267,27 @@ fn move_task_as(
     // así que hay que traducirlo: `at` es el primer punto que deja `position`
     // filas visibles detrás.
     let orden: Vec<(i64, bool)> = {
+        // El booleano es "se ve en la columna": lo que la vista contó para
+        // mandar su índice. Además de las `ORPHANED`, **los bloques de agenda no
+        // se ven** (§4.12): sin descontarlos, una card soltada debajo del
+        // almuerzo aterrizaba un lugar más abajo de donde la dejaste.
         let mapa = |r: &rusqlite::Row| -> rusqlite::Result<(i64, bool)> {
-            Ok((r.get(0)?, r.get::<_, String>(1)? == "ACTIVE"))
+            Ok((
+                r.get(0)?,
+                r.get::<_, String>(1)? == "ACTIVE" && !r.get::<_, bool>(2)?,
+            ))
         };
         match date {
             Some(d) => conn
                 .prepare(
-                    "SELECT id, source_state FROM tasks
+                    "SELECT id, source_state, rail_only FROM tasks
                      WHERE scheduled_date = ?1 AND id <> ?2 ORDER BY position, id",
                 )?
                 .query_map(params![d, id], mapa)?
                 .collect::<Result<Vec<_>>>()?,
             None => conn
                 .prepare(
-                    "SELECT id, source_state FROM tasks
+                    "SELECT id, source_state, rail_only FROM tasks
                      WHERE scheduled_date IS NULL AND id <> ?1 ORDER BY position, id",
                 )?
                 .query_map(params![id], mapa)?
@@ -340,6 +347,7 @@ pub fn last_day_with_tasks(conn: &Connection, before: &str) -> Result<Option<Str
     conn.query_row(
         "SELECT MAX(scheduled_date) FROM tasks
           WHERE source_state = 'ACTIVE'
+            AND rail_only = 0
             AND scheduled_date IS NOT NULL
             AND scheduled_date < ?1",
         [before],
@@ -451,6 +459,9 @@ pub fn focus_queue(conn: &Connection, date: &str, now_hhmm: &str) -> Result<Vec<
     let mut stmt = conn.prepare(&format!(
         "SELECT {TASK_COLS} FROM tasks
          WHERE source_state = 'ACTIVE' AND status = 'TODO' AND scheduled_date = ?1
+           -- Un bloque de agenda se ignora por completo (§4.12): no es trabajo,
+           -- así que no tiene nada que hacer en la cola de Focus.
+           AND rail_only = 0
          ORDER BY
             -- 0: sin hora o ya empezada; 1: agendada más tarde
             CASE WHEN scheduled_time IS NULL OR scheduled_time <= ?2 THEN 0 ELSE 1 END,
@@ -490,6 +501,9 @@ pub fn meetings_for_date(conn: &Connection, date: &str) -> Result<Vec<Meeting>> 
         "SELECT id, title, scheduled_time, notified_for FROM tasks
          WHERE source_state = 'ACTIVE' AND status = 'TODO' AND source = 'CALENDAR'
            AND scheduled_date = ?1 AND scheduled_time IS NOT NULL
+           -- Un bloque de agenda no avisa: ignorarlo por completo incluye no
+           -- interrumpir para anunciar el almuerzo (§4.12).
+           AND rail_only = 0
          ORDER BY scheduled_time, id",
     )?;
     let rows = stmt.query_map([date], |r| {
@@ -1178,6 +1192,7 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
            FROM tasks t
            LEFT JOIN categories c ON c.id = t.category_id
           WHERE t.source = 'CALENDAR' AND t.source_state = 'ACTIVE'
+            AND t.rail_only = 0
             AND t.event_start IS NOT NULL AND t.event_end IS NOT NULL
             AND t.event_start >= ?1 AND t.event_start < ?2
             AND NOT EXISTS (SELECT 1 FROM time_entries e WHERE e.task_id = t.id)",
@@ -1238,7 +1253,8 @@ fn plan_by_day(conn: &Connection, days: &Semana) -> Result<Vec<(i64, i64)>> {
     let mut stmt = conn.prepare(
         "SELECT scheduled_date, estimated_minutes, source, event_start, event_end
            FROM tasks
-          WHERE source_state = 'ACTIVE' AND scheduled_date >= ?1 AND scheduled_date <= ?2",
+          WHERE source_state = 'ACTIVE' AND rail_only = 0
+            AND scheduled_date >= ?1 AND scheduled_date <= ?2",
     )?;
     let plans = stmt.query_map(params![days[0].0, days[days.len() - 1].0], |r| {
         Ok((
@@ -2062,17 +2078,17 @@ pub fn reconcile_feed(
     feed_id: i64,
     seen: &[String],
     today: &str,
-) -> Result<(usize, usize)> {
+) -> Result<Reconciled> {
     // Las que están en la base para este feed y no aparecieron en esta pasada.
     let mut stmt = conn.prepare(
-        "SELECT id, calendar_uid, scheduled_date, status,
+        "SELECT id, calendar_uid, scheduled_date, status, title,
                 (SELECT COUNT(*) FROM time_entries e WHERE e.task_id = t.id) AS entradas,
                 (SELECT COUNT(*) FROM time_entries e
                   WHERE e.task_id = t.id AND e.ended_at IS NULL) AS corriendo
          FROM tasks t
          WHERE feed_id = ?1 AND calendar_uid IS NOT NULL AND source_state = 'ACTIVE'",
     )?;
-    let rows: Vec<(i64, String, Option<String>, String, i64, i64)> = stmt
+    let rows: Vec<(i64, String, Option<String>, String, String, i64, i64)> = stmt
         .query_map([feed_id], |r| {
             Ok((
                 r.get(0)?,
@@ -2081,16 +2097,15 @@ pub fn reconcile_feed(
                 r.get(3)?,
                 r.get(4)?,
                 r.get(5)?,
+                r.get(6)?,
             ))
         })?
         .collect::<Result<Vec<_>>>()?;
 
     let seen: std::collections::HashSet<&str> = seen.iter().map(String::as_str).collect();
-    let mut deleted = 0;
-    let mut orphaned = 0;
-    let mut released = 0;
+    let mut out = Reconciled::default();
 
-    for (id, uid, date, status, entries, running) in rows {
+    for (id, uid, date, status, title, entries, running) in rows {
         if seen.contains(uid.as_str()) {
             continue;
         }
@@ -2106,27 +2121,246 @@ pub fn reconcile_feed(
         let worked = entries > 0 || status == "DONE";
         let intact = !worked;
 
+        let quien = Afectada {
+            title,
+            date: date.clone(),
+        };
+
         if future && intact {
             conn.execute("DELETE FROM tasks WHERE id = ?1", [id])?;
-            deleted += 1;
+            out.deleted.push(quien);
         } else if worked {
-            // Se suelta del feed y se queda en el tablero: es tuya.
+            // Se suelta del feed y se queda en el tablero: es tuya. **Y deja
+            // de ser un bloque de agenda**: la marca dice "esto lo pone el
+            // calendario, no lo planifiques", y una tarea sin feed que la
+            // conservara quedaría invisible en el tablero sin forma de
+            // recuperarla desde ahí.
             conn.execute(
-                "UPDATE tasks SET feed_id = NULL, calendar_uid = NULL, updated_at = ?2
+                "UPDATE tasks SET feed_id = NULL, calendar_uid = NULL, rail_only = 0,
+                        updated_at = ?2
                  WHERE id = ?1",
                 params![id, now()],
             )?;
-            released += 1;
+            out.released.push(quien);
         } else {
             conn.execute(
                 "UPDATE tasks SET source_state = 'ORPHANED', updated_at = ?2 WHERE id = ?1",
                 params![id, now()],
             )?;
-            orphaned += 1;
+            out.orphaned.push(quien);
         }
     }
 
-    Ok((deleted, orphaned + released))
+    Ok(out)
+}
+
+/// Una tarea que el reconciler tocó, con lo justo para poder nombrarla en el log.
+#[derive(Debug, Clone)]
+pub struct Afectada {
+    pub title: String,
+    pub date: Option<String>,
+}
+
+impl std::fmt::Display for Afectada {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.date {
+            Some(d) => write!(f, "«{}» del {d}", self.title),
+            None => write!(f, "«{}»", self.title),
+        }
+    }
+}
+
+/// Qué hizo el reconciler, **con nombres**.
+///
+/// Antes devolvía solo dos números, y eso alcanzaba hasta el día en que el log
+/// dijo "3 borradas" y no había forma de saber cuáles: las filas ya no existen,
+/// así que la información se pierde para siempre si no se emite en el momento.
+/// Un evento que desaparece del feed casi nunca es un evento borrado —Google
+/// parte series, cambia UIDs, mueve instancias—, así que el log tiene que
+/// permitir reconstruir qué pasó.
+#[derive(Debug, Default, Clone)]
+pub struct Reconciled {
+    pub deleted: Vec<Afectada>,
+    pub released: Vec<Afectada>,
+    pub orphaned: Vec<Afectada>,
+}
+
+impl Reconciled {
+    /// `(borradas, retiradas)`, que es lo que se mira para saber si hubo cambios.
+    pub fn totals(&self) -> (usize, usize) {
+        (
+            self.deleted.len(),
+            self.orphaned.len() + self.released.len(),
+        )
+    }
+
+    pub fn hubo_cambios(&self) -> bool {
+        let (a, b) = self.totals();
+        a + b > 0
+    }
+}
+
+/// Lleva la tarea al lugar que le toca **por su hora** dentro de su día.
+///
+/// El orden de una columna es el del tablero (`position`), y las reuniones
+/// entraban al final: llegan del feed en el orden que se le antoja a Google, así
+/// que la semana quedaba con la agenda desordenada mientras el rail —que ordena
+/// por hora— mostraba otra cosa. Ordenar solo al dibujar no servía: el índice
+/// que escribe un arrastre se cuenta contra la lista que se ve, y con las dos
+/// listas distintas el arrastre movía la card a un lugar que no era el que
+/// soltaste.
+///
+/// **Solo ordena entre las que tienen hora, y no toca a las demás.** Esa es la
+/// mitad del punto: la columna del día es el plan del día, y dónde va una tarea
+/// a mano entre dos reuniones lo decides arrastrando. El rail proyecta lo sin
+/// hora en ese mismo orden, así que la columna y el rail cuentan la misma
+/// historia. Un orden "reuniones primero, tareas después" impuesto por la app
+/// haría imposible planificar el día con las cards, que es para lo que están.
+///
+/// La tarea entra **justo delante del primer evento posterior a su hora**, y si
+/// no hay ninguno, al final. Dicho de otro modo: un evento nuevo se abre paso
+/// entre otros eventos y **nunca desplaza una tarea tuya**. Entre reuniones el
+/// resultado es el mismo que ordenarlas por hora; la diferencia aparece cuando
+/// arrastraste algo a un hueco, y ahí gana lo que arrastraste. Un evento de día
+/// completo no tiene reloj y va arriba, que es donde el rail lo dibuja (una
+/// franja sobre la grilla, no un bloque).
+///
+/// Se llama solo al importar y al mover un evento de hora o de día: después de
+/// eso la columna es tuya y un arrastre no se deshace en la próxima
+/// sincronización.
+fn place_by_time(conn: &Connection, id: i64, date: &str, hour: Option<&str>) -> Result<()> {
+    // El índice se cuenta contra la lista **que se ve**, que es lo que espera
+    // `move_task`: las `ORPHANED` y los bloques de agenda no están en pantalla.
+    let mut stmt = conn.prepare(
+        "SELECT scheduled_time, feed_id FROM tasks
+         WHERE scheduled_date = ?1 AND id <> ?2 AND source_state = 'ACTIVE'
+               AND rail_only = 0
+         ORDER BY position, id",
+    )?;
+    let otras: Vec<(Option<String>, Option<i64>)> = stmt
+        .query_map(params![date, id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<Vec<_>>>()?;
+
+    // Un evento de día completo no compite por hora con nadie: es la franja de
+    // arriba. Cuenta como "va antes" de cualquier cosa con reloj, y los de día
+    // completo se agrupan entre ellos.
+    let todo_el_dia =
+        |(hour, feed): &(Option<String>, Option<i64>)| hour.is_none() && feed.is_some();
+
+    let at = match hour {
+        // Día completo: detrás de los otros de día completo y arriba de todo lo
+        // demás, que es donde el rail lo dibuja.
+        None => otras.iter().take_while(|o| todo_el_dia(o)).count() as i64,
+        // Delante del primer evento más tarde que este. Si no hay ninguno, al
+        // final: así el evento nuevo no se mete por encima de nada que hayas
+        // puesto vos.
+        Some(h) => otras
+            .iter()
+            .position(|otra| otra.0.as_deref().is_some_and(|otra| otra > h))
+            .map(|i| i as i64)
+            .unwrap_or(otras.len() as i64),
+    };
+
+    move_task(conn, id, Some(date), at)?;
+    Ok(())
+}
+
+/// El UID de la serie: lo que va **antes** del `#` en un `calendar_uid`.
+///
+/// Es el inverso exacto de la clave que arma `ics::parse_events`
+/// (`format!("{uid}#{stamp}")`, y el sello no contiene `#`). Un evento suelto
+/// no lleva sufijo, así que su serie es él mismo.
+fn series_uid(calendar_uid: &str) -> &str {
+    match calendar_uid.rsplit_once('#') {
+        Some((base, _)) => base,
+        None => calendar_uid,
+    }
+}
+
+/// ¿La serie de este `calendar_uid` está marcada como bloque de agenda?
+fn series_rail_only(conn: &Connection, feed_id: i64, calendar_uid: &str) -> Result<bool> {
+    let marked: Option<bool> = conn
+        .query_row(
+            "SELECT rail_only FROM calendar_series_prefs
+             WHERE feed_id = ?1 AND series_uid = ?2",
+            params![feed_id, series_uid(calendar_uid)],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(marked.unwrap_or(false))
+}
+
+/// Marca (o desmarca) **toda la serie** de una tarea de calendario como bloque
+/// de agenda: sigue en el rail, deja de ser tarjeta y deja de sumar carga.
+///
+/// Se guarda en dos lugares a propósito, y los dos hacen falta:
+///
+/// - `calendar_series_prefs` es la decisión, y es lo que heredan las
+///   repeticiones que todavía no existen. El almuerzo es semanal: sin la
+///   preferencia habría que volver a marcarlo cada semana.
+/// - `tasks.rail_only` es la lectura, y se actualiza para las repeticiones que
+///   ya están en la base. Solo con la preferencia, marcar el almuerzo de hoy no
+///   cambiaría nada de lo ya importado.
+///
+/// **Al marcar, no toca las repeticiones que ya trabajaste** —con `time_entries`
+/// o `DONE`—. Son dos problemas de una sola regla, y las dos mitades ya tenían
+/// precedente en este archivo:
+///
+/// - `reconcile_feed` no toca una tarea con el taxímetro corriendo, porque
+///   sacarla de los listados deja el timer contando sobre algo que no puedes ver
+///   ni detener. Ignorar hace eso y más (también la saca de Focus), así que la
+///   trampa es la misma; y una corrida abierta **es** una `time_entry`, así que
+///   este filtro la cubre sin necesitar un caso aparte.
+/// - Una repetición trabajada que se esconde de la columna deja su tiempo
+///   contado en la review: el estado partido del que salió la migración 6. Ese
+///   tiempo es tuyo, igual que en `reconcile_feed`.
+///
+/// Al **desmarcar** sí se tocan todas: si no, una repetición podría quedarse
+/// ignorada para siempre.
+///
+/// Devuelve cuántas tareas cambió. Una tarea que no viene del calendario no
+/// tiene serie que marcar y devuelve error: la marca no significa nada en una
+/// tarea a mano, que ya está donde el usuario la puso.
+pub fn set_series_rail_only(conn: &Connection, task_id: i64, rail_only: bool) -> Result<usize> {
+    let row: Option<(Option<i64>, Option<String>)> = conn
+        .query_row(
+            "SELECT feed_id, calendar_uid FROM tasks WHERE id = ?1",
+            [task_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((Some(feed_id), Some(uid))) = row else {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    };
+    let serie = series_uid(&uid);
+
+    conn.execute(
+        "INSERT INTO calendar_series_prefs (feed_id, series_uid, rail_only)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(feed_id, series_uid) DO UPDATE SET rail_only = ?3",
+        params![feed_id, serie, rail_only],
+    )?;
+
+    // `series_uid || '#'` acota el LIKE a las repeticiones de ESTA serie: sin el
+    // separador, un UID que sea prefijo de otro se llevaría las dos.
+    //
+    // El `AND` final es el filtro de arriba: al marcar se saltean las que ya
+    // trabajaste. Va en la consulta y no en un bucle para que sea una sola
+    // escritura y no pueda quedar a medias.
+    let trabajadas = if rail_only {
+        " AND status <> 'DONE'
+          AND NOT EXISTS (SELECT 1 FROM time_entries e WHERE e.task_id = tasks.id)"
+    } else {
+        ""
+    };
+    conn.execute(
+        &format!(
+            "UPDATE tasks SET rail_only = ?3, updated_at = ?4
+             WHERE feed_id = ?1 AND (calendar_uid = ?2 OR calendar_uid LIKE ?2 || '#%')
+             {trabajadas}"
+        ),
+        params![feed_id, serie, rail_only, now()],
+    )
 }
 
 /// Un evento ya interpretado, listo para escribirse como tarea.
@@ -2179,16 +2413,21 @@ pub fn import_events(
     let mut seen = Vec::with_capacity(events.len());
 
     for ev in events {
-        let existing: Option<i64> = conn
+        // La fecha y la hora de antes se leen **junto al id**: son lo que dice si
+        // el evento se movió, y por lo tanto si hay que volver a ubicarlo en la
+        // columna (ver `place_by_time`). Después del UPDATE ya no se pueden
+        // consultar.
+        let existing: Option<(i64, Option<String>, Option<String>, bool)> = conn
             .query_row(
-                "SELECT id FROM tasks WHERE feed_id = ?1 AND calendar_uid = ?2",
+                "SELECT id, scheduled_date, scheduled_time, rail_only FROM tasks
+                 WHERE feed_id = ?1 AND calendar_uid = ?2",
                 params![feed_id, ev.uid],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .optional()?;
 
         match existing {
-            Some(id) => {
+            Some((id, antes_date, antes_hour, rail_only)) => {
                 conn.execute(
                     "UPDATE tasks
                      SET title = ?2, scheduled_date = ?3, scheduled_time = ?4,
@@ -2210,17 +2449,33 @@ pub fn import_events(
                         ts
                     ],
                 )?;
+                // Se movió de día o de hora: vuelve a su lugar en la columna. Si
+                // no cambió nada de eso, no se toca — la columna es del usuario y
+                // reubicar en cada pasada del poller borraría cualquier arrastre.
+                // Un bloque de agenda no está en la columna, así que no hay lugar
+                // que darle: su orden lo pone el rail, por hora.
+                if !rail_only
+                    && (antes_date.as_deref() != Some(ev.date.as_str())
+                        || antes_hour.as_deref() != ev.hour.as_deref())
+                {
+                    place_by_time(conn, id, &ev.date, ev.hour.as_deref())?;
+                }
             }
             None => {
                 let position = next_position(conn, Some(&ev.date))?;
+                // La repetición nueva de una serie marcada como bloque de agenda
+                // nace marcada. Sin esto, poner la marca en el almuerzo del lunes
+                // no valdría para el del martes y habría que repetirla para
+                // siempre.
+                let rail_only = series_rail_only(conn, feed_id, &ev.uid)?;
                 conn.execute(
                     "INSERT INTO tasks
                         (title, category_id, scheduled_date, scheduled_time, position,
                          estimated_minutes, source, source_state, feed_id, calendar_uid,
                          event_start, event_end, meeting_url, event_description, attendees,
-                         created_at, updated_at)
+                         rail_only, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'CALENDAR', 'ACTIVE', ?7, ?8, ?9, ?10, ?11,
-                             ?12, ?13, ?14, ?14)",
+                             ?12, ?13, ?15, ?14, ?14)",
                     params![
                         ev.title,
                         default_category_id,
@@ -2235,13 +2490,20 @@ pub fn import_events(
                         ev.link,
                         ev.description,
                         attendees_json(&ev.attendees),
-                        ts
+                        ts,
+                        rail_only
                     ],
                 )?;
                 let id = conn.last_insert_rowid();
                 // Mismo historial que una tarea a mano, para que el modal no
                 // quede en blanco. El sujeto de la línea lo pone el front.
                 log_event(conn, id, "CREATED", None, Some(&ev.date))?;
+                // Entra en su lugar por hora, no al final: el feed llega en el
+                // orden que Google quiera. Un bloque de agenda no va a la
+                // columna, así que se queda donde cayó.
+                if !rail_only {
+                    place_by_time(conn, id, &ev.date, ev.hour.as_deref())?;
+                }
             }
         }
         seen.push(ev.uid.clone());
@@ -3110,6 +3372,454 @@ mod tests {
         assert_eq!(t.scheduled_time, Some("09:00".to_string()));
     }
 
+    /// Un evento con hora, pero sin `event` genérico: hace falta controlar la
+    /// hora para probar el orden.
+    fn event_at(uid: &str, title: &str, date: &str, hour: Option<&str>) -> ImportableEvent {
+        ImportableEvent {
+            hour: hour.map(str::to_string),
+            minutes: hour.map(|_| 60),
+            ..event(uid, title, date)
+        }
+    }
+
+    fn titulos(c: &Connection, date: &str) -> Vec<String> {
+        list_tasks_for_date(c, date)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.title)
+            .collect()
+    }
+
+    #[test]
+    fn las_reuniones_entran_ordenadas_por_hora() {
+        // El feed las entrega en el orden que se le antoja a Google, y entrando
+        // al final de la columna la semana quedaba desordenada mientras el rail
+        // —que ordena por hora— mostraba otra cosa.
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[
+                event_at("c@x", "tarde", "2026-08-10", Some("16:00")),
+                event_at("a@x", "mañana", "2026-08-10", Some("09:00")),
+                event_at("b@x", "mediodía", "2026-08-10", Some("13:00")),
+            ],
+            None,
+        )
+        .unwrap();
+        assert_eq!(titulos(&c, "2026-08-10"), ["mañana", "mediodía", "tarde"]);
+    }
+
+    #[test]
+    fn el_dia_completo_va_arriba() {
+        // Mismo criterio que el rail: un feriado no tiene dónde caer en la
+        // escala de horas, así que va como franja arriba de la grilla. En la
+        // columna, arriba de todo.
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[
+                event_at("b@x", "reunión", "2026-08-10", Some("09:00")),
+                event_at("a@x", "feriado", "2026-08-10", None),
+            ],
+            None,
+        )
+        .unwrap();
+        assert_eq!(titulos(&c, "2026-08-10"), ["feriado", "reunión"]);
+
+        // Y también cuando el día ya tiene cosas: un feriado que entra hoy no
+        // queda colgado en la mitad de la columna.
+        create_task(&c, new_task("a mano", Some("2026-08-11"))).unwrap();
+        import_events(
+            &c,
+            f.id,
+            &[event_at("c@x", "reunión", "2026-08-11", Some("09:00"))],
+            None,
+        )
+        .unwrap();
+        import_events(
+            &c,
+            f.id,
+            &[event_at("d@x", "otro feriado", "2026-08-11", None)],
+            None,
+        )
+        .unwrap();
+        // La reunión entró **detrás** de la tarea a mano: ya estaba ahí y un
+        // evento nuevo no desplaza nada tuyo. El feriado sí va arriba de todo.
+        assert_eq!(
+            titulos(&c, "2026-08-11"),
+            ["otro feriado", "a mano", "reunión"]
+        );
+    }
+
+    #[test]
+    fn una_tarea_a_mano_entre_dos_reuniones_se_queda_donde_la_dejaste() {
+        // La columna del día **es** el plan del día: si arrastraste una tarea al
+        // hueco entre dos reuniones, ahí es donde pensabas hacerla, y ahí es
+        // donde el rail la proyecta. Un orden "reuniones primero, tareas
+        // después" impuesto por la app haría imposible planificar con las cards.
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[
+                event_at("a@x", "09:00", "2026-08-10", Some("09:00")),
+                event_at("c@x", "16:00", "2026-08-10", Some("16:00")),
+            ],
+            None,
+        )
+        .unwrap();
+        let t = create_task(&c, new_task("a mano", Some("2026-08-10"))).unwrap();
+        move_task(&c, t.id, Some("2026-08-10"), 1).unwrap();
+        assert_eq!(titulos(&c, "2026-08-10"), ["09:00", "a mano", "16:00"]);
+
+        // Entra una reunión nueva a mediodía: se ubica por hora sin sacar la
+        // tarea de su hueco.
+        import_events(
+            &c,
+            f.id,
+            &[event_at("b@x", "12:00", "2026-08-10", Some("12:00"))],
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            titulos(&c, "2026-08-10"),
+            ["09:00", "a mano", "12:00", "16:00"],
+            "la nueva entra detrás de la última reunión anterior a su hora"
+        );
+
+        // Y una pasada que no mueve nada tampoco la toca.
+        import_events(
+            &c,
+            f.id,
+            &[event_at("a@x", "09:00", "2026-08-10", Some("09:00"))],
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            titulos(&c, "2026-08-10"),
+            ["09:00", "a mano", "12:00", "16:00"]
+        );
+    }
+
+    #[test]
+    fn una_tanda_desordenada_entra_ordenada_sin_pisar_las_tareas_a_mano() {
+        // El caso que corre de verdad cada cinco minutos: la columna ya tiene
+        // tareas a mano y llega un puñado de eventos nuevos en cualquier orden.
+        // Cada ubicación renumera el día, así que lo que hay que fijar es que la
+        // anterior no se deshace.
+        let c = conn();
+        let f = feed(&c);
+        let a = create_task(&c, new_task("a mano 1", Some("2026-08-10"))).unwrap();
+        let b = create_task(&c, new_task("a mano 2", Some("2026-08-10"))).unwrap();
+        import_events(
+            &c,
+            f.id,
+            &[
+                event_at("d@x", "16:00", "2026-08-10", Some("16:00")),
+                event_at("a@x", "feriado", "2026-08-10", None),
+                event_at("c@x", "13:00", "2026-08-10", Some("13:00")),
+                event_at("b@x", "09:00", "2026-08-10", Some("09:00")),
+            ],
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            titulos(&c, "2026-08-10"),
+            ["feriado", "a mano 1", "a mano 2", "09:00", "13:00", "16:00"],
+            "los eventos quedan en orden de reloj y las de a mano no se mueven"
+        );
+
+        // Y ubicar dentro del mismo día no es "mover": el historial de una tarea
+        // a mano que nadie tocó tiene que quedar limpio.
+        for t in [a.id, b.id] {
+            let tipos: Vec<String> = list_task_events(&c, t)
+                .unwrap()
+                .into_iter()
+                .map(|e| e.type_field().to_string())
+                .collect();
+            assert!(
+                !tipos.iter().any(|k| k == "MOVED"),
+                "la renumeración no puede registrarse como un movimiento: {tipos:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn un_evento_que_cambia_de_hora_se_reubica() {
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[
+                event_at("a@x", "primera", "2026-08-10", Some("09:00")),
+                event_at("b@x", "segunda", "2026-08-10", Some("13:00")),
+            ],
+            None,
+        )
+        .unwrap();
+        // La segunda se mueve a las 8: pasa a ir primero.
+        import_events(
+            &c,
+            f.id,
+            &[event_at("b@x", "segunda", "2026-08-10", Some("08:00"))],
+            None,
+        )
+        .unwrap();
+        assert_eq!(titulos(&c, "2026-08-10"), ["segunda", "primera"]);
+    }
+
+    #[test]
+    fn una_sincronizacion_que_no_mueve_nada_respeta_el_orden_del_tablero() {
+        // La columna es del usuario: si arrastró una tarea a mano arriba de la
+        // reunión, el poller no puede deshacerlo cada cinco minutos.
+        let c = conn();
+        let f = feed(&c);
+        let t = create_task(&c, new_task("a mano", Some("2026-08-10"))).unwrap();
+        import_events(
+            &c,
+            f.id,
+            &[event_at("a@x", "reunión", "2026-08-10", Some("09:00"))],
+            None,
+        )
+        .unwrap();
+        move_task(&c, t.id, Some("2026-08-10"), 0).unwrap();
+        assert_eq!(titulos(&c, "2026-08-10"), ["a mano", "reunión"]);
+
+        import_events(
+            &c,
+            f.id,
+            &[event_at("a@x", "reunión", "2026-08-10", Some("09:00"))],
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            titulos(&c, "2026-08-10"),
+            ["a mano", "reunión"],
+            "el arrastre sobrevive a la sincronización"
+        );
+    }
+
+    #[test]
+    fn la_marca_de_agenda_vale_para_toda_la_serie() {
+        // El almuerzo es semanal: marcar el del lunes tiene que marcar el del
+        // martes, o habría que repetir la marca para siempre.
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[
+                event("lunch@x#20260810T131500", "Lunch", "2026-08-10"),
+                event("lunch@x#20260811T131500", "Lunch", "2026-08-11"),
+                event("otra@x", "Daily", "2026-08-10"),
+            ],
+            None,
+        )
+        .unwrap();
+        let lunes = list_tasks_for_date(&c, "2026-08-10").unwrap();
+        let almuerzo = lunes.iter().find(|t| t.title == "Lunch").unwrap();
+        assert!(!almuerzo.rail_only, "nace como tarjeta normal");
+
+        set_series_rail_only(&c, almuerzo.id, true).unwrap();
+
+        let lunes = list_tasks_for_date(&c, "2026-08-10").unwrap();
+        assert!(lunes.iter().find(|t| t.title == "Lunch").unwrap().rail_only);
+        assert!(
+            !lunes.iter().find(|t| t.title == "Daily").unwrap().rail_only,
+            "otra serie no se lleva la marca"
+        );
+        assert!(
+            list_tasks_for_date(&c, "2026-08-11").unwrap()[0].rail_only,
+            "la repetición del martes también"
+        );
+    }
+
+    #[test]
+    fn un_bloque_de_agenda_no_cuenta_al_reordenar_la_columna() {
+        // El índice que manda la vista se cuenta contra las cards que se ven, y
+        // un bloque de agenda no es una de ellas: sin descontarlo, la card
+        // soltada al final aterrizaba antes del almuerzo.
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[event_at("lunch@x#1", "Lunch", "2026-08-10", Some("13:15"))],
+            None,
+        )
+        .unwrap();
+        let lunch = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
+        set_series_rail_only(&c, lunch, true).unwrap();
+
+        let a = create_task(&c, new_task("a", Some("2026-08-10"))).unwrap();
+        let b = create_task(&c, new_task("b", Some("2026-08-10"))).unwrap();
+
+        // "b" al final de una columna que la vista ve con dos cards.
+        move_task(&c, b.id, Some("2026-08-10"), 2).unwrap();
+        let vistas: Vec<String> = list_tasks_for_date(&c, "2026-08-10")
+            .unwrap()
+            .into_iter()
+            .filter(|t| !t.rail_only)
+            .map(|t| t.title)
+            .collect();
+        assert_eq!(vistas, ["a", "b"]);
+        assert_eq!(a.title, "a", "la primera sigue siendo la primera");
+    }
+
+    #[test]
+    fn ignorar_no_toca_la_repeticion_que_ya_trabajaste() {
+        // Dos trampas de una sola regla. La del taxímetro es la misma que
+        // documenta `reconcile_feed`: ignorar la saca del tablero **y** de Focus,
+        // así que dejaría el timer corriendo sobre algo que no podés ver ni
+        // detener. Y una trabajada que se esconde deja su tiempo contado en la
+        // review: el estado partido de la migración 6.
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[
+                event_at("lunch@x#1", "Lunch", "2026-08-10", Some("13:15")),
+                event_at("lunch@x#2", "Lunch", "2026-08-11", Some("13:15")),
+                event_at("lunch@x#3", "Lunch", "2026-08-12", Some("13:15")),
+            ],
+            None,
+        )
+        .unwrap();
+        let corriendo = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
+        let hecha = list_tasks_for_date(&c, "2026-08-11").unwrap()[0].id;
+        let intacta = list_tasks_for_date(&c, "2026-08-12").unwrap()[0].id;
+        start_timer(&c, corriendo).unwrap();
+        set_task_status(&c, hecha, "DONE").unwrap();
+
+        set_series_rail_only(&c, intacta, true).unwrap();
+
+        assert!(
+            !get_task(&c, corriendo).unwrap().unwrap().rail_only,
+            "con el taxímetro corriendo se queda como tarjeta, para poder pararlo"
+        );
+        assert!(
+            !get_task(&c, hecha).unwrap().unwrap().rail_only,
+            "la que completaste es historia y sigue en la review"
+        );
+        assert!(get_task(&c, intacta).unwrap().unwrap().rail_only);
+
+        // Y desmarcar sí las toca todas: si no, una podría quedarse ignorada
+        // para siempre.
+        set_series_rail_only(&c, intacta, false).unwrap();
+        for id in [corriendo, hecha, intacta] {
+            assert!(!get_task(&c, id).unwrap().unwrap().rail_only);
+        }
+    }
+
+    #[test]
+    fn un_bloque_de_agenda_lo_ignora_todo_menos_el_rail() {
+        // "Ignorarlo" es literal: la única lectura que lo sigue viendo es la que
+        // dibuja el rail (`list_tasks_for_date`, que el front filtra para la
+        // columna). Todo lo demás lo trata como si no estuviera.
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[event_at("lunch@x#1", "Lunch", "2026-08-10", Some("13:15"))],
+            None,
+        )
+        .unwrap();
+        let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
+
+        // Antes de marcarlo está en todas.
+        assert_eq!(focus_queue(&c, "2026-08-10", "09:00").unwrap().len(), 1);
+        assert_eq!(meetings_for_date(&c, "2026-08-10").unwrap().len(), 1);
+        assert_eq!(last_day_with_tasks(&c, "2026-08-11").unwrap().as_deref(), Some("2026-08-10"));
+        let antes = weekly_rollup(&c, "2026-08-10").unwrap();
+        assert_eq!(antes.planned_minutes, 60);
+        assert!(antes.total_seconds > 0, "la regla 3 cuenta la reunión sin trackear");
+
+        set_series_rail_only(&c, id, true).unwrap();
+
+        assert!(focus_queue(&c, "2026-08-10", "09:00").unwrap().is_empty());
+        assert!(
+            meetings_for_date(&c, "2026-08-10").unwrap().is_empty(),
+            "tampoco avisa antes de empezar"
+        );
+        assert_eq!(last_day_with_tasks(&c, "2026-08-11").unwrap(), None);
+        let despues = weekly_rollup(&c, "2026-08-10").unwrap();
+        assert_eq!(despues.planned_minutes, 0);
+        assert_eq!(despues.total_seconds, 0, "no cuenta como tiempo trabajado");
+
+        // Pero el rail lo sigue viendo, que es todo el punto.
+        assert_eq!(list_tasks_for_date(&c, "2026-08-10").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn una_repeticion_nueva_de_una_serie_marcada_nace_marcada() {
+        // Lo que hace que la marca no haya que renovarla cada semana: la
+        // preferencia vive por serie y la hereda lo que todavía no existe.
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[event("lunch@x#20260810T131500", "Lunch", "2026-08-10")],
+            None,
+        )
+        .unwrap();
+        let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
+        set_series_rail_only(&c, id, true).unwrap();
+
+        import_events(
+            &c,
+            f.id,
+            &[event("lunch@x#20260901T131500", "Lunch", "2026-09-01")],
+            None,
+        )
+        .unwrap();
+        assert!(list_tasks_for_date(&c, "2026-09-01").unwrap()[0].rail_only);
+    }
+
+    #[test]
+    fn desmarcar_la_serie_la_devuelve_al_tablero() {
+        let c = conn();
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[event("lunch@x#20260810T131500", "Lunch", "2026-08-10")],
+            None,
+        )
+        .unwrap();
+        let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
+        set_series_rail_only(&c, id, true).unwrap();
+        set_series_rail_only(&c, id, false).unwrap();
+        assert!(!list_tasks_for_date(&c, "2026-08-10").unwrap()[0].rail_only);
+
+        // Y la repetición nueva ya no la hereda.
+        import_events(
+            &c,
+            f.id,
+            &[event("lunch@x#20260901T131500", "Lunch", "2026-09-01")],
+            None,
+        )
+        .unwrap();
+        assert!(!list_tasks_for_date(&c, "2026-09-01").unwrap()[0].rail_only);
+    }
+
+    #[test]
+    fn una_tarea_a_mano_no_se_puede_marcar_como_bloque_de_agenda() {
+        // No tiene serie que marcar, y la marca no significa nada en algo que el
+        // usuario ya puso donde quería.
+        let c = conn();
+        let t = create_task(&c, new_task("a mano", Some("2026-08-10"))).unwrap();
+        assert!(set_series_rail_only(&c, t.id, true).is_err());
+    }
+
     #[test]
     fn importar_dos_veces_el_mismo_uid_no_duplica_y_actualiza() {
         // Es el caso normal: el poller vuelve a pasar cada 15 minutos. Sin
@@ -3309,10 +4019,42 @@ mod tests {
         let f = feed(&c);
         let id = imported(&c, f.id, "a@x", "2026-08-20");
 
-        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap().totals();
 
         assert_eq!((deleted, orphaned), (1, 0));
         assert!(get_task(&c, id).unwrap().is_none());
+    }
+
+    #[test]
+    fn el_reconciler_dice_cuales_toco_y_no_solo_cuantas() {
+        // Un "3 borradas" a secas no se puede reconstruir después: las filas ya
+        // no existen. Y lo que desaparece del feed casi nunca es un evento
+        // borrado —Google parte series y cambia UIDs—, así que el nombre es lo
+        // único que deja entender qué pasó.
+        let c = conn();
+        let f = feed(&c);
+        let futura = imported(&c, f.id, "futura@x", "2026-08-20");
+        let trabajada = imported(&c, f.id, "trabajada@x", "2026-08-20");
+        let vieja = imported(&c, f.id, "vieja@x", "2026-08-01");
+        start_timer(&c, trabajada).unwrap();
+        stop_timer(&c).unwrap();
+        for (id, titulo) in [
+            (futura, "Kaio"),
+            (trabajada, "Weekly"),
+            (vieja, "Retro"),
+        ] {
+            c.execute("UPDATE tasks SET title = ?2 WHERE id = ?1", params![id, titulo])
+                .unwrap();
+        }
+
+        let hecho = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
+
+        assert_eq!(hecho.totals(), (1, 2));
+        assert_eq!(hecho.deleted.len(), 1);
+        assert_eq!(hecho.deleted[0].to_string(), "«Kaio» del 2026-08-20");
+        assert_eq!(hecho.released[0].to_string(), "«Weekly» del 2026-08-20");
+        assert_eq!(hecho.orphaned[0].to_string(), "«Retro» del 2026-08-01");
+        assert!(hecho.hubo_cambios());
     }
 
     #[test]
@@ -3327,7 +4069,7 @@ mod tests {
         start_timer(&c, id).unwrap();
         stop_timer(&c).unwrap();
 
-        let (deleted, touched) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, touched) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap().totals();
 
         assert_eq!((deleted, touched), (0, 1));
         let t = get_task(&c, id).unwrap().unwrap();
@@ -3340,6 +4082,26 @@ mod tests {
     }
 
     #[test]
+    fn al_soltarse_del_feed_deja_de_ser_bloque_de_agenda() {
+        // Un bloque de agenda no es tarjeta del tablero. Si al liberarse del
+        // feed conservara la marca, quedaría una tarea con tiempo trackeado
+        // encima que ya no se ve en ninguna columna y sin forma de recuperarla
+        // desde ahí.
+        let c = conn();
+        let f = feed(&c);
+        let id = imported(&c, f.id, "lunch@x#20260820T131500", "2026-08-20");
+        set_series_rail_only(&c, id, true).unwrap();
+        start_timer(&c, id).unwrap();
+        stop_timer(&c).unwrap();
+
+        reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
+
+        let t = get_task(&c, id).unwrap().unwrap();
+        assert_eq!(t.feed_id, None);
+        assert!(!t.rail_only, "vuelve al tablero como una tarea cualquiera");
+    }
+
+    #[test]
     fn no_toca_la_reunion_con_el_taximetro_corriendo() {
         // Ni borrarla ni marcarla ORPHANED: las dos la sacan del tablero, y con
         // el timer corriendo eso deja la cuenta andando sobre algo invisible que
@@ -3349,7 +4111,7 @@ mod tests {
         let id = imported(&c, f.id, "a@x", "2026-08-20");
         start_timer(&c, id).unwrap(); // queda una entrada ABIERTA
 
-        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap().totals();
 
         assert_eq!((deleted, orphaned), (0, 0));
         assert_eq!(get_task(&c, id).unwrap().unwrap().source_state, "ACTIVE");
@@ -3366,7 +4128,7 @@ mod tests {
         start_timer(&c, id).unwrap();
         stop_timer(&c).unwrap();
 
-        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap().totals();
 
         assert_eq!((deleted, orphaned), (0, 1));
     }
@@ -3378,7 +4140,7 @@ mod tests {
         let id = imported(&c, f.id, "a@x", "2026-08-20");
         set_task_status(&c, id, "DONE").unwrap();
 
-        let (deleted, touched) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, touched) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap().totals();
 
         assert_eq!((deleted, touched), (0, 1));
         let t = get_task(&c, id).unwrap().unwrap();
@@ -3411,7 +4173,7 @@ mod tests {
         let f = feed(&c);
         let id = imported(&c, f.id, "a@x", "2026-08-01");
 
-        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap();
+        let (deleted, orphaned) = reconcile_feed(&c, f.id, &[], "2026-08-13").unwrap().totals();
 
         assert_eq!(deleted, 0, "una reunión pasada nunca se borra sola");
         assert_eq!(orphaned, 1);
@@ -3424,8 +4186,9 @@ mod tests {
         let f = feed(&c);
         let id = imported(&c, f.id, "a@x", "2026-08-20");
 
-        let (deleted, orphaned) =
-            reconcile_feed(&c, f.id, &["a@x".to_string()], "2026-08-13").unwrap();
+        let (deleted, orphaned) = reconcile_feed(&c, f.id, &["a@x".to_string()], "2026-08-13")
+            .unwrap()
+            .totals();
 
         assert_eq!((deleted, orphaned), (0, 0));
         assert_eq!(get_task(&c, id).unwrap().unwrap().source_state, "ACTIVE");

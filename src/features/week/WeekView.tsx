@@ -381,7 +381,10 @@ export function WeekView() {
             className={`rail--overlay${agenda.leaving ? " is-leaving" : ""}`}
             date={diaDelRail}
             today={today}
-            tasks={board.tasksByDate[diaDelRail] ?? []}
+            // La agenda y no la lista de la columna: los bloques que solo
+            // ocupan el rail (§4.12) no son tarjetas, pero sí hay que verlos
+            // para planificar alrededor.
+            tasks={board.agendaByDate[diaDelRail] ?? []}
             categoryMap={board.categoryMap}
             workStart={workday.start}
             workEnd={workday.end}

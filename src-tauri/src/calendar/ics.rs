@@ -60,6 +60,43 @@ pub fn parse_events(
     let cal: Calendar = ics.parse().map_err(|e: String| e)?;
     let mut out = Vec::new();
 
+    // De quién es este calendario. Con eso se puede saber cuál de los invitados
+    // soy yo y, por lo tanto, qué rechacé. Si el feed no lo dice, no se filtra
+    // nada (ver `my_email`).
+    let mine = my_email(&cal);
+
+    // **Primera pasada: las repeticiones que tienen una instancia propia.**
+    //
+    // Una instancia editada llega como un VEVENT aparte con `RECURRENCE-ID`,
+    // pero el VEVENT maestro **sigue emitiendo esa repetición**: Google no le
+    // pone `EXDATE` (solo se lo pone a las que borraste). Las dos terminan con
+    // la misma clave, así que sin esta pasada el upsert deja ganando a la que
+    // venga última en el archivo — y **el orden de los VEVENT de Google cambia
+    // entre descargas**, medido en el mismo feed dos veces seguidas. Eso es lo
+    // que hacía saltar una reunión movida entre su hora vieja y la nueva de una
+    // sincronización a otra.
+    //
+    // Dos detalles que no son opcionales:
+    //
+    // - **La ventana no filtra acá.** Una instancia movida a dentro de un mes
+    //   cae fuera de `[desde, hasta]` y no se importa, pero su repetición
+    //   original sí está en la ventana: sin suprimirla, la reunión se queda
+    //   dibujada para siempre en el horario del que la sacaste.
+    // - **`STATUS:CANCELLED` también suprime.** Una instancia suelta que
+    //   borraste llega cancelada, y descartarla sin más deja al maestro
+    //   generándola igual. Por eso esta pasada no mira el estado: la de abajo
+    //   la descarta, y acá ya quedó anotada.
+    let overridden: std::collections::HashSet<String> = cal
+        .calendar_events()
+        .filter_map(|ev| {
+            let uid = base_uid(ev.get_uid()?);
+            let instant = ev.properties().get("RECURRENCE-ID").and_then(|p| {
+                instant_of_value(p.value(), p.params().get("TZID").map(|t| t.value()))
+            })?;
+            Some(format!("{uid}#{}", stamp(instant)))
+        })
+        .collect();
+
     for ev in cal.calendar_events() {
         // Un evento cancelado sigue viniendo en el feed, con `STATUS:CANCELLED`.
         // Importarlo crearía una tarea para una reunión que no existe.
@@ -69,6 +106,25 @@ pub fn parse_events(
         let Some(uid) = ev.get_uid() else {
             continue; // sin UID no hay forma de reconocerlo en la próxima sync
         };
+        // Google le mete un `_R<instante>` al UID cuando parte una serie; para
+        // nosotros sigue siendo la misma. Ver `base_uid`.
+        let uid = base_uid(uid);
+
+        // **Lo que rechacé no entra.** La respuesta viene en cada pasada, así que
+        // el feed es la fuente de verdad y no hace falta guardar ninguna lista: si
+        // vuelvo a aceptar, la próxima sincronización la importa de nuevo, y si la
+        // tarea ya existía, `reconcile_feed` la resuelve con sus reglas normales
+        // (borrada si está intacta y por venir, liberada si le trabajé encima).
+        //
+        // Va **después** de la pasada de `RECURRENCE-ID`, no antes: rechazar una
+        // sola repetición llega como una instancia propia, y si esa instancia no
+        // suprimiera la repetición del maestro, la reunión rechazada volvería a
+        // dibujarse igual. Mismo motivo que `STATUS:CANCELLED`.
+        if let Some(mine) = &mine {
+            if declined_by_me(&ev, mine) {
+                continue;
+            }
+        }
         let title = match ev.get_summary().map(str::trim) {
             Some(t) if !t.is_empty() => t.to_string(),
             _ => "(sin título)".to_string(),
@@ -99,8 +155,14 @@ pub fn parse_events(
             let key = match (&overrides, is_series) {
                 (Some(instant), _) => format!("{uid}#{}", stamp(*instant)),
                 (None, true) => format!("{uid}#{}", stamp(local_start)),
-                (None, false) => uid.to_string(),
+                (None, false) => uid.clone(),
             };
+
+            // La repetición que el maestro genera y que alguien editó: manda la
+            // instancia propia, que llega en su propio VEVENT. Ver `overridden`.
+            if overrides.is_none() && is_series && overridden.contains(&key) {
+                continue;
+            }
 
             let local_end = duration.map(|d| local_start + d);
             out.push(IcsEvent {
@@ -204,9 +266,17 @@ fn attendees_of(ev: &icalendar::CalendarEvent<'_>) -> Vec<Attendee> {
 
     for a in ev.get_attendees() {
         let email = email(&a.cal_address);
-        // Si el organizador también está invitado, no se lista dos veces.
-        if email.is_some() && out.iter().any(|p| p.email == email) {
-            continue;
+        // Si el organizador también está invitado, no se lista dos veces —**pero
+        // se le pasa su respuesta**. El `ORGANIZER` no lleva `PARTSTAT`: el que
+        // lo trae es su fila de `ATTENDEE`, así que descartarla sin más borraba
+        // tu propia respuesta en cada evento que organizás vos. Google te pone
+        // como invitado en todos, así que el detalle te mostraba "sin responder"
+        // incluso habiendo rechazado.
+        if email.is_some() {
+            if let Some(ya) = out.iter_mut().find(|p| p.email == email) {
+                ya.status = a.part_stat.map(|s| format!("{s:?}").to_uppercase());
+                continue;
+            }
         }
         out.push(Attendee {
             name: a.cn.as_deref().map(clean_cn),
@@ -353,6 +423,89 @@ fn in_window(dt: DateTime<Local>, from_date: NaiveDate, to_date: NaiveDate) -> b
     d >= from_date && d <= to_date
 }
 
+/// El `UID` **sin la marca de serie partida** que le agrega Google.
+///
+/// Cuando alguien edita una recurrente con "este evento y los siguientes",
+/// Google no cambia el evento: **parte la serie**. La vieja queda con un `UNTIL`
+/// justo antes del corte y aparece un `UID` nuevo, el mismo con un
+/// `_R<instante-del-corte>` metido antes del `@`:
+///
+/// ```text
+/// 2ifuirdg1hnh36kb9j9157abc9@google.com
+/// 2ifuirdg1hnh36kb9j9157abc9_R20260828T193000@google.com
+/// ```
+///
+/// Para la app eso era una serie **nueva**: la clave de cada repetición futura
+/// cambiaba, así que el reconciler borraba las tareas viejas y el import creaba
+/// otras. Y borrar e insertar no es actualizar — se perdía todo lo que hubieras
+/// tocado a mano (canal, notas, posición), y una instancia con tiempo trackeado
+/// se soltaba del feed **y** volvía a entrar con el UID nuevo, dejando la misma
+/// reunión dos veces en el tablero. Normalizando el UID la clave no se mueve y el
+/// upsert actualiza en su lugar, que es lo que un cambio de horario tiene que
+/// hacer.
+///
+/// Se recorta **solo** un sufijo con la forma exacta del sello: `_R` seguido de
+/// `<8 dígitos>T<6 dígitos>` (con `Z` opcional) o de `<8 dígitos>` a secas, que
+/// es la forma que toma en un evento de **día completo** —su `RECURRENCE-ID` es
+/// una fecha sin reloj, así que el sello también—. Un `_R` en el medio de un UID
+/// cualquiera no se toca.
+fn base_uid(uid: &str) -> String {
+    let (local, dominio) = match uid.split_once('@') {
+        Some((l, d)) => (l, Some(d)),
+        None => (uid, None),
+    };
+    let recortado = match local.rsplit_once("_R") {
+        Some((antes, marca)) if es_sello_de_corte(marca) => antes,
+        _ => local,
+    };
+    match dominio {
+        Some(d) => format!("{recortado}@{d}"),
+        None => recortado.to_string(),
+    }
+}
+
+/// `20260828T193000`, `20260828T193000Z` o `20250428` (día completo), y nada más.
+fn es_sello_de_corte(s: &str) -> bool {
+    let s = s.strip_suffix('Z').unwrap_or(s);
+    let bytes = s.as_bytes();
+    match bytes.len() {
+        8 => bytes.iter().all(u8::is_ascii_digit),
+        15 => {
+            bytes[8] == b'T'
+                && bytes[..8].iter().all(u8::is_ascii_digit)
+                && bytes[9..].iter().all(u8::is_ascii_digit)
+        }
+        _ => false,
+    }
+}
+
+/// ¿Rechacé **yo** este evento?
+///
+/// `mine` es mi correo, y sale de `X-WR-CALNAME` (ver `parse_events`). Se lee del
+/// `ATTENDEE` crudo y no de la lista que arma `attendees_of`, porque ahí el
+/// organizador y el invitado se deduplican: justo en los eventos que organizo yo
+/// —donde mi respuesta importa igual— la lista guarda una sola fila.
+fn declined_by_me(ev: &icalendar::CalendarEvent<'_>, mine: &str) -> bool {
+    ev.get_attendees().iter().any(|a| {
+        matches!(a.part_stat, Some(icalendar::PartStat::Declined))
+            && email(&a.cal_address).is_some_and(|e| e.eq_ignore_ascii_case(mine))
+    })
+}
+
+/// Mi correo, si el feed dice de quién es el calendario.
+///
+/// Google emite `X-WR-CALNAME` con la dirección del calendario primario, así que
+/// **no hace falta configurar nada**. Pero es el *nombre* del calendario: en uno
+/// secundario o compartido puede ser un nombre de persona, y ahí no sirve. Por
+/// eso se exige que parezca un correo, y si no lo parece **no se filtra nada**:
+/// equivocarse identificando al dueño borraría reuniones de verdad en silencio.
+fn my_email(cal: &Calendar) -> Option<String> {
+    let name = cal.get_name()?.trim();
+    let (antes, despues) = name.split_once('@')?;
+    (!antes.is_empty() && despues.contains('.') && !despues.contains(char::is_whitespace))
+        .then(|| name.to_lowercase())
+}
+
 /// Sello del instante para la clave de una instancia: `20260810T093000`.
 /// En hora local, que es la misma referencia que usa `fecha`.
 fn stamp(dt: DateTime<Local>) -> String {
@@ -429,6 +582,20 @@ mod tests {
             "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//test//EN\r\n{}\r\nEND:VCALENDAR\r\n",
             body.replace('\n', "\r\n")
         )
+    }
+
+    /// Igual, pero declarando de quién es el calendario (`X-WR-CALNAME`), que es
+    /// lo que hace posible saber qué rechacé yo.
+    fn cal_de(dueño: &str, body: &str) -> String {
+        format!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//test//EN\r\nX-WR-CALNAME:{dueño}\r\n{}\r\nEND:VCALENDAR\r\n",
+            body.replace('\n', "\r\n")
+        )
+    }
+
+    /// Un invitado con su respuesta, para armar fixtures legibles.
+    fn invitado(mail: &str, respuesta: &str) -> String {
+        format!("ATTENDEE;CUTYPE=INDIVIDUAL;PARTSTAT={respuesta};CN={mail}:mailto:{mail}")
     }
 
     fn d(s: &str) -> NaiveDate {
@@ -551,7 +718,10 @@ mod tests {
     fn una_instancia_editada_reemplaza_a_la_generada() {
         // Google manda la serie y, aparte, un VEVENT con el mismo UID y
         // RECURRENCE-ID para la repetición que se movió o se renombró. Las dos
-        // tienen que compartir clave, o la semana muestra la reunión dos veces.
+        // comparten clave, y **sale una sola**: la editada. Que compartieran
+        // clave alcanzaba para que la semana no mostrara la reunión dos veces,
+        // pero no para decidir cuál gana — eso lo resolvía el orden del archivo,
+        // que Google cambia entre descargas.
         let ics = cal(
             "BEGIN:VEVENT\nUID:serie@test\nSUMMARY:Standup\nDTSTART;TZID=America/Santiago:20260810T090000\nDTEND;TZID=America/Santiago:20260810T091500\nRRULE:FREQ=WEEKLY;COUNT=2\nEND:VEVENT\nBEGIN:VEVENT\nUID:serie@test\nRECURRENCE-ID;TZID=America/Santiago:20260817T090000\nSUMMARY:Standup (movido)\nDTSTART;TZID=America/Santiago:20260817T110000\nDTEND;TZID=America/Santiago:20260817T111500\nEND:VEVENT",
         );
@@ -566,10 +736,15 @@ mod tests {
         let same: Vec<_> = evs.iter().filter(|e| e.uid == key).collect();
         assert_eq!(
             same.len(),
-            2,
-            "la instancia editada y la generada comparten clave, así el upsert deja una"
+            1,
+            "la repetición del maestro se descarta: manda la instancia editada"
         );
-        assert!(same.iter().any(|e| e.title == "Standup (movido)"));
+        assert_eq!(same[0].title, "Standup (movido)");
+        let moved = chrono_tz::America::Santiago
+            .with_ymd_and_hms(2026, 8, 17, 11, 0, 0)
+            .unwrap()
+            .with_timezone(&Local);
+        assert_eq!(same[0].hour, Some(moved.format("%H:%M").to_string()));
     }
 
     /// El mismo caso que el de arriba pero **en una zona que no es la de esta
@@ -596,10 +771,209 @@ mod tests {
             .collect();
         assert_eq!(
             same.len(),
-            2,
+            1,
             "sin respetar el TZID del RECURRENCE-ID la reunión movida sale dos veces"
         );
-        assert!(same.iter().any(|e| e.title == "Standup (movido)"));
+        assert_eq!(same[0].title, "Standup (movido)");
+    }
+
+    /// El caso que dejaba una reunión clavada en su horario viejo: la instancia
+    /// se movió **fuera de la ventana**, así que no se importa, pero la
+    /// repetición que reemplaza sí cae dentro. Si la supresión filtrara por
+    /// ventana, el maestro la volvería a dibujar a la hora de la que la sacaste,
+    /// para siempre.
+    #[test]
+    fn una_instancia_movida_fuera_de_la_ventana_no_deja_su_repeticion() {
+        let ics = cal(
+            "BEGIN:VEVENT\nUID:lejos@test\nSUMMARY:Standup\nDTSTART;TZID=America/Santiago:20260810T090000\nDTEND;TZID=America/Santiago:20260810T091500\nRRULE:FREQ=WEEKLY;COUNT=2\nEND:VEVENT\nBEGIN:VEVENT\nUID:lejos@test\nRECURRENCE-ID;TZID=America/Santiago:20260817T090000\nSUMMARY:Standup (movido)\nDTSTART;TZID=America/Santiago:20261120T110000\nDTEND;TZID=America/Santiago:20261120T111500\nEND:VEVENT",
+        );
+        let evs = parse_events(&ics, d("2026-08-10"), d("2026-08-31")).unwrap();
+        assert_eq!(
+            evs.len(),
+            1,
+            "solo queda la primera repetición: la del 17 se movió a noviembre"
+        );
+        assert_eq!(evs[0].date, "2026-08-10");
+    }
+
+    /// Borrar **una** repetición llega como una instancia cancelada, no como un
+    /// `EXDATE`. Se descarta, y además tiene que suprimir la repetición que el
+    /// maestro genera: si no, la reunión borrada sigue apareciendo.
+    #[test]
+    fn una_instancia_cancelada_no_deja_la_repeticion_del_maestro() {
+        let ics = cal(
+            "BEGIN:VEVENT\nUID:cancel@test\nSUMMARY:Standup\nDTSTART;TZID=America/Santiago:20260810T090000\nDTEND;TZID=America/Santiago:20260810T091500\nRRULE:FREQ=WEEKLY;COUNT=2\nEND:VEVENT\nBEGIN:VEVENT\nUID:cancel@test\nRECURRENCE-ID;TZID=America/Santiago:20260817T090000\nSUMMARY:Standup\nSTATUS:CANCELLED\nDTSTART;TZID=America/Santiago:20260817T090000\nDTEND;TZID=America/Santiago:20260817T091500\nEND:VEVENT",
+        );
+        let evs = todo(&ics);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].date, "2026-08-10");
+    }
+
+    // -----------------------------------------------------------------------
+    // Series partidas: el `_R<instante>` que agrega Google
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn recorta_la_marca_de_serie_partida_y_nada_mas() {
+        assert_eq!(
+            base_uid("2ifuirdg1hnh36kb9j9157abc9_R20260828T193000@google.com"),
+            "2ifuirdg1hnh36kb9j9157abc9@google.com"
+        );
+        // Con `Z`, que también aparece.
+        assert_eq!(
+            base_uid("abc_R20260828T193000Z@google.com"),
+            "abc@google.com"
+        );
+        // Día completo: el sello es solo la fecha, porque su `RECURRENCE-ID` no
+        // tiene reloj. Salió de un feed real.
+        assert_eq!(
+            base_uid("e9gourle6252fkbnqsst6ocu2c_R20250428@google.com"),
+            "e9gourle6252fkbnqsst6ocu2c@google.com"
+        );
+        // Un `_R` que no viene seguido de un sello no se toca: es parte del UID.
+        assert_eq!(base_uid("abc_Rnormal@google.com"), "abc_Rnormal@google.com");
+        assert_eq!(base_uid("abc_R2026@google.com"), "abc_R2026@google.com");
+        assert_eq!(base_uid("abc@google.com"), "abc@google.com");
+        // Sin dominio (el estándar no lo exige).
+        assert_eq!(base_uid("abc_R20260828T193000"), "abc");
+    }
+
+    /// El caso que borraba y volvía a crear: Google parte la serie en dos y para
+    /// la app eran dos series distintas, así que las tareas futuras se perdían
+    /// con todo lo que tuvieran encima.
+    #[test]
+    fn una_serie_partida_conserva_las_claves_de_la_vieja() {
+        let ics = cal(
+            "BEGIN:VEVENT\nUID:serie@test\nSUMMARY:Kaio\nDTSTART;TZID=America/Santiago:20260814T153000\nDTEND;TZID=America/Santiago:20260814T173000\nRRULE:FREQ=WEEKLY;UNTIL=20260828T035959Z;BYDAY=FR\nEND:VEVENT\nBEGIN:VEVENT\nUID:serie_R20260828T193000@test\nSUMMARY:Kaio (nuevo horario)\nDTSTART;TZID=America/Santiago:20260828T153000\nDTEND;TZID=America/Santiago:20260828T163000\nRRULE:FREQ=WEEKLY;UNTIL=20260912T035959Z;BYDAY=FR\nEND:VEVENT",
+        );
+        let evs = parse_events(&ics, d("2026-08-14"), d("2026-09-15")).unwrap();
+        // Todas las claves son de la serie **base**: ninguna trae el `_R`.
+        assert!(
+            evs.iter().all(|e| e.uid.starts_with("serie@test#")),
+            "{:?}",
+            evs.iter().map(|e| &e.uid).collect::<Vec<_>>()
+        );
+        // Y la del 28 es la de la serie nueva, con su horario nuevo.
+        let corte = stamp(
+            chrono_tz::America::Santiago
+                .with_ymd_and_hms(2026, 8, 28, 15, 30, 0)
+                .unwrap()
+                .with_timezone(&Local),
+        );
+        let del_28 = evs
+            .iter()
+            .find(|e| e.uid == format!("serie@test#{corte}"))
+            .expect("la del corte");
+        assert_eq!(del_28.title, "Kaio (nuevo horario)");
+        assert_eq!(del_28.minutes, Some(60), "la serie nueva dura una hora");
+    }
+
+    // -----------------------------------------------------------------------
+    // Lo que rechacé no entra
+    // -----------------------------------------------------------------------
+
+    const YO: &str = "yo@ejemplo.com";
+
+    #[test]
+    fn lo_que_rechace_no_se_importa() {
+        let ics = cal_de(
+            YO,
+            &format!(
+                "BEGIN:VEVENT\nUID:no@test\nSUMMARY:No voy\nDTSTART:20260810T120000Z\nDTEND:20260810T130000Z\n{}\nEND:VEVENT\nBEGIN:VEVENT\nUID:si@test\nSUMMARY:Sí voy\nDTSTART:20260810T140000Z\nDTEND:20260810T150000Z\n{}\nEND:VEVENT",
+                invitado(YO, "DECLINED"),
+                invitado(YO, "ACCEPTED"),
+            ),
+        );
+        let evs = todo(&ics);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].title, "Sí voy");
+    }
+
+    #[test]
+    fn que_otro_rechace_no_saca_la_reunion() {
+        let ics = cal_de(
+            YO,
+            &format!(
+                "BEGIN:VEVENT\nUID:x@test\nSUMMARY:Igual va\nDTSTART:20260810T120000Z\nDTEND:20260810T130000Z\n{}\n{}\nEND:VEVENT",
+                invitado("otro@ejemplo.com", "DECLINED"),
+                invitado(YO, "ACCEPTED"),
+            ),
+        );
+        assert_eq!(todo(&ics).len(), 1);
+    }
+
+    #[test]
+    fn sin_responder_o_quizas_sigue_entrando() {
+        // `NEEDS-ACTION` y `TENTATIVE` son tiempo que quizás gastes: solo
+        // "DECLINED" es "no voy".
+        for respuesta in ["NEEDS-ACTION", "TENTATIVE"] {
+            let ics = cal_de(
+                YO,
+                &format!(
+                    "BEGIN:VEVENT\nUID:x@test\nSUMMARY:Quizás\nDTSTART:20260810T120000Z\nDTEND:20260810T130000Z\n{}\nEND:VEVENT",
+                    invitado(YO, respuesta),
+                ),
+            );
+            assert_eq!(todo(&ics).len(), 1, "{respuesta} no debería filtrarse");
+        }
+    }
+
+    #[test]
+    fn rechazar_una_sola_repeticion_saca_esa_y_solo_esa() {
+        // Llega como una instancia propia con `RECURRENCE-ID`. Y tiene que
+        // suprimir la repetición que genera el maestro: si no, la reunión
+        // rechazada se volvería a dibujar igual.
+        let ics = cal_de(
+            YO,
+            &format!(
+                "BEGIN:VEVENT\nUID:serie@test\nSUMMARY:Standup\nDTSTART;TZID=America/Santiago:20260810T090000\nDTEND;TZID=America/Santiago:20260810T091500\nRRULE:FREQ=WEEKLY;COUNT=3\n{}\nEND:VEVENT\nBEGIN:VEVENT\nUID:serie@test\nRECURRENCE-ID;TZID=America/Santiago:20260817T090000\nSUMMARY:Standup\nDTSTART;TZID=America/Santiago:20260817T090000\nDTEND;TZID=America/Santiago:20260817T091500\n{}\nEND:VEVENT",
+                invitado(YO, "ACCEPTED"),
+                invitado(YO, "DECLINED"),
+            ),
+        );
+        let evs = todo(&ics);
+        assert_eq!(evs.len(), 2, "quedan la del 10 y la del 24");
+        assert!(!evs.iter().any(|e| e.date == "2026-08-17"));
+    }
+
+    #[test]
+    fn sin_saber_de_quien_es_el_calendario_no_se_filtra_nada() {
+        // Equivocarse identificando al dueño borraría reuniones de verdad en
+        // silencio, así que la duda cae del lado de importar.
+        let body = format!(
+            "BEGIN:VEVENT\nUID:x@test\nSUMMARY:Igual entra\nDTSTART:20260810T120000Z\nDTEND:20260810T130000Z\n{}\nEND:VEVENT",
+            invitado(YO, "DECLINED"),
+        );
+        // Sin `X-WR-CALNAME`.
+        assert_eq!(todo(&cal(&body)).len(), 1);
+        // Y con uno que no es un correo: un calendario secundario se llama, por
+        // ejemplo, "Cumpleaños".
+        assert_eq!(todo(&cal_de("Cumpleaños", &body)).len(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Mi propia respuesta en un evento que organizo yo
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn el_organizador_conserva_su_respuesta() {
+        // Google te pone como `ORGANIZER` **y** como `ATTENDEE` en todo lo que
+        // organizás, y el `PARTSTAT` viaja en el segundo. Deduplicando sin
+        // pasarlo, tu propia respuesta se perdía en todos esos eventos.
+        let ics = cal(&format!(
+            "BEGIN:VEVENT\nUID:x@test\nSUMMARY:Mía\nDTSTART:20260810T120000Z\nDTEND:20260810T130000Z\nORGANIZER;CN={YO}:mailto:{YO}\n{}\n{}\nEND:VEVENT",
+            invitado(YO, "DECLINED"),
+            invitado("otra@ejemplo.com", "ACCEPTED"),
+        ));
+        let evs = todo(&ics);
+        let gente = &evs[0].attendees;
+        assert_eq!(gente.len(), 2, "no se lista dos veces");
+        assert!(gente[0].is_organizer);
+        assert_eq!(
+            gente[0].status.as_deref(),
+            Some("DECLINED"),
+            "el organizador se queda con su propia respuesta"
+        );
     }
 
     #[test]

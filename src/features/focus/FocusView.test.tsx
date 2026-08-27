@@ -26,6 +26,7 @@ function task(over: Partial<Task> & { id: number; title: string }): Task {
     meetingUrl: null,
     eventDescription: null,
     attendees: [],
+    railOnly: false,
     createdAt: "2026-08-10T09:00:00Z",
     updatedAt: "2026-08-10T09:00:00Z",
     ...over,

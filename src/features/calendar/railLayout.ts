@@ -142,7 +142,11 @@ export function localMinutes(iso: string): number | null {
  * 2. **Fijas** — con `scheduled_time` y sin trabajar todavía. Son compromisos.
  * 3. **Proyectadas** — el resto, en el **orden del tablero** (`position`, el que
  *    el usuario ya arregló a mano), calzadas en los huecos que dejan las dos
- *    anteriores y partidas si hace falta.
+ *    anteriores y partidas si hace falta. Ese orden vale también **contra las
+ *    reuniones**: una tarea que arrastraste debajo de la de las 15:00 se
+ *    proyecta después de las 15:00, no en el hueco de la mañana. Es lo que hace
+ *    que la columna sea el plan del día y el rail su dibujo, en vez de dos
+ *    lecturas que se contradicen.
  *
  * **La proyección no escribe nada.** `scheduled_time` es un dato persistido —lo
  * escribe el import y ordena la cola de Focus—, así que una hora inventada por
@@ -174,6 +178,7 @@ export function buildRail(
       if (start != null) {
         reales.push({
           taskId: t.id,
+          position: t.position,
           startMin: start,
           endMin: Math.min(start + worked, MINUTOS_DEL_DIA),
         });
@@ -201,6 +206,7 @@ export function buildRail(
     // otra columna, y estirar la grilla a más de 24 h la haría ilegible.
     fijas.push({
       taskId: t.id,
+      position: t.position,
       startMin: start,
       endMin: Math.min(start + duracionDe(t), MINUTOS_DEL_DIA),
     });
@@ -232,7 +238,7 @@ export function buildRail(
   // dedicaste.
   const finDeLoTrabajado = reales.reduce((m, r) => Math.max(m, r.endMin), 0);
   const arranque = Math.max(jornadaDesde, ahoraMin ?? 0, finDeLoTrabajado);
-  blocks.push(...proyectar(pending, conHora, arranque));
+  blocks.push(...proyectar(pending, conHora, arranque, fijas));
 
   return {
     desdeMin: 0,
@@ -246,6 +252,8 @@ export function buildRail(
 
 interface Tramo {
   taskId: number;
+  /** La posición de su card en la columna: es lo que ordena la proyección. */
+  position: number;
   startMin: number;
   endMin: number;
 }
@@ -309,6 +317,13 @@ function duracionDe(t: Task): number {
  * de una reunión es media hora de trabajo real, y esconderla haría que el rail
  * proyectara un día más corto del que se tiene.
  *
+ * **Las reuniones que están más arriba en la columna son una barrera**, no solo
+ * un obstáculo: una tarea arrastrada debajo de la de las 15:00 no se proyecta a
+ * las 9:00 aunque la mañana esté libre. Sin eso, ordenar las cards no servía
+ * para decir cómo se va a ver el día —que es para lo que están—: el rail
+ * dibujaba el mismo día para dos órdenes distintos. Si querés esa tarea en la
+ * mañana, la card va arriba de la reunión.
+ *
  * **Las completadas no se proyectan**: el rail responde "qué me queda por
  * delante", y llenarlo con lo ya hecho tapa justamente eso. Una reunión
  * completada sí se queda, porque su hora fue un compromiso real.
@@ -318,19 +333,36 @@ function duracionDe(t: Task): number {
  */
 function proyectar(
   tasks: Pendiente[],
-  fijas: { startMin: number; endMin: number }[],
+  ocupado: { startMin: number; endMin: number }[],
   desdeMin: number,
+  barreras: Tramo[],
 ): BloqueRail[] {
-  const pending = tasks
-    .filter((p) => p.task.status !== "DONE")
-    .sort((a, b) => a.task.position - b.task.position || a.task.id - b.task.id);
+  const pending = tasks.filter((p) => p.task.status !== "DONE");
   if (pending.length === 0) return [];
 
-  const busy = fusionar(fijas);
+  // Un solo recorrido por la columna, en su orden: las pendientes se colocan y
+  // las reuniones solo corren el cursor. Así "estar debajo de la de las 15:00"
+  // significa lo mismo en la columna y en el rail.
+  const enOrden = [
+    ...pending.map((p) => ({ pos: p.task.position, id: p.task.id, pendiente: p })),
+    ...barreras.map((b) => ({ pos: b.position, id: b.taskId, barrera: b })),
+  ].sort((a, b) => a.pos - b.pos || a.id - b.id) as {
+    pos: number;
+    id: number;
+    pendiente?: Pendiente;
+    barrera?: Tramo;
+  }[];
+
+  const busy = fusionar(ocupado);
   const out: BloqueRail[] = [];
   let cursor = desdeMin;
 
-  for (const { task: t, minutes } of pending) {
+  for (const item of enOrden) {
+    if (item.pendiente == null) {
+      cursor = Math.max(cursor, item.barrera!.endMin);
+      continue;
+    }
+    const { task: t, minutes } = item.pendiente;
     const segments = partir(minutes, cursor, busy);
     // Si no cabe entera antes de medianoche se descarta **completa**, no a
     // medias: dejar solo el primer tramo se leería como un error de ubicación y

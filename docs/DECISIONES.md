@@ -112,18 +112,50 @@ latente que nadie había pisado.
 
 ## 3. Calendario (ICS): cuatro interpretaciones que definen la feature
 
-1. **Las series se expanden**, en una ventana de una semana atrás y cinco
-   adelante, con **una clave por instancia** (`UID#<instante>`). Sin expandir, un
-   standup semanal se importa una sola vez y la feature queda inútil para el
-   contenido más común de un calendario de trabajo; sin clave por instancia, el
-   `UNIQUE` colapsa el mes entero en una fila.
+1. **Las series se expanden**, en una ventana que va de **hoy a tres semanas**
+   (`ics::DIAS_ATRAS = 0`, `DIAS_ADELANTE = 21`), con **una clave por instancia**
+   (`UID#<instante>`). Sin expandir, un standup semanal se importa una sola vez y
+   la feature queda inútil para el contenido más común de un calendario de
+   trabajo; sin clave por instancia, el `UNIQUE` colapsa el mes entero en una
+   fila. **Y nada del pasado**, que dejó de ser un detalle: la ventana arranca hoy,
+   así que cada mañana las reuniones de ayer dejan de venir en el feed, y es
+   justamente eso lo que obliga al filtro `scheduled_date >= hoy` del reconciler
+   (más abajo). Tres semanas adelante alcanzan para planificar navegando un par de
+   semanas sin arrastrar series enteras a meses de distancia.
 2. **Los eventos de día completo entran sin reloj**: sin hora, sin estimado. Un
    feriado no son 24 horas trabajadas.
-3. **`STATUS:CANCELLED` se descarta.** `PARTSTAT=DECLINED` no, porque necesita
-   saber cuál de los invitados eres tú — o sea, un ajuste con tu email. Hoy una
-   reunión rechazada se importa igual.
+3. **`STATUS:CANCELLED` y `PARTSTAT=DECLINED` se descartan los dos.** Lo segundo
+   parecía necesitar un ajuste con tu email, y no: Google emite `X-WR-CALNAME` con
+   la dirección del calendario, así que quién eres sale del propio feed y no hay
+   nada que configurar. Se midió sobre un feed real de 2.591 eventos: 1.585 te
+   listan como invitado (1.405 aceptados, 127 sin responder, 48 rechazados, 5
+   quizás) y 1.006 no traen invitados —son tus propios bloques—. Y **no hay lista
+   negra**: la respuesta viene en cada pasada, así que el feed ya es la fuente de
+   verdad y una lista nuestra sería una segunda copia capaz de desincronizarse;
+   volver a aceptar la reimporta, y el reconciler ya sabía qué hacer con algo que
+   dejó de venir. Lo que sí hace falta es **fallar hacia importar**: `X-WR-CALNAME`
+   es el nombre del calendario y en uno secundario puede ser "Cumpleaños", así que
+   si no parece un correo no se filtra nada — identificar mal al dueño borraría
+   reuniones de verdad en silencio.
 4. **Un feed con `import_as_tasks = 0` igual se baja, pero no escribe.** Así una
    URL revocada se sigue viendo como error en vez de quedar muda.
+
+**Google parte series, y eso se veía como un borrado.** Editar una recurrente con
+"este evento y los siguientes" no cambia el evento: la serie vieja recibe un
+`UNTIL` antes del corte y nace un UID nuevo, el mismo con un `_R<instante>` metido
+antes del `@`. La app leía eso como una serie nueva, así que la clave de cada
+repetición futura cambiaba: el reconciler borraba las tareas viejas y el import
+creaba otras. **Borrar e insertar no es actualizar**: se perdía lo tocado a mano y,
+si alguna instancia tenía tiempo trackeado, se soltaba del feed *y* volvía a entrar
+con el UID nuevo, dejando la misma reunión dos veces en el tablero. Se arregló
+normalizando el UID al interpretar el feed, no en el reconciler: la clave tiene que
+ser estable **antes** de que nadie compare nada.
+
+**Y por eso el log del reconciler dice nombres.** Dos números no se pueden
+reconstruir después —las filas ya no existen—, y lo que desaparece de un feed casi
+nunca es un evento borrado. El caso que lo pidió: un "3 borradas" que en realidad
+era una serie partida, imposible de confirmar media hora más tarde porque las dos
+bases ya habían convergido.
 
 **El borrado es no destructivo, y solo se borran las futuras.** Esa condición no
 estaba en el plan y resultó crítica: la ventana de import arranca hoy, así que
@@ -174,6 +206,69 @@ astillar ahí vuelve ilegible el rail.
 real y proyecta los 26 que faltan. En la primera versión lo trabajado reemplazaba a
 la tarea entera, así que una tarea empezada desaparecía del resto del día justo
 cuando más importa saber si el tiempo alcanza.
+
+**El orden de los VEVENT de Google no es estable, y por eso una reunión movida
+saltaba entre dos horarios.** Se midió: dos descargas seguidas del mismo feed
+dejan al VEVENT maestro antes y después de la instancia editada. Las dos comparten
+clave a propósito (para que el upsert deje una sola fila), así que "cuál gana" lo
+decidía el orden del archivo y cambiaba de sincronización en sincronización. La
+regla es que **la instancia editada siempre gana**: la repetición que el maestro
+genera se descarta en una pasada previa. Google **no** pone `EXDATE` a las
+repeticiones que moviste —solo a las que borraste antes de que existiera una
+instancia—, así que no hay atajo por ahí. Y esa pasada no puede filtrar por
+ventana: una instancia movida a dentro de un mes no se importa, pero su repetición
+original sí cae en la ventana, y sin suprimirla la reunión queda clavada para
+siempre en el horario del que la sacaste.
+
+**Un evento ignorado se ignora de verdad, no se esconde.** La primera versión solo
+lo sacaba de la columna y de la capacidad, y quedaba raro por una razón concreta:
+seguía apareciendo en Focus a su hora y seguía contando como tiempo trabajado en la
+review (por la regla 3 del rollup, que le da a una reunión sin trackear su
+duración). Eso no es "un espacio reservado", es una tarea a medio esconder. Ahora
+son **seis exclusiones** —tarjeta, capacidad, Focus, aviso de próxima reunión,
+rollup y el día del ritual— y la fila queda solo para dibujar su hora en el rail.
+
+Dos corolarios que no eran obvios. **El detalle de una ignorada esconde las
+acciones de trabajo** —completar, play y los ajustes de tiempo—: el play sobre una
+tarea que no tiene tarjeta en ninguna columna deja el taxímetro corriendo donde no
+se puede ver ni detener. Y el detalle sigue siendo alcanzable desde el bloque del
+rail, que es lo que permitió **descartar el popover** que primero se puso ahí para
+desmarcarla: el control de volver atrás ya estaba en el detalle, y un popover
+propio agregaba un comportamiento que hay que aprender y le daba al rail —que es
+de solo lectura— un camino de escritura.
+
+Y **ignorar no toca las repeticiones ya trabajadas**: esconder una con el taxímetro corriendo deja el timer contando sobre
+algo que no se puede ver ni detener —la trampa que `reconcile_feed` ya documenta— y
+esconder una trabajada deja su tiempo contado en la review, que es el estado
+partido de la migración 6. Una corrida abierta es una `time_entry`, así que el
+mismo filtro (`time_entries` o `DONE`) cubre las dos.
+
+**Un "focus time" no se puede detectar: la marca la pone el usuario.** El ICS de
+Google no emite `X-GOOGLE-EVENT-TYPE` ni nada equivalente; el VEVENT del almuerzo
+es idéntico al de un evento suelto (medido sobre un feed real de 2.591 eventos: ni
+la ausencia de participantes ni `TRANSP` sirven de pista). Así que "esto es espacio
+reservado, no trabajo" es un dato nuestro, en columna propia (`rail_only`) para no
+volver a meterle una tercera lectura a `source_state`. Se guarda **por serie**: el
+almuerzo es semanal y una marca por instancia habría que renovarla cada semana,
+para siempre.
+
+**Las reuniones se ordenan por hora en la base, no al dibujar.** La tentación era
+ordenar la columna en el front, y no funciona: el índice que escribe un arrastre se
+cuenta contra la lista **que se ve**, así que con la vista ordenada distinto de
+`position` la card aterriza donde no la soltaste. Se ubica al importar y solo si el
+evento cambió de día o de hora; de ahí en adelante la columna es del usuario y el
+poller no la reescribe.
+
+**Y se ordenan solo entre ellas.** La primera versión agrupaba —día completo,
+después lo que tiene hora, al final lo sin hora— y eso rompía la razón de ser de la
+columna: **la columna del día es el plan del día**, y si la app manda todas las
+tareas a mano abajo de todas las reuniones, arrastrar cards deja de servir para
+decir cómo se va a ver el día. La regla quedó al revés: un evento nuevo se abre
+paso entre otros eventos y **nunca desplaza una tarea tuya**. El corolario, en el
+rail: **una reunión más arriba en la columna es una barrera y no solo un
+obstáculo** —una tarea puesta debajo de la de las 15:00 se proyecta después de las
+15:00, aunque la mañana esté libre—. Sin eso el rail dibujaba el mismo día para dos
+órdenes distintos, que es exactamente lo que hacía inútil ordenar las cards.
 
 ---
 

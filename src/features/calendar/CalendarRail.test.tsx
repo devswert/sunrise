@@ -29,6 +29,7 @@ function task(over: Partial<Task> & { id: number; title: string }): Task {
     meetingUrl: null,
     eventDescription: null,
     attendees: [],
+    railOnly: false,
     createdAt: `${DIA}T09:00:00Z`,
     updatedAt: `${DIA}T09:00:00Z`,
     ...over,
@@ -136,6 +137,46 @@ describe("CalendarRail", () => {
     // En otro día la línea mentiría: marcaría una hora que no es de ese día.
     const otro = render(<Rail tasks={conHora} date={OTRO_DIA} today={DIA} />);
     expect(otro.container.querySelector(".rail__ahora")).toBeNull();
+  });
+});
+
+/**
+ * Un bloque ignorado (§4.12) se ve distinto pero **se comporta igual**: abre el
+ * detalle, que es donde está el switch para dejar de ignorarlo. Hubo una versión
+ * con un popover propio acá y se descartó: el rail volvió a ser de solo lectura.
+ */
+describe("CalendarRail · un bloque ignorado", () => {
+  const ignorado = (over: Partial<Task> = {}) =>
+    task({
+      id: 7,
+      title: "Lunch",
+      source: "CALENDAR",
+      feedId: 1,
+      calendarUid: "lunch@x#1",
+      scheduledTime: "13:15",
+      estimatedMinutes: 75,
+      railOnly: true,
+      ...over,
+    });
+
+  it("se ve atenuado, y su click abre el detalle como cualquier otro", async () => {
+    const { onOpen } = renderRail([ignorado()]);
+    const bloque = screen.getByTitle(/Lunch/);
+    expect(bloque.className).toContain("is-ignorado");
+
+    await userEvent.click(bloque);
+
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }));
+  });
+
+  it("el chip de un día completo ignorado también abre el detalle", async () => {
+    const { onOpen } = renderRail([ignorado({ scheduledTime: null, estimatedMinutes: null })]);
+    const chip = screen.getByRole("button", { name: "Lunch" });
+    expect(chip.className).toContain("is-ignorado");
+
+    await userEvent.click(chip);
+
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }));
   });
 });
 

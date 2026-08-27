@@ -19,6 +19,7 @@ import { CalendarEventCard } from "../calendar/EventoDelCalendario";
 import { shortDuration, timeByDay } from "./timeByDay";
 import { formatMinutes } from "../../lib/capacity";
 import { SearchSelect } from "../../components/SearchSelect";
+import { Switch } from "../../components/Switch";
 import { channelOptions } from "./channelOptions";
 import { TimePicker } from "../../components/TimePicker";
 import { Popover } from "../../components/Popover";
@@ -58,6 +59,15 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const quitOpen = useAppStore((s) => s.quitOpen);
   const navigate = useNavigate();
   const running = timer.active?.taskId === task.id;
+  /**
+   * Una tarea ignorada (§4.12) no es trabajo: **el detalle esconde todo lo que
+   * la trataría como tal** —completar, el play y los dos ajustes de tiempo—.
+   * No es solo prolijidad: el play sobre algo que no tiene tarjeta en ninguna
+   * columna deja el taxímetro corriendo donde no se puede ver ni detener, que es
+   * la trampa que `repo::set_series_rail_only` evita al no tocar lo ya trabajado.
+   * Quedan sus datos, sus notas, el canal y el switch para dejar de ignorarla.
+   */
+  const ignorada = task.railOnly;
   // Siempre el **acumulado de la tarea**, más lo que va de la corrida en curso
   // si el timer está en ella. Antes mostraba `timer.elapsed` mientras corría, o
   // sea lo de hoy: el mismo campo significaba dos cosas, y darle play a una
@@ -371,6 +381,11 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
         <div className="tmodal__body">
           {/* --- Título + tiempos --- */}
           <div className="tmodal__titlerow">
+            {/* Ignorada: el círculo de completar no va, y su lugar **no** se
+              * reserva. Se probó reservarlo para que el título no perdiera la
+              * sangría, y el hueco vacío se veía peor que el título pegado al
+              * borde. */}
+            {!ignorada && (
             <button
               type="button"
               className={`tmodal__check${done ? " is-checked" : ""}`}
@@ -387,6 +402,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
             >
               {done && <Check size={14} strokeWidth={3} />}
             </button>
+            )}
 
             <input
               className={`tmodal__title${done ? " is-done" : ""}`}
@@ -398,6 +414,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
               aria-label="Título"
             />
 
+            {!ignorada && (
             <div className="tmodal__times">
               <div className="chip-wrap" ref={actualRef}>
                 <button
@@ -469,6 +486,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                 {running ? <Pause size={14} /> : <Play size={14} />}
               </button>
             </div>
+            )}
           </div>
 
           {/* --- Datos del evento del calendario ---
@@ -583,7 +601,38 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
               <Trash2 size={14} /> Eliminar
             </button>
           )}
-          <span className="tmodal__autosave">Los cambios se guardan automáticamente</span>
+          {/* Ignorar el evento: lo que convierte un "focus time" del calendario
+            * —el almuerzo, un rato de concentración— en espacio reservado en vez
+            * de trabajo planificado (§4.12).
+            *
+            * Va **en el pie**, en el lugar que ocupaba "los cambios se guardan
+            * automáticamente": ese texto no decía nada que el usuario necesitara
+            * —el autosave se nota usándolo— y era el único espacio del modal que
+            * no hacía nada. Acá abajo queda además lejos del título y de las
+            * notas: es una decisión sobre el evento, no un campo que se edita.
+            *
+            * Marcar y desmarcar se hacen los dos desde acá. Una vez ignorada la
+            * tarea no tiene tarjeta, pero el detalle sigue siendo alcanzable: su
+            * bloque del rail lo abre igual que cualquier otro.
+            *
+            * Solo se ofrece en una tarea del calendario: en una escrita a mano no
+            * significa nada, ya está donde la pusiste. El rótulo dice **"como
+            * tarea"** porque eso es exactamente lo que deja de ser: el evento
+            * sigue ahí, en el rail, a su hora. */}
+          {task.feedId != null && task.calendarUid != null && (
+            <label className="tmodal__ignorar">
+              <span className="tmodal__ignorar-texto">Ignorar como tarea</span>
+              <Switch
+                checked={ignorada}
+                label="Ignorar este evento"
+                onChange={async (value) => {
+                  await api.setTaskRailOnly(task.id, value);
+                  await onChanged();
+                  bumpData();
+                }}
+              />
+            </label>
+          )}
         </footer>
       </div>
     </div>

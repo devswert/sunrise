@@ -97,14 +97,34 @@ async fn try_sync(app: &AppHandle, feed: &CalendarFeed) -> Result<usize, String>
     // este acaba de ver, para que un evento movido dentro de la ventana no
     // parezca borrado.
     let today = ics::today_local().format("%Y-%m-%d").to_string();
-    let (deleted, withdrawn) =
-        repo::reconcile_feed(&conn, feed.id, &seen, &today).map_err(|e| e.to_string())?;
-    if deleted > 0 || withdrawn > 0 {
-        eprintln!(
-            "[sunrise] calendario «{}»: {deleted} borradas, {withdrawn} retiradas del feed \
-             (liberadas si se trabajaron, ORPHANED si no)",
-            feed.name
-        );
+    let hecho = repo::reconcile_feed(&conn, feed.id, &seen, &today).map_err(|e| e.to_string())?;
+
+    // **Con nombres, no solo cuántas.** Un "3 borradas" a secas no se puede
+    // reconstruir después: las filas ya no están. Y lo que desaparece del feed
+    // casi nunca es un evento borrado —Google parte series, cambia UIDs, mueve
+    // instancias—, así que el log es lo único que queda para entender qué pasó.
+    if hecho.hubo_cambios() {
+        let lista = |que: &[repo::Afectada]| {
+            que.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(", ")
+        };
+        eprintln!("[sunrise] calendario «{}»: el feed dejó de traer", feed.name);
+        if !hecho.deleted.is_empty() {
+            eprintln!("  borradas ({}): {}", hecho.deleted.len(), lista(&hecho.deleted));
+        }
+        if !hecho.released.is_empty() {
+            eprintln!(
+                "  liberadas del feed, se quedan con su tiempo ({}): {}",
+                hecho.released.len(),
+                lista(&hecho.released)
+            );
+        }
+        if !hecho.orphaned.is_empty() {
+            eprintln!(
+                "  ORPHANED, nunca se trabajaron ({}): {}",
+                hecho.orphaned.len(),
+                lista(&hecho.orphaned)
+            );
+        }
     }
 
     Ok(seen.len())

@@ -369,10 +369,6 @@
 .add-task:hover {
   color: var(--ink);
 }
-.day-col__sort {
-  color: var(--faint);
-  flex-shrink: 0;
-}
 .day-col__cap {
   font-size: 11px;
   font-variant-numeric: tabular-nums;

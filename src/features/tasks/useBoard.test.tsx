@@ -184,6 +184,40 @@ describe("useBoard · reorden optimista", () => {
 });
 
 /**
+ * Los bloques de agenda (§4.12): un focus time del calendario se ve en el rail
+ * pero no es tarjeta ni suma carga. Las dos listas salen del mismo arreglo y
+ * difieren **solo** en `railOnly`, que es lo que hace que no puedan divergir.
+ */
+describe("useBoard · bloques que solo ocupan la agenda", () => {
+  const hoy = todayISO();
+  const tarea = (id: number, railOnly = false) => ({
+    id,
+    title: `t${id}`,
+    status: "TODO",
+    source: "CALENDAR",
+    sourceState: "ACTIVE",
+    scheduledDate: hoy,
+    position: id,
+    actualSeconds: 0,
+    railOnly,
+  });
+
+  beforeEach(() => {
+    demote.mockClear();
+    listTasksForRange.mockClear();
+    rango = [tarea(1), tarea(2, true), tarea(3)];
+  });
+
+  it("la columna no muestra el bloque de agenda y el rail sí", async () => {
+    const { Probe, verBoard } = await freshBoard();
+    render(<Probe />);
+    await waitFor(() => expect(verBoard().agendaByDate[hoy]?.length).toBe(3));
+    expect(verBoard().tasksByDate[hoy].map((t) => t.id)).toEqual([1, 3]);
+    expect(verBoard().agendaByDate[hoy].map((t) => t.id)).toEqual([1, 2, 3]);
+  });
+});
+
+/**
  * El backlog dentro del board: es lo que hace posible el panel de la semana, y lo
  * que hay que vigilar es que **solo** llegue cuando se pide. Las otras tres
  * vistas que usan este hook (Today, planificación, cierre) no lo quieren, y sus
