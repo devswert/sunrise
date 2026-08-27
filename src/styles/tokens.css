@@ -133,6 +133,12 @@
    * tono de salvia bajado a L 38% para que aguante blanco encima (5.5). */
   --mint-solid: #007a31;
   --sage-solid: #4e723c;
+  /* `--apricot-solid` es el cuadrado del icono en el aviso del updater (§4.23),
+   * que lleva un glifo blanco encima. Con `--apricot` entero da 2.55 —un icono
+   * blanco que casi no se ve— y el `-ink` no sirve para esto: está calibrado para
+   * el color al 35%, no para el color a full. Es el mismo damasco bajado a L 42% y
+   * con la saturación algo cedida, para que aguante blanco encima (5.6). */
+  --apricot-solid: #b64120;
 
   /* El texto de la selección. El fondo es `--peach`, que **no** cambia por tema,
    * así que su texto tampoco puede: con `--peach-ink` quedaba en 3.25 en claro y

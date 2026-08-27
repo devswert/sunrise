@@ -331,6 +331,26 @@ export interface AppUpdate {
 }
 
 /**
+ * Avance de la descarga del paquete de actualización. Espejo de
+ * `update::UpdateProgress`, y llega por el evento `sunrise://update-progress`, no
+ * por un comando: es Rust el que habla primero.
+ */
+export interface UpdateProgress {
+  /** Bytes bajados hasta ahora. */
+  downloaded: number;
+  /**
+   * Tamaño total, o `null` si el servidor no manda `Content-Length`. Sin total la
+   * barra va indeterminada: no hay porcentaje que mostrar y un cero sería mentira.
+   */
+  total: number | null;
+  /**
+   * La descarga terminó y está reemplazando el `.app`. Ese tramo no reporta
+   * avance, así que la barra deja de medir y el texto lo dice.
+   */
+  installing: boolean;
+}
+
+/**
  * A dónde lleva un aviso del sistema al accionarlo. Espeja `NoticeTarget` en
  * `commands.rs`.
  *

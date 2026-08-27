@@ -222,13 +222,20 @@ a {
   margin-right: auto;
 }
 
+/* En el rail solo sobrevive el icono del aviso del updater. Cada pieza nueva de la
+ * tarjeta —la fecha, la flecha, la barra de descarga, la cuenta de los 30 s— tiene
+ * que sumarse acá, o se desborda de una columna de 38px sin que nada se queje. */
 .sidebar.is-collapsed .sidebar__label,
 .sidebar.is-collapsed .sidebar__key,
 .sidebar.is-collapsed .sidebar__section-label,
 .sidebar.is-collapsed .sidebar__theme-label,
 .sidebar.is-collapsed .sidebar__brand-text,
 .sidebar.is-collapsed .sidebar__perfil,
-.sidebar.is-collapsed .upd-banner__texto {
+.sidebar.is-collapsed .upd-banner__texto,
+.sidebar.is-collapsed .upd-banner__fecha,
+.sidebar.is-collapsed .upd-banner__flecha,
+.sidebar.is-collapsed .upd-banner__barra,
+.sidebar.is-collapsed .upd-banner__cuenta {
   display: none;
 }
 
@@ -236,11 +243,18 @@ a {
 .sidebar.is-collapsed .sidebar__brand,
 .sidebar.is-collapsed .sidebar__top,
 .sidebar.is-collapsed .sidebar__theme-row,
-.sidebar.is-collapsed .upd-banner {
+.sidebar.is-collapsed .upd-banner,
+.sidebar.is-collapsed .upd-banner__fila {
   justify-content: center;
   padding-left: 0;
   padding-right: 0;
   gap: 0;
+}
+/* La tarjeta se vuelve el cuadrado del icono: sin el padding de arriba y abajo
+ * quedaría más alta que los botones del rail. */
+.sidebar.is-collapsed .upd-banner {
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 /* El switch de tema mide 60px y el rail tiene 72 menos padding: no cabe. En su

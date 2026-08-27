@@ -1235,10 +1235,40 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
         // otra ventana. No hay nada que instalar y tampoco nada roto.
         return Ok(());
     };
+    // El avance se cuenta acá y no lo trae el plugin: el callback entrega el
+    // tamaño de **cada trozo**, no el acumulado.
+    let mut bajado: u64 = 0;
     update
-        .download_and_install(|_, _| {}, || {})
+        .download_and_install(
+            |trozo, total| {
+                bajado += trozo as u64;
+                crate::update::emit_progress(
+                    &app,
+                    crate::update::UpdateProgress {
+                        downloaded: bajado,
+                        total,
+                        installing: false,
+                    },
+                );
+            },
+            || {
+                // Reemplazar el `.app` no reporta avance, así que el aviso pasa a
+                // decir que está instalando en vez de dejar la barra en el 100 %.
+                crate::update::emit_progress(
+                    &app,
+                    crate::update::UpdateProgress {
+                        downloaded: 0,
+                        total: None,
+                        installing: true,
+                    },
+                );
+            },
+        )
         .await
         .map_err(e)?;
+    // La marca va acá, con la instalación ya hecha: una descarga que falla no
+    // reinicia nada, y dejarla armada le robaría el foco al arranque siguiente.
+    crate::update::arm_focus_after_restart(&app);
     app.restart();
 }
 

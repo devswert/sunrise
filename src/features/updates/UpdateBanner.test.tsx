@@ -22,6 +22,7 @@ function reset() {
   useUpdateStore.setState({
     available: null,
     installing: false,
+    progress: null,
     error: null,
     fake: false,
     updatedTo: null,
@@ -69,6 +70,82 @@ describe("UpdateBanner · hay versión nueva", () => {
     const b = await screen.findByRole("button", { name: /No se pudo\. Reintenta\./ });
     expect(b).toHaveTextContent("No se pudo. Reintenta.");
     expect(b).toBeEnabled();
+  });
+});
+
+/**
+ * El progreso de la descarga. Lo emite Rust y lo único que se prueba acá es la
+ * traducción a palabras, que es donde están las tres formas de mentir: un 0 %
+ * mientras todavía no llega nada, un porcentaje inventado cuando el servidor no
+ * manda `Content-Length`, y un 100 % clavado durante el reemplazo del `.app` —que
+ * es el tramo que no reporta avance—.
+ */
+describe("UpdateBanner · lo que baja", () => {
+  beforeEach(reset);
+  afterEach(() => vi.restoreAllMocks());
+
+  const nueva = { version: "0.2.0", currentVersion: "0.1.0", notes: null, date: null };
+
+  it("sin el primer trozo todavía no promete ningún porcentaje", () => {
+    useUpdateStore.setState({ available: nueva, installing: true, progress: null });
+    render(<UpdateBanner />);
+    expect(screen.getByRole("button")).toHaveTextContent("Preparando la descarga…");
+  });
+
+  it("con total, cuenta la fracción", () => {
+    useUpdateStore.setState({
+      available: nueva,
+      installing: true,
+      progress: { downloaded: 4_000_000, total: 10_000_000, installing: false },
+    });
+    render(<UpdateBanner />);
+    expect(screen.getByRole("button")).toHaveTextContent("Bajando · 40 %");
+  });
+
+  it("sin total dice los MB, que es lo único cierto", () => {
+    useUpdateStore.setState({
+      available: nueva,
+      installing: true,
+      progress: { downloaded: 3_145_728, total: null, installing: false },
+    });
+    render(<UpdateBanner />);
+    expect(screen.getByRole("button")).toHaveTextContent("Bajando · 3,0 MB");
+  });
+
+  it("mientras reemplaza la app lo dice, en vez de dejar la barra en el 100 %", () => {
+    useUpdateStore.setState({
+      available: nueva,
+      installing: true,
+      progress: { downloaded: 0, total: null, installing: true },
+    });
+    render(<UpdateBanner />);
+    expect(screen.getByRole("button")).toHaveTextContent("Instalando y reiniciando…");
+  });
+
+  /**
+   * El título es el nombre de la cosa, no su estado: durante la instalación sigue
+   * diciendo qué versión es, y lo que cambia es la línea de abajo.
+   */
+  it("el título no se convierte en el estado a mitad de la instalación", () => {
+    useUpdateStore.setState({
+      available: nueva,
+      installing: true,
+      progress: { downloaded: 1, total: 2, installing: false },
+    });
+    render(<UpdateBanner />);
+    expect(screen.getByRole("button")).toHaveTextContent("Versión 0.2.0");
+  });
+
+  /** Un intento nuevo no puede arrancar mostrando el avance del anterior. */
+  it("volver a instalar parte el progreso de cero", async () => {
+    vi.spyOn(api, "installUpdate").mockResolvedValue(undefined);
+    useUpdateStore.setState({
+      available: nueva,
+      progress: { downloaded: 9, total: 10, installing: false },
+    });
+    render(<UpdateBanner />);
+    await userEvent.click(screen.getByRole("button", { name: /Versión 0\.2\.0/ }));
+    expect(useUpdateStore.getState().progress).toBeNull();
   });
 });
 

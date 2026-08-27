@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Download, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { api } from "../../lib/ipc";
 import { PALETTE } from "../../lib/palette";
 import type { AppUpdate, Category } from "../../lib/types";
@@ -20,6 +20,8 @@ import {
   useWorkHours,
 } from "../../lib/settings";
 import { isoWeekdayLabel } from "../../lib/date";
+import { announcementFor } from "../../lib/changelog";
+import { useUpdateStore } from "../updates/updateStore";
 import { minutesFromTime } from "../calendar/railLayout";
 import { PLAIN_INPUT } from "../../components/plainInput";
 import { useProfile } from "../../lib/profile";
@@ -316,13 +318,17 @@ type UpdateState =
   | { kind: "sin-respuesta"; detalle: string };
 
 /**
- * Actualizaciones: se buscan **cuando las pides**, nunca solas.
+ * Actualizaciones: el botón para preguntar **ahora**, y el anuncio de la versión
+ * que estás usando.
  *
- * La app ya interrumpe dos veces a una hora fija —el aviso de cerrar el día y el
- * respaldo automático— y una tercera cosa que aparece sola al arrancar es la que
- * sobra: lo primero que uno mira en la mañana es el día, no un diálogo. Por eso el
- * plugin queda registrado en `lib.rs` sin chequeo de arranque y todo empieza acá,
- * con un botón.
+ * El sondeo automático vive en `useUpdateRuntime` (§4.23): pregunta al abrir y cada
+ * 4 horas, y lo que aparece es una franja en el sidebar que espera. Este botón es
+ * para el resto de las veces —acabo de publicar y no quiero esperar el intervalo—,
+ * y sigue siendo el único lugar donde se ven las notas completas antes de instalar.
+ *
+ * **"Ver lo nuevo" está acá porque el aviso del sidebar dura 30 segundos.** Después
+ * de eso el anuncio de la versión quedaba inalcanzable para siempre, aunque el
+ * changelog viaje en el bundle y no cueste nada volver a mostrarlo.
  *
  * El fallo se dice en gris y no en rojo. Mientras no exista el Release —o
  * trabajando sin conexión— la consulta al `latest.json` no llega, y eso es lo
@@ -331,6 +337,12 @@ type UpdateState =
 function Actualizaciones() {
   const [status, setStatus] = useState<UpdateState>({ kind: "quieto" });
   const [version, setVersion] = useState("");
+  const showWhatsNew = useUpdateStore((s) => s.showWhatsNew);
+  // El mismo progreso que dibuja el aviso del sidebar: lo emite Rust, así que las
+  // dos vistas cuentan lo mismo sin que ninguna tenga que preguntar.
+  const progress = useUpdateStore((s) => s.progress);
+  const setInstalling = useUpdateStore((s) => s.setInstalling);
+  const setUpdateError = useUpdateStore((s) => s.setError);
 
   useEffect(() => {
     let alive = true;
@@ -352,16 +364,27 @@ function Actualizaciones() {
 
   async function instalar() {
     setStatus({ kind: "instalando" });
+    // **También se avisa al store**, y no solo al estado local: es lo que mira el
+    // aviso del sidebar, que está a la vista al lado de esta sección. Sin esto
+    // seguía diciendo "Actualizar ahora" mientras acá bajaba, y apretarlo lanzaba
+    // una segunda descarga del mismo paquete.
+    setInstalling(true);
+    setUpdateError(null);
     try {
       // Si sale bien no vuelve: la app se reinicia sola en la versión nueva.
       await api.installUpdate();
     } catch (err) {
       setStatus({ kind: "sin-respuesta", detalle: String(err) });
+      setUpdateError(String(err));
+      setInstalling(false);
     }
   }
 
   const busy = status.kind === "buscando" || status.kind === "instalando";
   const hay = status.kind === "hay" ? status.upd : null;
+  // Sin sección escrita el modal no abre, así que el botón tampoco se ofrece: una
+  // build local puede tener una versión que nadie publicó.
+  const hayAnuncio = version !== "" && announcementFor(version) !== null;
 
   return (
     <div className="set-field">
@@ -380,18 +403,28 @@ function Actualizaciones() {
               {status.kind === "buscando" ? "Buscando…" : "Buscar"}
             </span>
           </button>
+          {hayAnuncio && (
+            <button type="button" className="resp-btn" onClick={() => showWhatsNew(version)}>
+              <Sparkles size={13} aria-hidden />
+              <span className="resp-btn__texto">Ver lo nuevo</span>
+            </button>
+          )}
         </div>
       </div>
       <span className="set-note">
         {status.kind === "instalando"
-          ? "Descargando la versión nueva. La app se va a reiniciar sola al terminar."
+          ? progress?.installing
+            ? "Instalando la versión nueva. La app se reinicia sola y vuelve al frente."
+            : progress?.total
+              ? `Descargando la versión nueva: ${Math.min(100, Math.round((progress.downloaded / progress.total) * 100))} %. La app se va a reiniciar sola al terminar.`
+              : "Descargando la versión nueva. La app se va a reiniciar sola al terminar."
           : status.kind === "hay"
             ? `Hay una versión nueva: ${hay!.version}${hay!.date ? `, publicada el ${hay!.date}` : ""}. Tienes la ${hay!.currentVersion}.`
             : status.kind === "al-dia"
               ? `Estás en la última versión${version ? ` (${version})` : ""}.`
               : status.kind === "sin-respuesta"
                 ? `No se pudo preguntar por versiones nuevas; puede ser que estés sin conexión. ${status.detalle}`
-                : `Estás usando la versión ${version || "…"}. Se busca solo cuando lo pides.`}
+                : `Estás usando la versión ${version || "…"}. Se busca sola al abrir y cada 4 horas; acá puedes preguntar ahora.`}
       </span>
       {/* Las notas del Release en crudo: es markdown escrito a mano y puede venir
         * largo, así que va en un bloque aparte y no en la bajada. */}

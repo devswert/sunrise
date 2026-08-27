@@ -73,6 +73,20 @@ compartirse. **No lo uses para un modal que no es una confirmación** — `TaskM
 es una vista y `AddFeedModal` un formulario: tienen su propio teclado y solo
 comparten el `.modal-overlay`.
 
+**Si un diálogo tiene que verse distinto, va una variante y no un panel nuevo.**
+`Dialog` acepta `variant`, que solo agrega `dialog--<variant>`; los estilos los pone
+la feature en su propio CSS (el amanecer del modal "Lo nuevo" vive en
+`updates.css`). Copiar el componente para cambiarle el aspecto es volver a la
+trampa de arriba. Y ojo con el orden: `Dialog` dibuja el `<h2>` **antes** que sus
+hijos, así que un bloque que va arriba del título se sube con `order: -1` —el
+diálogo es un flex en columna— y no metiéndolo dentro del encabezado.
+
+**Para pisar algo del componente compartido, la variante necesita dos clases**
+(`.dialog.dialog--loquesea`): el CSS de la feature se importa **antes** que
+`dialog.css`, así que con una sola clase gana el `.dialog` de allá por orden de
+carga. El síntoma es sutil —un padding que reaparece, un radio que no se aplica— y
+no se parece a un problema de especificidad.
+
 ## Autosave: la mecánica
 
 Los modales de detalle guardan solos, y `TaskModal` es el patrón de referencia:

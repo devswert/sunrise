@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { announcementFor, latestVersion, sectionFor } from "./changelog";
+import { announcementFor, latestVersion, releaseDateFor, sectionFor } from "./changelog";
 import pkg from "../../package.json";
 
 const MD = `# Cambios
@@ -49,6 +49,16 @@ describe("changelog", () => {
   it("la más nueva es la primera del archivo", () => {
     expect(latestVersion(MD)).toBe("0.2.0");
     expect(latestVersion("# Cambios\n\nsin versiones\n")).toBeNull();
+  });
+
+  /**
+   * La fecha es opcional en el formato del encabezado, así que quien la muestre
+   * tiene que aguantar que falte en vez de rellenarla con hoy.
+   */
+  it("saca el día de publicación del encabezado, y aguanta que no esté", () => {
+    expect(releaseDateFor("0.2.0", MD)).toBe("2026-09-01");
+    expect(releaseDateFor("9.9.9", MD)).toBeNull();
+    expect(releaseDateFor("0.3.0", "## v0.3.0\n\nSin fecha.\n")).toBeNull();
   });
 
   it("una versión que no está no es un error", () => {

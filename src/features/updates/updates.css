@@ -1,63 +1,122 @@
-/* La franja del updater en el sidebar, arriba del switch de tema.
+/* El aviso del updater en el sidebar, arriba del switch de tema.
  *
- * Es un `<button>` que ocupa el ancho del sidebar y respeta su ritmo: mismo radio
- * y misma tipografía que las filas de navegación, para que se lea como parte del
- * sidebar y no como un cartel pegado encima. */
+ * Es un `<button>` del ancho del sidebar, y **una tarjeta y no una franja**: era
+ * una fila de 12px de alto y lo que ofrece —reemplazar la app y reiniciarla— no se
+ * lee en una fila del tamaño de un ítem de navegación. Mantiene el radio y la
+ * tipografía del sidebar para seguir siendo parte de él, y gana alto, un icono en
+ * cuadrado redondeado y espacio para la barra de descarga. */
 .upd-banner {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-2);
   width: 100%;
   margin-bottom: var(--space-2);
-  padding: 7px 9px;
+  padding: var(--space-3) var(--space-3) 10px;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-family: inherit;
   text-align: left;
   cursor: pointer;
   overflow: hidden;
   position: relative;
+  box-shadow: var(--shadow-sm);
 }
 .upd-banner:disabled {
   cursor: default;
 }
+/* La fila de arriba: icono, texto y el dato de la derecha. Es la que el rail
+ * colapsado reduce al icono solo. */
+.upd-banner__fila {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+/* El icono en cuadrado redondeado, que es lo que le da peso a la tarjeta sin
+ * hacerla más alta. */
 .upd-banner__icono {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
   flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
 }
 .upd-banner__texto {
   display: flex;
   flex-direction: column;
+  gap: 1px;
   line-height: 1.25;
   min-width: 0;
+  flex: 1 1 auto;
 }
 .upd-banner__texto strong {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
+  letter-spacing: -0.1px;
 }
 .upd-banner__sub {
   font-size: 10.5px;
-  opacity: 0.8;
+  opacity: 0.85;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* La línea cambia de texto sola —"Actualizar ahora" → "Bajando · 42 %"— y sin
+   * alto reservado la tarjeta salta de tamaño en cada cambio. */
+  min-height: 13px;
+}
+/* El día de publicación, alineado a la derecha. Es dato y no acción, así que va
+ * en la tipografía más chica y sin peso. */
+.upd-banner__fecha {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+.upd-banner__flecha {
+  flex: 0 0 auto;
+  opacity: 0.55;
+}
+.upd-banner:hover .upd-banner__flecha {
+  opacity: 1;
 }
 
 /* --- Hay versión nueva: espera, pero se hace notar ---------------------------
  *
- * El apricot es el color de la marca (el sol del icono), así que la franja se lee
+ * El apricot es el color de la marca (el sol del icono), así que la tarjeta se lee
  * como "algo de sunrise" y no como una alerta del sistema. Nada de rojo: no hay
  * ningún problema, hay algo disponible. */
 .upd-banner--nueva {
   border-color: color-mix(in srgb, var(--apricot) 55%, var(--border));
-  background: color-mix(in srgb, var(--apricot) 20%, var(--surface));
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--apricot) 26%, var(--surface)),
+      color-mix(in srgb, var(--apricot) 12%, var(--surface))
+    );
   color: var(--ink);
 }
 .upd-banner--nueva:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--apricot) 32%, var(--surface));
+  border-color: color-mix(in srgb, var(--apricot) 75%, var(--border));
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--apricot) 38%, var(--surface)),
+      color-mix(in srgb, var(--apricot) 20%, var(--surface))
+    );
+}
+/* Sólido y no `--apricot` entero: el glifo va blanco encima, y sobre el color a
+ * full eso da 2.55 de contraste (el mismo error que cuenta `tokens.css`). */
+.upd-banner--nueva .upd-banner__icono {
+  background: var(--apricot-solid);
+  color: #fff;
+  animation: upd-sube 2.4s ease-in-out infinite;
 }
 /* El brillo que cruza cada 6 segundos. Es lo que llama el ojo sin moverse: una
- * franja que late o rebota en el borde de la pantalla compite con el trabajo. */
+ * tarjeta que late o rebota en el borde de la pantalla compite con el trabajo. */
 .upd-banner--nueva::after {
   content: "";
   position: absolute;
@@ -77,24 +136,73 @@
   100% { transform: translateX(100%); }
 }
 /* La flecha sube apenas, en el mismo compás. */
-.upd-banner--nueva .upd-banner__icono {
-  color: var(--apricot-ink);
-  animation: upd-sube 2.4s ease-in-out infinite;
-}
 @keyframes upd-sube {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-2px); }
 }
-/* Instalando: se apaga el brillo y la flecha gira, que es lo que dice "esto está
- * pasando ahora" sin cambiar el texto de lugar. */
+/* Instalando: se apaga el brillo y el icono late. **No gira**: el icono es un
+ * cuadrado redondeado, y un cuadrado girando se lee como un glitch y no como un
+ * spinner. Quien cuenta el avance es la barra de abajo, que además dice cuánto
+ * queda —cosa que ningún spinner sabe—. */
 .upd-banner--nueva.is-installing::after {
   animation: none;
 }
 .upd-banner--nueva.is-installing .upd-banner__icono {
-  animation: upd-gira 1s linear infinite;
+  animation: upd-late 1.2s ease-in-out infinite;
 }
-@keyframes upd-gira {
-  to { transform: rotate(360deg); }
+@keyframes upd-late {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+/* Falló: el icono se apaga al gris del texto. **No se pone rojo**, por lo mismo
+ * que el fallo de la búsqueda se dice en gris (§4.21): no se pudo preguntar o no
+ * se pudo bajar, y lo más probable es que sea la conexión. El texto ya dice qué
+ * pasó y el `title` trae el error completo. */
+.upd-banner--nueva.is-error {
+  border-color: var(--border);
+  background: var(--surface-sunken);
+  color: var(--muted);
+}
+/* El brillo también se apaga acá: cruzando una tarjeta gris se lee como un
+ * parpadeo raro, y no hay nada que invitar mientras el intento anterior falló. */
+.upd-banner--nueva.is-error::after {
+  animation: none;
+}
+.upd-banner--nueva.is-error .upd-banner__icono {
+  background: color-mix(in srgb, var(--muted) 25%, var(--surface-raised));
+  color: var(--muted);
+  animation: none;
+}
+
+/* La barra de la descarga. Aparece solo mientras baja, así que la tarjeta crece
+ * al apretarla y no reserva un hueco vacío el resto del tiempo. */
+.upd-banner__barra {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  overflow: hidden;
+}
+.upd-banner__barra-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--apricot);
+  /* El ancho lo pone el estilo en línea a cada trozo que llega, y los trozos no
+   * llegan a ritmo parejo: sin transición la barra avanza a saltos. */
+  transition: width 220ms ease-out;
+}
+/* Sin `Content-Length` no hay fracción que dibujar, así que en vez de mentir un
+ * porcentaje se pasea un tramo corto: dice "está pasando algo" y nada más. */
+.upd-banner__barra.is-indeterminada .upd-banner__barra-fill {
+  width: 40%;
+  transition: none;
+  animation: upd-pasea 1.4s ease-in-out infinite;
+}
+@keyframes upd-pasea {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
 }
 
 /* --- Estás al día: entra, celebra, y se va sola -----------------------------
@@ -104,22 +212,51 @@
  * que sumar lo mismo (§4.23). */
 .upd-banner--aldia {
   border-color: color-mix(in srgb, var(--mint) 60%, var(--border));
-  background: color-mix(in srgb, var(--mint) 26%, var(--surface));
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--mint) 32%, var(--surface)),
+      color-mix(in srgb, var(--mint) 14%, var(--surface))
+    );
   color: var(--mint-ink);
   animation:
     upd-entra 320ms cubic-bezier(0.22, 1, 0.36, 1),
     upd-se-va 2s ease-in 28s forwards;
 }
 .upd-banner--aldia:hover {
-  background: color-mix(in srgb, var(--mint) 38%, var(--surface));
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--mint) 44%, var(--surface)),
+      color-mix(in srgb, var(--mint) 22%, var(--surface))
+    );
 }
 .upd-banner--aldia .upd-banner__icono {
-  color: var(--mint-ink);
+  background: var(--mint-solid);
+  color: #fff;
 }
+/* La chispa cuelga de la esquina del icono, que es donde se lee como "hay algo
+ * nuevo" y no como un segundo icono compitiendo con el primero. */
 .upd-banner__chispa {
-  margin-left: auto;
-  flex: 0 0 auto;
+  position: absolute;
+  top: -1px;
+  right: -1px;
   animation: upd-chispea 2.6s ease-in-out infinite;
+}
+/* Los 30 segundos, dibujados: una línea que se consume de izquierda a derecha.
+ * Los cuenta el store (`AL_DIA_MS`), esto solo los muestra, y las dos duraciones
+ * tienen que seguir siendo la misma. */
+.upd-banner__cuenta {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mint-ink) 45%, transparent);
+  transform-origin: left center;
+  animation: upd-consume 30s linear forwards;
+}
+@keyframes upd-consume {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
 }
 @keyframes upd-entra {
   from { opacity: 0; transform: translateY(-6px) scale(0.96); }
@@ -135,23 +272,252 @@
 
 /* Sin animación para quien la pidió apagada. La información no se pierde: el
  * color, el icono y el texto dicen lo mismo, y el aviso igual se va a los 30 s
- * porque eso lo decide el store, no el CSS. */
+ * porque eso lo decide el store, no el CSS. La barra de descarga **no** se apaga
+ * entera: se le quita el paseo del tramo indeterminado, pero el ancho sigue
+ * moviéndose porque ahí el movimiento *es* el dato. */
 @media (prefers-reduced-motion: reduce) {
   .upd-banner--nueva::after,
   .upd-banner--nueva .upd-banner__icono,
   .upd-banner--nueva.is-installing .upd-banner__icono,
   .upd-banner--aldia,
-  .upd-banner__chispa {
+  .upd-banner__chispa,
+  .upd-banner__cuenta,
+  .upd-banner__barra.is-indeterminada .upd-banner__barra-fill {
     animation: none;
+  }
+  .upd-banner__barra-fill {
+    transition: none;
   }
 }
 
-/* El anuncio de "Lo nuevo" viene de `docs/CHANGELOG.md` y se renderiza como
- * markdown, así que trae sus propios `<p>`: el `.dialog__body` de al lado es un
- * `<p>` directo y no tiene que reponer estos márgenes. */
+/* --- El modal "Lo nuevo" -----------------------------------------------------
+ *
+ * La variante `announcement` del diálogo: cabecera de amanecer a sangre, con la
+ * cordillera por la que sale el sol, y el anuncio abajo. Los estilos viven acá y no
+ * en `dialog.css` porque son de esta feature; el componente compartido solo pone la
+ * clase.
+ *
+ * **Doble clase (`.dialog.dialog--announcement`) y no una sola**, y no es
+ * cosmético: `updates.css` se importa **antes** que `dialog.css` (ver `App.tsx`),
+ * así que con una sola clase el `padding` del `.dialog` de allá gana por orden y
+ * reaparece la franja de superficie sobre la cabecera. Ese fue el síntoma.
+ *
+ * Un poco más ancho que el diálogo de confirmación: acá el cuerpo es prosa de
+ * varias líneas, no una pregunta de una. */
+.dialog.dialog--announcement {
+  width: min(440px, calc(100vw - 32px));
+  /* La cabecera llega hasta los tres bordes de arriba, así que el padding de ese
+   * lado lo pone ella, y el radio del diálogo la recorta. */
+  padding-top: 0;
+  overflow: hidden;
+  gap: var(--space-2);
+
+  /* Los tres tonos de los cerros, como tokens propios: los usa el `fill` de un SVG,
+   * y un `color-mix` repetido en cada `path` es la forma de que un día dejen de ser
+   * el mismo color. Son tres pasos bien separados —bruma, cara al sol, sombra— porque
+   * con dos cercanos las caras iluminadas se confunden con la cadena de atrás.
+   *
+   * Van **planos, sin degradado al fondo**: lo que separa la cabecera del cuerpo es
+   * un borde con forma, no un desvanecido, y para que ese borde recorte una silueta
+   * la silueta tiene que existir. */
+  --nuevo-cerro-lejos: color-mix(in srgb, var(--mauve) 32%, var(--surface-raised));
+  /* La cara al sol mezcla con `--peach` y **no** con la superficie, y eso no es un
+   * gusto: mezclando con la superficie el tono queda más claro en tema claro y más
+   * **oscuro** en tema oscuro, o sea que la "cara iluminada" se veía como sombra en
+   * uno de los dos. El damasco es fijo en los dos temas (§ paleta), así que la luz
+   * siempre queda más cálida que la sombra. */
+  --nuevo-cerro-luz: color-mix(in srgb, var(--mauve) 62%, var(--peach));
+  --nuevo-cerro-cerca: color-mix(in srgb, var(--mauve) 86%, var(--surface-raised));
+}
+/* El título **se mete dentro de la cabecera**, sobre la hoja del cuerpo que sube por
+ * encima de los cerros. Es lo que hace que las dos partes se lean como una sola cosa
+ * en vez de dos bloques apilados, y el texto queda sobre superficie plana, así que no
+ * pierde contraste. `z-index` porque en un flex el orden de pintado lo manda `order`,
+ * y la cabecera va con `order: -1`. */
+.dialog--announcement .dialog__title {
+  font-size: 20px;
+  margin-top: -24px;
+  position: relative;
+  z-index: 1;
+  /* El título y la fecha en la misma línea, pegados abajo: la fecha es un dato al
+   * lado del nombre, no una segunda línea de encabezado. */
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+/* El botón va al centro y no a la derecha: es el único, y no hay nada que decidir
+ * —el diálogo solo se cierra—, así que alinearlo a un costado sugiere que del otro
+ * lado había otra opción. */
+.dialog--announcement .dialog__actions {
+  justify-content: center;
+  margin-top: var(--space-1);
+}
+
+/* El cielo: el amanecer de la marca, que es el mismo sol del icono de la app.
+ * Sube sobre el título con `order` porque `Dialog` dibuja el `<h2>` antes que sus
+ * hijos, y meter un bloque dentro de un encabezado para ganarle al orden es peor
+ * que esta línea. Los márgenes negativos son los que la llevan a sangre. */
+.nuevo__cielo {
+  order: -1;
+  position: relative;
+  height: 176px;
+  margin: 0 calc(-1 * var(--space-4));
+  overflow: hidden;
+  /* **El cielo de antes de que salga el sol**: malva profundo y frío, con apenas un
+   * asomo de naranja pegado al horizonte. Es el estado del que se parte, y va bien
+   * cargado de malva a propósito: mezclado suave contra la superficie quedaba lavanda
+   * pálido en tema claro, o sea casi igual al cielo aclarado, y ahí la animación del
+   * cielo no se notaba —que es justo lo que se vino a arreglar—. El asomo del
+   * horizonte mezcla dos colores de la paleta y ninguna superficie, así que es el
+   * mismo en los dos temas. */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--mauve) 88%, var(--surface-sunken)) 0%,
+    color-mix(in srgb, var(--mauve) 70%, var(--surface-sunken)) 58%,
+    color-mix(in srgb, var(--mauve) 52%, var(--apricot)) 100%
+  );
+}
+
+/* **El cielo aclarando**, encima del anterior y apareciendo con el sol.
+ *
+ * Son dos capas cruzándose y no un degradado que cambia de color, porque un
+ * `linear-gradient` **no se interpola**: animar `background-image` no hace nada. Dos
+ * cielos apilados y una opacidad sí, y de paso deja los dos estados escritos como lo
+ * que son —el de antes y el de después— en vez de repartidos entre keyframes.
+ *
+ * Va 400ms más largo que el sol y sin espera: el cielo empieza a cambiar **antes** de
+ * que el disco asome y sigue un rato después de que llegó, que es el orden real y lo
+ * que hace que se note que algo pasa incluso sin mirar el sol.
+ *
+ * De arriba abajo: el malva que queda arriba, el naranja del horizonte y el amarillo
+ * justo detrás de los cerros. Los tres son colores de la paleta —malva, apricot,
+ * mantequilla—, mezclados contra la superficie del diálogo para que funcione en los
+ * dos temas. */
+.nuevo__cielo::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--mauve) 45%, var(--surface-sunken)) 0%,
+    color-mix(in srgb, var(--apricot) 50%, var(--surface-raised)) 46%,
+    color-mix(in srgb, var(--butter) 62%, var(--surface-raised)) 78%,
+    color-mix(in srgb, var(--butter) 70%, var(--surface-raised)) 100%
+  );
+  animation: nuevo-aclara 3200ms ease-out both;
+}
+/* Las caras al sol se encienden con el cielo, en el mismo compás. */
+.nuevo__luz {
+  animation: nuevo-aclara 3200ms ease-out both;
+}
+
+/* **Medio sol a la vista, medio detrás del cerro** — un amanecer, no un mediodía.
+ *
+ * Los 21px salen de una resta y no del ojo: el portezuelo de la cadena de adelante
+ * pasa por y=58 de un `viewBox` de 118 pegado al borde, o sea **60px sobre el pie de
+ * la cabecera**, y el disco mide 78 → `bottom: 60 − 78/2 = 21`. Si se mueve el
+ * portezuelo, esto se mueve con él.
+ *
+ * El portezuelo está centrado a propósito, para que el sol salga al medio **y**
+ * entre las dos cumbres: por la punta de un cerro el disco se ve mordido. */
+.nuevo__sol {
+  position: absolute;
+  left: 50%;
+  bottom: 21px;
+  width: 78px;
+  height: 78px;
+  margin-left: -39px;
+  border-radius: 50%;
+  /* El disco es claro de verdad y no un apricot más: contra un cielo naranja, un
+   * sol naranja no se ve, y el amanecer se lee como una banda de color. */
+  background: radial-gradient(
+    circle at 50% 42%,
+    #fffaf0 0%,
+    var(--butter) 48%,
+    var(--peach) 100%
+  );
+  box-shadow: 0 0 34px color-mix(in srgb, var(--butter) 75%, transparent);
+  /* Lento a propósito: **un amanecer no es un despegue.** A 1,1 s el disco pegaba un
+   * salto y quedaba quieto, que es lo que se ve como "sale muy rápido". Casi tres
+   * segundos, con una curva que suelta casi todo el recorrido en el primer tercio y
+   * después se arrastra, es lo que lo hace *subir* en vez de aparecer. */
+  animation: nuevo-amanece 2800ms cubic-bezier(0.12, 0.72, 0.2, 1) 120ms both;
+}
+/* El halo alrededor del sol. Es un segundo elemento y no un `box-shadow` más
+ * grande: así puede latir sin arrastrar al sol con él. */
+.nuevo__rayos {
+  position: absolute;
+  left: 50%;
+  bottom: -60px;
+  width: 260px;
+  height: 260px;
+  margin-left: -130px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--butter) 55%, transparent) 0%,
+    transparent 62%
+  );
+  /* El halo entra con el sol —si no, aparece entero antes de que el disco asome— y
+   * después se queda latiendo. */
+  animation:
+    nuevo-aclara 2800ms ease-out 120ms both,
+    nuevo-late 4.5s ease-in-out 2.9s infinite;
+}
+@keyframes nuevo-aclara {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* La cordillera, pegada al borde de abajo y a los dos costados. Tapa el cierre de
+ * la cabecera, así que no hay línea donde el cielo termina. */
+.nuevo__cordillera {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  width: 100%;
+  height: 118px;
+  display: block;
+}
+@keyframes nuevo-amanece {
+  from { transform: translateY(38px); opacity: 0.35; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes nuevo-late {
+  0%, 100% { opacity: 0.55; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
+/* La fecha de publicación, al lado del título. */
+.nuevo__fecha {
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+/* El anuncio viene de `docs/CHANGELOG.md` y se renderiza como markdown, así que
+ * trae sus propios `<p>`: el `.dialog__body` de al lado es un `<p>` directo y no
+ * tiene que reponer estos márgenes. */
 .nuevo__texto p {
   margin: 0 0 var(--space-2);
 }
 .nuevo__texto p:last-child {
   margin-bottom: 0;
+}
+
+/* El amanecer se queda quieto para quien pidió no ver animaciones: el degradado y
+ * el sol siguen ahí, que es donde está la información. */
+@media (prefers-reduced-motion: reduce) {
+  .nuevo__sol,
+  .nuevo__rayos {
+    animation: none;
+  }
+  /* Acá no alcanza con apagar la animación: el cielo aclarado es una capa que
+   * **empieza invisible**, así que sin animación se quedaría el de antes del
+   * amanecer para siempre. Se deja puesto el estado final. */
+  .nuevo__cielo::before,
+  .nuevo__luz {
+    animation: none;
+    opacity: 1;
+  }
 }

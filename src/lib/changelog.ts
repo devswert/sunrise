@@ -16,6 +16,8 @@ import changelog from "../../docs/CHANGELOG.md?raw";
 
 /** El encabezado de una versión: `## v0.2.0 — 2026-09-01`. */
 const TITULO = /^##\s+v(\d+\.\d+\.\d+)\s*(?:—.*)?$/;
+/** El mismo encabezado, quedándose con la fecha. */
+const TITULO_CON_FECHA = /^##\s+v(\d+\.\d+\.\d+)\s*—\s*(\d{4}-\d{2}-\d{2})/;
 
 /**
  * El texto completo de la sección de una versión, sin su encabezado.
@@ -63,6 +65,24 @@ export function latestVersion(md: string = changelog): string | null {
   for (const l of md.split("\n")) {
     const v = TITULO.exec(l.trim())?.[1];
     if (v) return v;
+  }
+  return null;
+}
+
+/**
+ * El día que se publicó una versión, según su encabezado del changelog.
+ *
+ * `null` si el encabezado no la trae, que es un caso real: la fecha es opcional en
+ * el formato (`TITULO` la deja pasar) y una build local puede no tenerla. Quien la
+ * muestre tiene que aguantar que falte, no rellenarla con hoy.
+ *
+ * No sale del `latest.json` a propósito: el anuncio se lee **después** de
+ * reiniciar, cuando ya no hay a quién preguntarle.
+ */
+export function releaseDateFor(version: string, md: string = changelog): string | null {
+  for (const l of md.split("\n")) {
+    const m = TITULO_CON_FECHA.exec(l.trim());
+    if (m && m[1] === version) return m[2];
   }
   return null;
 }

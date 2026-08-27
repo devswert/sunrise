@@ -130,7 +130,7 @@ describe("tokens · paleta", () => {
    */
   it("los sólidos y el ink de la selección no siguen al tema", () => {
     const oscuro = tokens.slice(tokens.indexOf("/* --- Tema oscuro"));
-    for (const token of ["mint-solid", "sage-solid", "selection-ink"]) {
+    for (const token of ["mint-solid", "sage-solid", "apricot-solid", "selection-ink"]) {
       expect(tokens, `falta --${token}`).toMatch(new RegExp(`--${token}:\\s*#[0-9a-f]{6}`));
       expect(oscuro, `--${token} no debería redefinirse por tema`).not.toContain(`--${token}:`);
     }

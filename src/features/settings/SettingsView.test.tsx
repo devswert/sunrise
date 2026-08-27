@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { SettingsView } from "./SettingsView";
 import { visibleTabs } from "./secciones";
 import { api } from "../../lib/ipc";
+import { latestVersion } from "../../lib/changelog";
+import { useUpdateStore } from "../updates/updateStore";
 import {
   SettingKey,
   collapsedWeekdays,
@@ -210,13 +212,39 @@ describe("SettingsView · actualizaciones", () => {
     vi.restoreAllMocks();
   });
 
-  it("no busca nada hasta que se lo pides", async () => {
+  it("la vista no pregunta por su cuenta: el sondeo no vive acá", async () => {
     const spy = vi.spyOn(api, "checkForUpdate");
     render(<SettingsView />);
-    // Con la vista montada y estable: si hubiera un chequeo al arrancar, acá ya
-    // habría corrido. No hay, y es a propósito (ver el comentario del componente).
-    expect(await screen.findByText(/Se busca solo cuando lo pides/)).toBeInTheDocument();
+    // El sondeo automático es de `useUpdateRuntime`, que se monta en `Shell`. Abrir
+    // Configs no tiene que sumar una consulta más.
+    expect(await screen.findByText(/Se busca sola al abrir y cada 4 horas/)).toBeInTheDocument();
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * El aviso del sidebar dura 30 segundos y después el anuncio de la versión
+   * quedaba inalcanzable para siempre. El changelog viaja en el bundle, así que
+   * volver a mostrarlo no cuesta nada.
+   */
+  it("deja volver a leer el anuncio de la versión que estás usando", async () => {
+    useUpdateStore.setState({ updatedTo: null, whatsNewOpen: false });
+    // El mock devuelve "dev", que no tiene sección escrita: se apunta a una que sí.
+    vi.spyOn(api, "appVersion").mockResolvedValue(latestVersion()!);
+
+    render(<SettingsView />);
+    await userEvent.click(await screen.findByRole("button", { name: /Ver lo nuevo/ }));
+
+    expect(useUpdateStore.getState().whatsNewOpen).toBe(true);
+    expect(useUpdateStore.getState().updatedTo).toBe(latestVersion());
+    // **No** prende el aviso del sidebar: nadie lo pidió.
+    expect(useUpdateStore.getState().bannerVisible).toBe(false);
+  });
+
+  it("una versión sin anuncio escrito no ofrece el botón", async () => {
+    vi.spyOn(api, "appVersion").mockResolvedValue("9.9.9");
+    render(<SettingsView />);
+    await screen.findByRole("button", { name: /Buscar/ });
+    expect(screen.queryByRole("button", { name: /Ver lo nuevo/ })).not.toBeInTheDocument();
   });
 
   it("dice que estás al día cuando no hay versión nueva", async () => {
@@ -243,6 +271,30 @@ describe("SettingsView · actualizaciones", () => {
     expect(
       screen.getByRole("button", { name: /Instalar 0\.2\.0 y reiniciar/ }),
     ).toBeInTheDocument();
+  });
+
+  /**
+   * Instalar desde acá tiene que apagar el aviso del sidebar, que está a la vista
+   * al lado. Sin eso seguía diciendo "Actualizar ahora" mientras la descarga
+   * corría, y un click ahí lanzaba una segunda descarga del mismo paquete.
+   */
+  it("instalar desde Configs también pone a instalar el aviso del sidebar", async () => {
+    useUpdateStore.setState({ installing: false, error: null });
+    vi.spyOn(api, "checkForUpdate").mockResolvedValue({
+      version: "0.2.0",
+      currentVersion: "0.1.0",
+      notes: null,
+      date: null,
+    });
+    // No resuelve nunca: es lo que pasa de verdad cuando sale bien —la app se
+    // reinicia y la promesa no vuelve—.
+    vi.spyOn(api, "installUpdate").mockReturnValue(new Promise(() => {}));
+
+    render(<SettingsView />);
+    await userEvent.click(await screen.findByRole("button", { name: /Buscar/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Instalar 0\.2\.0/ }));
+
+    expect(useUpdateStore.getState().installing).toBe(true);
   });
 
   it("un fallo de red no se cuenta como 'estás al día'", async () => {

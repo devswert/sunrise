@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AppUpdate } from "../../lib/types";
+import type { AppUpdate, UpdateProgress } from "../../lib/types";
 
 /**
  * Estado del updater, compartido entre el banner del sidebar y el modal.
@@ -14,6 +14,12 @@ interface UpdateState {
   available: AppUpdate | null;
   /** Descargando e instalando. La app se reinicia sola al terminar. */
   installing: boolean;
+  /**
+   * Lo que va bajando, tal como lo emite Rust. `null` mientras no llegó el primer
+   * trozo: `installing` sin progreso es "arrancó, todavía no hay bytes", y eso se
+   * dibuja como una barra indeterminada y no como un cero.
+   */
+  progress: UpdateProgress | null;
   /**
    * Lo disponible lo puso el banco de pruebas de dev (`devFake.ts`), no el sondeo.
    * Apretar la franja finge la instalación en vez de descargar un paquete real y
@@ -34,17 +40,29 @@ interface UpdateState {
   whatsNewOpen: boolean;
 
   setAvailable: (u: AppUpdate | null) => void;
+  /** Prender la instalación **limpia el progreso viejo**: cada intento cuenta de cero. */
   setInstalling: (v: boolean) => void;
+  setProgress: (p: UpdateProgress | null) => void;
   setError: (e: string | null) => void;
   /** Marca que esta sesión viene de un update, y prende el aviso. */
   arrivedFromUpdate: (version: string) => void;
   hideBanner: () => void;
   setWhatsNewOpen: (v: boolean) => void;
+  /**
+   * Abre el anuncio de una versión sin pasar por el aviso del sidebar.
+   *
+   * Es lo que necesita Configs → Actualizaciones: el aviso dura 30 segundos y
+   * después el anuncio quedaba inalcanzable para siempre, aunque el changelog
+   * viaje en el bundle. Escribe `updatedTo` porque el modal saca de ahí qué
+   * sección mostrar, y **no** prende `bannerVisible`: nadie pidió el aviso.
+   */
+  showWhatsNew: (version: string) => void;
 }
 
 export const useUpdateStore = create<UpdateState>((set) => ({
   available: null,
   installing: false,
+  progress: null,
   fake: false,
   error: null,
   updatedTo: null,
@@ -52,9 +70,11 @@ export const useUpdateStore = create<UpdateState>((set) => ({
   whatsNewOpen: false,
 
   setAvailable: (available) => set({ available }),
-  setInstalling: (installing) => set({ installing }),
+  setInstalling: (installing) => set({ installing, progress: null }),
+  setProgress: (progress) => set({ progress }),
   setError: (error) => set({ error }),
   arrivedFromUpdate: (version) => set({ updatedTo: version, bannerVisible: true }),
   hideBanner: () => set({ bannerVisible: false }),
   setWhatsNewOpen: (whatsNewOpen) => set({ whatsNewOpen }),
+  showWhatsNew: (version) => set({ updatedTo: version, whatsNewOpen: true }),
 }));

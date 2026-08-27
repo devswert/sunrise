@@ -27,6 +27,16 @@ interface DialogProps {
    * ser lo que reemplace tu base de datos.
    */
   onEnter?: () => void;
+  /**
+   * Una variante de aspecto, que agrega `dialog--<variant>` y nada más.
+   *
+   * Existe para no forkear el componente: la razón por la que este archivo existe
+   * es que el diálogo estaba copiado seis veces y una de las copias se había
+   * quedado sin teclado. Un panel propio "porque este se ve distinto" vuelve a
+   * entrar en esa trampa. Los estilos de la variante los pone la feature que la
+   * pide, no `dialog.css`.
+   */
+  variant?: "announcement";
 }
 
 /**
@@ -58,6 +68,7 @@ export function Dialog({
   icon,
   onClose,
   onEnter,
+  variant,
 }: DialogProps) {
   const panel = useRef<HTMLDivElement>(null);
 
@@ -87,7 +98,9 @@ export function Dialog({
     <div className="modal-overlay" onClick={onClose}>
       <div
         ref={panel}
-        className={`dialog${icon ? " dialog--hero" : ""}`}
+        className={`dialog${icon ? " dialog--hero" : ""}${
+          variant ? ` dialog--${variant}` : ""
+        }`}
         role="alertdialog"
         aria-label={label}
         aria-modal="true"

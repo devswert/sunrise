@@ -10,6 +10,7 @@ mod models;
 mod notice;
 mod repo;
 mod sound;
+mod update;
 
 use std::sync::Mutex;
 
@@ -73,9 +74,10 @@ pub fn run() {
             None,
         ))
         // Actualizaciones desde el Release de GitHub. Solo se registra el plugin:
-        // no hay chequeo al arrancar. La app ya interrumpe a una hora fija dos
-        // veces (el aviso de cierre y el respaldo) y una tercera cosa que aparece
-        // sola al abrir es la que sobra. Se busca cuando lo pides, en Configs.
+        // quién pregunta y cuándo lo decide el front (`useUpdateRuntime`, §4.23),
+        // que sondea al abrir y cada 4 horas. Lo que no cambió es la regla: lo que
+        // aparece es una franja en el sidebar que espera, nunca un modal encima del
+        // día.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Base de datos en el directorio de datos de la app.
@@ -147,6 +149,13 @@ pub fn run() {
             // El aviso de próxima reunión, por lo mismo (I6): el caso que cubre es
             // justamente "estoy en otra ventana".
             notice::start_watcher(app.handle().clone());
+
+            // Si este arranque es el de después de un update, la ventana viene al
+            // frente. Sin esto queda detrás de la app que estaba adelante y el
+            // reinicio parece no haber pasado (§4.21).
+            if update::came_from_update(app.handle()) {
+                update::raise_main_window(app.handle());
+            }
 
             Ok(())
         })

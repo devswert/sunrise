@@ -20,7 +20,7 @@ eso **no se escriben por separado**:
 
 | Dónde | Qué parte |
 |---|---|
-| Modal "Lo nuevo en la vX.Y.Z", al abrir después de actualizar | el **primer párrafo** |
+| Modal "Lo nuevo en la vX.Y.Z", al abrir después de actualizar | el **primer párrafo** y la **fecha del encabezado** |
 | Configs → Actualizaciones, *antes* de instalar | la sección entera (vía `latest.json`) |
 | El cuerpo del Release en GitHub | la sección entera |
 
@@ -31,6 +31,10 @@ hasta que ya está publicado.
 **El anuncio (primer párrafo) responde una sola pregunta: ¿me conviene
 actualizar?** Dos o tres frases, en lenguaje de persona. El detalle técnico va
 abajo, en `### Detalle`, y no llega al modal.
+
+**La fecha del `## vX.Y.Z — fecha` se dibuja**, bajo la versión en el modal. Dejó de
+ser decorativa: escribe la del día que publicas, en `YYYY-MM-DD`. Si falta, el modal
+igual abre y solo no la muestra — no se rellena con hoy.
 
 ## Los pasos
 

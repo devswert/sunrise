@@ -26,9 +26,9 @@ import { useUpdateStore } from "./updateStore";
  * borra este archivo y la línea de `useDevFake()` en `App.tsx`.
  *
  * La instalación del flujo simulado **no llama a `installUpdate`**: descargaría un
- * paquete real y reiniciaría la app. Finge dos segundos de trabajo y termina en el
- * estado de llegada, que es lo que hace que se pueda ver el viaje completo sin
- * publicar nada.
+ * paquete real y reiniciaría la app. Finge dos segundos de trabajo —con su barra de
+ * descarga, que es la mitad de lo que la tarjeta muestra— y termina en el estado de
+ * llegada, que es lo que hace que se pueda ver el viaje completo sin publicar nada.
  */
 export function useDevFake() {
   useEffect(() => {

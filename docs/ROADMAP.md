@@ -71,12 +71,20 @@ del respaldo, una restauración de verdad, el icono en el Dock, la instalación 
 su hora (dos zips a la hora configurada, y los de producción intactos al lado — la
 separación de perfiles funcionando fuera de los tests).
 
-Queda **una** sin comprobar:
+Quedan **dos** sin comprobar:
 
 - [ ] **La casilla de inicio automático registra el LaunchAgent** y la app se abre
       al reiniciar sesión. Ojo que en dev registra `target/debug/sunrise`, así que
       hay que apagarla antes de salir. El mock no tiene sistema operativo al que
       registrarse, así que esto no se puede cubrir con tests.
+- [ ] **Al terminar un update, la ventana vuelve al frente** (§4.21). Solo se ve con
+      un Release de verdad: hace falta una versión instalada más vieja y otra
+      publicada. Deja otra app adelante mientras baja; la de sunrise tiene que
+      quedar encima al reiniciar. Si no pasa, la pregunta antes de tocar el foco es
+      **cuántos procesos hay** (`ps ax | grep -i sunrise`): si son dos, lo que falla
+      es la salida del proceso viejo y no la activación. Para probar solo el tramo
+      del arranque sin publicar nada, `touch` el archivo de marca en el directorio
+      de datos (`pending-update-focus`) y abre la app con otra adelante.
 
 El zip en un Drive real se sacó de la lista: es del sistema de archivos, no de la
 app — sunrise escribe en la carpeta que le den y quién la sincroniza no es asunto

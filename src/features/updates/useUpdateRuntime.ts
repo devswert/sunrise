@@ -1,7 +1,11 @@
 import { useEffect } from "react";
-import { api } from "../../lib/ipc";
+import { api, isTauri } from "../../lib/ipc";
 import { announcementFor } from "../../lib/changelog";
 import { useUpdateStore } from "./updateStore";
+import type { UpdateProgress } from "../../lib/types";
+
+/** El evento con el que Rust cuenta cómo va la descarga (`update::UPDATE_PROGRESS`). */
+const UPDATE_PROGRESS = "sunrise://update-progress";
 
 /** Cada cuánto se pregunta por una versión nueva. */
 export const POLL_MS = 4 * 60 * 60 * 1000;
@@ -34,6 +38,7 @@ export const CLAVE_VISTA = "sunrise-seen-version";
  */
 export function useUpdateRuntime() {
   const setAvailable = useUpdateStore((s) => s.setAvailable);
+  const setProgress = useUpdateStore((s) => s.setProgress);
   const arrivedFromUpdate = useUpdateStore((s) => s.arrivedFromUpdate);
   const hideBanner = useUpdateStore((s) => s.hideBanner);
 
@@ -76,4 +81,16 @@ export function useUpdateRuntime() {
       clearInterval(id);
     };
   }, [setAvailable]);
+
+  // El avance de la descarga. Viene por evento y no por comando porque el que
+  // habla primero es Rust: `install_update` no vuelve nunca cuando sale bien.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<UpdateProgress>(UPDATE_PROGRESS, (e) => setProgress(e.payload));
+    })();
+    return () => unlisten?.();
+  }, [setProgress]);
 }

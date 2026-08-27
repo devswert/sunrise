@@ -474,7 +474,8 @@ esté vacía.
 **Todo el updater vive en Rust**, en `commands.rs`: `check_for_update` (que
 devuelve `Option<AppUpdate>`, donde `None` es "estás al día") e
 `install_update` (que descarga, instala y llama a `app.restart()`, así que
-no retorna). El plugin también tiene API de JavaScript, y no se usa: obligaría a
+no retorna). Lo que no es un comando —el progreso y el foco de después— está en
+`update.rs`. El plugin también tiene API de JavaScript, y no se usa: obligaría a
 un paquete npm más y a abrirle permisos en `capabilities/default.json`, y dejaría a
 `ipc.ts` de ser la única puerta a la app. `install_update` vuelve a
 preguntar en vez de guardarse el `Update` de la búsqueda anterior — mantenerlo vivo
@@ -484,6 +485,45 @@ costo real es una petición HTTP.
 **Cuándo se busca.** Al abrir la app y después **cada 4 horas** (`useUpdateRuntime`,
 §4.23), más el botón de Configs → General → Actualizaciones cuando quieras
 preguntar ahora.
+
+**El avance de la descarga viaja por evento, no por comando.** `install_update` no
+vuelve nunca cuando sale bien, así que el que tiene que hablar primero es Rust:
+`update::emit_progress` manda `sunrise://update-progress` con `{ downloaded, total,
+installing }` a cada trozo que llega, y el aviso del sidebar dibuja la barra
+(§4.23). El acumulado lo cuenta Rust: el callback del plugin entrega el tamaño de
+**cada trozo**, no el total bajado.
+
+> **I** — **`total` es `Option` y hay que aguantar que falte.** Sale del
+> `Content-Length` de la respuesta, que el servidor puede no mandar. Sin total no
+> hay fracción, y ahí la barra va indeterminada: un 0 % dibujado es una mentira
+> sobre algo que sí está avanzando. Lo mismo en el tramo final, el que reemplaza el
+> `.app`: no reporta avance, así que `installing: true` saca a la barra de medir en
+> vez de dejarla clavada en el 100 %.
+
+**Al reiniciar, la app vuelve al frente.** `app.restart()` lanza el proceso nuevo y
+mata el viejo, y macOS no activa a nadie por eso: la ventana nueva aparece **detrás**
+de la app que quedó adelante, y el síntoma exacto es "apreté actualizar y la app
+nunca se reinició". `install_update` deja un archivo de marca en el directorio de
+datos (`pending-update-focus`) y el `setup` del arranque siguiente lo consume y
+levanta `main`.
+
+> **I** — **La marca se escribe con la instalación ya hecha, y se consume al
+> leerla.** Escrita antes de descargar, una descarga fallida la dejaría colgada, y
+> el siguiente arranque —que es el del inicio automático (§4.18), el que
+> deliberadamente no interrumpe— le robaría el foco a lo que estés haciendo.
+> Borrarla antes de intentar el foco y no después es por lo mismo: un fallo en el
+> medio no puede dejarla armada.
+
+> **I** — **Levantar la ventana son cuatro intentos, no uno.** El proceso viejo
+> todavía está muriendo cuando el nuevo dibuja, así que el primer `set_focus`
+> compite con una app que sigue al frente y se pierde. Cada intento comprueba
+> **antes** si el anterior funcionó y corta ahí; comprobarlo justo después de pedir
+> el foco no sirve, porque `set_focus` en macOS despacha al hilo principal y vuelve
+> antes de que la activación haya pasado —siempre diría "todavía no", y el último
+> intento, a casi tres segundos, le arrebataría el foco a quien ya se cambió de app.
+> Solo se levanta `main`: el taxímetro no aparece por su cuenta. Y el orden
+> `unminimize` → `show` → `set_focus` importa —`set_focus` no hace nada sobre una
+> ventana escondida o minimizada—, igual que en el diálogo de ⌘Q (§4.10).
 
 > **I** — **Nada de esto interrumpe.** La decisión original de 5.3 fue no buscar al
 > arrancar, con el argumento de que la app ya interrumpe dos veces a una hora fija
@@ -506,13 +546,18 @@ salen tres textos:
 
 | Dónde se lee | Qué parte |
 |---|---|
-| Modal "Lo nuevo en la vX.Y.Z", al abrir después de actualizar | el primer párrafo |
+| Modal "Lo nuevo en la vX.Y.Z", al abrir después de actualizar | el primer párrafo, **y la fecha del encabezado** |
 | Configs → Actualizaciones, **antes** de instalar (`AppUpdate.notes`) | la sección entera |
 | El cuerpo del Release en GitHub | la sección entera |
 
 > **I** — **El aviso previo y el modal salen del mismo texto.** Es la razón del
 > diseño: si fueran dos, se prometería una cosa en Configs y se anunciaría otra al
 > reiniciar, y nadie lo notaría hasta que ya está publicado.
+
+**La fecha del encabezado se dibuja.** `releaseDateFor` la saca del `## vX.Y.Z —
+fecha` y el modal la muestra bajo la versión, así que dejó de ser decorativa. Sigue
+siendo opcional en el formato —una build local puede no tenerla— y quien la muestre
+tiene que aguantar que falte, no rellenarla con hoy.
 
 **El formato es estricto porque lo leen dos cosas distintas.** `## vX.Y.Z — fecha`
 abre la sección; los párrafos que siguen son el anuncio; `### Detalle` empieza lo
@@ -532,19 +577,164 @@ una petición HTTP.
 > — el equivalente del que compara los tres archivos de versión en Rust.
 
 **El modal `WhatsNew` no se abre solo.** Lo levanta el aviso del sidebar, que es lo
-que aparece al volver de un update — ver §4.23.
+que aparece al volver de un update (§4.23), o el botón "Ver lo nuevo" de Configs
+cuando ese aviso ya se fue.
+
+**El modal es el `Dialog` compartido con una variante, no un panel propio.**
+`variant="announcement"` agrega la clase y nada más; los estilos —la cabecera de
+amanecer a sangre, la versión grande, el ancho de 440px— viven en `updates.css`,
+que es de la feature. Forkear el componente "porque este se ve distinto" es volver
+a la trampa que lo creó: estaba copiado seis veces y una de las copias se había
+quedado sin teclado.
+
+> La cabecera va como **hijo** del diálogo y sube sobre el título con `order: -1`.
+> `Dialog` dibuja el `<h2>` antes que sus hijos, y meter un bloque dentro de un
+> encabezado para ganarle al orden es peor que esa línea de CSS.
+
+**Lo que la cabecera dibuja es el amanecer de la marca**: el mismo sol del icono de
+la app saliendo por detrás de la cordillera, con su halo. No es adorno por adorno
+—llegar a una versión nueva se tiene que sentir como algo y no como un aviso del
+sistema— y se queda quieto bajo `prefers-reduced-motion`, donde el degradado, los
+cerros y el sol siguen estando.
+
+> **I** — **El sol tarda casi tres segundos en salir, y eso es el punto.** A poco más
+> de un segundo el disco pegaba un salto y quedaba quieto: un despegue, no un amanecer.
+> La curva suelta la mayor parte del recorrido al principio y después se arrastra, que
+> es lo que se lee como *subir*. El halo entra con él —si no, aparece entero antes de
+> que el disco asome— y empieza a latir cuando el sol ya llegó.
+
+**El cielo aclara con el sol**, y no es un adorno de más: el disco solo, subiendo en un
+cielo quieto, no se nota si no sabes que está. La cabecera arranca en el cielo de antes
+del amanecer —malva profundo, un asomo de naranja en el horizonte, los cerros sin luz—
+y termina en el cielo aclarado. Las caras al sol de las cumbres se encienden en el mismo
+compás: dos caras naranjas prendidas antes de que el sol asome cuentan otra historia.
+
+> **I** — **Son dos cielos apilados cruzándose, no un degradado que cambia de color.**
+> Un `linear-gradient` no se interpola: animar `background-image` no hace nada. El de
+> antes va en el `background` de `.nuevo__cielo` y el aclarado en su `::before`, al que
+> se le anima la opacidad. De paso los dos estados quedan escritos como lo que son en
+> vez de repartidos entre keyframes. El cielo va 400ms más largo que el sol y sin
+> espera: empieza a cambiar antes de que el disco asome y sigue después de que llegó,
+> que es el orden real.
+
+> **I** — **El cielo de antes va bien cargado de malva.** Mezclado suave contra la
+> superficie quedaba lavanda pálido en tema claro, o sea casi igual al cielo aclarado, y
+> ahí la animación del cielo no se notaba — que es justo lo que se vino a arreglar. El
+> asomo del horizonte mezcla dos colores de la paleta y ninguna superficie, así que es
+> el mismo en los dos temas.
+
+> **I** — **Bajo `prefers-reduced-motion` hay que *poner* el estado final, no solo
+> apagar la animación.** El cielo aclarado y las caras al sol son capas que **empiezan
+> invisibles**: con un `animation: none` a secas se quedaría el cielo de antes del
+> amanecer para siempre. Es la excepción al resto del bloque, donde apagar alcanza.
+
+**Los cerros van en SVG y son dos cadenas**, no una: la de atrás en un tono más
+claro —la bruma de la distancia—, la de adelante oscura y dominante, desfasada para
+que la de atrás asome por los portezuelos. Las dos van con **aristas rectas**: las
+curvas suaves que se probaron primero se leían como dunas, y una cordillera es piedra
+quebrada. Lo que las salva de parecer un gráfico de triángulos no es curvarlas sino
+que **ninguna cumbre sea simétrica ni mida lo mismo**: dos cumbres altas desiguales, en
+cada una una falda larga y tendida contra una caída corta y empinada, y repisas a media
+ladera que quiebran la recta. El sol se dibuja **antes** que ellas para que lo tapen;
+de ahí sale que *salga* de atrás de los cerros en vez de flotar sobre una banda de
+color.
+
+**El único detalle que llevan es la cara al sol**, un triángulo en tono más claro por
+la vertical de cada cumbre alta. Nada de nieve: se probó y sobra. Como el sol sale en
+el portezuelo del medio, la cumbre de la izquierda tiene iluminada su cara derecha y la
+de la derecha su cara izquierda —las dos miran al centro—, y eso es lo que hace que la
+luz se lea como *de ese sol* y no como un degradado decorativo.
+
+> **I** — **La cara al sol mezcla con `--peach`, no con la superficie.** Mezclado con
+> la superficie el tono queda más claro en tema claro y más **oscuro** en tema oscuro,
+> o sea que la cara iluminada se veía como sombra en uno de los dos. El damasco es fijo
+> en los dos temas, así que la luz siempre queda más cálida que la sombra. Es la misma
+> trampa que el ink de la selección (§ paleta en `tokens.css`).
+
+> **I** — **Se ve medio sol, y la fracción sale de una resta.** Entre las dos cumbres
+> altas hay un **portezuelo casi plano y no un pico** —cortado por una punta el disco se
+> ve mordido—, que pasa por `y=58` de un `viewBox` de 118 pegado al borde, o sea 60px
+> sobre el pie de la cabecera; con un disco de 78, el `bottom` del sol es
+> `60 − 78/2 = 21px`. El portezuelo está centrado, así que el sol sale al medio **y**
+> entre dos cumbres. Mover el portezuelo sin mover el `bottom` cambia cuánto sol se
+> tapa.
+
+> **I** — **Las siluetas cierran en `x=440`, el ancho del `viewBox`.** Escritas con
+> deltas relativas la suma no llegaba al borde, y por el hueco de la derecha se
+> colaba el cielo por debajo de los cerros: una línea horizontal de dos píxeles
+> justo donde la cabecera se junta con el texto. Se estiran con
+> `preserveAspectRatio="none"`, que es deliberado —un cerro estirado sigue siendo un
+> cerro—, y por eso el ancho del `viewBox` no puede quedar corto.
+
+> **I** — **La variante se selecciona con dos clases: `.dialog.dialog--announcement`.**
+> `updates.css` se importa **antes** que `dialog.css` (ver `App.tsx`), así que con
+> una sola clase el `padding` del `.dialog` de allá gana por orden de carga y
+> reaparece una franja de superficie sobre la cabecera. Cualquier variante nueva de
+> `Dialog` que sobreescriba algo del componente compartido tiene el mismo problema.
+
+**El borde entre la cabecera y el cuerpo tiene forma, no un desvanecido.** La primera
+versión intentaba borrarlo con un degradado a `--surface-raised`, y no funciona: un
+degradado que quiere hacer desaparecer un borde deja siempre una banda turbia donde el
+corte se nota igual. Lo que hay ahora es **la hoja del cuerpo subiendo por encima de
+los cerros**, y es asimétrica: **baja a la izquierda y sube a la derecha**, en una
+sola curva. El título se apoya en la parte baja. No esconde el borde, lo declara: la
+hoja de papel se apoya sobre la foto y se ve que se apoya. Por eso los cerros van de
+**relleno plano**: para que un borde recorte una silueta, la silueta tiene que existir.
+
+> **I** — **La hoja es un `path` del mismo SVG, no un `border-radius`.** Un radio hunde
+> las dos esquinas por igual, y acá los dos lados tienen que hacer cosas distintas.
+> Va pintada del color del diálogo (`--surface-raised`) y **última**, después de los
+> cerros.
+
+> **I** — **Un solo `C`, no tramos pegados.** La versión anterior era una esquinita
+> redondeada, después un tramo a nivel y después la subida: tres gestos discutiendo en
+> 440px, con un quiebre visible en cada junta. Es un cubic con la **tangente horizontal
+> en el borde izquierdo**, así arranca a nivel sin hacer ángulo contra el costado de la
+> caja, y suelta hacia arriba a la derecha.
+
+El título **se mete dentro de la cabecera** con un margen negativo, apoyado en esa
+hoja: es lo que hace que las dos partes se lean como una sola cosa en vez de dos
+bloques apilados, y el texto queda sobre superficie plana, así que no pierde
+contraste. Lleva `z-index` porque en un flex el orden de pintado lo manda `order`, y
+la cabecera va con `order: -1`.
+
+**El botón va al centro y no hay línea de teclas.** Es el único botón y el diálogo
+solo se cierra: alineado a un costado sugiere que del otro lado había otra opción, y
+un "Enter o Escape para cerrar" es ruido en un anuncio —está para los diálogos donde
+la tecla decide algo—.
 
 ---
 
 ### 4.23 El aviso del updater en el sidebar
 
-Una franja arriba del switch de tema, con **dos estados y ninguno interrumpe**.
+Una **tarjeta** arriba del switch de tema, con **dos estados y ninguno interrumpe**.
 `UpdateBanner` la dibuja; `useUpdateRuntime` decide cuál va.
 
 | Estado | Cuándo | Al apretarlo | Cuánto dura |
 |---|---|---|---|
 | **Versión X disponible** | el sondeo encontró algo | descarga, instala y **reinicia la app** | hasta que lo aprietes |
 | **Estás al día** | esta sesión viene de un cambio de versión | abre el modal "Lo nuevo" | **30 segundos** |
+
+**Es una tarjeta y no una fila.** Nació con el alto de un ítem de navegación, y lo
+que ofrece —reemplazar la app y reiniciarla— no se lee en una franja de ese tamaño.
+Gana un icono en cuadrado redondeado, la fecha de publicación a la derecha y el
+espacio donde va la barra de descarga; conserva el radio y la tipografía del sidebar
+para seguir siendo parte de él y no un cartel pegado encima.
+
+**Lo que baja se dice en palabras y en barra.** El progreso llega por evento desde
+Rust (§4.21) y el aviso lo traduce a cuatro estados: *Preparando la descarga…* (sin
+el primer trozo), *Bajando · 42 %* (con total), *Bajando · 3,0 MB* (sin total) e
+*Instalando y reiniciando…* (reemplazando el `.app`). La barra solo aparece mientras
+baja: el resto del tiempo no hay un hueco vacío reservado.
+
+> **I** — **El título no se convierte en el estado.** Sigue diciendo *Versión 0.5.0*
+> durante toda la instalación y lo que cambia es la línea de abajo. El nombre de la
+> cosa que estás mirando no puede volverse su estado a mitad de la operación.
+
+> **I** — **Cada pieza nueva de la tarjeta hay que esconderla en el rail
+> colapsado.** La lista está en `global.css` (`.sidebar.is-collapsed .upd-banner__…`)
+> y en el rail sobrevive solo el icono. Una pieza que se olvide se desborda de una
+> columna de 38px sin que nada se queje, y es la falla que se nota más tarde.
 
 > **I** — **Se monta una sola vez, en `Shell`** (ventana `main`). Dos ventanas
 > sondeando serían dos consultas por intervalo, por lo mismo que el aviso de
@@ -577,9 +767,13 @@ no deja basura en pantalla para quien no le interesa.
 > bundle. Si eso cambiara, el aviso aparecería en cada arranque.
 
 **Dispara con cualquier cambio de versión**, no solo con una actualización
-automática: reinstalar el `.dmg` a mano también cuenta. Detectar "vengo del updater"
-pediría que Rust dejara una marca y no compra nada — lo que importa es que la
-versión cambió desde la última vez que miraste.
+automática: reinstalar el `.dmg` a mano también cuenta. Lo que importa para el aviso
+es que la versión cambió desde la última vez que miraste, no de dónde vino.
+
+> La marca de Rust (`pending-update-focus`, §4.21) es **otra cosa y no reemplaza a
+> esta**: sirve para levantar la ventana y se consume en el arranque. El aviso sigue
+> saliendo de comparar versiones, que es lo que lo hace funcionar también con un
+> `.dmg` instalado a mano.
 
 **`updatedTo` y `bannerVisible` son dos campos y no uno.** Apretar el aviso lo
 apaga, pero el modal todavía necesita saber **qué** versión mostrar; con un solo
@@ -587,18 +781,40 @@ campo, el click se llevaría el dato junto con el aviso.
 
 **Si la instalación falla, el botón vuelve.** La app no se reinició, así que dejarlo
 en "Instalando…" para siempre es mentirle a alguien que está mirando el sidebar
-esperando que algo pase.
+esperando que algo pase. El fallo se ve en la tarjeta —"No se pudo. Reintenta."— y
+el error completo va en el `title`; **no se pone roja**, por lo mismo que el fallo de
+la búsqueda se dice en gris (§4.21). Un intento nuevo parte el progreso de cero.
 
-**Las animaciones tienen que poder apagarse.** El brillo que cruza la franja, la
-flecha que sube y la chispa se anulan bajo `prefers-reduced-motion`, y ahí no se
-pierde información: el color, el icono y el texto dicen lo mismo. Los 30 segundos
-los cuenta el store y no el CSS, así que el aviso se va igual.
+> **I** — **Instalar desde Configs tiene que avisarle al store.** Los dos caminos
+> —el aviso del sidebar y el botón de Configs— llaman al mismo comando, pero el
+> aviso lee `installing` del store. Con Configs manejando solo su estado local, la
+> tarjeta del sidebar seguía diciendo "Actualizar ahora" y habilitada mientras la
+> descarga corría, y un click ahí lanzaba una segunda descarga del mismo paquete.
+> Configs muestra además el porcentaje, que sale del mismo evento.
+
+**El anuncio se puede volver a leer.** El aviso dura 30 segundos y después el modal
+quedaba inalcanzable para siempre; Configs → Actualizaciones tiene un botón "Ver lo
+nuevo" que lo abre con la versión que está corriendo. Solo aparece si esa versión
+tiene sección escrita, porque sin texto el modal no abre.
+
+**Las animaciones tienen que poder apagarse.** El brillo que cruza la tarjeta, la
+flecha que sube, la chispa, la línea que consume los 30 segundos y el paseo de la
+barra indeterminada se anulan bajo `prefers-reduced-motion`, y ahí no se pierde
+información: el color, el icono y el texto dicen lo mismo. Los 30 segundos los
+cuenta el store y no el CSS, así que el aviso se va igual.
+
+> **I** — **La excepción es el ancho de la barra determinada**, que sigue
+> moviéndose: ahí el movimiento *es* el dato, no un adorno. Se le quita la
+> transición para que no haya interpolación, y nada más. Y toda animación nueva hay
+> que agregarla a ese bloque a mano: enumera por nombre, no por prefijo.
 
 **Cómo se prueban las dos franjas antes de publicar.** No se puede esperar a tener
 dos versiones: `devFake.ts` deja un banco de pruebas en la consola del webview, con
-`sunriseDev.flujoCompleto()`, `.hayUpdate()`, `.alDia()` y `.limpiar()`. Trabaja
-sobre el store y no sobre `mockDb`, que es lo que lo hace servir **dentro de
-`pnpm tauri dev`**: ahí el front habla con Rust y el mock no participa.
+`sunriseDev.flujoCompleto()`, `.hayUpdate()`, `.alDia()` y `.limpiar()`. La
+instalación simulada **también finge el progreso**: es la mitad de lo que la tarjeta
+muestra, y sin eso el banco de pruebas no sirve para mirar justamente lo que se vino
+a hacer. Trabaja sobre el store y no sobre `mockDb`, que es lo que lo hace servir
+**dentro de `pnpm tauri dev`**: ahí el front habla con Rust y el mock no participa.
 
 > **I** — **El banco de pruebas no llega a producción.** Todo cuelga de
 > `import.meta.env.DEV`, que en el build es una constante falsa. Y la instalación
