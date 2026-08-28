@@ -15,6 +15,46 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.6.0 — 2026-08-28
+
+Las tareas ahora tienen prioridad, de P1 —lo que arde— a P5 —lo que puede
+esperar—: se ve como una marca de color en la card y el backlog se filtra por
+ella, así que saber qué atacar deja de pedir leer la lista entera. Si prefieres
+no verla, se apaga entera desde Configs → General sin perder lo que ya marcaste.
+
+Además, un título largo dejó de romper las cards, el modal y las listas del
+cierre; ⌘S esconde el sidebar cuando quieres la pantalla completa; y un link
+pegado en el título de una tarea nueva se guarda solo en sus recursos. De los
+arreglos, tres se notan a diario: un evento ignorado ya no aparece como pendiente
+en el cierre del día, un ajuste de tiempo a mano ya no dibuja la tarea a mediodía
+en el rail, y completar desde el taxímetro deja la siguiente esperando su play en
+vez de arrancar sola.
+
+### Detalle
+
+- Prioridad P1–P5 en columna nueva (migración 16), con "Sin prioridad" como
+  estado propio: marca en la card, selector en el detalle, filtro multiselección
+  en Backlog y en el panel de la semana, e interruptor en Configs → General.
+- Un link pegado en el título del modal de creación se saca de ahí y se escribe
+  en las notas bajo `# Recursos:`.
+- ⌘S muestra u oculta el sidebar; el colapso pasa a un store para que el botón y
+  el atajo no se desincronicen.
+- Los títulos largos: dos líneas con elipsis en la card, textarea que crece hasta
+  cinco líneas en el detalle y en "Nueva tarea", y medida de lectura en los
+  highlights.
+- El cierre del día lee `tasksByDate`, así que un evento ignorado ya no aparece
+  entre los pendientes.
+- `day_work` devuelve `tracked_at` desde las corridas del taxímetro: un día con
+  ajustes manuales ya no apila bloques a las 12:00 en el rail.
+- Completar desde el taxímetro avanza a la siguiente pero no la arranca, y con la
+  cola vacía Focus cierra el día con el resumen y el botón al shutdown.
+- Sacarle la fecha a una tarea mueve el contador de Backlog en el sidebar.
+- Focus: el encabezado pasa a dos filas para darle el ancho al título, el chip
+  del canal usa su color configurado y la línea sobre las notas solo aparece en
+  tareas del calendario.
+- `docs/SPECS.md` queda como índice; el contenido vive en `docs/specs/`, con la
+  numeración intacta.
+
 ## v0.5.0 — 2026-08-27
 
 Los objetivos de la semana dejaron de ser una lista que se mira: ahora se abren
