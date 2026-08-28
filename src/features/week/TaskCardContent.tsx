@@ -101,7 +101,11 @@ export function TaskCardContent({
 
       {/* Título + tiempo alineados en la misma fila */}
       <div className="tc__main">
-        <div className="tc__title">{task.title}</div>
+        {/* `title` nativo: el clamp de dos líneas puede estar cortando, y sin
+          * esto la única forma de ver el texto entero sería abrir el detalle. */}
+        <div className="tc__title" title={task.title}>
+          {task.title}
+        </div>
         {!(hidePlaceholders && task.estimatedMinutes == null && liveSeconds === 0) && (
           <button
             className={`tc__badge${running ? " is-running" : ""}`}

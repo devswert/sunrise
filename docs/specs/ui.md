@@ -183,6 +183,34 @@ lee como texto raro.
   uso diario: la consistencia vale más que la mejor idea suelta, porque la mano ya
   aprendió dónde está todo.
 - **Autosave siempre. Nada de formularios planos con botón "Guardar".**
+- **El título de una tarea se lee entero en el detalle y recortado en la lista.** En
+  `TaskModal` el campo es un `textarea` que crece con el texto —el alto lo escribe un
+  efecto sobre `scrollHeight`, reseteando a `auto` antes de medir o el campo nunca
+  achica— hasta un tope de cinco líneas, y de ahí scrollea: más que eso empuja el resto
+  del detalle fuera de la vista. Sigue siendo un dato de una línea, así que Enter sin
+  modificadores se come con `preventDefault` y un pegado multilínea se aplana en el
+  `onChange`; el `preventDefault` **no** puede venir con `stopPropagation`, porque ⌘Enter
+  cierra el modal desde un handler en `window`. En la card (`.tc__title`) el título se
+  corta en **dos líneas con elipsis** (`-webkit-line-clamp`) y el texto completo va en el
+  `title` nativo: una columna de ancho fijo no absorbe un título arbitrario sin desarmar
+  el ritmo de las filas, y de paso la card queda de alto acotado, que es lo que el
+  `DragOverlay` necesita para no cambiar de tamaño al levantarla. **El `word-break` se
+  queda junto al clamp**: sin él un token sin espacios —una URL pegada— se sale de ancho
+  en vez de recortarse, que era justo el caso que rompía la card. El campo de
+  `AddTaskModal` (`.compose__title`) es el mismo textarea con las mismas reglas, salvo
+  que ahí Enter **crea la tarea**.
+- **Un `flex-basis` no acota un flex item: lo acota su `min-width`.** El mínimo automático
+  de un flex item es `min-width: auto`, o sea el ancho mínimo de su contenido, y gana por
+  sobre el `flex-basis`. La ficha del día (`.dia__der`, `flex: 0 0 250px`) se estiraba al
+  doble con un título largo en el timeline —que va en `nowrap`— y le comía el ancho a la
+  columna de la izquierda, en shutdown y en la bitácora a la vez. Con `min-width: 0` los
+  250px se respetan y el `text-overflow` del título recién ahí puede recortar. Si pones un
+  ancho en un flex item y no se respeta, la causa es esta, no la regla del ancho.
+- **Una lista de texto lleva medida de lectura, no el ancho de la columna.** `.hitos` —los
+  highlights del shutdown y de la bitácora— corta en 520px (~70 caracteres a 13px). Sin el
+  tope, un título largo cruzaba los 626px de punta a punta: la serie dejaba de leerse como
+  serie —el ojo perdía la columna de puntos al volver— y el botón de la derecha quedaba
+  lejos de la fila a la que pertenece.
 - **Pero una fila con varios controles no se guarda en el blur de un campo.** El blur del
   primero confirma la operación y desmonta la fila a mitad de camino. Pasó dos veces: la
   fila de feeds al pasar de Nombre a URL y la de alta de canales al ir a elegir el color.

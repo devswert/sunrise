@@ -194,6 +194,31 @@ describe("TaskModal · ⌘Enter no pierde lo escrito", () => {
   });
 });
 
+describe("TaskModal · el título largo se lee entero", () => {
+  beforeEach(() => {
+    updateTask.mockClear();
+  });
+
+  it("el campo tiene el título completo, sin recortar", async () => {
+    const largo =
+      "Revisar el informe trimestral de capacidad y dejarlo listo para la reunión del lunes con el equipo";
+    renderModal(vi.fn(), { ...baseTask, title: largo });
+
+    expect(await screen.findByLabelText("Título")).toHaveValue(largo);
+  });
+
+  it("Enter no mete un salto de línea: el título es de una sola línea", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    const campo = screen.getByLabelText("Título");
+    await user.click(campo);
+    await user.keyboard("{Enter}ya");
+
+    expect(campo).toHaveValue("Revisar PRsya");
+  });
+});
+
 describe("TaskModal · ACTUAL siempre es el total", () => {
   beforeEach(() => {
     estadoTimer = { ...TIMER_DETENIDO };

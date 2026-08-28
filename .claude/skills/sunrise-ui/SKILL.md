@@ -32,8 +32,15 @@ todo. **El usuario insiste en esto de forma consistente.**
 - **Densidad alta y cromo bajo.** Nada de cajas dentro de cajas: las columnas se
   separan con una línea de 1px, no con tarjetas. Los controles aparecen al hover en
   vez de ocupar espacio permanente.
-- **El texto es el contenido.** Los títulos de tarea se leen enteros; los números
-  van en tabulares y en 11–12px, al costado, sin competir.
+- **El texto es el contenido.** El título de una tarea manda sobre todo lo que lo
+  rodea; los números van en tabulares y en 11–12px, al costado, sin competir.
+  **Dónde se lee entero depende del lugar**: en el detalle sí, siempre —el campo
+  crece con el texto hasta cinco líneas y después scrollea—; en una card de lista
+  se corta en **dos líneas con elipsis**, con el texto completo en el `title`
+  nativo. Una columna de ancho fijo no puede absorber un título arbitrario sin
+  desarmar el ritmo de las filas, y el largo es información del detalle, no de la
+  lista. Al recortar, el `word-break` se queda junto al clamp: sin él un token sin
+  espacios se sale de ancho en vez de recortarse.
 - **El color clasifica, nunca decora.** Dice a qué canal pertenece algo o cómo va la
   capacidad. Un color sin significado no va.
 - **Nada pide confirmación salvo lo irreversible.** Todo se autoguarda y todo se
@@ -231,6 +238,13 @@ cualquier aviso parecido: que diga **cuándo** —con la hora sacada de lo guard
 del reloj de ahora— y que ofrezca borrar la marca. El desmentido va como texto
 (`.dialog__deny`), debajo del cuerpo y arriba de los botones: corrige la frase que
 afirma en vez de sumar una tercera acción.
+
+**Un `flex-basis` no acota un flex item: lo acota su `min-width`.** El mínimo automático
+de un flex item es `min-width: auto` —el ancho mínimo de su contenido— y le gana al
+`flex-basis`. La ficha del día (`.dia__der`, `flex: 0 0 250px`) se estiraba al doble con
+un título largo en el timeline, que va en `nowrap`, y le comía el ancho a la columna de al
+lado. Si pusiste un ancho en un flex item y no se respeta, la causa es esa. Y una lista de
+texto lleva **medida de lectura**, no el ancho de la columna: `.hitos` corta en 520px.
 
 **Un slot de altura fija en vez de un render condicional**, cuando algo aparece solo
 en algunas columnas de una fila de elementos comparables. Si no, esa columna empuja

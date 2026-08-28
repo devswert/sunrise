@@ -54,6 +54,15 @@ describe("TaskCard", () => {
     expect(screen.getByText("0:30")).toBeInTheDocument();
   });
 
+  // El recorte a dos líneas es CSS y jsdom no lo aplica; lo que sí se puede
+  // sostener acá es que el texto entero sigue disponible para leerlo.
+  it("un título largo queda completo en el tooltip", () => {
+    const largo =
+      "Revisar el informe trimestral de capacidad y dejarlo listo para la reunión del lunes";
+    renderCard(makeTask({ title: largo }));
+    expect(screen.getByText(largo)).toHaveAttribute("title", largo);
+  });
+
   it("el check dispara onToggle sin abrir el detalle", async () => {
     const user = userEvent.setup();
     const { onToggle, onOpen } = renderCard(makeTask());

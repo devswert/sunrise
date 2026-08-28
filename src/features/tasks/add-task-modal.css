@@ -26,11 +26,26 @@
   font-family: var(--font-title);
   font-size: 20px;
   font-weight: 600;
+  line-height: 1.3;
   border: none;
   background: transparent;
   color: var(--ink);
   outline: none;
   padding: 2px 0;
+  /* El alto lo escribe el efecto de `AddTaskModal`; acá va el tope, igual que en
+     el título del detalle (§7): cinco líneas y de ahí scrollea. El `+ 4px` es el
+     padding, que la caja es `border-box`. */
+  resize: none;
+  overflow-y: auto;
+  max-height: calc(20px * 1.3 * 5 + 4px);
+  display: block;
+  width: 100%;
+}
+/* Sin barra: son 12px permanentes en esta app y se veían como un borde suelto
+   al lado del campo. Ver `.tmodal__title`. */
+.compose__title::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 .compose__title::placeholder {
   color: var(--faint);

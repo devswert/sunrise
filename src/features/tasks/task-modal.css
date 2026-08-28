@@ -93,12 +93,21 @@
 
 .tmodal__titlerow {
   display: flex;
-  align-items: center; /* check centrado con el título */
+  /* Arriba, no centrado: el título puede ocupar varias líneas, y con `center`
+     el check y los tiempos se iban al medio del bloque en vez de quedar a la
+     altura de la primera línea. El calce del caso de una línea —que es el
+     habitual— lo devuelve el `margin-top` de cada uno. */
+  align-items: flex-start;
   gap: var(--space-3);
 }
 
 .tmodal__check {
   flex-shrink: 0;
+  /* La fila alinea arriba (ver `.tmodal__titlerow`), así que el calce vertical
+     lo devuelve este margen. Los tres márgenes de la fila —este, el del título
+     y el de los tiempos— están medidos contra el layout viejo: con un título de
+     una línea las tres cajas caen en el mismo píxel que antes (±0,3px). */
+  margin-top: 10px;
   width: 22px;
   height: 22px;
   display: inline-flex;
@@ -122,12 +131,35 @@
   font-family: var(--font-title);
   font-weight: 600;
   font-size: 21px;
+  line-height: 1.3;
+  /* Ver `.tmodal__check`: calce contra el layout viejo. */
+  margin-top: 5px;
   border: none;
   border-bottom: 1px solid transparent;
   background: transparent;
   color: var(--ink);
   outline: none;
   padding: 2px 0;
+  /* El alto lo escribe el efecto de `TaskModal`; acá va el tope. Cinco líneas
+     es donde deja de leerse como un título y empieza a empujar el resto del
+     detalle fuera de la vista — de ahí en adelante scrollea.
+     El `+ 5px` es el `padding` (2+2) más el borde inferior: la caja es
+     `border-box`, así que sin sumarlos el tope caía en 4,8 líneas y la quinta
+     salía cortada con barra de scroll. */
+  resize: none;
+  overflow-y: auto;
+  max-height: calc(21px * 1.3 * 5 + 5px);
+  display: block;
+}
+/* Sin barra, como el sidebar (§7): las de esta app están dibujadas a mano y
+   ocupan **12px permanentes** apenas el contenedor puede scrollear, así que con
+   la barra puesta el título mostraba una línea vertical a su derecha incluso en
+   un título de una línea, que se leía como un borde suelto en medio del modal.
+   Un título de más de cinco líneas no queda inalcanzable: el caret arrastra el
+   campo al escribir. */
+.tmodal__title::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 .tmodal__title:focus {
   border-bottom-color: var(--border);
@@ -143,6 +175,10 @@
   align-items: flex-start;
   gap: var(--space-3);
   flex-shrink: 0;
+  /* Los tiempos quedan pegados arriba: son la referencia contra la que se
+     midieron los otros dos márgenes de la fila, y así se mantienen a la altura
+     de la **primera** línea del título, no del medio del bloque. */
+  margin-top: 0;
 }
 .tmodal__time {
   display: flex;

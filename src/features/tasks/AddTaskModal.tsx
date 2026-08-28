@@ -34,7 +34,7 @@ export function AddTaskModal() {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [objectives, setObjectives] = useState<Objective[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const dateRef = useRef<HTMLDivElement>(null);
   const timeRef = useRef<HTMLDivElement>(null);
   const chanRef = useRef<HTMLDivElement>(null);
@@ -45,6 +45,16 @@ export function AddTaskModal() {
     api.listCategories().then(setCategories);
     api.listObjectives(isoWeekId(new Date())).then(setObjectives);
   }, []);
+
+  // El alto sigue al texto. Igual que en `TaskModal`: `auto` antes de medir o
+  // el `scrollHeight` queda clavado en el alto anterior y el campo no achica; el
+  // guard es por jsdom, donde `scrollHeight` es 0.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight}px`;
+  }, [title]);
 
   async function create() {
     const t = title.trim();
@@ -96,14 +106,26 @@ export function AddTaskModal() {
           if (e.key === "Escape") picker ? setPicker(null) : closeCompose();
         }}
       >
-        <input
+        {/* Mismo campo que el título de `TaskModal`, y por el mismo motivo: una
+          * descripción larga en un `input` de una línea se va corriendo a la
+          * izquierda y deja de verse el principio, que es lo que uno está
+          * escribiendo. Crece hasta el tope de `.compose__title` y ahí scrollea.
+          *
+          * Enter **crea la tarea** —es el gesto de este modal, no un salto de
+          * línea—, así que el `preventDefault` va igual: sin él el textarea
+          * metía un `\n` antes de que `create()` leyera el título. */}
+        <textarea
           ref={inputRef}
+          rows={1}
           className="compose__title"
           placeholder="Descripción de la tarea…"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => setTitle(e.target.value.replace(/\s*\n\s*/g, " "))}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) create();
+            if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
+              e.preventDefault();
+              create();
+            }
           }}
         />
 

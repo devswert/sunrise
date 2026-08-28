@@ -76,6 +76,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const liveSeconds = task.actualSeconds + (running ? timer.runTotal : 0);
   const dialogRef = useRef<HTMLDivElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const chanRef = useRef<HTMLDivElement>(null);
   const objRef = useRef<HTMLDivElement>(null);
   const startRef = useRef<HTMLDivElement>(null);
@@ -119,6 +120,17 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   useEffect(() => {
     if (editingNotes) notesRef.current?.focus();
   }, [editingNotes]);
+
+  // El alto del título sigue al texto: se resetea a `auto` antes de medir, o el
+  // `scrollHeight` quedaría clavado en el alto anterior y el campo nunca
+  // achicaría. El `max-height` del CSS es el que corta y deja el scroll.
+  // En jsdom `scrollHeight` es 0, así que el guard evita dejar el campo en 0px.
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight}px`;
+  }, [title]);
 
   const flash = useCallback(() => {
     setSavedFlash(true);
@@ -408,12 +420,31 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
             </button>
             )}
 
-            <input
+            {/* Es un `textarea` y no un `input` porque el título tiene que
+              * **leerse entero**: es el único lugar de la app donde no se
+              * recorta (la card lo corta en dos líneas). Crece con el texto
+              * hasta el tope de `.tmodal__title` y ahí scrollea, así el resto
+              * del detalle no se va abajo del pliegue por un título largo.
+              *
+              * El dato sigue siendo de una línea: Enter no escribe un salto
+              * —lo come el `onKeyDown`— y un pegado multilínea se aplana en el
+              * `onChange`. Un `\n` guardado se vería como un corte raro dentro
+              * del clamp de la card. */}
+            <textarea
+              ref={titleRef}
+              rows={1}
               className={`tmodal__title${done ? " is-done" : ""}`}
               value={title}
               onChange={(e) => {
-                setTitle(e.target.value);
-                commitDebounced({ title: e.target.value.trim() || task.title });
+                const limpio = e.target.value.replace(/\s*\n\s*/g, " ");
+                setTitle(limpio);
+                commitDebounced({ title: limpio.trim() || task.title });
+              }}
+              onKeyDown={(e) => {
+                // Sin modificadores el Enter no hace nada. **No se corta la
+                // propagación**: ⌘Enter cierra el modal desde un handler en
+                // `window`, y un `stopPropagation` acá lo mataría en silencio.
+                if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) e.preventDefault();
               }}
               aria-label="Título"
             />

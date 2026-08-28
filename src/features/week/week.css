@@ -490,7 +490,22 @@
 .tc__title {
   font-size: 13.5px;
   line-height: 1.35;
+  /* Dos líneas y elipsis. Un título largo estiraba la card hasta desarmar el
+     ritmo de la columna, y en el tablero la fila de una tarea no puede crecer
+     sin límite: el largo es información del detalle, no de la lista. El texto
+     entero se lee en el modal (y en el tooltip nativo del título).
+
+     `word-break` se queda: sin él un token sin espacios —una URL pegada, un
+     slug— se sale de ancho en vez de recortarse, que es justamente el caso que
+     rompía la card. El clamp solo corta líneas, no palabras.
+
+     `-webkit-box` es el display **interno**; el `flex: 1; min-width: 0` que le
+     pone `.tc__main` sigue valiendo. */
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .tc__foot {

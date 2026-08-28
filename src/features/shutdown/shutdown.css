@@ -99,6 +99,12 @@
    derecha — se consulta, no se lee. */
 .dia__der {
   flex: 0 0 250px;
+  /* Sin esto los 250px no se respetan: el mínimo automático de un flex item es
+     `min-width: auto`, o sea el ancho mínimo de su contenido, y el título del
+     timeline va en `nowrap` — así que un título largo estiraba la ficha al doble
+     y le comía el ancho a la columna de la izquierda en vez de recortarse. El
+     `flex-basis` no gana esa pelea; el `min-width` sí. `.dia__izq` ya lo tenía. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -152,6 +158,11 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Medida de lectura, no el ancho de la columna. A 13px son ~70 caracteres por
+     línea; sin el tope, un título largo cruzaba los 626px de punta a punta y la
+     lista dejaba de leerse como una serie —el ojo perdía la columna de puntos al
+     volver— además de empujar el botón de la derecha lejos de su fila. */
+  max-width: 520px;
 }
 
 .hitos li {
