@@ -104,9 +104,14 @@ export interface Rescue {
  */
 export interface DayWork {
   taskId: number;
-  /** Primer `startedAt` del día, RFC 3339 en UTC. */
-  startedAt: string;
-  /** Segundos de las entradas **cerradas** de ese día. */
+  /**
+   * Cuándo corrió el taxímetro por primera vez ese día, RFC 3339 en UTC.
+   *
+   * `null` cuando el único tiempo del día vino de un ajuste a mano: ahí no hubo
+   * hora, hubo un número. Ver `models::DayWork`.
+   */
+  trackedAt: string | null;
+  /** Segundos del día, ajustes a mano incluidos. */
   seconds: number;
   /** Hay una corrida abierta de ese día; sus segundos no están en `seconds`. */
   running: boolean;

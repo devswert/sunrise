@@ -660,25 +660,34 @@ export const mock = {
    * `startedAt` —igual que en Rust—, no cortando el timestamp.
    */
   dayWork: async (date: string): Promise<DayWork[]> => {
-    const porTarea = new Map<number, DayWork>();
+    // `trackedAt` solo mira las corridas del taxímetro: un ajuste a mano se
+    // guarda con `endedAt === startedAt` y sellado al mediodía (o a la hora de
+    // la tarea), que es un dato contable y no la hora en que pasó algo. Espeja
+    // `repo::day_work`; si acá se toma el mínimo de todo, el browser dibuja el
+    // rail distinto del backend.
+    const porTarea = new Map<number, DayWork & { primera: string }>();
     for (const e of entries) {
       const start = new Date(e.startedAt);
       if (Number.isNaN(start.getTime()) || toISODate(start) !== date) continue;
-      const previo = porTarea.get(e.taskId);
-      const fila: DayWork = previo ?? {
+      const fila = porTarea.get(e.taskId) ?? {
         taskId: e.taskId,
-        startedAt: e.startedAt,
+        trackedAt: null,
         seconds: 0,
         running: false,
+        primera: e.startedAt,
       };
-      if (e.startedAt < fila.startedAt) fila.startedAt = e.startedAt;
+      if (e.startedAt < fila.primera) fila.primera = e.startedAt;
+      const corrida = e.endedAt === null || e.endedAt !== e.startedAt;
+      if (corrida && (fila.trackedAt === null || e.startedAt < fila.trackedAt)) {
+        fila.trackedAt = e.startedAt;
+      }
       if (e.endedAt === null) fila.running = true;
       else fila.seconds += e.seconds;
       porTarea.set(e.taskId, fila);
     }
     return [...porTarea.values()]
-      .map((f) => ({ ...f, seconds: Math.max(0, f.seconds) }))
-      .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+      .sort((a, b) => a.primera.localeCompare(b.primera))
+      .map(({ primera: _primera, ...f }) => ({ ...f, seconds: Math.max(0, f.seconds) }));
   },
 
   /**

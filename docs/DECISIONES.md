@@ -31,6 +31,17 @@ sábado. Tres decisiones adentro:
   **mediodía y no medianoche** porque en Chile, en el salto de primavera, la
   medianoche local **no existe** y la conversión se queda sin respuesta. El
   mediodía existe todos los días del año.
+- **El mediodía sirve para contar el día, no para dibujar una hora**, y confundir
+  las dos cosas costó un rail ilegible: cinco tareas corregidas el mismo día
+  salían apiladas a las 12:00 en carriles de treinta píxeles, y una trabajada a
+  las 15:41 y corregida después se dibujaba a las 12:00 porque el sello es más
+  temprano que la corrida. La salida **no** fue cambiar el sello —eso rompe la
+  atribución del día, que es justo lo que Mej.14 vino a arreglar— sino que
+  `day_work` distinga: `tracked_at` mira solo las corridas del taxímetro y viene
+  `null` si el día fue solo ajustes. Se descartó dibujarlos igual con otro estilo
+  ("trabajado, sin hora"): sigue ocupando una hora que no ocurrió, que era el
+  problema. El total nunca estuvo en juego, porque el cierre y el rollup agrupan
+  por día.
 - **Una tarea futura se acredita a hoy.** Mañana no se trabajó, y fechar ahí
   dejaría horas "trabajadas" adelante del reloj sumando en un rollup futuro.
 - **La consecuencia se aceptó en vez de esquivarla**: un ajuste fechado en otro

@@ -215,6 +215,21 @@ agregación no lo ve.
 > las horas a hoy — la Regla 2 rota en el origen, no en la review. Sin fecha
 > (backlog) o con fecha futura sigue siendo hoy: mañana no se trabajó.
 
+> **Pero ese sello no le da hora al rail.** El mediodía es contable —atribuye el
+> día—, no un dato de cuándo pasó algo, y dibujarlo como bloque inventa que la
+> tarea ocurrió a mediodía: un día con varias correcciones apilaba media columna
+> en la misma hora, cada bloque en su carril y ninguno legible. Por eso `day_work`
+> devuelve **`tracked_at`, que solo mira las corridas del taxímetro** —las entradas
+> con `ended_at` distinto de `started_at`, o abiertas— y viene en `null` cuando el
+> día solo tuvo ajustes; `seconds` sí los suma, porque el total es correcto: lo que
+> no se sabe es la hora. Sin ese corte pasaba algo peor todavía: como el sello es
+> más temprano que la corrida, una tarea trabajada a las 15:41 y corregida después
+> se dibujaba a las 12:00. En el rail, una tarea sin corrida se comporta como
+> cualquier otra sin tiempo: con hora es un bloque fijo, sin hora se proyecta lo
+> que falte, y completada no se dibuja. **El total no se pierde en ningún lado**:
+> el cierre del día y el rollup agrupan por día, no por hora, y siguen leyendo
+> `work_by_day`, que no cambió.
+
 > **Y un recorte se reparte entre los días trabajados (Mej.29).** Sellar el día
 > correcto no alcanza cuando el trabajo está en varios: un timer olvidado cruza la
 > medianoche y `stop_timer` lo parte en un tramo por día (I3.3), así que un recorte

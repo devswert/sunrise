@@ -210,12 +210,20 @@ describe("armarRail", () => {
  * calendario. El rail muestra el día, no el plan del día.
  */
 describe("armarRail · lo que ya se trabajó", () => {
-  /** Una fila de `day_work` que arranca a la hora local indicada. */
+  /** Una fila de `day_work` con el taxímetro corrido a la hora local indicada. */
   function work(taskId: number, hour: string, minutes: number, running = false) {
     const [h, m] = hour.split(":").map(Number);
     const d = new Date(`${DIA}T00:00:00`);
     d.setHours(h, m, 0, 0);
-    return { taskId, startedAt: d.toISOString(), seconds: minutes * 60, running };
+    return { taskId, trackedAt: d.toISOString(), seconds: minutes * 60, running };
+  }
+
+  /**
+   * Una fila de `day_work` que **solo** trae un ajuste a mano: hay minutos, pero
+   * `trackedAt` viene en `null` porque nunca corrió el taxímetro.
+   */
+  function ajuste(taskId: number, minutes: number) {
+    return { taskId, trackedAt: null, seconds: minutes * 60, running: false };
   }
 
   it("la reunión se dibuja donde arrancó el taxímetro y cuanto duró", () => {
@@ -365,6 +373,47 @@ describe("armarRail · lo que ya se trabajó", () => {
       work: [work(1, "10:00", 0)],
     });
     expect(bloqueDe(r, 1).kind).toBe("PROYECTADO");
+  });
+
+  it("un ajuste a mano no dibuja un bloque real: no sabemos a qué hora fue", () => {
+    // El ajuste se sella al mediodía local para atribuirle el día (Mej.14). Es
+    // un dato contable, no la hora en que pasó algo: dibujarlo como bloque real
+    // inventaba que la tarea ocurrió a mediodía, y un día con varias
+    // correcciones apilaba media columna en la misma hora.
+    const r = buildRail([task({ id: 1, estimatedMinutes: 60 })], "09:00", "18:00", {
+      work: [ajuste(1, 20)],
+    });
+    const [b] = bloquesDe(r, 1);
+    expect(b.kind).toBe("PROYECTADO");
+    // Y descuenta lo ya trabajado: quedan 40, no los 60 del estimado.
+    expect(b.endMin - b.startMin).toBe(40);
+  });
+
+  it("una completada con solo ajuste a mano no aparece en el rail", () => {
+    const r = buildRail([task({ id: 1, status: "DONE", estimatedMinutes: 60 })], "09:00", "18:00", {
+      work: [ajuste(1, 45)],
+    });
+    expect(bloquesDe(r, 1)).toHaveLength(0);
+  });
+
+  it("con hora propia el ajuste no la pierde: sigue siendo un bloque fijo", () => {
+    // La otra mitad de la regla. `adjustment_stamp` usa la hora de la tarea
+    // cuando la tiene, y el rail la dibuja ahí — pero por `scheduledTime`, no
+    // por el sello.
+    const r = buildRail([event(1, "12:00", 60)], "09:00", "18:00", {
+      work: [ajuste(1, 60)],
+    });
+    expect(bloqueDe(r, 1)).toMatchObject({ startMin: 12 * 60, kind: "FIJO" });
+  });
+
+  it("una corrida real manda sobre el sello del ajuste de la misma tarea", () => {
+    // El caso del reporte: trabajaste a las 15:41 y después corregiste el total
+    // a mano. `day_work` devuelve el arranque de la corrida, no el del ajuste,
+    // así que el bloque va donde ocurrió. Los minutos sí son los dos juntos.
+    const r = buildRail([task({ id: 1, estimatedMinutes: 60 })], "09:00", "18:00", {
+      work: [work(1, "15:41", 112)],
+    });
+    expect(bloqueDe(r, 1)).toMatchObject({ startMin: 15 * 60 + 41, kind: "REAL" });
   });
 });
 

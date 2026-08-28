@@ -171,26 +171,33 @@ export function buildRail(
   const pending: Pendiente[] = [];
 
   for (const t of tasks) {
-    const worked = workedMinutes(trabajoPorTarea.get(t.id), segundosEnCurso);
+    const trabajo = trabajoPorTarea.get(t.id);
+    const worked = workedMinutes(trabajo, segundosEnCurso);
+    // `trackedAt` es `null` cuando el tiempo del día salió solo de un ajuste a
+    // mano: hay minutos, pero no hay hora. **Ese caso no es un bloque REAL** —el
+    // sello del ajuste es el mediodía local, y dibujarlo ahí inventa que la tarea
+    // ocurrió a mediodía; con varias correcciones en el mismo día apilaba media
+    // columna en la misma hora. Sigue por el camino normal: con hora es un
+    // compromiso, y sin hora se proyecta lo que falte (o no se dibuja nada, si ya
+    // está completada). El total del día no se pierde: sale igual en el cierre y
+    // en el rollup, que agrupan por día y no por hora.
+    const realStart = trabajo?.trackedAt != null ? localMinutes(trabajo.trackedAt) : null;
 
-    if (worked > 0) {
-      const start = localMinutes(trabajoPorTarea.get(t.id)!.startedAt);
-      if (start != null) {
-        reales.push({
-          taskId: t.id,
-          position: t.position,
-          startMin: start,
-          endMin: Math.min(start + worked, MINUTOS_DEL_DIA),
-        });
-        // **Lo trabajado no agota la tarea.** Si el estimado es mayor que lo que
-        // llevas, lo que falta se sigue proyectando como cualquier otra cosa
-        // pendiente —y se parte alrededor de lo que venga—: si no, una tarea de
-        // 45 minutos con 19 hechos desaparecía del resto del día en cuanto le
-        // dabas play, que es justo cuando más importa saber si alcanza.
-        const restante = restantePorHacer(t, worked);
-        if (restante > 0) pending.push({ task: t, minutes: restante });
-        continue;
-      }
+    if (worked > 0 && realStart != null) {
+      reales.push({
+        taskId: t.id,
+        position: t.position,
+        startMin: realStart,
+        endMin: Math.min(realStart + worked, MINUTOS_DEL_DIA),
+      });
+      // **Lo trabajado no agota la tarea.** Si el estimado es mayor que lo que
+      // llevas, lo que falta se sigue proyectando como cualquier otra cosa
+      // pendiente —y se parte alrededor de lo que venga—: si no, una tarea de
+      // 45 minutos con 19 hechos desaparecía del resto del día en cuanto le
+      // dabas play, que es justo cuando más importa saber si alcanza.
+      const restante = restantePorHacer(t, worked);
+      if (restante > 0) pending.push({ task: t, minutes: restante });
+      continue;
     }
 
     const start = minutesFromTime(t.scheduledTime);
@@ -199,7 +206,13 @@ export function buildRail(
       // caer en la escala de horas. Una tarea a mano sin hora sí se proyecta —
       // salvo que esté completada, que se filtra en `proyectar`.
       if (t.source === "CALENDAR") todoElDia.push(t);
-      else pending.push({ task: t, minutes: duracionDe(t) });
+      else {
+        // Lo ya trabajado descuenta aunque no sepamos a qué hora fue: proyectar
+        // el estimado completo diría que faltan 30 minutos sobre algo que ya
+        // lleva 20. Sin nada que falte no se dibuja nada.
+        const minutes = worked > 0 ? restantePorHacer(t, worked) : duracionDe(t);
+        if (minutes > 0) pending.push({ task: t, minutes });
+      }
       continue;
     }
     // Una reunión que cruza la medianoche se corta acá: el día siguiente es

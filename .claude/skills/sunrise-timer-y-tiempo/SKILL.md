@@ -260,6 +260,15 @@ reglas, con los casos que las obligaron y el orden del reparto, están en
 - `set_actual_seconds` estampa `scheduled_date` + `scheduled_time`, **mediodía**
   local si la tarea no tiene hora (en el salto de DST la medianoche local no
   existe), y hoy si no tiene fecha o es futura.
+- **Ese sello atribuye el día; no es la hora en que pasó algo, y el rail no dibuja
+  desde ahí.** `day_work` devuelve `tracked_at`, que sale **solo de las corridas
+  del taxímetro** (`ended_at` distinto de `started_at`, o abierta) y viene `null`
+  si el día solo tuvo ajustes; `seconds` sí los suma. Con el mínimo sobre todas
+  las entradas, un día con varias correcciones apilaba media columna a las 12:00 y
+  una tarea trabajada a las 15:41 y corregida después se iba a las 12:00, porque
+  el sello es más temprano que la corrida. Está espejado en `mockDb.dayWork`.
+  **`work_by_day` no hace este corte y no debe hacerlo**: el cierre y el rollup
+  agrupan por día, no por hora, y ahí el ajuste tiene que contar.
 - Si el recorte supera todo lo repartido, el sobrante **se descarta**. Escribirlo
   igual para que la suma cierre es el mismo bug otra vez: el total lo manda
   `actual_seconds` (I1), y las entradas responden otra pregunta.

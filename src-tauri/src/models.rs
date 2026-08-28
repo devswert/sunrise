@@ -86,9 +86,16 @@ pub struct Rescue {
 #[serde(rename_all = "camelCase")]
 pub struct DayWork {
     pub task_id: i64,
-    /// El primer `started_at` del día, en RFC 3339 (UTC).
-    pub started_at: String,
-    /// Segundos de las entradas **cerradas** de ese día.
+    /// Cuándo **corrió el taxímetro** por primera vez ese día, en RFC 3339 (UTC).
+    ///
+    /// `None` cuando el único tiempo del día vino de un ajuste a mano: ahí no
+    /// hubo hora, hubo un número. El sello de esos ajustes es el mediodía local
+    /// (o la hora de la tarea), y es contable —sirve para atribuir el día—, no un
+    /// dato de cuándo pasó; dibujarlo en el rail inventa una hora. Ver
+    /// `repo::adjustment_stamp` y `railLayout.ts`.
+    pub tracked_at: Option<String>,
+    /// Segundos del día, ajustes a mano incluidos. Ese total sí es correcto:
+    /// lo que no se sabe es a qué hora ocurrió, no cuánto fue.
     pub seconds: i64,
     /// La corrida en curso empezó ese día y sigue abierta. Sus segundos todavía
     /// no están en `seconds`: los pone el front desde el taxímetro.

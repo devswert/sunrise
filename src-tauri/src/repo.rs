@@ -969,22 +969,32 @@ pub fn list_time_entries(conn: &Connection, task_id: i64) -> Result<Vec<TimeEntr
 /// Cada entrada cerrada cae entera dentro de un día porque `stop_timer` las
 /// parte en la medianoche local (ver `segments_by_local_day`), así que agrupar
 /// por `started_at` alcanza y no hay que volver a partir nada acá.
+///
+/// **`tracked_at` sale solo de las corridas del taxímetro, no de los ajustes a
+/// mano.** Un ajuste se guarda como una entrada con `ended_at = started_at`
+/// sellada al mediodía local de la tarea (`adjustment_stamp`): ese sello es
+/// contable, no es la hora en que pasó algo. Con un `MIN(started_at)` sobre todo,
+/// una tarea trabajada a las 15:41 y corregida después a mano se dibujaba a las
+/// 12:00, y un día con varias correcciones apilaba todas sus tareas en la misma
+/// hora inventada. `seconds` sí suma los ajustes: el total es correcto, lo que no
+/// se sabe es a qué hora ocurrió.
 pub fn day_work(conn: &Connection, date: &str) -> Result<Vec<DayWork>> {
     let (from_date, to_date) = utc_range_of_day(date);
     let mut stmt = conn.prepare(
         "SELECT task_id,
-                MIN(started_at) AS started_at,
+                MIN(CASE WHEN ended_at IS NULL OR ended_at <> started_at
+                         THEN started_at END) AS tracked_at,
                 COALESCE(SUM(CASE WHEN ended_at IS NOT NULL THEN seconds ELSE 0 END), 0) AS seconds,
                 MAX(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END) AS running
          FROM time_entries
          WHERE started_at >= ?1 AND started_at < ?2
          GROUP BY task_id
-         ORDER BY started_at",
+         ORDER BY MIN(started_at)",
     )?;
     let rows = stmt.query_map(params![from_date, to_date], |r| {
         Ok(DayWork {
             task_id: r.get("task_id")?,
-            started_at: r.get("started_at")?,
+            tracked_at: r.get("tracked_at")?,
             // Piso en 0 por lo mismo que `seconds_today`: un ajuste manual hacia
             // abajo se guarda como delta negativo y podría dejar la suma bajo 0.
             seconds: std::cmp::max(0, r.get::<_, i64>("seconds")?),
@@ -3005,7 +3015,7 @@ mod tests {
         assert_eq!(rows[0].seconds, 900 + 1080);
         assert!(!rows[0].running);
         // El inicio es el primero del día, no el último.
-        let start = chrono::DateTime::parse_from_rfc3339(&rows[0].started_at)
+        let start = chrono::DateTime::parse_from_rfc3339(rows[0].tracked_at.as_ref().unwrap())
             .unwrap()
             .with_timezone(&chrono::Local);
         assert_eq!(start.hour(), 9);
@@ -4899,10 +4909,20 @@ mod tests {
         );
     }
 
+    /// La hora local del sello de la única entrada de una tarea.
+    fn hora_del_sello(c: &Connection, task_id: i64) -> chrono::DateTime<chrono::Local> {
+        let e = list_time_entries(c, task_id).unwrap();
+        chrono::DateTime::parse_from_rfc3339(&e[0].started_at)
+            .unwrap()
+            .with_timezone(&chrono::Local)
+    }
+
     #[test]
     fn el_ajuste_cae_en_la_hora_de_la_tarea_cuando_la_tiene() {
-        // Una reunión tiene hora, así que el bloque del rail puede caer donde
-        // ocurrió en vez de a mediodía.
+        // Una reunión tiene hora, así que el ajuste se acredita ahí en vez de a
+        // mediodía. Se mira la entrada y no `day_work`: el rail no dibuja desde
+        // el sello (ver el test de abajo), pero el sello sigue siendo el que
+        // atribuye el día y la hora.
         let c = conn();
         let dia = hace(2);
         let mut input = new_task("reunión de las 15:30", Some(&dia));
@@ -4911,10 +4931,7 @@ mod tests {
 
         set_actual_seconds(&c, t.id, 600).unwrap();
 
-        let filas = day_work(&c, &dia).unwrap();
-        let local = chrono::DateTime::parse_from_rfc3339(&filas[0].started_at)
-            .unwrap()
-            .with_timezone(&chrono::Local);
+        let local = hora_del_sello(&c, t.id);
         assert_eq!((local.hour(), local.minute()), (15, 30));
     }
 
@@ -4928,12 +4945,54 @@ mod tests {
 
         set_actual_seconds(&c, t.id, 300).unwrap();
 
-        let filas = day_work(&c, &dia).unwrap();
-        let local = chrono::DateTime::parse_from_rfc3339(&filas[0].started_at)
-            .unwrap()
-            .with_timezone(&chrono::Local);
+        let local = hora_del_sello(&c, t.id);
         assert_eq!(local.hour(), 12);
         assert_eq!(local.date_naive().format("%Y-%m-%d").to_string(), dia);
+        // Y el día sí queda atribuido: hay trabajo ese día, con sus segundos.
+        let filas = day_work(&c, &dia).unwrap();
+        assert_eq!(filas[0].seconds, 300);
+    }
+
+    #[test]
+    fn un_ajuste_a_mano_no_le_da_hora_al_rail() {
+        // El sello del ajuste es contable, no la hora en que pasó algo. Con
+        // `tracked_at` en `None` el rail no dibuja un bloque a esa hora — que era
+        // lo que apilaba media columna al mediodía en un día con varias
+        // correcciones. Los segundos sí están.
+        let c = conn();
+        let dia = hace(3);
+        let t = create_task(&c, new_task("solo corregida a mano", Some(&dia))).unwrap();
+
+        set_actual_seconds(&c, t.id, 900).unwrap();
+
+        let filas = day_work(&c, &dia).unwrap();
+        assert_eq!(filas.len(), 1);
+        assert!(filas[0].tracked_at.is_none(), "un ajuste no es una corrida");
+        assert_eq!(filas[0].seconds, 900);
+    }
+
+    #[test]
+    fn una_corrida_real_le_gana_al_sello_del_ajuste() {
+        // El caso del reporte: se trabajó a las 15:41 y después se corrigió el
+        // total a mano. Con el mínimo sobre todas las entradas el bloque se iba a
+        // las 12:00 —el sello, más temprano que la corrida— y la tarea se dibujaba
+        // horas antes de cuando ocurrió.
+        let c = conn();
+        let dia = hace(5);
+        let t = create_task(&c, new_task("trabajada y después corregida", Some(&dia))).unwrap();
+
+        // Una corrida de verdad a las 15:00, y después una corrección a mano de
+        // 10 minutos, que se sella al mediodía por no tener hora la tarea.
+        local_entry(&c, t.id, &dia, 15, 0, 3600);
+        set_seconds_directo(&c, t.id, 3600);
+        set_actual_seconds(&c, t.id, 3600 + 600).unwrap();
+
+        let filas = day_work(&c, &dia).unwrap();
+        let local = chrono::DateTime::parse_from_rfc3339(filas[0].tracked_at.as_ref().unwrap())
+            .unwrap()
+            .with_timezone(&chrono::Local);
+        assert_eq!(local.hour(), 15, "el bloque va donde corrió el taxímetro");
+        assert_eq!(filas[0].seconds, 4200, "los minutos sí son los dos juntos");
     }
 
     #[test]
