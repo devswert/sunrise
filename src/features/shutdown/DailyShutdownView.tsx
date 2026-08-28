@@ -81,9 +81,14 @@ export function DailyShutdownView() {
   }, [load, dataVersion]);
 
   const catMap = board.categoryMap;
+  // De `tasksByDate` y no de `tasks`: esa es la lista que **es tarjeta**, o sea
+  // la agenda del día menos los bloques ignorados (§4.12). Filtrando el arreglo
+  // crudo, un evento ignorado —el almuerzo— se saltaba todas las vistas menos
+  // esta, y aparecía acá como algo que quedó pendiente de hacer. Ya viene
+  // ordenada por `position`.
   const pending = useMemo(
-    () => board.tasks.filter((t) => t.status === "TODO" && t.scheduledDate === today),
-    [board.tasks, today],
+    () => (board.tasksByDate[today] ?? []).filter((t) => t.status === "TODO"),
+    [board.tasksByDate, today],
   );
   // `destacadas` devuelve **todas** en `mostradas` cuando no hay ninguna incluida,
   // para que la bitácora no se vea vacía. Acá hace falta lo contrario: si todavía

@@ -129,6 +129,23 @@ describe("DailyShutdownView", () => {
     expect(screen.queryByRole("button", { name: /Pasar no alcancé/ })).toBeNull();
   });
 
+  it("un bloque ignorado no queda como pendiente", async () => {
+    // Ignorar un evento (el almuerzo) lo saca de la columna, de la capacidad y de
+    // Focus. El cierre leía el arreglo crudo de tareas en vez de la agenda que
+    // **es tarjeta**, así que era la única vista donde el almuerzo reaparecía —y
+    // encima como algo que quedó por hacer.
+    const hoy = await api.listTasksForDate(todayISO());
+    const almuerzo = hoy.find((t) => t.source === "CALENDAR" && t.status === "TODO")!;
+    await api.setTaskRailOnly(almuerzo.id, true);
+
+    mount();
+
+    expect(await screen.findByText("Qué quedó pendiente")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(almuerzo.title)).toBeNull();
+    });
+  });
+
   it("recargar no pisa una nota a medio escribir", async () => {
     // `load` corre con **cada** invalidación —tildar una tarea, incluir otra, un
     // aviso de la otra ventana—, y sembrar los campos desde el servidor borraba

@@ -171,6 +171,14 @@ todos los días.
 | rollup semanal (regla 3) | su duración | una reunión sin trackear no se cuenta como trabajada |
 | `last_day_with_tasks` | el día | un día con solo un almuerzo no es un día que repasar |
 
+**La exclusión de la tarjeta vive en `tasksByDate`, así que una vista que quiera
+"lo del día" tiene que leer de ahí y no del arreglo crudo `tasks`.** El cierre del
+día filtraba `tasks` por fecha para armar "Qué quedó pendiente", y era la única
+vista de la app donde el almuerzo reaparecía —encima como algo que quedó por
+hacer—. `useBoard` expone las dos listas a propósito (`agendaByDate` es la del
+rail, con los ignorados; `tasksByDate` es la de las tarjetas, sin ellos): elegir la
+equivocada no da error, solo devuelve el bloque ignorado.
+
 La fila sigue existiendo en `tasks` y **sigue siendo del feed**: la sincronización
 la actualiza como a cualquier otra, así que si mueves el almuerzo en Google el
 bloque se mueve. Lo que no existe es ninguna puerta para trabajarla —no hay
