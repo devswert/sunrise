@@ -30,6 +30,39 @@ export const TaskEventType = {
 } as const;
 export type TaskEventType = (typeof TaskEventType)[keyof typeof TaskEventType];
 
+/**
+ * Prioridad de una tarea: **P1 es lo más urgente y P5 lo que puede esperar**.
+ *
+ * Cinco fijas y no configurables: una escala que se edita deja de ser una escala
+ * —un P2 de hace tres meses ya no significa lo mismo que el de hoy— y el color
+ * de cada nivel está calculado contra los otros cuatro (ver `--prio-*` en
+ * `tokens.css`), así que agregar uno no es agregar una fila a una tabla.
+ *
+ * **La ausencia no está acá a propósito**: "sin prioridad" es `null`, no un
+ * sexto valor. Es el estado de toda tarea recién creada, y un enum con un
+ * `NONE` adentro haría que el filtro y el orden tuvieran que acordarse de
+ * excluirlo en cada uso.
+ *
+ * Espeja la migración 16, que guarda el TEXT tal cual.
+ */
+export const Priority = {
+  P1: "P1",
+  P2: "P2",
+  P3: "P3",
+  P4: "P4",
+  P5: "P5",
+} as const;
+export type Priority = (typeof Priority)[keyof typeof Priority];
+
+/** Las cinco, de la más urgente a la que puede esperar. */
+export const PRIORITIES: readonly Priority[] = [
+  Priority.P1,
+  Priority.P2,
+  Priority.P3,
+  Priority.P4,
+  Priority.P5,
+];
+
 /** Estado del semáforo del contador de capacidad diaria. */
 export const CapacityLevel = {
   OK: "OK", // gris — bajo el objetivo

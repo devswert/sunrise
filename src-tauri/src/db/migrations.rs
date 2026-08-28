@@ -467,6 +467,22 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
          WHERE calendar_uid LIKE '%\_R________@%' ESCAPE '\';
         "#,
     ),
+    (
+        16,
+        r#"
+        -- **Prioridad de la tarea: P1 (lo más urgente) a P5, o NULL.**
+        --
+        -- NULL y no un 'P3' de fábrica: "sin prioridad" es un estado propio y es
+        -- el que tienen todas las tareas que ya existen. Sembrar un valor medio
+        -- sería inventar que alguien las priorizó, y dejaría el filtro por
+        -- prioridad devolviendo el backlog entero en P3.
+        --
+        -- TEXT y no INTEGER porque es un enum, y los enum de esta base van en
+        -- MAYÚSCULAS. Además ordena igual: con un solo dígito, el orden
+        -- lexicográfico de 'P1'..'P5' es el numérico.
+        ALTER TABLE tasks ADD COLUMN priority TEXT;
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.

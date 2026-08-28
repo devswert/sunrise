@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Category, Task } from "../../lib/types";
-import { folderOf, groupByContext } from "./grouping";
+import { filterByChannel, folderOf, groupByContext } from "./grouping";
 
 function category(id: number, name: string, parentId: number | null = null): Category {
   return { id, parentId, name, color: "sky", position: id, archived: false };
@@ -78,5 +78,27 @@ describe("groupByContext", () => {
     const groups = groupByContext([task(10, WORK.id)], CATEGORIES, { includeEmpty: true });
 
     expect(groups.every((g) => g.folder !== null)).toBe(true);
+  });
+});
+
+describe("filterByChannel", () => {
+  it("sin canal elegido no filtra: es \"todos\", no \"los que no tienen\"", () => {
+    const lista = [task(10, WORK.id), task(11, null)];
+    expect(filterByChannel(lista, CATEGORIES, null)).toEqual(lista);
+  });
+
+  it("elegir un channel deja solo las de ese channel", () => {
+    const lista = [task(10, DEPLOY.id), task(11, WORK.id), task(12, HOME.id)];
+    expect(filterByChannel(lista, CATEGORIES, DEPLOY.id).map((t) => t.id)).toEqual([10]);
+  });
+
+  /**
+   * Y no la coincidencia exacta: el picker ofrece los dos niveles, así que elegir
+   * un contexto en un backlog donde todo está en channels devolvería la lista
+   * vacía — un filtro que se ve puesto y no muestra nada.
+   */
+  it("elegir un contexto deja todo lo que cuelga de él, channels incluidos", () => {
+    const lista = [task(10, DEPLOY.id), task(11, WORK.id), task(12, HOME.id)];
+    expect(filterByChannel(lista, CATEGORIES, WORK.id).map((t) => t.id)).toEqual([10, 11]);
   });
 });

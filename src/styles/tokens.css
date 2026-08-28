@@ -185,6 +185,40 @@
    * tres números sueltos, cambiar uno desalinearía los otros dos en silencio. */
   --titlebar-h: 28px;
 
+  /* --- Prioridades (P1..P5) ---
+   *
+   * **Una rampa, no cinco colores elegidos.** P1 es el rojo de lo que arde y P5
+   * el celeste de lo que puede esperar; los tres del medio son la interpolación
+   * en **OKLCH** entre esos dos extremos, con el matiz dando la vuelta corta
+   * (23° → 228°), que es la que pasa por ámbar, verde y verde agua. Leídos en
+   * orden se ven como un semáforo, que es exactamente lo que la escala significa.
+   *
+   * Interpolar en sRGB era lo obvio y está mal: el camino recto de rojo a celeste
+   * pasa por un gris embarrado en P3, y al lado de la paleta de canales —que está
+   * construida sobre distancia perceptual en Lab— se nota como un color roto y no
+   * como un nivel intermedio.
+   *
+   * El croma se recorta si el matiz se sale del gamut sRGB (le pasa al ámbar de
+   * P2), bajándolo hasta que entre en vez de dejar que el canal se pegue al
+   * borde: eso último desplaza el matiz y rompe la progresión. **Distancia
+   * perceptual mínima entre los cinco: ΔE 11.0** — más holgada que los 8.1 de la
+   * paleta de canales, porque acá son cinco y no veinticuatro.
+   *
+   * **No llevan `-ink` y no deben llevarlo.** El único lugar donde estos colores
+   * tocan texto es el punto al lado de la etiqueta ("● P2"), y el texto ahí es el
+   * del tema, no el del color. Un `-ink` invitaría a escribir encima del color, y
+   * eso es lo que `tokens.test.ts` persigue. Tampoco cambian por tema, por la
+   * misma razón que los canales: el color **es** la identidad del nivel.
+   *
+   * No están en `PALETTE` a propósito: no son colores de canal, no se eligen
+   * desde ningún picker y renombrar uno rompe `Priority` en `enums.ts`, no un
+   * punto de categoría. */
+  --prio-p1: #e5484d;
+  --prio-p2: #c48302;
+  --prio-p3: #86ac36;
+  --prio-p4: #22c1a6;
+  --prio-p5: #5fbfe8;
+
   /* El ancho del sidebar **no vive acá**, y no por descuido: se anima, y una
    * transición cuyo valor viene de una custom property no corre (detalle en
    * `global.css`, sobre `.sidebar`). Los dos anchos están escritos ahí, literales. */

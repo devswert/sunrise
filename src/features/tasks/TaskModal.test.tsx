@@ -5,6 +5,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import type { Task, TimeEntry } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
 import { TaskModal } from "./TaskModal";
+import { Priority } from "../../lib/enums";
 
 const startTimer = vi.fn(async () => {});
 const stopTimer = vi.fn(async () => null);
@@ -63,6 +64,7 @@ const baseTask: Task = {
   notes: null,
   categoryId: null,
   objectiveId: null,
+  priority: null,
   scheduledDate: "2026-08-11",
   scheduledTime: null,
   position: 0,
@@ -367,5 +369,46 @@ describe("TaskModal · sacarle la fecha a una tarea", () => {
     await waitFor(() =>
       expect(useAppStore.getState().dataVersion).toBeGreaterThan(antes),
     );
+  });
+
+});
+
+describe("TaskModal · prioridad", () => {
+  it("sin prioridad dice \"ninguna\", como el objetivo", () => {
+    renderModal();
+
+    expect(screen.getByText("Prioridad")).toBeInTheDocument();
+    expect(screen.getByText("ninguna")).toBeInTheDocument();
+  });
+
+  it("elegir un nivel lo guarda y lo muestra", async () => {
+    renderModal();
+
+    await userEvent.click(screen.getByText("Prioridad"));
+    await userEvent.click(screen.getByRole("button", { name: "P2" }));
+
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(7, { priority: "P2" }));
+    expect(document.querySelector(".prio-tag")).toHaveTextContent("P2");
+  });
+
+  it("\"Sin prioridad\" la quita, y eso viaja como null y no como ausencia", async () => {
+    // Ausente en el patch significa "no tocar", así que quitar tiene que mandar
+    // el `null` explícito o el nivel se quedaría puesto.
+    renderModal(vi.fn(), { ...baseTask, priority: Priority.P1 });
+
+    await userEvent.click(screen.getByText("Prioridad"));
+    await userEvent.click(screen.getByRole("button", { name: "Sin prioridad" }));
+
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(7, { priority: null }));
+  });
+
+  /** La barra se lee de izquierda a derecha, y el orden pedido es prioridad → objetivo. */
+  it("el selector va a la izquierda del de objetivos", () => {
+    renderModal();
+
+    const rotulos = [...document.querySelectorAll(".tmodal__meta-label")].map(
+      (e) => e.textContent,
+    );
+    expect(rotulos.indexOf("Prioridad")).toBeLessThan(rotulos.indexOf("Objetivo"));
   });
 });

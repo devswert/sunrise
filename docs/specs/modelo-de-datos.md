@@ -18,6 +18,7 @@ TEXT en mayúsculas, espejados en `src/lib/enums.ts`:
 | `tasks.status` | `TODO` · `DONE` |
 | `tasks.source` | `MANUAL` · `CALENDAR` |
 | `tasks.source_state` | `ACTIVE` · `ORPHANED` |
+| `tasks.priority` | `P1` … `P5`, o `NULL` (migración 16) |
 | `task_events.type` | `CREATED` · `MOVED` · `START_DATE_SET` · `CARRIED_OVER`¹ |
 | (solo front) `CapacityLevel` | `OK` · `WARN` · `OVER` |
 
@@ -31,6 +32,14 @@ TEXT en mayúsculas, espejados en `src/lib/enums.ts`:
   fuente de hora del rail** (§4.13).
 - `position` ⇒ orden dentro de su día (o del backlog).
 - `estimated_minutes` = planned. `NULL` es válido = sin estimado.
+- `priority` ⇒ `P1` (lo más urgente) a `P5`. **`NULL` es "sin prioridad" y es un
+  estado propio, no un P3 implícito**: es lo que tiene toda tarea recién creada y
+  toda la que existía antes de la migración 16. El orden por prioridad las manda
+  **al final**, explícitamente (`comparePriority`), y no las mezcla entre los P5:
+  una tarea que nadie miró no es "menos urgente que un P5". TEXT y no INTEGER
+  porque es un enum, y con un dígito el orden lexicográfico coincide con el
+  numérico. Los cinco niveles y sus colores **no se configuran** — el único ajuste
+  es el interruptor general (§4).
 - `actual_seconds` = tiempo real **acumulado**. Ver [I1](invariantes.md).
 - `source_state = 'ORPHANED'` ⇒ tarea de calendario que ya no está en el feed **y
   que nunca se trabajó**: sale de los listados sin borrarse, y **todos filtran por

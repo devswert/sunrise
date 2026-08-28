@@ -69,6 +69,57 @@
   font-size: 13px;
 }
 
+/* La prioridad sigue la misma regla que el chip de canal de arriba: en esta barra
+   el texto es de 13px, así que la marca también. El punto se queda en sus 7px —es
+   el mismo punto de la card, y agrandarlo lo convertiría en otra cosa. */
+.tmodal__prio {
+  font-size: 13px;
+}
+
+/* El menú de niveles. Cinco filas fijas y "Sin prioridad": no es un
+   `SearchSelect` porque no hay nada que buscar, así que los estilos son propios y
+   cortos en vez de una variante del select.
+
+   Las filas son del ancho del popover para que el área clickeable sea la fila
+   entera: con cinco etiquetas de dos caracteres, un target del tamaño del texto
+   sería de 18px. */
+.prio-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 128px;
+}
+.prio-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.prio-menu__item:hover {
+  background: var(--surface-sunken);
+}
+.prio-menu__item.is-active {
+  background: var(--surface-sunken);
+}
+/* "Sin prioridad" no lleva punto —no hay color que mostrar—, así que se separa
+   con una línea en vez de con una sangría: sin la línea, la fila sin punto se lee
+   como un nivel al que se le olvidó el color. */
+.prio-menu__none {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  font-weight: 500;
+  color: var(--muted);
+}
+
 .tmodal__close {
   background: transparent;
   border: none;

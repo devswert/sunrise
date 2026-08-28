@@ -165,6 +165,31 @@ Cuatro reglas con test propio:
   calibrado— con el `-ink` encima (4.8 y 7.7). Los botones fantasma sí pueden usar
   `opacity`: ahí solo se atenúa el texto contra una superficie que no se mueve.
 
+**El chip de canal no lleva punto adentro.** El chip ya viene teñido —fondo del
+color al 35% con su `-ink` encima—, así que el punto decía lo mismo dos veces en
+60px de ancho, y en una card con la marca de prioridad al lado eran dos puntos
+compitiendo. El punto se queda donde el color **no** está en ningún otro lado: las
+opciones del select (`.ss__dot`) y los rótulos de columna del backlog
+(`.backlog__dot`). Los tres lugares que dibujan el chip —card, detalle y
+`CategoryTag`— cambian juntos: es el mismo chip, y separarlos es lo que hace que
+la misma cosa se vea de dos formas.
+
+**Los `--prio-*` son la segunda familia de color, y no viven bajo estas reglas**
+(§4.30). Cinco tokens, `--prio-p1`…`--prio-p5`, que son una **rampa interpolada en
+OKLCH** entre el rojo de P1 y el celeste de P5 —no colores elegidos uno por uno—,
+con ΔE mínimo 11.0 entre ellos. Tres cosas que los separan de los 24:
+
+- **No están en `PALETTE`.** No son colores de canal, no se eligen desde ningún
+  picker, y renombrar uno rompe `Priority` en `enums.ts` y no un punto de
+  categoría. Un punto de prioridad que se pudiera confundir con un punto de canal
+  sería peor que dos familias.
+- **No llevan `-ink`, y agregárselos es el error a evitar.** La marca es siempre
+  punto de color + etiqueta al lado (`PriorityTag`), nunca texto encima del color,
+  así que ningún nivel tiene que sostener un contraste calibrado. Un `-ink` sería
+  la invitación a escribir encima — justo el par que persigue `tokens.test.ts`.
+- **No cambian por tema**, por lo mismo que los de canal: el color **es** la
+  identidad del nivel.
+
 **El botón de confirmar es salvia, no naranjo** (`.btn-primary`, `--sage`/`--sage-ink`).
 El damasco es **el mismo tono** que el semáforo de capacidad usa para "te pasaste"
 (`--cap-over`), así que un aceptar en naranjo se lee como advertencia. El naranjo queda

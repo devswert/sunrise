@@ -30,6 +30,11 @@ también de donde sale el icono de cada una (§7) — y desde Mej.1 lo vigila un
   Por defecto sábado y domingo. Siete botones y no siete interruptores porque la
   pregunta es "cuáles", y una fila se lee de un vistazo. Se guarda como números
   ISO separados por coma (`"6,7"`).
+- **Prioridades** (`priorities_enabled`, encendido de fábrica): el único ajuste de
+  §4.30, y es un interruptor y no una tabla de niveles a propósito — la escala es
+  fija. Apagarlo esconde el indicador de las cards, el selector del detalle y los
+  filtros del backlog; **el nivel de cada tarea se conserva**, así que probar el
+  switch no cuesta repriorizar nada.
 - **Abrir sunrise al iniciar sesión** (§4.18): el único control de Configs que
   **no** lee ni escribe la tabla `settings`.
 - **El alta de un contexto o canal se confirma con Enter o al salir de la fila**,

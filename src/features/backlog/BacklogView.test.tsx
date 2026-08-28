@@ -3,17 +3,24 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { api } from "../../lib/ipc";
 import type { Category, Task } from "../../lib/types";
+import { Priority } from "../../lib/enums";
 import { BacklogView } from "./BacklogView";
 
 function category(id: number, name: string, parentId: number | null = null): Category {
   return { id, parentId, name, color: "sky", position: id, archived: false };
 }
 
-function task(id: number, title: string, categoryId: number | null = null): Task {
+function task(
+  id: number,
+  title: string,
+  categoryId: number | null = null,
+  priority: Priority | null = null,
+): Task {
   return {
     id,
     title,
     categoryId,
+    priority,
     status: "TODO",
     source: "MANUAL",
     sourceState: "ACTIVE",
@@ -118,5 +125,51 @@ describe("BacklogView · un contexto por columna", () => {
     await pintar([task(1, "Comprar pan", HOME.id)]);
 
     expect(screen.getByText(/^1 pendiente$/)).toBeTruthy();
+  });
+
+  it("filtra por prioridad, y el contador dice cuántas de cuántas quedaron", async () => {
+    await pintar([
+      task(1, "Arde", HOME.id, Priority.P1),
+      task(2, "Puede esperar", HOME.id, Priority.P5),
+    ]);
+
+    await userEvent.click(screen.getByLabelText("Filtrar por prioridad"));
+    await userEvent.click(screen.getByRole("button", { name: "P1" }));
+
+    expect(screen.getByText("Arde")).toBeTruthy();
+    expect(screen.queryByText("Puede esperar")).toBeNull();
+    expect(screen.getByText(/1 de 2 pendientes/)).toBeTruthy();
+  });
+
+  /**
+   * Igual que con el buscador escrito: un contexto sin resultados no es un
+   * contexto vacío al que agregarle algo, es ruido entre los que sí coinciden.
+   */
+  it("filtrando por prioridad esconde los contextos sin resultados", async () => {
+    await pintar([task(1, "Arde", HOME.id, Priority.P1)]);
+
+    await userEvent.click(screen.getByLabelText("Filtrar por prioridad"));
+    await userEvent.click(screen.getByRole("button", { name: "P1" }));
+
+    expect(rotulos()).toEqual(["Casa"]);
+  });
+
+  /**
+   * Sin botón de limpiar: sacar un filtro es volver a hacer click donde lo
+   * pusiste, el mismo gesto en los dos sentidos.
+   */
+  it("volver a hacer click en el nivel saca el filtro", async () => {
+    await pintar([
+      task(1, "Arde", HOME.id, Priority.P1),
+      task(2, "Puede esperar", HOME.id, Priority.P5),
+    ]);
+
+    await userEvent.click(screen.getByLabelText("Filtrar por prioridad"));
+    await userEvent.click(screen.getByRole("button", { name: "P1" }));
+    expect(screen.queryByText("Puede esperar")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "P1" }));
+    expect(screen.getByText("Puede esperar")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ver todas" })).toBeNull();
   });
 });

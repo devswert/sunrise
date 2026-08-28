@@ -8,6 +8,10 @@ import { PLAIN_INPUT } from "../../components/plainInput";
 import { isoWeekId, shortDate } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
 import { groupByContext } from "./grouping";
+import { PriorityFilter } from "./PriorityFilter";
+import { filterByPriority } from "../tasks/priority";
+import { usePrioritiesOn } from "../../lib/settings";
+import type { Priority } from "../../lib/enums";
 
 /**
  * El backlog a pantalla completa: **un contexto por columna**, lado a lado.
@@ -43,6 +47,8 @@ export function BacklogView() {
   const [selected, setSelected] = useState<Task | null>(null);
   const [rescued, setRescued] = useState<Map<number, string>>(new Map());
   const [query, setQuery] = useState("");
+  const [levels, setLevels] = useState<Set<Priority>>(new Set());
+  const prioridades = usePrioritiesOn();
   const openCompose = useAppStore((s) => s.openCompose);
   const bumpData = useAppStore((s) => s.bumpData);
   const dataVersion = useAppStore((s) => s.dataVersion);
@@ -82,13 +88,17 @@ export function BacklogView() {
   // Mismo `includes` en minúsculas que el buscador de los selects, y por lo mismo
   // no se normalizan acentos: los dos campos se escriben igual que se leen.
   const filtro = query.trim().toLowerCase();
-  const visibles = filtro
+  const porTitulo = filtro
     ? tasks.filter((t) => t.title.toLowerCase().includes(filtro))
     : tasks;
+  // Con las prioridades apagadas el filtro no se dibuja, así que tampoco puede
+  // seguir aplicándose: quedaría una vista recortada por un control invisible.
+  const visibles = prioridades ? filterByPriority(porTitulo, levels) : porTitulo;
+  const filtrando = !!filtro || (prioridades && levels.size > 0);
 
   // Con el buscador escrito, un contexto sin resultados no es un contexto vacío
   // al que agregarle algo: es ruido entre los que sí coinciden.
-  const groups = groupByContext(visibles, categories, { includeEmpty: !filtro });
+  const groups = groupByContext(visibles, categories, { includeEmpty: !filtrando });
 
   return (
     <div className="backlog">
@@ -102,29 +112,33 @@ export function BacklogView() {
           <p className="backlog__sub">
             {/* Filtrando, el total se queda al lado del filtrado: "2" a secas
               * escondería que el backlog tiene veinte. */}
-            {filtro && `${visibles.length} de `}
+            {filtrando && `${visibles.length} de `}
             {tasks.length} {tasks.length === 1 ? "pendiente" : "pendientes"}
           </p>
         </div>
 
-        <div className="backlog__search">
-          <Search size={14} aria-hidden />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar en el backlog"
-            aria-label="Buscar en el backlog"
-            {...PLAIN_INPUT}
-          />
-          {query && (
-            <button
-              className="backlog__search-clear"
-              aria-label="Limpiar la búsqueda"
-              onClick={() => setQuery("")}
-            >
-              <X size={13} />
-            </button>
-          )}
+        <div className="backlog__tools">
+          {prioridades && <PriorityFilter value={levels} onChange={setLevels} />}
+
+          <div className="backlog__search">
+            <Search size={14} aria-hidden />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar en el backlog"
+              aria-label="Buscar en el backlog"
+              {...PLAIN_INPUT}
+            />
+            {query && (
+              <button
+                className="backlog__search-clear"
+                aria-label="Limpiar la búsqueda"
+                onClick={() => setQuery("")}
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -193,7 +207,9 @@ export function BacklogView() {
           <p className="backlog__vacio">
             {filtro
               ? `Nada en el backlog dice "${query.trim()}".`
-              : "No hay nada en el backlog. Lo que quede pendiente de un día cae acá solo."}
+              : filtrando
+                ? "Nada en el backlog tiene esa prioridad."
+                : "No hay nada en el backlog. Lo que quede pendiente de un día cae acá solo."}
           </p>
         )}
       </div>

@@ -21,6 +21,8 @@ import { formatMinutes } from "../../lib/capacity";
 import { SearchSelect } from "../../components/SearchSelect";
 import { Switch } from "../../components/Switch";
 import { channelOptions } from "./channelOptions";
+import { PriorityTag } from "./PriorityTag";
+import { priorityVar } from "./priority";
 import { TimePicker } from "../../components/TimePicker";
 import { Popover } from "../../components/Popover";
 import { es } from "date-fns/locale";
@@ -28,6 +30,8 @@ import { parseISODate, shortDate, toISODate } from "../../lib/date";
 import { useNavigate } from "react-router-dom";
 import { useTimer, hms } from "../timer/useTimer";
 import { useAppStore } from "../../lib/store";
+import { usePrioritiesOn } from "../../lib/settings";
+import { PRIORITIES, type Priority } from "../../lib/enums";
 
 interface TaskModalProps {
   task: Task;
@@ -37,7 +41,7 @@ interface TaskModalProps {
   onChanged: () => Promise<void> | void;
 }
 
-type Picker = "channel" | "objective" | "start" | "planned" | "actual" | null;
+type Picker = "channel" | "objective" | "priority" | "start" | "planned" | "actual" | null;
 
 export function TaskModal({ task, categories, objectives, onClose, onChanged }: TaskModalProps) {
   const [title, setTitle] = useState(task.title);
@@ -46,6 +50,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const [planned, setPlanned] = useState<number | null>(task.estimatedMinutes);
   const [categoryId, setCategoryId] = useState<number | null>(task.categoryId);
   const [objectiveId, setObjectiveId] = useState<number | null>(task.objectiveId);
+  const [priority, setPriority] = useState<Priority | null>(task.priority);
   const [startDate, setStartDate] = useState<string | null>(task.scheduledDate);
   const [done, setDone] = useState(task.status === "DONE");
   const [events, setEvents] = useState<TaskEvent[]>([]);
@@ -54,6 +59,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const timer = useTimer();
+  const prioridades = usePrioritiesOn();
   const bumpData = useAppStore((s) => s.bumpData);
   const dataVersion = useAppStore((s) => s.dataVersion);
   const quitOpen = useAppStore((s) => s.quitOpen);
@@ -79,6 +85,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const chanRef = useRef<HTMLDivElement>(null);
   const objRef = useRef<HTMLDivElement>(null);
+  const prioRef = useRef<HTMLDivElement>(null);
   const startRef = useRef<HTMLDivElement>(null);
   const plannedRef = useRef<HTMLDivElement>(null);
   const actualRef = useRef<HTMLDivElement>(null);
@@ -264,6 +271,13 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
 
   const toggle = (p: Picker) => setPicker((cur) => (cur === p ? null : p));
 
+  /** Elegir un nivel cierra el popover y guarda, como el canal y el objetivo. */
+  function elegirPrioridad(p: Priority | null) {
+    setPriority(p);
+    setPicker(null);
+    void commit({ priority: p });
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
@@ -286,7 +300,6 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                   la pieza por la que se reconoce el canal en el resto de la app. */}
               {channel ? (
                 <span className="cat-tag tmodal__chip" style={chipVars(channel)}>
-                  <span className="cat-tag__dot" aria-hidden />
                   {`#${channel.name}`}
                 </span>
               ) : (
@@ -316,6 +329,64 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
 
           <div className="tmodal__top-right">
             {savedFlash && <span className="tmodal__saved">Guardado</span>}
+
+            {/* La prioridad, a la izquierda del objetivo. Misma carcasa que sus
+              * dos vecinos —`chip-wrap` + `tmodal__meta` + `Popover`— y a
+              * propósito: es la tercera cosa que se elige de una lista en esta
+              * barra, y dibujarla distinta la haría parecer otra clase de control.
+              *
+              * **Sin buscador**, y ahí sí se separa del canal y del objetivo: son
+              * cinco opciones fijas que caben enteras en el popover, y un campo de
+              * texto encima de cinco filas es un paso más para llegar a lo mismo.
+              */}
+            {prioridades && (
+              <div className="chip-wrap" ref={prioRef}>
+                <button className="tmodal__meta" onClick={() => toggle("priority")}>
+                  <span className="tmodal__meta-label">Prioridad</span>
+                  {priority ? (
+                    <PriorityTag priority={priority} className="tmodal__prio" />
+                  ) : (
+                    <span className="tmodal__meta-value">
+                      <Flag size={13} />
+                      ninguna
+                    </span>
+                  )}
+                </button>
+                {picker === "priority" && (
+                  <Popover
+                    anchorRef={prioRef}
+                    align="right"
+                    className="popover--pad"
+                    onClose={() => setPicker(null)}
+                  >
+                    <div className="prio-menu">
+                      {PRIORITIES.map((p) => (
+                        <button
+                          key={p}
+                          className={`prio-menu__item${p === priority ? " is-active" : ""}`}
+                          onClick={() => elegirPrioridad(p)}
+                        >
+                          <span
+                            className="prio-tag__dot"
+                            style={{ background: priorityVar(p) }}
+                            aria-hidden
+                          />
+                          {p}
+                        </button>
+                      ))}
+                      <button
+                        className={`prio-menu__item prio-menu__none${
+                          priority === null ? " is-active" : ""
+                        }`}
+                        onClick={() => elegirPrioridad(null)}
+                      >
+                        Sin prioridad
+                      </button>
+                    </div>
+                  </Popover>
+                )}
+              </div>
+            )}
 
             <div className="chip-wrap" ref={objRef}>
               <button className="tmodal__meta" onClick={() => toggle("objective")}>

@@ -24,6 +24,7 @@ function task(over: Partial<Task> & { id: number; title: string }): Task {
     notes: null,
     categoryId: null,
     objectiveId: null,
+    priority: null,
     scheduledDate: "2026-08-10",
     scheduledTime: null,
     position: 0,

@@ -57,6 +57,10 @@ pub struct NewTask {
     pub estimated_minutes: Option<i64>,
     #[serde(default)]
     pub notes: Option<String>,
+    /// `P1`..`P5`, o `None`. La modal de creación todavía no la pide, pero el
+    /// campo existe para no tener que tocar el comando cuando la pida.
+    #[serde(default)]
+    pub priority: Option<String>,
 }
 
 /// Campos editables de una tarea. `None` => no tocar.
@@ -77,9 +81,13 @@ pub struct TaskPatch {
     pub estimated_minutes: Option<Option<i64>>,
     #[serde(default)]
     pub actual_seconds: Option<i64>,
+    /// Doble opción: `None` es "no tocar" y `Some(None)` es "quitar la
+    /// prioridad", que es lo que manda el "Sin prioridad" del detalle.
+    #[serde(default, deserialize_with = "double_option")]
+    pub priority: Option<Option<String>>,
 }
 
-const TASK_COLS: &str = "id, title, notes, category_id, objective_id, scheduled_date, \
+const TASK_COLS: &str = "id, title, notes, category_id, objective_id, priority, scheduled_date, \
     scheduled_time, position, estimated_minutes, actual_seconds, status, completed_at, \
     source, source_state, feed_id, calendar_uid, event_start, event_end, meeting_url, \
     event_description, attendees, rail_only, created_at, updated_at";
@@ -115,14 +123,15 @@ pub fn create_task(conn: &Connection, input: NewTask) -> Result<Task> {
     let position = next_position(conn, input.scheduled_date.as_deref())?;
     conn.execute(
         "INSERT INTO tasks
-            (title, notes, category_id, objective_id, scheduled_date, scheduled_time,
+            (title, notes, category_id, objective_id, priority, scheduled_date, scheduled_time,
              position, estimated_minutes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
         params![
             input.title,
             input.notes,
             input.category_id,
             input.objective_id,
+            input.priority,
             input.scheduled_date,
             input.scheduled_time,
             position,
@@ -157,6 +166,9 @@ pub fn update_task(conn: &Connection, id: i64, patch: TaskPatch) -> Result<Optio
     if let Some(v) = patch.objective_id {
         t.objective_id = v;
     }
+    if let Some(v) = patch.priority {
+        t.priority = v;
+    }
     if let Some(v) = patch.scheduled_time {
         t.scheduled_time = v;
     }
@@ -168,7 +180,8 @@ pub fn update_task(conn: &Connection, id: i64, patch: TaskPatch) -> Result<Optio
     let current_manual = patch.actual_seconds;
     conn.execute(
         "UPDATE tasks SET title=?2, notes=?3, category_id=?4, objective_id=?5,
-            scheduled_time=?6, estimated_minutes=?7, actual_seconds=?8, updated_at=?9
+            scheduled_time=?6, estimated_minutes=?7, actual_seconds=?8, priority=?9,
+            updated_at=?10
          WHERE id=?1",
         params![
             id,
@@ -179,6 +192,7 @@ pub fn update_task(conn: &Connection, id: i64, patch: TaskPatch) -> Result<Optio
             t.scheduled_time,
             t.estimated_minutes,
             t.actual_seconds,
+            t.priority,
             now(),
         ],
     )?;
@@ -2549,6 +2563,7 @@ mod tests {
             scheduled_time: None,
             estimated_minutes: Some(30),
             notes: None,
+            priority: None,
         }
     }
 
@@ -2816,6 +2831,43 @@ mod tests {
         let done = set_task_status(&c, t.id, "DONE").unwrap().unwrap();
         assert_eq!(done.status, "DONE");
         assert!(done.completed_at.is_some());
+    }
+
+    #[test]
+    fn la_prioridad_nace_vacia_se_asigna_y_se_puede_quitar() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", None)).unwrap();
+        // Nadie la priorizó todavía: "sin prioridad" es un estado, no un P3.
+        assert_eq!(t.priority, None);
+
+        let up = update_task(
+            &c,
+            t.id,
+            TaskPatch { priority: Some(Some("P1".into())), ..Default::default() },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(up.priority.as_deref(), Some("P1"));
+
+        // Un patch que no la menciona no la pisa: es el caso de editar el título
+        // desde la card, que manda un patch de un solo campo.
+        let otro = update_task(
+            &c,
+            t.id,
+            TaskPatch { title: Some("y".into()), ..Default::default() },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(otro.priority.as_deref(), Some("P1"));
+
+        let sin = update_task(
+            &c,
+            t.id,
+            TaskPatch { priority: Some(None), ..Default::default() },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(sin.priority, None);
     }
 
     #[test]

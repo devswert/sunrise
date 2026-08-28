@@ -93,6 +93,7 @@ function blankTask(input: NewTaskInput, position: number): Task {
     notes: input.notes ?? null,
     categoryId: input.categoryId ?? null,
     objectiveId: input.objectiveId ?? null,
+    priority: input.priority ?? null,
     scheduledDate: input.scheduledDate ?? null,
     scheduledTime: input.scheduledTime ?? null,
     position,
@@ -403,6 +404,7 @@ export const mock = {
     if (patch.scheduledTime !== undefined) t.scheduledTime = patch.scheduledTime;
     if (patch.estimatedMinutes !== undefined) t.estimatedMinutes = patch.estimatedMinutes;
     if (patch.actualSeconds !== undefined) t.actualSeconds = patch.actualSeconds;
+    if (patch.priority !== undefined) t.priority = patch.priority;
     t.updatedAt = nowISO();
     return t;
   },

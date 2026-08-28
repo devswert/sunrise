@@ -5,11 +5,13 @@ import { chipVars } from "../tasks/chipVars";
 import { formatMinutes } from "../../lib/capacity";
 import { SearchSelect } from "../../components/SearchSelect";
 import { channelOptions } from "../tasks/channelOptions";
+import { PriorityTag } from "../tasks/PriorityTag";
 import { TimePicker } from "../../components/TimePicker";
 import { Popover } from "../../components/Popover";
 import { useTimer, hms } from "../timer/useTimer";
 import { api } from "../../lib/ipc";
 import { useAppStore } from "../../lib/store";
+import { usePrioritiesOn } from "../../lib/settings";
 
 interface Props {
   task: Task;
@@ -56,6 +58,7 @@ export function TaskCardContent({
   const plannedRef = useRef<HTMLDivElement>(null);
   const actualRef = useRef<HTMLDivElement>(null);
   const timer = useTimer();
+  const prioridades = usePrioritiesOn();
   const bumpData = useAppStore((s) => s.bumpData);
   const running = timer.active?.taskId === task.id;
   // El acumulado de la tarea más lo que va de la corrida en curso: este número
@@ -151,6 +154,13 @@ export function TaskCardContent({
           <Clock size={12} />
         </button>
 
+        {/* La prioridad. Como la banderita del objetivo, **no es un botón**: el
+          * nivel se cambia en el detalle, y un target clickeable de 20px entre el
+          * check y el reloj se aprieta sin querer. Sin prioridad no dibuja nada, y
+          * eso no depende de `hidePlaceholders` — no es un relleno de campo vacío,
+          * es una marca que está o no está. */}
+        {prioridades && <PriorityTag priority={task.priority} />}
+
         {/* Marca de "esto cuelga de un objetivo". **Solo el icono, sin el
           * nombre**: en una card de 200px el título del objetivo compite con el de
           * la tarea, y saber de cuál se trata es una pregunta del detalle, no de
@@ -178,10 +188,7 @@ export function TaskCardContent({
             }}
           >
             {category ? (
-              <>
-                <span className="cat-tag__dot" aria-hidden />
-                {`#${category.name}`}
-              </>
+              `#${category.name}`
             ) : (
               <Hash size={12} />
             )}

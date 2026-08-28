@@ -545,11 +545,16 @@
   text-overflow: ellipsis;
 }
 
-/* Category tag (backlog / otras vistas) */
+/* Category tag (backlog / otras vistas).
+
+   **Sin punto adentro**: el chip ya viene teñido con el color del canal, así que
+   el punto decía lo mismo dos veces en 60px de ancho. El punto se queda en las
+   listas sin tinte —las opciones del select (`.ss__dot`), los rótulos de columna
+   del backlog (`.backlog__dot`)—, que es donde el color no está en ningún otro
+   lado. */
 .cat-tag {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
   font-size: 11px;
   color: var(--tag-ink);
   background: color-mix(in srgb, var(--tag-bg) 35%, transparent);
@@ -557,11 +562,30 @@
   border-radius: 999px;
   white-space: nowrap;
 }
-.cat-tag__dot {
+
+/* La marca de prioridad: punto de color + etiqueta ("● P2"). Vive acá al lado
+   del chip de canal y no en la hoja de una vista porque la usan cuatro —la card,
+   el detalle y los dos filtros del backlog—, y son los mismos 7px de punto: en
+   una card las dos marcas se leen en la misma pasada, y dos tamaños de punto se
+   verían como dos cosas distintas.
+
+   El texto va en `--muted` y no en el color del nivel: el color ya lo dice el
+   punto, y teñir además la etiqueta la volvería ilegible en los niveles claros
+   sin ganar nada. */
+.prio-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.prio-tag__dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--tag-bg);
 }
 
 /* --- Objetivos de la semana --- */
@@ -2376,12 +2400,247 @@ button.tc__tag.is-empty {
   color: var(--muted);
 }
 
+/* El botón que abre filtros: uno en la vista Backlog (al lado del buscador) y uno
+   en el panel de la semana. El estilo está acá y no en ninguna de las dos porque
+   es el mismo control en **dos tallas**: en la vista crece a la caja del buscador
+   (`.backlog__tools` más abajo), y acá se queda en la talla chica, que es la del
+   panel.
+
+   Chico y sin caja hundida por defecto: en el panel comparte los 300px con la
+   cabecera, y una caja del peso del buscador se leería como el contenido en vez de
+   como el control. `is-on` lo sube a texto pleno con borde marcado, que es lo que
+   distingue "hay un filtro puesto" de "podés poner uno" — sin eso, un backlog
+   filtrado se ve igual que uno casi vacío. */
+.bfilter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.bfilter:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.bfilter.is-on {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+.bfilter__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* El contador y el botón de filtros, en la misma fila: el contador es justamente
+   lo que los filtros cambian, y el botón queda alineado con la X de arriba sin
+   entrar en esa fila —que es del `panel-head` compartido con la agenda, donde
+   este botón no existe—.
+
+   El `baseline` y no `center`: el contador es texto de 11px y el botón una caja
+   de 24, así que centrados el número quedaba flotando respecto de su etiqueta. */
+.panel-head__meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.panel-head__meta .panel-head__sub {
+  flex: 1;
+  min-width: 0;
+}
+
+/* El popover agrupado del panel: prioridad, canal y orden, uno debajo del otro
+   con su rótulo. Los rótulos existen porque acá las tres secciones comparten
+   caja: sin ellos, cinco chips sobre una lista de canales sobre dos botones se
+   leen como un solo menú largo. */
+/* **Con tope de ancho**, y no es cosmético: los canales llevan su contexto como
+   pista a la derecha (`ha-engineering`), así que el select crecía con el nombre
+   más largo y el popover se salía de la ventana. Con el tope, el nombre largo se
+   corta con puntos suspensivos y la caja se queda donde está. */
+.bfilters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 268px;
+  max-width: calc(100vw - 32px);
+}
+.bfilters__sec {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bfilters__label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  /* Alineado con el texto de las filas de abajo, que llevan su propio padding. */
+  padding-left: 8px;
+}
+/* Lo elegido, al lado del rótulo: el `SearchSelect` marca la fila con un tick,
+   pero puede estar scrolleada fuera de vista con una lista larga de canales. */
+.bfilters__value {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.bfilters__orden {
+  display: flex;
+  gap: 4px;
+}
+
+/* El único "limpiar" que queda, y por eso está al pie y no entre los controles:
+   responde otra pregunta que los toggles —"déjame esto como estaba"— y con tres
+   cosas puestas eso son tres clicks. Solo aparece cuando hay algo que deshacer,
+   así que no puede leerse como un paso del flujo normal. */
+.bfilters__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+}
+.bfilters__reset:hover {
+  background: var(--surface-sunken);
+  border-style: solid;
+  color: var(--ink);
+}
+.bfilters__opt {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+}
+.bfilters__opt:hover {
+  background: var(--surface-sunken);
+}
+.bfilters__opt.is-active {
+  background: var(--surface-sunken);
+  border-color: var(--muted);
+  color: var(--ink);
+  font-weight: 600;
+}
+/* Los cinco niveles van **en fila** acá, y en columna en el botón propio de la
+   vista. No es inconsistencia: en el popover agrupado comparten alto con la lista
+   de canales y los dos botones de orden, y cinco filas de 26px empujaban el orden
+   fuera de la pantalla en una ventana baja. Son etiquetas de dos caracteres, así
+   que en fila siguen siendo un target cómodo. */
+.bfilters .prio-menu {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.bfilters .prio-menu__item {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+}
+.bfilters .prio-menu__item.is-active {
+  border-color: var(--muted);
+}
+/* Dentro del popover agrupado el select no lleva su propio marco: la sección ya
+   lo delimita, y un borde adentro de otro borde se lee como dos cajas. */
+.bfilters .ss {
+  min-width: 0;
+}
+.bfilters .ss__list {
+  max-height: 168px;
+  padding: 2px 0;
+}
+/* El nombre del canal se corta antes de estirar la caja; la pista del contexto
+   cede primero, que es el dato repetido en toda la lista. */
+.bfilters .ss__opt {
+  min-width: 0;
+}
+.bfilters .ss__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bfilters .ss__hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bfilters .ss__search {
+  padding: 4px 8px 6px;
+}
+
+/* En la vista el filtro va al lado del buscador, y **con su misma caja**: mismo
+   alto, mismo radio y el mismo fondo hundido. Compacto como en el panel se leía
+   como un botón pegado a un campo de otra familia — y el desnivel de 6px entre
+   los dos era lo primero que se veía de la cabecera. Acá el espacio sobra, que es
+   justo lo que no pasa en los 300px del panel. */
+.backlog__tools {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+/* El botón vive dentro de un `chip-wrap` (el ancla del popover), así que el
+   `stretch` de la fila llega ahí y no al botón: sin esto quedan 2px de
+   diferencia, que es exactamente el desnivel que se veía. */
+.backlog__tools .chip-wrap {
+  display: flex;
+}
+.backlog__tools .bfilter {
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: 13px;
+  max-width: none;
+}
+.backlog__tools .bfilter:hover,
+.backlog__tools .bfilter.is-on {
+  border-color: var(--muted);
+}
+
 .backlog-panel__body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding-bottom: var(--space-3);
 }
+/* La lista sin rótulos, que es la forma del panel ordenado por prioridad. Solo
+   necesita el aire que en el agrupado pone el primer rótulo de contexto. */
+.backlog-panel__plano {
+  padding-top: var(--space-2);
+}
+
 .backlog-panel__group {
   margin-bottom: var(--space-4);
 }

@@ -37,7 +37,7 @@ una mirada, gana lo segundo.
 
 | Archivo | Qué responde |
 |---|---|
-| [§4.1–4.5 Tareas y tablero](specs/tareas-y-tablero.md) | El CRUD de tareas, la degradación diaria al backlog, la vista semana, Today, el modal de detalle y el backlog. |
+| [§4.1–4.5, 4.30 Tareas y tablero](specs/tareas-y-tablero.md) | El CRUD de tareas, la degradación diaria al backlog, la vista semana, Today, el modal de detalle, el backlog y las prioridades. |
 | [§4.6–4.7, 4.15 Tiempo](specs/tiempo.md) | El timer y el taxímetro, Focus Mode y la weekly review — todo lo que cuenta, atribuye o agrega tiempo trabajado. |
 | [§4.29 Objetivos semanales](specs/objetivos.md) | Qué es un objetivo, el reparto de horas por día y el histórico entre semanas. |
 | [§4.12–4.13 Calendario](specs/calendario.md) | Los feeds ICS, el reconciler y el rail de la jornada. |

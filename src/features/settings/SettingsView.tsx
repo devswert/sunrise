@@ -15,6 +15,7 @@ import { DevToolsCard } from "../devtools/DevToolsCard";
 import { TABS, type TabId, sectionIcon, visibleTabs } from "./secciones";
 import {
   SettingKey,
+  prioritiesOn,
   useCapacitySettings,
   useCollapsedWeekdays,
   useSettingsStore,
@@ -184,9 +185,49 @@ function GeneralCard() {
 
       <JornadaFields />
       <CollapsedDaysField />
+      <Prioridades />
       <InicioAutomatico />
       <Actualizaciones />
     </Card>
+  );
+}
+
+/**
+ * El interruptor general de prioridades.
+ *
+ * Es lo único configurable de la función, y a propósito: los cinco niveles y sus
+ * colores son fijos (ver `Priority` en `enums.ts`). Una escala que se edita deja
+ * de comparar — un P2 de hace tres meses ya no significaría lo mismo que el de
+ * hoy — así que lo único que tiene sentido preguntar es si la usas o no.
+ *
+ * Apagarlo **no borra nada**: esconde el indicador de las cards, el selector del
+ * detalle y los filtros del backlog, y las tareas conservan su nivel. Volver a
+ * encenderlo devuelve todo como estaba, que es lo contrario de tener que
+ * repriorizar el backlog entero por haber probado el switch.
+ */
+function Prioridades() {
+  const values = useSettingsStore((s) => s.values);
+  const setSetting = useSettingsStore((s) => s.set);
+  const on = prioritiesOn(values);
+
+  return (
+    <div className="set-field">
+      <div className="set-field__row">
+        <label className="set-field__label" htmlFor="prioridades">
+          Prioridades
+        </label>
+        <Switch
+          id="prioridades"
+          label="Prioridades"
+          checked={on}
+          onChange={(v) => void setSetting(SettingKey.PRIORITIES_ENABLED, v ? "1" : "0")}
+        />
+      </div>
+      <span className="set-note">
+        Cinco niveles fijos, de P1 (lo que arde) a P5. Apagarlo esconde el indicador de las
+        tarjetas y los filtros del backlog; el nivel que ya tenga cada tarea se conserva.
+      </span>
+    </div>
   );
 }
 

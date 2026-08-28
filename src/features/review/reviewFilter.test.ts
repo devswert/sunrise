@@ -16,6 +16,7 @@ function task(id: number, categoryId: number | null, objectiveId: number | null)
     notes: null,
     categoryId,
     objectiveId,
+    priority: null,
     scheduledDate: "2026-08-11",
     scheduledTime: null,
     position: 0,

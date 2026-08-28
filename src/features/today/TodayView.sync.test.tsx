@@ -20,6 +20,7 @@ const db: Task[] = [
     notes: null,
     categoryId: null,
     objectiveId: null,
+    priority: null,
     scheduledDate: todayISO(),
     scheduledTime: null,
     position: 0,

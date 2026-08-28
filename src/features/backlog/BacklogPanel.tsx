@@ -1,10 +1,16 @@
+import { useMemo, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext } from "@dnd-kit/sortable";
 import { Inbox, X } from "lucide-react";
 import { shortDate } from "../../lib/date";
 import type { Category, Task, TaskPatch } from "../../lib/types";
 import { TaskCard } from "../week/TaskCard";
-import { groupByContext } from "./grouping";
+import { filterByChannel, groupByContext } from "./grouping";
+import { PanelFilters } from "./PanelFilters";
+import { BacklogSort, filterByPriority, sortTasks } from "../tasks/priority";
+import { channelOptions } from "../tasks/channelOptions";
+import { usePrioritiesOn } from "../../lib/settings";
+import type { Priority } from "../../lib/enums";
 
 interface Props {
   tasks: Task[];
@@ -61,6 +67,13 @@ export function BacklogPanel({
   onClose,
   leaving,
 }: Props) {
+  const [levels, setLevels] = useState<Set<Priority>>(new Set());
+  const [channel, setChannel] = useState<number | null>(null);
+  const [sort, setSort] = useState<BacklogSort>(BacklogSort.CREATED);
+  const prioridades = usePrioritiesOn();
+  const opciones = useMemo(() => channelOptions(categories), [categories]);
+  const canal = channel != null ? categories.find((c) => c.id === channel) : null;
+
   const { setNodeRef, isOver, active } = useDroppable({
     id: "backlog-panel",
     // Mismo contrato que las columnas: `date: null` **es** el backlog (§3.2), así
@@ -83,7 +96,62 @@ export function BacklogPanel({
   const isDone = dragged?.status === "DONE";
   const highlight = isOver && !alreadyHere && !isDone;
 
-  const groups = groupByContext(tasks, categories, { includeEmpty: false });
+  /**
+   * Filtrar, ordenar y —según el orden— agrupar.
+   *
+   * **Por prioridad la lista se aplana**: la pregunta que responde ese orden es
+   * "qué es lo más urgente", y esa pregunta es transversal a los contextos. Con
+   * los grupos puestos, un P1 de Issues quedaba debajo de tres P4 de Thinking
+   * porque Thinking va antes en la lista de categorías, que es justo lo contrario
+   * de lo que se estaba preguntando. No se pierde de dónde viene cada tarea: la
+   * card sigue llevando su chip de canal.
+   *
+   * **Por antigüedad sí agrupa**, que es la forma normal del panel: ahí se está
+   * planificando, y el contexto es lo que se está decidiendo.
+   *
+   * Nada de esto baja a SQL, y no es pereza: `list_backlog` ordena por
+   * `category_id, position, id`, y la `position` del backlog es global sobre el
+   * bucket `scheduled_date IS NULL` — es de lo que depende que un drop en 0
+   * signifique "primera de su contexto". Meterle un `ORDER BY` nuevo cambiaría lo
+   * que significa soltar una tarea acá.
+   */
+  const visibles = filterByChannel(
+    prioridades ? filterByPriority(tasks, levels) : tasks,
+    categories,
+    channel,
+  );
+  const orden = prioridades ? sort : BacklogSort.CREATED;
+  const plano = orden === BacklogSort.P;
+  const lista = plano ? sortTasks(visibles, orden) : [];
+  const groups = plano
+    ? []
+    : groupByContext(visibles, categories, { includeEmpty: false }).map((g) => ({
+        ...g,
+        items: sortTasks(g.items, orden),
+      }));
+
+  /** Una card con su rótulo de origen. La dibujan el listado plano y el agrupado. */
+  const card = (t: Task) => (
+    <div className={`backlog-panel__item${rescued.get(t.id) ? " has-from" : ""}`} key={t.id}>
+      <TaskCard
+        task={t}
+        category={t.categoryId != null ? categoryMap.get(t.categoryId) : null}
+        categories={categories}
+        onToggle={onToggle}
+        onOpen={onOpen}
+        onPatch={onPatch}
+        // Sin los rellenos de los campos vacíos: en el backlog la mayoría no tiene
+        // ni estimado ni canal todavía, y una columna de guiones y numerales se lee
+        // como ruido en vez de datos.
+        hidePlaceholders
+      />
+      {/* De qué día se cayó. Saber que esto viene de un día cambia cómo se lee: no
+        * lo guardaste, se degradó solo. */}
+      {!!rescued.get(t.id) && (
+        <span className="backlog-panel__from">Desde el {shortDate(rescued.get(t.id)!)}</span>
+      )}
+    </div>
+  );
 
   return (
     <aside
@@ -102,9 +170,40 @@ export function BacklogPanel({
             <X size={15} />
           </button>
         </div>
-        <p className="panel-head__sub">
-          {tasks.length} {tasks.length === 1 ? "pendiente" : "pendientes"}
-        </p>
+        {/* El control va en la fila del contador y no en una tercera línea, y no
+          * es solo prolijidad: **el contador es lo que los filtros cambian**, así
+          * que puestos al lado se leen juntos ("2 de 12" ← por esto). Abajo, con
+          * la cabecera terminada arriba, parecía el primer elemento de la lista.
+          *
+          * A la altura de la X no va porque esa fila es del `panel-head`
+          * compartido con la agenda, y el backlog es el único de los dos que
+          * filtra: meter ahí un botón que en el otro panel no existe es la forma
+          * de que las dos cabeceras dejen de leerse como la misma. */}
+        <div className="panel-head__meta">
+          <p className="panel-head__sub">
+            {/* Filtrando, el total se queda al lado: igual que en la vista, "2" a
+              * secas escondería que el backlog tiene veinte. */}
+            {visibles.length !== tasks.length && `${visibles.length} de `}
+            {tasks.length} {tasks.length === 1 ? "pendiente" : "pendientes"}
+          </p>
+
+          <PanelFilters
+            levels={levels}
+            onLevels={setLevels}
+            channel={channel}
+            onChannel={setChannel}
+            options={opciones}
+            selected={canal}
+            sort={sort}
+            onSort={setSort}
+            onReset={() => {
+              setLevels(new Set());
+              setChannel(null);
+              setSort(BacklogSort.CREATED);
+            }}
+            priorities={prioridades}
+          />
+        </div>
       </header>
 
       <div className="backlog-panel__body">
@@ -117,10 +216,22 @@ export function BacklogPanel({
          * dispara.
          */}
         <SortableContext items={tasks.map((t) => `task-${t.id}`)} strategy={() => null}>
-          {groups.length === 0 && (
+          {visibles.length === 0 && (
             <p className="backlog-panel__vacio">
-              No hay nada en el backlog. Lo que quede pendiente de un día cae acá solo.
+              {tasks.length > 0
+                ? "Nada en el backlog pasa esos filtros."
+                : "No hay nada en el backlog. Lo que quede pendiente de un día cae acá solo."}
             </p>
+          )}
+
+          {/* Ordenado por prioridad, **una sola lista sin rótulos de contexto**:
+            * la pregunta es qué es lo más urgente, y esa pregunta cruza los
+            * contextos. El chip de canal de cada card sigue diciendo de dónde
+            * viene, así que la agrupación no se pierde, se deja de imponer. */}
+          {plano && (
+            <div className="backlog-panel__list backlog-panel__plano">
+              {lista.map((t) => card(t))}
+            </div>
           )}
           {groups.map((g) => (
             <div className="backlog-panel__group" key={g.folder?.id ?? "none"}>
@@ -133,35 +244,7 @@ export function BacklogPanel({
                 )}
                 {g.folder?.name ?? "Sin contexto"}
               </div>
-              <div className="backlog-panel__list">
-                {g.items.map((t) => (
-                <div
-                  className={`backlog-panel__item${rescued.get(t.id) ? " has-from" : ""}`}
-                  key={t.id}
-                >
-                  <TaskCard
-                    task={t}
-                    category={t.categoryId != null ? categoryMap.get(t.categoryId) : null}
-                    categories={categories}
-                    onToggle={onToggle}
-                    onOpen={onOpen}
-                    onPatch={onPatch}
-                    // Sin los rellenos de los campos vacíos: en el backlog la
-                    // mayoría no tiene ni estimado ni canal todavía, y una columna
-                    // de guiones y numerales se lee como ruido en vez de datos.
-                    hidePlaceholders
-                  />
-                  {/* De qué día se cayó. Acá no agrupa —el panel agrupa por
-                   * contexto— pero saber que esto viene de un día cambia cómo se
-                   * lee: no lo guardaste, se degradó solo. */}
-                  {!!rescued.get(t.id) && (
-                    <span className="backlog-panel__from">
-                      Desde el {shortDate(rescued.get(t.id)!)}
-                    </span>
-                  )}
-                </div>
-                ))}
-              </div>
+              <div className="backlog-panel__list">{g.items.map((t) => card(t))}</div>
             </div>
           ))}
         </SortableContext>

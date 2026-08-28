@@ -5,6 +5,7 @@ import { DndContext } from "@dnd-kit/core";
 import { SortableContext } from "@dnd-kit/sortable";
 import { TaskCard } from "./TaskCard";
 import type { Task } from "../../lib/types";
+import { Priority } from "../../lib/enums";
 
 function makeTask(over: Partial<Task> = {}): Task {
   return {
@@ -13,6 +14,7 @@ function makeTask(over: Partial<Task> = {}): Task {
     notes: null,
     categoryId: null,
     objectiveId: null,
+    priority: null,
     scheduledDate: "2026-08-10",
     scheduledTime: null,
     position: 0,
@@ -119,5 +121,25 @@ describe("TaskCard · origen calendario", () => {
     renderCard(makeTask({ source: "CALENDAR", scheduledTime: null }));
     expect(screen.getByLabelText("Viene del calendario")).toBeInTheDocument();
     expect(screen.getByText("todo el día")).toBeInTheDocument();
+  });
+
+  it("la prioridad se ve en la card, con su punto de color", () => {
+    renderCard(makeTask({ priority: Priority.P2 }));
+
+    const marca = document.querySelector(".prio-tag");
+    expect(marca).toHaveTextContent("P2");
+    expect(marca!.querySelector<HTMLElement>(".prio-tag__dot")!.style.background).toBe(
+      "var(--prio-p2)",
+    );
+  });
+
+  /**
+   * Y no un punto gris con un guion: es una marca que está o no está, igual que
+   * la banderita del objetivo. Por eso tampoco depende de `hidePlaceholders`.
+   */
+  it("sin prioridad no dibuja nada", () => {
+    renderCard(makeTask({ priority: null }));
+
+    expect(document.querySelector(".prio-tag")).toBeNull();
   });
 });

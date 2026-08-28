@@ -42,6 +42,8 @@ export const SettingKey = {
   // quien toca la campana; acá solo se elige.
   FONT_TITLE: "font_title",
   FONT_BODY: "font_body",
+  /** El interruptor general de prioridades. Solo lo lee el front. */
+  PRIORITIES_ENABLED: "priorities_enabled",
 } as const;
 export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
 
@@ -357,6 +359,28 @@ export function useWorkHours(): { start: string; end: string } {
 export function useCollapsedWeekdays(): number[] {
   const values = useSettingsStore((s) => s.values);
   return collapsedWeekdays(values);
+}
+
+/**
+ * Si las prioridades están encendidas. **De fábrica sí.**
+ *
+ * Es el único interruptor de esta función y apaga solo lo que se ve: el
+ * indicador de la card, el selector del detalle, y los filtros y el orden por
+ * prioridad del backlog. **Lo guardado no se toca** — apagar y volver a encender
+ * devuelve cada tarea con el P que tenía, que es lo contrario de tener que
+ * repriorizarlo todo por haber probado el switch.
+ *
+ * Mismo `"1"`/`"0"` que los avisos: cualquier otra cosa cae en el default.
+ */
+export function prioritiesOn(values: SettingsMap): boolean {
+  const raw = values[SettingKey.PRIORITIES_ENABLED]?.trim();
+  if (raw === "0") return false;
+  return true;
+}
+
+/** Atajo para las vistas: si se dibujan las prioridades. */
+export function usePrioritiesOn(): boolean {
+  return prioritiesOn(useSettingsStore((s) => s.values));
 }
 
 /** Atajo para las vistas: capacidad y umbral ya interpretados. */

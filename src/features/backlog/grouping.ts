@@ -58,3 +58,28 @@ export function groupByContext(
   const loose = tasks.filter((t) => folderOf(t, byId) === null);
   return loose.length > 0 ? [...withFolder, { folder: null, items: loose }] : withFolder;
 }
+
+/**
+ * Filtrar por canal, aceptando los **dos niveles** de la jerarquía.
+ *
+ * Elegir un channel (`#deploys`) deja solo las tareas colgadas de ese channel;
+ * elegir un contexto deja todo lo que cuelga de él, channels incluidos. Es la
+ * misma resolución de `folderOf`, y la razón es que el picker ofrece los dos
+ * niveles: con la coincidencia exacta, elegir un contexto en un backlog donde
+ * todo está en channels devolvería la lista vacía.
+ *
+ * `null` no filtra: es "todos los canales", no "los que no tienen".
+ */
+export function filterByChannel(
+  tasks: Task[],
+  categories: Category[],
+  categoryId: number | null,
+): Task[] {
+  if (categoryId == null) return tasks;
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const elegida = byId.get(categoryId);
+  if (elegida && elegida.parentId === null) {
+    return tasks.filter((t) => folderOf(t, byId) === categoryId);
+  }
+  return tasks.filter((t) => t.categoryId === categoryId);
+}

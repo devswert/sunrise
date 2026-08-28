@@ -280,6 +280,9 @@ pub struct Task {
     pub notes: Option<String>,
     pub category_id: Option<i64>,
     pub objective_id: Option<i64>,
+    /// `P1` (lo más urgente) a `P5`, o `None` cuando nadie la priorizó.
+    /// "Sin prioridad" es un estado propio, no un P3 implícito.
+    pub priority: Option<String>,
     pub scheduled_date: Option<String>,
     pub scheduled_time: Option<String>,
     pub position: i64,
@@ -317,6 +320,7 @@ impl Task {
             notes: r.get("notes")?,
             category_id: r.get("category_id")?,
             objective_id: r.get("objective_id")?,
+            priority: r.get("priority")?,
             scheduled_date: r.get("scheduled_date")?,
             scheduled_time: r.get("scheduled_time")?,
             position: r.get("position")?,

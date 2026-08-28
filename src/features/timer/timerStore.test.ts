@@ -10,6 +10,7 @@ function task(over: Partial<Task> & { id: number }): Task {
     notes: null,
     categoryId: null,
     objectiveId: null,
+    priority: null,
     scheduledDate: OTRO_DIA,
     scheduledTime: null,
     position: 0,

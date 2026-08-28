@@ -1,4 +1,4 @@
-import type { SourceState, TaskEventType, TaskSource, TaskStatus } from "./enums";
+import type { Priority, SourceState, TaskEventType, TaskSource, TaskStatus } from "./enums";
 
 /** Categoría de 2 niveles. `parentId === null` => categoría padre (carpeta del backlog). */
 export interface Category {
@@ -40,6 +40,8 @@ export interface Task {
   notes: string | null;
   categoryId: number | null;
   objectiveId: number | null;
+  /** `P1` (lo más urgente) a `P5`. `null` es "sin prioridad", el estado inicial. */
+  priority: Priority | null;
   scheduledDate: string | null; // "YYYY-MM-DD" | null (=> backlog)
   scheduledTime: string | null; // "HH:mm" | null (=> aparece en el rail)
   position: number;
@@ -242,6 +244,7 @@ export interface NewTaskInput {
   scheduledTime?: string | null;
   estimatedMinutes?: number | null;
   notes?: string | null;
+  priority?: Priority | null;
 }
 
 /**
@@ -256,6 +259,7 @@ export interface TaskPatch {
   scheduledTime?: string | null;
   estimatedMinutes?: number | null;
   actualSeconds?: number;
+  priority?: Priority | null;
 }
 
 /** Un invitado a una reunión importada del calendario. Solo lectura. */

@@ -9,6 +9,7 @@ import { useUpdateStore } from "../updates/updateStore";
 import {
   SettingKey,
   collapsedWeekdays,
+  prioritiesOn,
   useSettingsStore,
   workHours,
 } from "../../lib/settings";
@@ -366,5 +367,31 @@ describe("SettingsView · campos que no son prosa", () => {
       expect(campo).toHaveAttribute("spellcheck", "false");
       expect(campo).toHaveAttribute("autocorrect", "off");
     }
+  });
+});
+
+/**
+ * El único ajuste de la función: los cinco niveles y sus colores son fijos.
+ * Apagarlo esconde lo que se ve y **no borra el nivel de ninguna tarea**, que es
+ * lo que permite probar el switch sin costo.
+ */
+describe("SettingsView · prioridades", () => {
+  it("vienen encendidas de fábrica", () => {
+    expect(prioritiesOn({})).toBe(true);
+  });
+
+  it("el switch las apaga y las vuelve a encender", async () => {
+    render(<SettingsView />);
+    const sw = await screen.findByLabelText("Prioridades");
+
+    await userEvent.click(sw);
+    expect(prioritiesOn(useSettingsStore.getState().values)).toBe(false);
+
+    await userEvent.click(sw);
+    expect(prioritiesOn(useSettingsStore.getState().values)).toBe(true);
+  });
+
+  it("un valor que no se entiende las deja encendidas, no apagadas a medias", () => {
+    expect(prioritiesOn({ [SettingKey.PRIORITIES_ENABLED]: "vaya uno a saber" })).toBe(true);
   });
 });

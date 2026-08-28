@@ -1,4 +1,4 @@
-# §4.1–4.5 Tareas y tablero
+# §4.1–4.5, 4.30 Tareas y tablero
 
 El CRUD de tareas, la degradación diaria al backlog, la vista semana y Today, el modal de detalle y el backlog.
 
@@ -233,6 +233,13 @@ siguiente corrida.
   Feedback = el flash "Guardado". **No agregues un botón Guardar.**
 - Channel, objetivo y fecha van en popovers; channel y objetivo usan
   `SearchSelect` (búsqueda local).
+- **La prioridad va a la izquierda del objetivo**, con la misma carcasa que sus
+  dos vecinos (`chip-wrap` + `tmodal__meta` + `Popover`): es la tercera cosa que
+  se elige de una lista en esa barra, y dibujarla distinta la haría parecer otra
+  clase de control. **Sin buscador**, y ahí sí se separa de los otros dos: son
+  cinco opciones fijas que caben enteras, y un campo de texto encima de cinco
+  filas es un paso más para llegar a lo mismo. "Sin prioridad" manda `null`
+  explícito, no la ausencia del campo — ausente en el patch significa "no tocar".
 - **Todas las mutaciones del modal avisan** (`bumpData()`, §5.3), borrar incluido.
   El `onChanged` de la vista que lo monta recarga solo lo que esa vista considera
   suyo: en el ritual diario es `useBoard` con hoy, mientras el repaso del día
@@ -354,6 +361,17 @@ Se ve en tres lugares:
   que todavía no tiene ninguna (de ahí el `includeEmpty: !filtro`). El subtítulo
   deja el total al lado del filtrado ("1 de 12 pendientes"): el filtrado a secas
   escondería cuántas hay en realidad.
+
+  **El filtro por prioridad** vive al lado del buscador, **con su misma caja**
+  (mismo alto, mismo radio, mismo fondo hundido): compacto como en el panel se
+  leía como un botón pegado a un campo de otra familia, y el desnivel era lo
+  primero que se veía de la cabecera. Acá el espacio sobra, que es justo lo que no
+  pasa en el panel — de ahí que el mismo `.bfilter` tenga dos tallas. Es
+  multiselección: el
+  caso real no es "muéstrame los P1" sino "muéstrame lo que arde", que son dos o
+  tres niveles. El conjunto vacío significa **todas**, no ninguna, así que
+  destildar el último devuelve la lista entera. Se combina con el buscador, y
+  cuenta como filtro para el `includeEmpty` y para el "N de M".
 - **El sidebar**: solo el item, con el total en un **badge**. Cuenta todo,
   incluidas las tareas sin canal, para que el número coincida con la lista que
   abre. Es badge y no número suelto porque al lado del atajo, en la misma
@@ -397,6 +415,75 @@ rótulos "desde el X".
   *empieza* con el puntero adentro y la card fuente sigue montada en su
   rectángulo, así que un empujón de 5px —la constante de activación— resuelve el
   panel; sin el guard, ese empujón reescribiría la `position` de todo el bucket.
+- **Filtra por prioridad y por canal, y ordena por prioridad o antigüedad, todo
+  desde un solo control** (`PanelFilters`). La primera versión eran tres botones
+  en fila, cada uno con lo aplicado escrito encima, y **envolvían a dos líneas en
+  cuanto el canal elegido tenía nombre largo**: el ancho de la fila dependía del
+  valor, y en 300px eso rompía la caja de la cabecera. Ensanchar el panel no es
+  opción (se superpone a una columna del board) y tres iconos pelados no dicen
+  qué hacen. Con un botón el ancho deja de depender de lo aplicado — el nombre del
+  canal vive adentro del popover, que es portal y tiene el espacio que necesita.
+
+  Dos marcas en el botón, y son distintas a propósito: **el contador es de
+  filtros** (niveles + canal), que es lo que recorta la lista; **el orden no suma
+  al contador** porque siempre hay uno y un "1" permanente no distinguiría nada,
+  pero cuando no es el de por defecto el botón igual se enciende.
+
+  **Todo se saca con el mismo click con que se puso**: el canal es un toggle igual
+  que los niveles. No hay un limpiar por sección — ni "Ver todas" en los niveles ni
+  la fila "Todos los canales" del select—: el primero solo existía cuando había
+  algo puesto (la lista cambiaba de alto al elegir) y a lo ancho pesaba más que los
+  cinco niveles juntos siendo la acción de deshacer; la segunda además desaparece
+  al escribir en el buscador, o sea que cómo se quitaba el filtro dependía de lo
+  que hubieras tecleado.
+
+  **Sí hay un "Restablecer", uno solo y al pie del popover.** No es lo mismo que
+  los anteriores: aquellos eran uno por sección, metidos entre los controles, y ahí
+  la forma de quitar un filtro competía con la de ponerlo. Este responde otra
+  pregunta —"déjame esto como estaba"— que con tres controles puestos son tres
+  clicks, y deja también el orden en antigüedad. Aparece solo cuando hay algo que
+  deshacer.
+
+  **El botón va en la fila del contador**, no en una línea propia debajo ni en la
+  del título. Lo primero porque el contador es justamente lo que los filtros
+  cambian ("2 de 12" ← por esto), y en una tercera línea, con la cabecera ya
+  terminada arriba, se leía como el primer elemento de la lista. Lo segundo porque
+  la fila del título es del `panel-head` **compartido con el panel de agenda**, y el
+  backlog es el único de los dos que filtra: un botón ahí que en el otro panel no
+  existe es la forma de que las dos cabeceras dejen de leerse como la misma.
+
+  **La X se queda.** El panel ya se cierra de tres formas —la X, Escape, y el icono
+  de la tira, que es toggle— y la X es la única visible. Cerrar por click afuera
+  quedó descartado y no por gusto: este panel participa del DnD, y un arrastre que
+  termina sobre una columna suelta el puntero justamente afuera del panel.
+
+  Adentro, el `SearchSelect` del canal va **embebido y no detrás de un segundo
+  popover**: un popover encima de otro se cierra al primer click fuera del de
+  arriba, que ahí es el de adentro. El filtro por canal acepta los **dos
+  niveles** —elegir un contexto arrastra a sus channels (`filterByChannel`)—,
+  porque el picker ofrece los dos y con la coincidencia exacta elegir un contexto
+  devolvería la lista vacía.
+
+  **El orden es por defecto antigüedad ascendente** (la más vieja arriba: el
+  backlog se lee como una fila) y ahí **agrupa por contexto**, que es la forma
+  normal del panel: se está planificando, y el contexto es lo que se decide.
+
+  **Por prioridad, en cambio, la lista se aplana**: los rótulos de contexto
+  desaparecen y quedan todas las tareas en una sola columna, de P1 a P5 y las sin
+  prioridad al final (desempate por antigüedad). La primera versión ordenaba solo
+  **dentro** de cada contexto y estaba mal por dos razones que se vieron recién al
+  usarla: con una o dos tareas por contexto no movía nada y el control parecía
+  roto, y peor, un P1 de Issues quedaba debajo de tres P4 de Thinking solo porque
+  Thinking va antes en la lista de categorías — lo contrario de la pregunta que se
+  estaba haciendo. La pregunta de ese orden es **qué es lo más urgente, y cruza
+  los contextos**. No se pierde de dónde viene cada tarea: la card sigue llevando
+  su chip de canal.
+
+  **Nada de esto baja a SQL, y no es pereza**: `list_backlog` ordena por
+  `category_id, position, id`, y de esa `position` global depende que un drop en
+  0 signifique "primera de su contexto". Un `ORDER BY` nuevo cambiaría lo que
+  significa soltar una tarea acá. El filtro y el comparador son puros y viven en
+  `src/features/tasks/priority.ts` y `grouping.ts`, con sus tests.
 - **Una tarea completada no entra.** `list_backlog` filtra `status='TODO'`, así
   que saldría del día sin entrar al backlog y quedaría **inalcanzable en toda la
   app**. El drop es no-op y el panel tampoco se ilumina para ella (un marco
@@ -480,3 +567,42 @@ son la misma superficie.
    Arrastrando no se alcanza un día fuera de las columnas visibles — hay que
    cerrar el panel, scrollear y reabrirlo. Es una limitación del layout, no un
    bug pendiente.
+
+### 4.30 Prioridades
+
+Cinco niveles, **`P1` (lo que arde) a `P5` (lo que puede esperar)**, más
+"sin prioridad" que es `NULL` y **no un sexto valor** (§3.1, §3.2). El nivel vive
+en `tasks.priority` (migración 16) y el enum en `src/lib/enums.ts` (`Priority`,
+`PRIORITIES`).
+
+**No se configuran, y esa es la decisión.** Una escala que se edita deja de
+comparar: un P2 de hace tres meses ya no significaría lo mismo que el de hoy, y el
+color de cada nivel está calculado contra los otros cuatro. Lo único configurable
+es el interruptor general en Configs → General (`priorities_enabled`, encendido de
+fábrica): apaga el indicador de las cards, el selector del detalle y los filtros y
+el orden del backlog, y **no borra nada** — volver a encenderlo devuelve cada tarea
+con el nivel que tenía. Por eso las vistas que filtran dejan de aplicar el filtro
+cuando está apagado: una lista recortada por un control invisible no se puede
+deshacer.
+
+**Los colores son una rampa, no cinco colores elegidos** (`--prio-p1`…`--prio-p5`
+en `tokens.css`): los extremos son el rojo de P1 y el celeste de P5, y los tres del
+medio salen de interpolar en **OKLCH** con el matiz por la vuelta corta —la que
+pasa por ámbar, verde y verde agua—, de modo que la escala leída en orden se ve
+como un semáforo. En sRGB el camino recto pasa por un gris embarrado en P3, que al
+lado de la paleta de canales se lee como un color roto y no como un nivel
+intermedio. **ΔE mínimo entre los cinco: 11.0**, más holgado que los 8.1 de los
+canales porque acá son cinco y no veinticuatro.
+
+**No llevan `-ink` y no deben llevarlo.** La marca es siempre punto de color +
+etiqueta (`PriorityTag`, `● P2`), nunca la etiqueta escrita encima del color: así
+el texto es el del tema, ningún nivel tiene que sostener un contraste calibrado
+contra las superficies de los dos temas, y el nivel sigue siendo legible para quien
+no distingue estos cinco matices entre sí. Sin prioridad **no dibuja nada** —es una
+marca que está o no está, como la banderita del objetivo, así que tampoco depende
+de `hidePlaceholders`.
+
+Dónde aparece: el indicador en la card (§4.3), el selector en el detalle (§4.4), y
+el filtro de la vista Backlog más el filtro y el orden del panel (§4.5). La lógica
+—color, comparador, filtro y orden— es pura y vive en
+`src/features/tasks/priority.ts`.
