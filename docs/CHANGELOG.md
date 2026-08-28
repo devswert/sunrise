@@ -15,6 +15,85 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.5.0 — 2026-08-27
+
+Los objetivos de la semana dejaron de ser una lista que se mira: ahora se abren
+en detalle, reparten sus horas por día creando las tareas solas, y la weekly
+review filtra por objetivo y canal para decir cuánto se fue en cada cosa. El
+calendario también dejó de mentir: una reunión movida ya no alterna entre su
+hora vieja y la nueva de una sincronización a otra, y lo que rechazaste no
+aparece.
+
+Si actualizas, el update se ve mientras baja —con barra y porcentaje— y la app
+vuelve al frente al reiniciarse, en vez de quedar escondida detrás de lo que
+tuvieras abierto.
+
+### Detalle
+
+**Objetivos**
+
+- **La vista semanal navega entre semanas.** Antes anclaba en una fecha
+  congelada al abrir, así que solo se veían los objetivos de la semana actual.
+- **Modal de detalle con reparto Lun→Dom**: elegir minutos en un día crea la
+  tarea colgada del objetivo. Nunca borra — a cero la desliga.
+- **Los objetivos llevan canal propio**, de la misma tabla que usan las tareas
+  (migración 13). No hay canales especiales de objetivos.
+- **Weekly review**: los tres paneles a un tercio, filtros por objetivo y canal
+  (OR dentro de una dimensión, AND entre dimensiones) y el corte de horas entre
+  objetivos y el resto.
+- **La card marca si la tarea cuelga de un objetivo**, con el icono y sin nombre.
+- **La tira de las últimas semanas va arriba** de los objetivos —es el contexto
+  con el que uno decide qué proponerse— y deja de rebotar entre estados.
+- **"Sin canal" y "Sin objetivo" ahora sí borran.** Un patch con `null` no se
+  distinguía de un campo ausente dentro de Tauri, así que esos dos botones del
+  detalle de tarea no hacían nada en la app instalada.
+- **Una reunión ligada a un objetivo cuenta sus horas.** Faltaba el
+  `objective_id` en una de las dos consultas del reparto por día.
+
+**Calendario**
+
+- **Una reunión movida se queda donde la moviste.** Google manda el evento
+  maestro y la instancia editada con la misma clave, y el orden entre las dos
+  cambia entre descargas: la hora alternaba entre la vieja y la nueva de una
+  sincronización a otra.
+- **Editar una recurrente con "este evento y los siguientes" ya no duplica.**
+  La serie partida cambiaba la clave de cada repetición futura y se perdían
+  canal, notas y posición; la migración 15 alinea las filas que ya estaban así.
+- **Lo que rechazaste no entra.** Se detecta con tu propio correo, que viene en
+  el feed: no hay nada que configurar. Y el organizador conserva su respuesta al
+  deduplicarse — se perdía en todos los eventos que organizas tú.
+- **La columna del día ordena los eventos por hora**, pero un evento nunca
+  desplaza una tarea tuya: la columna es el plan del día.
+- **Eventos ignorados, por serie**: un focus time ocupa su hora en el rail y
+  nada más — fuera del tablero, de la carga, de Focus, de los avisos y de la
+  review.
+
+**Actualizaciones**
+
+- **El avance de la descarga se ve**: preparando, bajando con su porcentaje,
+  instalando. Sin tamaño anunciado va indeterminada en vez de inventar un número.
+- **Al reiniciar, la app vuelve al frente.** macOS no activaba la ventana nueva,
+  y el síntoma era "apreté actualizar y nunca se reinició".
+- **El aviso del sidebar es una tarjeta, no una fila**, y el fallo ahora se ve:
+  antes vivía solo en el tooltip.
+- **El anuncio "Lo nuevo" amanece**: cabecera con el sol saliendo por el
+  portezuelo de la cordillera, título con la versión y su fecha.
+- **"Ver lo nuevo" en Configs**, porque el aviso dura 30 s y después el anuncio
+  quedaba inalcanzable. E instalar desde Configs ya no ofrece una segunda
+  descarga del mismo paquete desde el sidebar.
+
+**Interfaz**
+
+- **Lo que está corriendo cambia de icono.** Los botones que esperaban giraban su
+  propio icono —el de sync hacía dar vueltas un calendario, que rotando no
+  significa nada—; ahora se reemplaza por el spinner, en los siete lugares que
+  tenían estado de espera, incluidos tres que no mostraban nada: "Respaldar
+  ahora", "Agregar" de un feed y "Elegir un audio".
+- **El icono girando ya no late.** Un `<svg>` recorta por defecto y la tinta de
+  las esquinas se salía dos veces por vuelta.
+- **La vista semanal de objetivos estrena cabecera** con icono, como sus dos
+  vistas hermanas.
+
 ## v0.4.0 — 2026-08-25
 
 Planificar la semana ya no obliga a salir del tablero: el backlog se abre como
