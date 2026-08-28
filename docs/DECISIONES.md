@@ -634,7 +634,7 @@ minuto no cambia nada—, pero **no** cuando falló, porque eso puede ser pasaje
 un retorno booleano, un aviso que falló queda marcado como dado y no llega nunca.
 
 **Un esquema nuevo en las capabilities dejó la app sin avisos, y el mecanismo sigue
-sin explicarse** (anotado como deuda en SPECS §9). El síntoma aparecía en la consola
+sin explicarse** (anotado como deuda en `specs/invariantes.md`, §9). El síntoma aparecía en la consola
 del webview, lejos de lo que se había tocado. Se aisló revirtiendo los dos cambios
 de esa tanda y probándolos de a uno. **La lección del método: dos cambios sin
 verificar entremedio convierten una regresión de un minuto en una de veinte.**

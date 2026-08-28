@@ -1,11 +1,8 @@
-# sunrise — SPECS §4: Tiempo: timer, Focus y rollup
+# §4.6–4.7, 4.15 Tiempo: timer, Focus y rollup
 
 El taxímetro, Focus Mode y la weekly review — o sea todo lo que cuenta, atribuye o agrega tiempo trabajado.
 
-> Es una parte de [SPECS.md](../SPECS.md), partido por área. **La numeración de
-> secciones no cambia**: un `§4.12` en un comentario del código sigue apuntando
-> acá. El índice completo está en el [§4 de SPECS.md](../SPECS.md#4-funcionalidades-por-área).
-
+Vuelve al [índice de SPECS](../SPECS.md).
 ---
 
 ### 4.6 Timer / taxímetro

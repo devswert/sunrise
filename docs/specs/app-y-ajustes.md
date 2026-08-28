@@ -1,11 +1,8 @@
-# sunrise — SPECS §4: El marco de la app y sus ajustes
+# §4.8–4.11, 4.24, 4.28 El marco de la app y sus ajustes
 
 Settings, atajos de teclado, el cierre de la app, el tema, Dev Tools y Apariencia.
 
-> Es una parte de [SPECS.md](../SPECS.md), partido por área. **La numeración de
-> secciones no cambia**: un `§4.12` en un comentario del código sigue apuntando
-> acá. El índice completo está en el [§4 de SPECS.md](../SPECS.md#4-funcionalidades-por-área).
-
+Vuelve al [índice de SPECS](../SPECS.md).
 ---
 
 ### 4.8 Settings

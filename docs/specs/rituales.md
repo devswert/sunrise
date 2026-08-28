@@ -1,11 +1,8 @@
-# sunrise — SPECS §4: Rituales del día
+# §4.14, 4.16 Rituales del día
 
 La planificación diaria y el cierre del día con su bitácora: los dos gestos guiados que abren y cierran la jornada.
 
-> Es una parte de [SPECS.md](../SPECS.md), partido por área. **La numeración de
-> secciones no cambia**: un `§4.12` en un comentario del código sigue apuntando
-> acá. El índice completo está en el [§4 de SPECS.md](../SPECS.md#4-funcionalidades-por-área).
-
+Vuelve al [índice de SPECS](../SPECS.md).
 ---
 
 ### 4.14 Planificación diaria (`DailyPlanningView`)
@@ -84,10 +81,16 @@ cual quedó. Quien planifica decide si la tarea va a hoy, al backlog o se queda.
 - **El repaso mide lo trabajado con `day_work`, no con `actual_seconds`**:
   ese campo es el total de la tarea, y una arrastrada de tres días lo trae todo
   junto — el repaso pregunta por **ese** día (misma Regla 2 de M3.5).
+  **`day_work` acota el día en hora local, no en UTC**: las 22:00 en Chile ya son
+  el día siguiente en UTC, así que con el corte en UTC el trabajo de la noche se
+  le acredita al día equivocado. Una corrida en curso viene marcada y sin
+  segundos, y una fecha ilegible devuelve vacío en vez de todo.
 - **El paso 1 repasa el último día con tareas, no "ayer" a secas.** Un lunes,
   ayer es domingo y está vacío, mientras que lo que hay que cerrar es el viernes.
   Se lee una ventana de 7 días hacia atrás y se elige la fecha más reciente con
-  algo (`lastDayWithTasks`) — **el mismo día que preserva §4.2**.
+  algo (`lastDayWithTasks`) — **el mismo día que preserva §4.2**. Ignora hoy y el
+  futuro: el repaso es sobre lo que ya pasó, y una tarea agendada para mañana no
+  es algo que cerrar.
 - **Es el único camino para rescatar una reunión.** La degradación no toca las de
   calendario, así que una reunión sin cerrar se queda en su día para siempre y
   ninguna vista de hoy la vuelve a mostrar; el botón "A hoy" del paso 1 es la

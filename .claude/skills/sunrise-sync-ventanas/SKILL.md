@@ -5,7 +5,7 @@ description: Cómo se sincroniza el estado en sunrise entre sus dos ventanas nat
 
 # Sincronización de estado en sunrise
 
-**Las reglas están en `docs/SPECS.md` §5** —las tres capas de estado, la tabla de claves de `localStorage`, `useDataSync`,
+**Las reglas están en [`docs/specs/sincronizacion.md`](../../../docs/specs/sincronizacion.md) (§5)** —las tres capas de estado, la tabla de claves de `localStorage`, `useDataSync`,
 `useDayWatcher` y las trampas del taxímetro, cada una con su detalle. Léelo antes
 de diagnosticar cualquier "no se refresca".
 

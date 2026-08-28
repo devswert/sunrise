@@ -5,7 +5,13 @@ description: Cómo agregar o cambiar datos en sunrise de punta a punta — migra
 
 # Capa de datos de sunrise
 
-## El flujo, y por qué está partido así
+Las reglas del esquema y de los campos están en
+[`docs/specs/modelo-de-datos.md`](../../../docs/specs/modelo-de-datos.md) (§3) y
+[`arquitectura.md`](../../../docs/specs/arquitectura.md) (§2). Acá está el
+**procedimiento** —el orden de los eslabones— y las trampas que no son reglas sino
+formas de perder una tarde.
+
+## El flujo
 
 ```
 db/migrations.rs   → esquema versionado
@@ -18,59 +24,88 @@ src/lib/ipc.ts     → cliente tipado único
 src/lib/mockDb.ts  → misma API, in-memory
 ```
 
-`repo.rs` **no conoce Tauri**: recibe `&Connection`, y eso es exactamente lo que
-lo hace testeable con SQLite en memoria. Por eso **la lógica de negocio va en
-`repo.rs`, no en `commands.rs`**. Un comando que valida, decide u ordena está en
-la capa equivocada: bájalo a `repo.rs` y déjale al comando solo tomar el `Mutex`
-y mapear el error a `String`.
-
-`ipc.ts` decide en cada llamada: dentro de Tauri hace `invoke`, fuera delega en
-`mock`. Eso es lo que permite correr los tests en jsdom y ver la app en el
-browser sin Tauri. Por eso **ningún componente llama `invoke` directo.**
+**La lógica de negocio va en `repo.rs`, no en `commands.rs`.** Un comando que
+valida, decide u ordena está en la capa equivocada: bájalo, y déjale al comando
+tomar el `Mutex` y mapear el error a `String`. **Ningún componente llama `invoke`
+directo.**
 
 ## Checklist para un comando nuevo
 
-Salta los pasos que no apliquen, pero revísalos todos — el que se olvida suele
-ser el 5 o el 6, y el síntoma aparece lejos (tests rojos, app en blanco).
+El que se olvida suele ser el 5 o el 6, y el síntoma aparece lejos.
 
-1. **¿Necesita esquema?** Agrega una **versión nueva** a `MIGRATIONS` en
-   `src-tauri/src/db/migrations.rs`. Las migraciones aplicadas son **inmutables**:
-   editar una que ya corrió deja tu DB y la del usuario en estados distintos, y
-   el runner no lo va a notar (compara solo `MAX(version)`).
-2. **Modelo** en `src-tauri/src/models.rs` con
-   `#[serde(rename_all = "camelCase")]` y su `from_row`.
-3. **Función** en `src-tauri/src/repo.rs`, pura sobre `&Connection`.
-4. **Test Rust** en el `mod tests` de `repo.rs` (usa `db::open_in_memory()`).
-5. **Comando** en `src-tauri/src/commands.rs` **y su línea en el
-   `invoke_handler![]` de `src-tauri/src/lib.rs`**. Si falta el registro, falla
-   en runtime, no al compilar; lo vigila `src/lib/ipcContract.test.ts`.
-6. **Tipo TS** en `src/lib/types.ts` (espejo exacto del modelo, en camelCase).
-   **Los nombres son el contrato y nada los compara**: `types.ts` se escribe a
-   mano, TypeScript no ve el otro lado, y un campo mal escrito no falla — llega
-   `undefined`. Peor: el mock puede estar de acuerdo con el front y los dos
-   equivocados, y entonces el browser y los tests se ven perfectos y **falla solo
-   dentro de Tauri**, que es el único lado donde el nombre lo pone serde. Ya pasó
-   (`Rescue.from_date` → el front leía `from`) y el síntoma fue una pantalla en
-   blanco, no un dato faltante. Si el modelo es nuevo, deja un test que serialice
-   y compare las claves, como `los_nombres_de_rescue_son_los_que_lee_el_front` en
-   `models.rs`.
-7. **Entrada en `src/lib/ipc.ts`** con las dos ramas. **La clave de cada
-   argumento del `invoke` es el parámetro de Rust en camelCase** (`to_date` →
-   `toDate`), no como se llame el argumento de la función TS. Con una clave
-   equivocada Tauri rechaza la llamada **entera** —no llegan datos parciales,
-   llega una promesa rechazada— y ninguna de las dos suites lo ve, porque las dos
-   corren contra `mockDb`, que recibe posicional. `src/lib/ipcContract.test.ts`
-   compara `ipc.ts` contra `commands.rs` y `lib.rs` justamente por eso.
-8. **Implementación en `src/lib/mockDb.ts`.** Sin esto los tests que toquen ese
-   camino se caen y la app deja de verse en el browser.
+1. **¿Necesita esquema?** Versión **nueva** en `MIGRATIONS`. Editar una aplicada
+   deja tu DB y la del usuario en estados distintos, y el runner no lo nota
+   (compara solo `MAX(version)`).
+2. **Modelo** en `models.rs` con `#[serde(rename_all = "camelCase")]` y su `from_row`.
+3. **Función** en `repo.rs`, pura sobre `&Connection`.
+4. **Test Rust** en su `mod tests` (usa `db::open_in_memory()`).
+5. **Comando** en `commands.rs` **y su línea en el `invoke_handler![]` de
+   `lib.rs`**. Sin el registro falla en runtime, no al compilar.
+6. **Tipo TS** en `types.ts`, espejo exacto en camelCase. **Los nombres son el
+   contrato y nada los compara**: se escribe a mano, TypeScript no ve el otro lado,
+   y un campo mal escrito llega `undefined`. Peor: el mock puede estar de acuerdo
+   con el front y los dos equivocados, y entonces browser y tests se ven perfectos
+   y **falla solo dentro de Tauri**. Ya pasó (`Rescue.from_date`) y el síntoma fue
+   una pantalla en blanco. Si el modelo es nuevo, deja un test que serialice y
+   compare las claves.
+7. **Entrada en `ipc.ts`** con las dos ramas. **La clave de cada argumento del
+   `invoke` es el parámetro de Rust en camelCase** (`to_date` → `toDate`), no como
+   se llame el argumento de la función TS. Con una clave equivocada Tauri rechaza
+   la llamada **entera**, y ninguna suite lo ve porque las dos corren contra
+   `mockDb`, que recibe posicional.
+8. **Implementación en `mockDb.ts`.** Sin esto los tests de ese camino se caen y la
+   app deja de verse en el browser.
 
-Si el comando usa una API de ventana, agrega su permiso en
-`src-tauri/capabilities/default.json`.
+Lo vigila `src/lib/ipcContract.test.ts`. Si el comando usa una API de ventana,
+agrega su permiso en `src-tauri/capabilities/default.json`.
+
+## Los patches distinguen tres estados, no dos
+
+En Rust `Option<Option<T>>`, en TS `T | null` opcional: **ausente** = no tocar ·
+**`null`** = poner a NULL · **valor** = escribir. Aplanarlo a `Option<T>` pierde la
+capacidad de borrar un campo.
+
+**Va con `#[serde(default, deserialize_with = "double_option")]`.** El derive pelado
+no alcanza: un `null` cae en `visit_none()` del `Option` de afuera y llega como
+`None`, igual que un campo ausente. Estuvo roto en `TaskPatch` desde el principio
+—"Sin canal" y "Sin objetivo" no borraban nada dentro de Tauri— con las dos suites
+en verde, porque **un test que construye el patch en Rust no cruza serde y `mockDb`
+recibe el objeto de JS**. El test que sirve deserializa el JSON:
+`el_patch_distingue_null_de_ausente_como_lo_manda_el_front`.
+
+Vale igual para `ObjectivePatch` y para `day_task_notes.note` (sin fila = no
+incluida · `''` = incluida sin resumen · texto = incluida y escrita; por eso
+`include_in_log` y `set_day_task_note` son funciones distintas, y vaciar el texto
+no borra la fila).
+
+**`actual_seconds` no se escribe con `update_task`**: el patch lo desvía a
+`set_actual_seconds`. Lee la skill `sunrise-timer-y-tiempo` antes de tocar tiempo.
+
+## `move_task` y el historial
+
+**El `position` que recibe es el índice final**, contando que la tarea ya salió de
+la lista: es lo que dnd-kit muestra mientras arrastras. El día destino se
+**renumera entero** (0..n, sin huecos ni empates); antes corría +1 las tareas
+`>= position`, que se equivoca en uno al reordenar dentro del mismo día. El índice
+se cuenta contra la lista **visible**, así que la renumeración incluye a las
+`ORPHANED` y a los eventos ignorados (`rail_only`) —para no empatar posiciones—
+pero los saltea al ubicar. Olvidar uno de los dos filtros deja la card un lugar más
+abajo de donde se soltó. Fuera de rango es "al final". `mockDb.moveTask` hace lo
+mismo, y hay un test a cada lado.
+
+Mandar al backlog es `move_task(id, null, 0)`.
+
+**Historial**: `move_task` registra `MOVED`, o `START_DATE_SET` si venía del
+backlog. Un `MOVED` con `to_date` nulo es "se fue al backlog", y de ahí sale el
+grupo "venían de un día" (`rescued_from_backlog`): no hizo falta columna ni evento
+propio. `create_task` registra `CREATED`, más `START_DATE_SET` si nace agendada. Si
+agregas otra forma de cambiar la fecha, registra su evento o el historial del modal
+queda con agujeros.
 
 ## El calendario tiene una capa más
 
-`src-tauri/src/calendar/` parte en tres porque `repo.rs` **no puede tocar la
-red** sin dejar de ser testeable:
+`src-tauri/src/calendar/` parte en tres porque `repo.rs` **no puede tocar la red**
+sin dejar de ser testeable:
 
 | Capa | Qué | Pureza |
 |---|---|---|
@@ -78,263 +113,102 @@ red** sin dejar de ser testeable:
 | `calendar::ics` | texto → `IcsEvent` | puro, se prueba con fixtures |
 | `repo::import_events` | escribe las tareas | puro sobre `&Connection` |
 
-El comando (`sync_calendar_feed`) solo las encadena. Si te encuentras
-decidiendo algo ahí —qué evento entra, cómo se calcula una fecha— va en `ics`;
-si es cómo se guarda, en `repo`. Detalle de las reglas en `docs/specs/calendario.md` §4.12.
+El comando (`sync_calendar_feed`) solo las encadena. Si decides algo ahí —qué
+evento entra, cómo se calcula una fecha— va en `ics`; si es cómo se guarda, en
+`repo`. Reglas en [`calendario.md`](../../../docs/specs/calendario.md) §4.12.
 
-Dos cosas que se rompen fácil al tocar esto:
+Tres cosas que se rompen fácil:
 
-- **El upsert no pisa lo que el usuario tocó**: ni `status`, ni
-  `actual_seconds`, ni `category_id`, ni `notes`. El poller vuelve a pasar
-  cada 15 minutos, así que un `INSERT OR REPLACE` tira el trabajo hecho sobre una
-  reunión tres veces por hora. **`position` es la única excepción, y solo si el
-  evento cambió de día o de hora**: ahí `place_by_time` lo reubica entre **los
-  demás eventos** —nunca desplaza una tarea a mano, porque la columna del día es
-  el plan del día—. Si no cambió de día ni de hora, no se toca.
-- **`rail_only = 1` significa "ignorar", y son seis lecturas.** Un evento
-  ignorado (§4.12) sigue siendo una fila de `tasks` —el rail la necesita para
-  dibujar su hora— pero queda fuera de la columna del día (lo filtra `useBoard`),
-  de `plan_by_day`, de `focus_queue`, de `meetings_for_date`, de la regla 3 del
-  rollup y de `last_day_with_tasks`. **Si agregas una consulta sobre `tasks` que
-  no sea la del rail, pregúntate si le corresponde `AND rail_only = 0`**: el modo
-  de falla es silencioso y se ve como "el almuerzo cuenta como trabajo". Y
-  **marcar no toca las repeticiones con `time_entries` o `DONE`**, por lo mismo
-  que `reconcile_feed` no toca una tarea con el taxímetro corriendo.
-- **`import_events` devuelve los UIDs que vio.** No es decoración: es lo que el
-  reconciler (M3.2) necesita para saber qué dejó de venir en el feed. Y
-  `reconcile_feed` devuelve **`Reconciled`, con los títulos** de lo que borró,
-  liberó y dejó `ORPHANED`: el log los emite porque después no hay forma de
-  reconstruirlos. Si necesitas los dos números de antes, `.totals()`.
+- **El upsert no pisa lo que el usuario tocó**: ni `status`, ni `actual_seconds`,
+  ni `category_id`, ni `notes`. El poller vuelve cada 15 minutos, así que un
+  `INSERT OR REPLACE` tira el trabajo hecho sobre una reunión tres veces por hora.
+  **`position` es la única excepción, y solo si el evento cambió de día o de
+  hora**: ahí `place_by_time` lo reubica entre **los demás eventos**, nunca
+  desplaza una tarea a mano.
+- **`rail_only = 1` significa "ignorar", y son seis lecturas.** Un evento ignorado
+  sigue siendo una fila de `tasks` —el rail necesita su hora— pero queda fuera de
+  la columna del día, de `plan_by_day`, de `focus_queue`, de `meetings_for_date`,
+  de la regla 3 del rollup y de `last_day_with_tasks`. **Si agregas una consulta
+  sobre `tasks` que no sea la del rail, pregúntate si le corresponde
+  `AND rail_only = 0`**: el modo de falla es silencioso y se ve como "el almuerzo
+  cuenta como trabajo". Y marcar **no toca las repeticiones con `time_entries` o
+  `DONE`**.
+- **`import_events` devuelve los UIDs que vio**, que es lo que el reconciler
+  necesita para saber qué dejó de venir. Y `reconcile_feed` devuelve `Reconciled`
+  **con los títulos** de lo que borró, liberó y dejó `ORPHANED`: el log los emite
+  porque después no hay forma de reconstruirlos. Los dos números de antes están en
+  `.totals()`.
 
-## Enums: SIEMPRE EN MAYÚSCULAS
+## La conexión se puede reemplazar en caliente
 
-Convención explícita del proyecto. Se guardan como TEXT en mayúsculas, con la
-fuente de verdad en `migrations.rs` y el espejo en `src/lib/enums.ts`:
-
-| Campo | Valores |
-|---|---|
-| `tasks.status` | `TODO` · `DONE` |
-| `tasks.source` | `MANUAL` · `CALENDAR` |
-| `tasks.source_state` | `ACTIVE` · `ORPHANED` |
-| `task_events.type` | `CREATED` · `MOVED` · `START_DATE_SET` · `CARRIED_OVER`¹ |
-| (solo front) `CapacityLevel` | `OK` · `WARN` · `OVER` |
-
-¹ `CARRIED_OVER` es **histórico**: lo escribía el carry-over, reemplazado por la
-degradación diaria al backlog (`docs/specs/tareas-y-tablero.md` §4.2). Nadie lo escribe más; sigue ahí
-porque hay tareas que lo tienen en su historial.
-
-Si agregas un estado, va en mayúsculas y se espeja en los dos archivos.
-
-## Semántica que hay que respetar
-
-**`scheduled_date IS NULL` ⇒ la tarea está en el backlog.** No hay flag aparte.
-Mandar al backlog es `move_task(id, null, 0)`.
-
-**Todos los listados filtran `source_state = 'ACTIVE'`.** Las `ORPHANED` son
-tareas de calendario que ya no están en el feed pero tienen tiempo trackeado o
-están completadas: existen solo para el historial y la review. Un listado nuevo
-que olvide el filtro las va a resucitar en el backlog.
-
-**La única excepción es el tiempo del rollup semanal** (`weekly_rollup`, §4.15):
-ahí se cuentan a propósito, porque son historial y filtrarlas borraría horas
-reales de semanas pasadas. Si copias el `WHERE` de otro listado a una consulta de
-la review, la vas a romper sin que ningún test de los otros listados se entere.
-
-**`ObjectivePatch` sigue la misma regla de tres estados que `TaskPatch`** y por el
-mismo motivo: sin ella no se puede sacarle el channel a un objetivo, y tildarlo le
-pisaría el título. Si agregas un campo nullable a un patch, va `Option<Option<T>>`
-**y con `#[serde(default, deserialize_with = "double_option")]`**. El derive pelado
-no alcanza: un `null` cae en `visit_none()` del `Option` de afuera y llega como
-`None`, igual que un campo ausente, así que los tres estados quedan en dos. Estuvo
-roto en `TaskPatch` desde el principio —"Sin canal" y "Sin objetivo" no borraban
-nada dentro de Tauri— con las dos suites en verde, porque **un test que construye
-el patch en Rust no cruza serde y `mockDb` recibe el objeto de JS**. El test que
-sirve deserializa el JSON: `el_patch_distingue_null_de_ausente_como_lo_manda_el_front`.
-
-**`TaskPatch` distingue tres cosas, no dos.** En Rust
-`Option<Option<i64>>`, en TS `number | null` opcional:
-ausente = no tocar · `null` = poner a NULL · valor = escribir. Si aplanas eso a
-`Option<i64>` pierdes la capacidad de borrar un campo.
-
-**`actual_seconds` no se escribe con `update_task`.** El patch lo desvía a
-`set_actual_seconds` a propósito. Ver la skill `sunrise-timer-y-tiempo` antes de
-tocar cualquier cosa de tiempo.
-
-**`position`** es el orden dentro del día (o del backlog). `next_position`
-calcula el final.
-
-**El `position` que recibe `move_task` es el índice final**, contando que la
-tarea ya salió de la lista: es lo que dnd-kit muestra mientras arrastras. El día
-destino se **renumera entero** (0..n, sin huecos ni empates); antes corría +1 las
-tareas `>= position`, que se equivoca en uno al reordenar dentro del mismo día
-—la tarea que se mueve deja libre su lugar— y ese era el bug de Mej.12. El índice
-se cuenta contra la lista **visible**, así que la renumeración incluye a las
-`ORPHANED` y a los eventos ignorados (`rail_only`, §4.12) —para no empatar
-posiciones— pero los saltea al ubicar. Olvidar uno de los dos filtros deja la
-card un lugar más abajo de donde se soltó. Fuera de rango
-es "al final". `mockDb.moveTask` hace exactamente lo mismo, y hay un test a cada
-lado.
-
-**Historial.** `move_task` registra `MOVED`, o `START_DATE_SET` si la tarea venía
-del backlog. Un `MOVED` con `to_date` nulo es "se fue al backlog", y de ahí sale
-el grupo "venían de un día" (`rescued_from_backlog`): no hizo falta ni columna
-ni evento propio. `create_task` registra `CREATED` y además `START_DATE_SET` si nace
-agendada. Si agregas otra forma de cambiar la fecha, registra su evento o el
-historial del modal queda con agujeros.
-
-## Categorías (los "channels")
-
-Dos niveles vía `parent_id`. `parent_id IS NULL` ⇒ **contexto** (carpeta del
-backlog). Con `parent_id` ⇒ **channel** (el `#tag` de las cards). Una tarea puede
-apuntar a cualquiera de los dos niveles, así que para agrupar por contexto se
-resuelve `parentId ?? id`.
-
-**Un objetivo también apunta a un channel** (`objectives.category_id`, migración
-13), y es la **misma** tabla: no hay channels especiales de objetivos. La tarea que
-crea el reparto de horas nace con el del objetivo, que es lo que evita que un
-reparto deje siete tareas sin clasificar. Detalle en `docs/specs/objetivos.md` §4.29.
-
-`color` guarda un **token de la paleta** (`lavender`, `sky`, `mint`…), no un hex:
-se usa como `var(--${color})`. Si agregas un color, tiene que existir en
-`src/styles/tokens.css`.
-
-## Tablas del día (M3.6)
-
-`day_entries` (una fila por día: `note`, `closed_at`) y `day_task_notes`
-(`date` + `task_id` → `note`). Dos cosas que hay que respetar:
-
-- **La bitácora no depende de estas tablas.** Se arma del trabajo y de lo
-  cerrado; acá solo viven la nota y el sello. Un día sin fila **igual aparece**,
-  como borrador. Si algún listado exigiera la fila, la bitácora arrancaría vacía.
-- **`closed_at` NULL ⇒ borrador**, y `close_day` **no lo re-sella**: conserva la
-  hora original con un `COALESCE`. Escribir la nota (`set_day_note`) no lo toca:
-  escribir no es cerrar.
-- La nota de una tarea lleva **la fecha en la clave**: la misma tarea puede tener
-  una reflexión distinta cada día. No es `tasks.notes`.
-- **`day_task_notes.note` distingue tres cosas, como `TaskPatch`**: sin fila = no
-  incluida en la bitácora; fila con `''` = incluida y sin resumen; fila con texto =
-  incluida y escrita. Por eso **incluir** (`include_in_log`) y **escribir**
-  (`set_day_task_note`) son funciones distintas, y vaciar el texto **no** borra la
-  fila: sacarla es `remove_from_log`. Si aplanas eso a dos estados, la tarea
-  desaparece de los highlights al borrar una palabra.
-- `mood` es columna de `day_entries` (migración **8**, no un cambio a la 7: las
-  aplicadas son inmutables). Guarda el emoji tal cual.
-
-## La conexión se puede reemplazar en caliente (M4.1)
-
-Restaurar un respaldo **pisa el archivo de la base**, así que `restore_backup`
-saca la `Connection` del `Mutex<Connection>`, la cierra, copia encima y mete una
-nueva. Consecuencias para cualquier cosa que escribas cerca:
+Restaurar un respaldo **pisa el archivo de la base**, así que `restore_backup` saca
+la `Connection` del `Mutex`, la cierra, copia encima y mete una nueva.
 
 - **No guardes nada derivado de la conexión fuera del `Mutex`.** Ni un
   `prepare_cached` a largo plazo, ni un id, ni un contador: después de una
-  restauración apuntan a otra base. El `Mutex` no solo protege la conexión, es su
-  dueño.
-- **`repo.rs` puede seguir siendo puro porque no guarda estado.** Es justo lo que
-  hace que alcance con cambiar la conexión en vez de reiniciar la app (reiniciar
-  dispararía el diálogo de salida de §4.10).
+  restauración apuntan a otra base. El `Mutex` no solo la protege, es su dueño.
+- **`repo.rs` puede seguir siendo puro porque no guarda estado**, y es lo que hace
+  que alcance con cambiar la conexión en vez de reiniciar la app.
 - **El archivo se resuelve con `db::file_name()`**, nunca con `db::PROD_FILE` ni con
-  `"sunrise.sqlite"` escrito a mano. Dev y producción usan archivos distintos en el
-  mismo directorio (`sunrise-dev.sqlite` vs `sunrise.sqlite`, `docs/specs/distribucion.md` §4.20), así que
-  una ruta armada con la constante abre la base del **otro** perfil. La restauración
-  tiene que escribir exactamente sobre el archivo en uso, y borrar sus `-wal`/`-shm`
-  antes de reabrir.
+  el nombre escrito a mano: dev y producción usan archivos distintos en el mismo
+  directorio, así que una ruta armada con la constante abre la base del **otro**
+  perfil. Hay que escribir sobre el archivo en uso y borrar sus `-wal`/`-shm` antes
+  de reabrir.
+- **La excepción es el nombre de la base dentro del zip**, que sí es la constante:
+  si llevara el perfil, un respaldo de dev no se podría restaurar en producción, y
+  ese es justamente el puente entre las dos bases.
+- **El nombre del zip es lo contrario**: ese sí lleva el perfil (`backup::prefix`).
+  `is_backup_name` es **el único permiso para borrar** que tiene la retención y
+  exige el prefijo propio; con eso los dos conjuntos son disjuntos y dev puede
+  respaldar en la misma carpeta que producción sin borrarle nada. Si unificas los
+  nombres, reactivas esa pérdida de datos.
+- **`db::is_dev()` es la única definición de "es dev" del backend.** Un
+  `cfg!(debug_assertions)` suelto en un cuarto lugar puede quedar en el lado
+  equivocado sin que nada lo note.
 
-  La excepción es **el nombre de la base dentro del zip de respaldo**, que sí es la
-  constante y no la función: si llevara el nombre del perfil, un respaldo hecho en
-  dev no se podría restaurar en producción, y eso es justamente el puente entre las
-  dos bases. Hay un test que lo fija.
-
-  **El nombre del zip es lo contrario**: ese sí lleva el perfil
-  (`sunrise-dev-…` vs `sunrise-…`, `backup::prefix`), y no es simetría estética.
-  `is_backup_name` es **el único permiso para borrar** que tiene la retención, y
-  exige el prefijo del perfil propio: con eso los dos conjuntos son disjuntos y dev
-  puede respaldar en la misma carpeta que producción sin poder borrarle nada. Es lo
-  que permitió encender el automático en dev (`docs/specs/distribucion.md` §4.20). Si algún día unificas
-  los nombres, estás reactivando esa pérdida de datos.
-
-  **Y `db::is_dev()` es la única definición de "es dev" del backend.** La usan la
-  base, el prefijo del respaldo y `profile()`. Un `cfg!(debug_assertions)` suelto en
-  un cuarto lugar puede quedar en el lado equivocado sin que nada lo note.
-- Nada de esto se puede probar fuera de Tauri (el mock no tiene base). Lo que sí
-  está cubierto en `backup.rs` es todo el camino de archivos. Ver `docs/specs/distribucion.md` §4.17.
+Detalle en [`distribucion.md`](../../../docs/specs/distribucion.md) §4.17 y §4.20.
 
 ## `settings`
 
-Tabla plana `key TEXT PRIMARY KEY, value TEXT`, sembrada por la migración 2
-(`daily_capacity_minutes`, `capacity_warn_ratio`, `bell_sound`, `work_start`,
-`work_end`). Se lee entera con `list_settings` y se escribe con `set_setting`
-(upsert). Desde Mej.1 **ninguna clave sembrada quedó sin consumidor**; si agregas una
-sin UI, deja dicho en el ROADMAP quién la va a leer, porque una clave sembrada que
-nadie lee sobrevive versiones (`bell_sound` fue deuda desde la fase 0.4).
+Tabla plana `key TEXT / value TEXT`. Lo básico —parsers con fallback, el `NaN` que
+se propaga en silencio, `planned_at` sin migración— está en
+[`app-y-ajustes.md`](../../../docs/specs/app-y-ajustes.md) §4.8. Lo que hay que
+saber **antes de agregar una clave**:
 
-**Una migración también puede reescribir un valor sembrado, y a veces hay que
-hacerlo**: si una clave estrena consumidor y su semilla no significa lo que va a
-significar, la semilla es un valor inventado. La 12 lo hace (`bell_sound` pasó de un
-tronco de nombre de archivo a `SUNRISE`). Eso no rompe la inmutabilidad —es una
-versión nueva, no la edición de la 2— pero **sí cambia datos de alguien**: escribe en
-el comentario qué se pierde. En el front vive en `src/lib/settings.ts`: `useSettingsStore` la carga
-desde `Shell` y la relee con cada invalidación.
-
-**Ojo con una clave donde ausente y vacío NO significan lo mismo.** Es el caso de
-`collapsed_weekdays` (los días plegados de la vista semana): ausente es "nunca se
-configuró" y toma el default, presente y vacío es "ninguno", que es una elección
-legítima. Si las dos cayeran al mismo fallback, destildar todo en Configs
-rebotaría al default y el estado vacío sería inexpresable. Cuando pase eso, **la
-migración tiene que sembrar la fila** —la 9 lo hace, al revés que `planned_at`— y
-el parser distinguir `raw == null` de `raw === ""`. Y hay un test de Rust que
-cuenta las filas sembradas: si agregas una, se pone rojo.
-
-**Todo valor es TEXT, así que toda lectura necesita un parser con fallback.** La
-clave puede faltar, venir vacía o traer basura editada a mano. Ojo con los
-números: un `NaN` no explota, se propaga en silencio —toda comparación con `NaN`
-da false— y el consumidor se queda en su rama por defecto para siempre. Sigue el
-patrón de `dailyCapacityMinutes`/`capacityWarnRatio`, que además acotan el rango
-cuando un valor fuera de él no tendría sentido.
-
-**Una clave nueva no necesita migración.** `set_setting` es un upsert y toda
-lectura tiene fallback, así que basta con sumarla a `SettingKey` y darle su
-parser (`planned_at`, del ritual diario, nació así). La migración solo sirve para
-sembrar un valor inicial distinto del default del parser — o para **limpiar** una
-clave que dejó de usarse, que es todo lo que hace la 10 con `planned_on`.
-
-**Una marca de "esto pasó" se guarda con fecha y hora locales**
-(`toISOTimestamp`, `'YYYY-MM-DDTHH:mm'`), **nunca con `toISOString()`**. Quien la
-lee compara los primeros diez caracteres contra el día de hoy, así que la fecha
-tiene que ser la local: con la de UTC, en Santiago las últimas cuatro horas de
-cada día se marcan como el día siguiente. Y al leer, **el string no pasa por
-`new Date()`** — una fecha pelada la interpreta como medianoche UTC, o sea el día
-anterior a las 20:00 acá. Se corta en la `T` y la hora se parsea aparte, opcional:
-un valor viejo o editado a mano vale como "ese día" sin que se le invente una
-hora. `planned_at` es el ejemplo, y nació de un reporte que no se pudo diagnosticar
-justamente porque la marca no decía la hora.
-
-**Hay claves que Rust también lee.** `backup_dir` y `backup_keep` las consulta
-`commands.rs` con `repo::get_setting` (que devuelve `None` también cuando el valor
-está vacío). Si les cambias el nombre, cámbialo en `SettingKey` **y** en las
-constantes de `commands.rs`; y si cambias un default que existe en los dos lados
-—`BACKUP_KEEP_DEFAULT` vs `SETTING_DEFAULTS.backupKeep`— cámbialo en los dos, o la
-vista va a decir que conserva un número distinto del que Rust poda.
-
-**La excepción: lo que el sistema operativo también puede cambiar.** El inicio
-automático (`autostart_enabled` / `set_autostart`, M4.2) **no** está en la tabla,
-y no es un olvido. La verdad la tiene el sistema —un LaunchAgent que el usuario
-puede borrar desde Ajustes— así que una copia acá mentiría en cuanto eso pase. Y
-el respaldo se lleva la tabla entera: restaurar un zip viejo cambiaría el arranque
-de **esta** máquina. Antes de agregar una clave, pregúntate si describe los datos
-o la máquina; si es lo segundo, o la sacas del respaldo a mano (como
-`backup_dir`/`backup_time`/`backup_keep`, que se reescriben después de restaurar)
-o no la guardas. Hay un test que se pone rojo si el autostart aterriza en
-`settings`.
-
-Si necesitas configuración nueva, agrégala acá. **No recrees `src/lib/config.ts`**
-—existía para constantes sin fuente de datos y se fue vaciando hasta borrarse—:
-una constante hardcodeada en el front es una decisión que el usuario no puede
-cambiar, y la tabla `settings` es justamente el lugar donde sí puede.
-
-## Idioma: código en inglés, texto en español
-
-Convención del proyecto (CLAUDE.md). Identificadores —variables, funciones,
-tipos, campos, archivos, comandos IPC— en **inglés**. Comentarios, texto de la
-app, descripciones de tests y documentación en **español**. El nombre de un
-`#[test]` de Rust es su descripción, así que va en español.
+- **Una clave nueva no necesita migración.** `set_setting` es un upsert y toda
+  lectura tiene fallback: basta con sumarla a `SettingKey` y darle su parser. La
+  migración solo sirve para sembrar un valor distinto del default, o para
+  **limpiar** una que dejó de usarse.
+- **Una migración también puede reescribir un valor sembrado, y a veces hay que
+  hacerlo**: si una clave estrena consumidor y su semilla no significa lo que va a
+  significar, la semilla es un valor inventado (la 12 lo hizo con `bell_sound`). No
+  rompe la inmutabilidad —es una versión nueva— pero **sí cambia datos de alguien**:
+  escribe en el comentario qué se pierde.
+- **Ojo con una clave donde ausente y vacío NO significan lo mismo.** En
+  `collapsed_weekdays`, ausente es "nunca se configuró" y toma el default; presente
+  y vacío es "ninguno", que es una elección legítima. Si las dos cayeran al mismo
+  fallback, destildar todo rebotaría al default. En ese caso **la migración tiene
+  que sembrar la fila** y el parser distinguir `null` de `""`. Hay un test de Rust
+  que cuenta las filas sembradas.
+- **Una marca de "esto pasó" se guarda con fecha y hora locales**
+  (`toISOTimestamp`), **nunca con `toISOString()`**: quien la lee compara los
+  primeros diez caracteres contra hoy, y con UTC las últimas cuatro horas de cada
+  día en Santiago se marcan como el día siguiente. Y al leer, **el string no pasa
+  por `new Date()`** — una fecha pelada la interpreta como medianoche UTC. Se corta
+  en la `T` y la hora se parsea aparte, opcional.
+- **Hay claves que Rust también lee.** `backup_dir` y `backup_keep` las consulta
+  `commands.rs` con `repo::get_setting`. Si les cambias el nombre, cámbialo en
+  `SettingKey` **y** en las constantes de `commands.rs`; y un default que existe en
+  los dos lados (`BACKUP_KEEP_DEFAULT` vs `SETTING_DEFAULTS.backupKeep`) se cambia
+  en los dos.
+- **La excepción: lo que el sistema operativo también puede cambiar.** El inicio
+  automático **no** está en la tabla, y no es olvido: la verdad la tiene el sistema
+  —un LaunchAgent que el usuario puede borrar— así que una copia acá mentiría en
+  cuanto eso pase. Y el respaldo se lleva la tabla entera: restaurar un zip viejo
+  cambiaría el arranque de **esta** máquina. Antes de agregar una clave, pregúntate
+  si describe los datos o la máquina; si es lo segundo, o la sacas del respaldo a
+  mano (como `backup_dir`/`backup_time`/`backup_keep`) o no la guardas. Hay un test
+  que se pone rojo si el autostart aterriza en `settings`.
+- **No recrees `src/lib/config.ts`** —existía para constantes sin fuente de datos y
+  se vació hasta borrarse—: una constante hardcodeada es una decisión que el
+  usuario no puede cambiar, y `settings` es donde sí puede.

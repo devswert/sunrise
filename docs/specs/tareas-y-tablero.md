@@ -1,11 +1,8 @@
-# sunrise — SPECS §4: Tareas y tablero
+# §4.1–4.5 Tareas y tablero
 
 El CRUD de tareas, la degradación diaria al backlog, la vista semana y Today, el modal de detalle y el backlog.
 
-> Es una parte de [SPECS.md](../SPECS.md), partido por área. **La numeración de
-> secciones no cambia**: un `§4.12` en un comentario del código sigue apuntando
-> acá. El índice completo está en el [§4 de SPECS.md](../SPECS.md#4-funcionalidades-por-área).
-
+Vuelve al [índice de SPECS](../SPECS.md).
 ---
 
 ### 4.1 Tareas (CRUD)

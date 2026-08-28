@@ -10,7 +10,7 @@ Estas reglas existen porque cada una ya se rompió o estuvo a punto: son
 deliberadas, y la mayoría tiene su comentario en `src-tauri/src/repo.rs`.
 
 **Dónde está escrito lo demás:** las invariantes en su forma corta viven en
-`docs/SPECS.md` §6 (I1 a I6), el detalle del taxímetro y del rollup en
+[`docs/specs/invariantes.md`](../../../docs/specs/invariantes.md) (I1 a I6), el detalle del taxímetro y del rollup en
 `docs/specs/tiempo.md` (§4.6, §4.7 y §4.15), y **por qué** cada regla es así —con
 las alternativas que se descartaron y los números— en `docs/DECISIONES.md` §1 y §2.
 Acá está lo que hay que saber para **editar** esto sin romperlo.
@@ -52,7 +52,7 @@ alguien reporta "el timer no recuerda mi tiempo", esto es el diseño, no un bug.
 
 Tres reglas sostienen ese "hoy" —el piso en 0 de `seconds_today`, el recorte a
 medianoche de `runSeconds`, y el corte por día local de `stop_timer`— y están en
-SPECS §6 (I3), las tres pagadas con un taxímetro que mostró `-14:-17:-39`. Al
+`docs/specs/invariantes.md` (I3), las tres pagadas con un taxímetro que mostró `-14:-17:-39`. Al
 editar, lo que hay que recordar es que **`segments_by_local_day` está espejado en
 `mockDb`**: si solo cambias Rust, el browser atribuye los días distinto.
 

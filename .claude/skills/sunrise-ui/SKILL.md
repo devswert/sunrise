@@ -7,7 +7,7 @@ description: Convenciones de UI de sunrise — autosave sin botón "Guardar", po
 
 **Las reglas están escritas en dos lugares y este archivo no las repite:**
 
-- **`docs/SPECS.md` §7** — el marco de la ventana (sin barra de título,
+- **[`docs/specs/ui.md`](../../../docs/specs/ui.md) (§7)** — el marco de la ventana (sin barra de título,
   `--titlebar-h`, el rail colapsable y sus dos anchos), la paleta y sus tokens, las
   barras de scroll dibujadas a mano, la marca, las clases compartidas entre
   features, y el resumen de cada convención.
@@ -47,7 +47,7 @@ todo. **El usuario insiste en esto de forma consistente.**
 **El texto va en español de Chile: de tú, nunca de vos.** Se colaron formas de
 voseo dos veces, así que al escribir un texto nuevo, releelo buscando imperativos y
 segundas personas. Las excepciones —los nombres del sidebar, que se quedan en
-inglés— están en SPECS §7. Para fechas usa los helpers de `src/lib/date.ts`: el
+inglés— están en `docs/specs/ui.md` (§7). Para fechas usa los helpers de `src/lib/date.ts`: el
 locale de `date-fns` va **por llamada** y es fácil olvidarlo, y
 `react-day-picker` necesita su `locale={es}` en cada `<DayPicker>`.
 
@@ -257,7 +257,7 @@ tests que buscan por nombre.
 
 ## Antes de tocar la paleta o un token
 
-Las reglas completas están en SPECS §7 y los números en DECISIONES §7. Lo que hay
+Las reglas completas están en `docs/specs/ui.md` (§7) y los números en DECISIONES §7. Lo que hay
 que saber antes de abrirlos:
 
 - **Colores por token CSS, nunca hex en el componente.** La lista vive en

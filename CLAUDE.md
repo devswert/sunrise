@@ -27,12 +27,13 @@ proyecto (por ejemplo el reconciler ICS de M3 no tiene skill todavía).
 
 Los cuatro documentos, y cada uno responde una pregunta distinta:
 
-- **[docs/SPECS.md](docs/SPECS.md)** — *qué existe y cómo funciona*. Es la
-  entrada: el modelo de datos (§3), la sincronización (§5), las invariantes (§6),
-  las convenciones de UI (§7) y la deuda conocida (§9). El detalle por área (§4)
-  vive en **[docs/specs/](docs/specs/)**, un archivo por dominio, con el índice
-  en el §4 de SPECS. **La numeración no cambia al partirlo**: un `§4.12` en un
-  comentario del código sigue siendo válido.
+- **[docs/SPECS.md](docs/SPECS.md)** — *qué existe y cómo funciona*. Es **solo el
+  índice**: una línea por archivo diciendo qué responde. El contenido vive en
+  **[docs/specs/](docs/specs/)**, uno por dominio — la arquitectura (§2), el modelo
+  de datos (§3), la sincronización (§5), las invariantes y la deuda (§6 y §9), cada
+  área de funcionalidad (§4), la UI (§7) y los tests (§8). **La numeración no
+  cambia al partirlo**: un `§4.12` en un comentario del código sigue siendo
+  válido, y el índice dice dónde cayó.
 - **[docs/DECISIONES.md](docs/DECISIONES.md)** — *por qué es así*. Lo que se
   descartó, lo que se midió y lo que se pagó caro, por tema. Léelo antes de
   "arreglar" algo que se ve retorcido: lo más probable es que la versión derecha
@@ -123,4 +124,4 @@ tests que se ponen rojos si algo de eso divergió.
 - **UI: la distribución no se rediseña sobre la marcha** (ante una duda, mira la
   vista hermana), autosave sin botón "Guardar", popovers en
   portal (`Popover.tsx`), selects con búsqueda (`SearchSelect.tsx`), slots de
-  altura fija para no desalinear columnas. Detalle en SPECS §7.
+  altura fija para no desalinear columnas. Detalle en `docs/specs/ui.md` (§7).

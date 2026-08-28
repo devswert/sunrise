@@ -1,11 +1,8 @@
-# sunrise — SPECS §4: Notificaciones y alertas
+# §4.25–4.27 Notificaciones y alertas
 
 Las alertas que se quedan hasta que respondas, el aviso de próxima reunión y la sección de Configs que los gobierna.
 
-> Es una parte de [SPECS.md](../SPECS.md), partido por área. **La numeración de
-> secciones no cambia**: un `§4.12` en un comentario del código sigue apuntando
-> acá. El índice completo está en el [§4 de SPECS.md](../SPECS.md#4-funcionalidades-por-área).
-
+Vuelve al [índice de SPECS](../SPECS.md).
 ---
 
 ### 4.25 Alertas: el aviso que se queda hasta que respondas
@@ -154,6 +151,12 @@ hora, no un booleano.** La promesa no es "avisé una vez por esta tarea", es "av
 que empezaba a **esta** hora": si la sincronización mueve la reunión de 15:00 a
 16:00 es otra promesa y hay que volver a avisar. Con un flag la tarea quedaría muda
 para siempre, que es exactamente el bug que tuvo la campana con su llave (§4.6).
+
+**La espera tiene piso cuando ya hay algo pendiente.** Al arrancar, la app calcula
+cuánto dormir hasta el próximo cruce; sin piso, abrirla a las 14:57 con una reunión
+de 15:00 y cinco minutos de adelanto deja el aviso perdido, porque el cruce ya
+pasó. El piso hace que avise igual: el compromiso es "te aviso antes de que
+empiece", y llegar tarde por un minuto de arranque lo rompe.
 
 > **I** — **La sincronización del calendario no pisa `notified_for`.** Es dato
 > nuestro, no del feed, igual que `status` y `actual_seconds`. Y el upsert **sí**
