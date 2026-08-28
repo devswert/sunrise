@@ -35,9 +35,12 @@ function task(over: Partial<Task> & { id: number }): Task {
 
 /** Tarea que está en el taxímetro. La reasignan los tests. */
 let enElTaximetro: Task = task({ id: 1 });
+/** Lo que devuelve `focus_queue`: lo pendiente de hoy. La reasignan los tests. */
+let pendientes: Task[] = [];
 
 const moveTask = vi.fn(async () => null);
 const setTaskStatus = vi.fn(async () => null);
+const startTimer = vi.fn();
 
 vi.mock("../../lib/ipc", () => ({
   isTauri: () => false,
@@ -51,10 +54,9 @@ vi.mock("../../lib/ipc", () => ({
         ? [task({ id: 8, position: 0 }), task({ id: 9, position: 4 })]
         : [],
     ),
-    // No queda nada pendiente hoy: el taxímetro se oculta tras completar.
-    focusQueue: vi.fn(async () => []),
+    focusQueue: vi.fn(async () => pendientes),
     stopTimer: vi.fn(async () => null),
-    startTimer: vi.fn(),
+    startTimer: (...a: unknown[]) => startTimer(...(a as [])),
     getActiveTimer: vi.fn(async () => null),
   },
 }));
@@ -65,7 +67,11 @@ describe("completeAndAdvance", () => {
   beforeEach(() => {
     moveTask.mockClear();
     setTaskStatus.mockClear();
+    startTimer.mockClear();
+    localStorage.clear();
     enElTaximetro = task({ id: 1 });
+    // Por defecto no queda nada pendiente hoy.
+    pendientes = [];
     // Tarea pausada en el taxímetro (el caso de "reanudar y completar").
     useTimerStore.setState({
       active: null,
@@ -109,5 +115,99 @@ describe("completeAndAdvance", () => {
 
     expect(setTaskStatus).toHaveBeenCalledWith(1, "DONE");
     expect(moveTask).not.toHaveBeenCalled();
+  });
+
+  it("deja la siguiente en pausa, sin arrancarla sola", async () => {
+    pendientes = [task({ id: 7, title: "La que sigue", estimatedMinutes: 45 })];
+
+    await useTimerStore.getState().completeAndAdvance();
+
+    // El bug: completar arrancaba el timer de la siguiente, así que una tarea
+    // que ni miraste empezaba a acumular tiempo.
+    expect(startTimer).not.toHaveBeenCalled();
+    const { active, last } = useTimerStore.getState();
+    expect(active).toBeNull();
+    // En 0 porque el taxímetro cuenta lo de hoy, y hoy no se trabajó en ella.
+    expect(last).toEqual({
+      taskId: 7,
+      title: "La que sigue",
+      estimatedMinutes: 45,
+      seconds: 0,
+    });
+  });
+
+  it("sin pendientes oculta el taxímetro en vez de dejar la completada", async () => {
+    await useTimerStore.getState().completeAndAdvance();
+
+    expect(useTimerStore.getState().last).toBeNull();
+    expect(localStorage.getItem("sunrise-last-task")).toBeNull();
+  });
+
+  it("le avisa a la otra ventana", async () => {
+    // Sin esto el taxímetro de la otra ventana sigue mostrando la completada.
+    await useTimerStore.getState().completeAndAdvance();
+    expect(localStorage.getItem("sunrise-timer")).not.toBeNull();
+  });
+});
+
+describe("refresh cuando la tarea del taxímetro se completó desde otro lado", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    pendientes = [];
+    // Focus, la card o el modal la completaron: el timer ya está detenido.
+    enElTaximetro = task({ id: 1, status: "DONE" });
+    localStorage.setItem(
+      "sunrise-last-task",
+      JSON.stringify({ taskId: 1, title: "Tarea 1", estimatedMinutes: 30, seconds: 120 }),
+    );
+    useTimerStore.setState({ active: null, elapsed: 0, last: null });
+  });
+
+  it("avanza a la siguiente pendiente, en pausa", async () => {
+    pendientes = [task({ id: 7, title: "La que sigue" })];
+
+    await useTimerStore.getState().refresh();
+
+    expect(useTimerStore.getState().last?.taskId).toBe(7);
+    expect(startTimer).not.toHaveBeenCalled();
+  });
+
+  it("sin pendientes oculta el taxímetro", async () => {
+    await useTimerStore.getState().refresh();
+
+    // El bug: quedaba la tarea completada en pantalla, con su botón de play.
+    expect(useTimerStore.getState().last).toBeNull();
+    expect(localStorage.getItem("sunrise-last-task")).toBeNull();
+  });
+
+  it("una tarea que sigue pendiente conserva los segundos de hoy", async () => {
+    enElTaximetro = task({ id: 1, title: "Renombrada", actualSeconds: 9999 });
+
+    await useTimerStore.getState().refresh();
+
+    const { last } = useTimerStore.getState();
+    // Re-lee título y estimado, pero NO pisa el contador con el acumulado
+    // histórico: el taxímetro muestra lo de hoy.
+    expect(last).toEqual({
+      taskId: 1,
+      title: "Renombrada",
+      estimatedMinutes: 30,
+      seconds: 120,
+    });
+  });
+
+  it("ignora un registro corrupto en vez de pedir la tarea `undefined`", async () => {
+    localStorage.setItem("sunrise-last-task", JSON.stringify({ titulo: "sin id" }));
+
+    await useTimerStore.getState().refresh();
+
+    expect(useTimerStore.getState().last).toBeNull();
+  });
+
+  it("no le avisa a la otra ventana al refrescar", async () => {
+    // Refrescar no es mutar: un broadcast acá hace que la otra ventana
+    // refresque y avise de vuelta, con un IPC por salto.
+    await useTimerStore.getState().refresh();
+    expect(localStorage.getItem("sunrise-timer")).toBeNull();
   });
 });

@@ -18,7 +18,24 @@ export function celebrate(): void {
   confetti({
     particleCount: 120,
     spread: 70,
-    origin: { y: 0.65 },
+    origin: { x: centroDelContenido(), y: 0.65 },
     disableForReducedMotion: true,
   });
+}
+
+/**
+ * El centro horizontal del área de contenido, en fracción del ancho de ventana.
+ *
+ * El canvas de `canvas-confetti` cubre la ventana entera, así que el `0.5` que
+ * trae por defecto es el centro de la **ventana** y no el de lo que estás
+ * mirando: con el sidebar abierto el chorro sale corrido a la izquierda de la
+ * vista que lo celebra, y al colapsarlo se corre de nuevo. Se mide en cada
+ * llamada porque el sidebar se abre y se cierra (⌘S).
+ */
+function centroDelContenido(): number {
+  const main = document.querySelector(".app-main");
+  if (!main || !window.innerWidth) return 0.5;
+  const r = main.getBoundingClientRect();
+  if (!r.width) return 0.5;
+  return (r.left + r.width / 2) / window.innerWidth;
 }

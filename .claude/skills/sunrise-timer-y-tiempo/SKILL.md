@@ -288,6 +288,34 @@ Ojo con esto al escribir tests: un caso que ajuste tiempo y espere verlo en
 
 ## Completar desde el taxímetro
 
+**Completar avanza, pero no arranca.** `completeAndAdvance` deja la siguiente
+pendiente del día **en pausa** (título, estimado y el play esperando), con el
+contador en `0:00:00` porque el taxímetro cuenta lo de hoy. Arrancarla sola
+—como hacía— ponía a correr el tiempo de una tarea que ni miraste.
+
+**Si no queda ninguna, el taxímetro se oculta.** Que desaparezca ya dice que no
+queda nada por hacer; un estado "todo listo" dentro del widget no agrega
+información y sí un lugar más donde equivocarse. Lo que celebra el día terminado
+es Focus, con su resumen y su confeti.
+
+**`refresh` hace lo mismo que el check.** Si la tarea pausada está `DONE`
+—la completaste desde Focus, la card o el modal— avanza a la siguiente o se
+oculta. Tres cosas que se rompen al editar esto:
+
+- **Completar desde el front exige `bumpData()`**, Focus incluido. Completar
+  detiene el timer **en Rust**: sin el aviso, la ventana flotante no se entera.
+  El síntoma fue exacto —desde la semana el taxímetro se ocultaba, desde Focus
+  se quedaba ofreciendo retomar la tarea cerrada— y el `stop()` previo no
+  alcanza, porque ocurre **antes** del `DONE`.
+- **`completeAndAdvance` tiene que hacer su propio `broadcast()`.** Antes venía
+  gratis porque terminaba en `start()` o `dismissLast()`.
+- **`refresh` NO hace `broadcast()`, y escribe solo si el registro cambió.**
+  Refrescar no es mutar, y avisar haría que la otra ventana refresque y avise de
+  vuelta — con un `focus_queue` por salto desde que `refresh` puede avanzar.
+- **La re-lectura de la tarea pausada refresca título y estimado, no el
+  contador.** `actual_seconds` es el total histórico; el taxímetro muestra lo de
+  hoy. Pisarlo ahí hacía saltar el número al primer refresco.
+
 `completeAndAdvance` manda la tarea al final de **su propio día**, no de hoy.
 El taxímetro puede estar cronometrando una tarea de otro día —arrancada desde la
 vista semana, o reanudada desde `last`— y completarla no debe reprogramarla: si
@@ -314,6 +342,9 @@ accidental, no para proteger datos: todo se autoguarda.
 contador del día que ignora lo de ayer, un solo timer activo, completar detiene
 el timer (y no detiene el de otra tarea), `stop` sin timer activo, `focus_queue`,
 y doce del rollup semanal (una por cada regla de arriba y sus bordes).
-En el front, `src/features/timer/timerStore.test.ts` cubre `completeAndAdvance`.
+En el front, `src/features/timer/timerStore.test.ts` cubre `completeAndAdvance`
+(incluido que **no** arranque la siguiente) y el avance de `refresh`, y
+`FocusView.test.tsx` el `bumpData()` al completar, el resumen del día y que el
+confeti salga solo al vaciar la cola.
 **Si tocas una de las reglas de arriba, el test correspondiente debería fallar.**
 Si no falla, el test es más débil de lo que parece y vale reforzarlo.

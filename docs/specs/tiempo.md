@@ -34,8 +34,13 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   completar, la tarea se manda al final de **su propio día**, no de hoy: el
   taxímetro puede estar cronometrando una tarea de otro día (arrancada desde la
   semana, o reanudada), y completarla no debe reprogramarla. Si no tiene fecha
-  (backlog), no se mueve. Después salta a la siguiente pendiente de hoy; si no
-  queda ninguna, el taxímetro se oculta.
+  (backlog), no se mueve. Después deja lista la siguiente pendiente de hoy
+  **en pausa** —avanzar no es empezar: arrancarla sola hacía correr el tiempo de
+  una tarea que ni miraste—, con el contador en `0:00:00`, porque el taxímetro
+  cuenta lo de hoy. Si no queda ninguna pendiente, **el taxímetro se oculta**:
+  que desaparezca ya dice que no queda nada por hacer, y un estado "todo listo"
+  dentro del widget no agrega información. Lo que sí celebra el día terminado es
+  Focus (§4.7).
 - **Campana** al alcanzar el estimado, **decidida y tocada en Rust**
   (`bell.rs`): sin estimado —`null` o `<= 0`— nunca suena, suena al **alcanzar**
   el estimado y **una sola vez por (entrada, estimado)**, así que pausar y
@@ -98,13 +103,42 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   > signifique lo mismo en los dos lados.
 - `last` (última tarea pausada) se persiste en `localStorage` para poder
   reanudar; el taxímetro se muestra mientras haya `active` **o** `last`.
+- **`refresh` avanza igual que el check.** Re-lee la tarea pausada y, si la
+  completaron desde otro lado (Focus, la card, el modal), pasa a la siguiente
+  pendiente en pausa o se oculta. Antes quedaba en pantalla la tarea ya cerrada
+  con su play, invitando a retomar algo terminado. Tres detalles que se rompen
+  al editarlo: la re-lectura refresca título y estimado pero **no** pisa el
+  contador con `actual_seconds` (total histórico, no lo de hoy); **no hace
+  `broadcast()`**, porque refrescar no es mutar y avisar haría que la otra
+  ventana refresque y avise de vuelta, con un `focus_queue` por salto; y por eso
+  mismo escribe solo si el registro cambió.
+- **Quien complete desde el front tiene que llamar a `bumpData()`**, y eso
+  incluye a Focus. Completar detiene el timer **en Rust**, así que sin el aviso
+  la ventana flotante nunca se entera: el síntoma fue exacto —completar desde la
+  semana ocultaba el taxímetro y completar desde Focus lo dejaba ofreciendo
+  retomar la tarea cerrada.
 
 ### 4.7 Focus Mode
 
 - Cola = `focus_queue(date, nowHhmm)`: tareas `TODO` del día ordenadas por
   (1) sin hora o ya empezada antes que agendadas más tarde, (2) con hora
   primero dentro del grupo, (3) `scheduled_time`, (4) `position`, (5) `id`.
-- Check ⇒ completa, **manda la tarea al final del día** y avanza.
+- Check ⇒ completa, **manda la tarea al final del día**, avanza y llama a
+  `bumpData()` (ver §4.6: sin eso la ventana flotante no se entera).
+- **Con la cola vacía, Focus es el cierre del día**: la marca de sunrise saliendo
+  sobre el horizonte —el sol, no un check en un círculo: el check ya está en cada
+  tarea que cerraste—, "Listo por hoy", el resumen del día —cuántas tareas y
+  cuánto se trabajó contra lo planificado, de `daily_log`— y un botón que lleva
+  al shutdown, que es el paso siguiente natural. El resumen se pide **solo** en
+  ese estado, no en cada carga.
+- **El confeti se dispara al vaciar la cola, no al montar la vista vacía.**
+  Volver a Focus más tarde en un día ya terminado no vuelve a celebrarlo, y
+  abrirlo en un día sin nada planificado tampoco.
+- **`celebrate()` sale del centro de `.app-main`, no del de la ventana** (§7). Su
+  canvas cubre la ventana entera, así que el `0.5` por defecto queda corrido a la
+  izquierda de lo que estás mirando, y se corre otra vez al colapsar el sidebar
+  con ⌘S. Se mide en cada llamada por eso. Vale para las tres celebraciones:
+  Focus, planning y shutdown.
 - ↑/↓ mueven el foco entre tareas del día (ignorado si el foco está en un
   input/textarea).
 - Si el timer arranca en otra tarea, Focus salta a ella **una sola vez por

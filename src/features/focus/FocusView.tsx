@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Pause, Play } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronUp, Moon, Pause, Play } from "lucide-react";
 import { useRef } from "react";
 import { TimePicker } from "../../components/TimePicker";
 import { Popover } from "../../components/Popover";
 import { api } from "../../lib/ipc";
-import type { Task } from "../../lib/types";
+import type { LogDay, Task } from "../../lib/types";
 import { todayISO } from "../../lib/date";
-import { formatMinutes } from "../../lib/capacity";
+import { formatMinutes, hours, hoursFromMinutes } from "../../lib/capacity";
+import { celebrate } from "../../lib/confetti";
 import { useTimer, hms } from "../timer/useTimer";
 import { CalendarEventCard } from "../calendar/EventoDelCalendario";
 import { NotesEditor } from "../tasks/NotesEditor";
 import { useAutosave } from "../tasks/useAutosave";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
+import { SunriseMark } from "../../components/SunriseMark";
 import type { Category } from "../../lib/types";
 import { Hash } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
 
 /** 'HH:mm' actual, para ordenar la cola respetando la hora. */
@@ -44,6 +47,9 @@ export function FocusView() {
   const plannedRef = useRef<HTMLDivElement>(null);
   const canalRef = useRef<HTMLDivElement>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  /** Resumen del día, solo para la vista de "no queda nada". */
+  const [dia, setDia] = useState<LogDay | null>(null);
+  const navigate = useNavigate();
 
   const load = useCallback(async () => {
     const q = await api.focusQueue(todayISO(), nowHhmm());
@@ -59,6 +65,19 @@ export function FocusView() {
   useEffect(() => {
     api.listCategories().then(setCategories);
   }, [dataVersion]);
+
+  // El resumen del día se pide solo cuando hay algo que resumir: con tareas
+  // pendientes esta vista no lo muestra, y `daily_log` no es gratis.
+  useEffect(() => {
+    if (loading || queue.length > 0) return;
+    let alive = true;
+    void api.dailyLog(todayISO(), 1).then(([d]) => {
+      if (alive) setDia(d ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [loading, queue.length, dataVersion]);
 
   const opcionesCanal = useMemo<SearchOption[]>(() => {
     const out: SearchOption[] = [];
@@ -125,13 +144,23 @@ export function FocusView() {
     if (!current) return;
     if (timer.active?.taskId === current.id) await timer.stop();
 
+    const eraLaUltima = queue.length === 1;
     const lastPos = queue.reduce((m, t) => Math.max(m, t.position), 0);
     await api.setTaskStatus(current.id, "DONE");
     await api.moveTask(current.id, todayISO(), lastPos + 1);
 
+    // `bumpData` no es cosmético acá: completar puede haber detenido el timer
+    // (lo hace `set_task_status` en Rust), y sin el aviso el taxímetro de la
+    // ventana flotante se quedaba ofreciendo retomar la tarea ya cerrada.
+    bumpData();
+
     // La completada sale de la cola: el índice ya apunta a la siguiente.
     await load();
-  }, [current, queue, timer, load]);
+
+    // Solo al vaciar la cola, y solo desde acá: montar la vista con el día ya
+    // terminado —volver a Focus más tarde— no vuelve a celebrarlo.
+    if (eraLaUltima) celebrate();
+  }, [current, queue, timer, load, bumpData]);
 
   // Navegación con flechas entre las tareas del día.
   useEffect(() => {
@@ -158,13 +187,49 @@ export function FocusView() {
   if (loading) return <div className="focus" />;
 
   if (!current) {
+    const completadas = dia?.done.length ?? 0;
+    const trabajado = dia?.workedSeconds ?? 0;
+    const planificado = dia?.plannedMinutes ?? 0;
     return (
       <div className="focus focus--empty">
-        <div className="focus__done-icon">
-          <Check size={28} strokeWidth={3} />
+        {/* El sol de la marca saliendo, no un check en un círculo: el check ya
+          * está en cada tarea que cerraste, y acá lo que se celebra es el día
+          * entero. Sube al entrar, que es lo único que hace la marca. */}
+        <div className="focus__amanecer">
+          <SunriseMark size={76} className="focus__sol" />
         </div>
-        <h1>Día completado</h1>
-        <p>No quedan tareas pendientes para hoy.</p>
+        <h1>Listo por hoy</h1>
+
+        {/* El resumen aparece cuando llega; no se reserva su espacio en blanco
+          * porque un día sin nada trabajado tampoco tiene qué contar. */}
+        {completadas > 0 && (
+          <div className="focus__resumen">
+            <div className="focus__dato">
+              <strong>{completadas}</strong>
+              <span>{completadas === 1 ? "tarea completada" : "tareas completadas"}</span>
+            </div>
+            <div className="focus__dato">
+              <strong>{hours(trabajado)}</strong>
+              <span>
+                {planificado > 0
+                  ? `de ${hoursFromMinutes(planificado)} planificadas`
+                  : "trabajadas"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* El cierre del día es el paso siguiente natural, y llegar hasta él por
+          * el sidebar desde acá es un rodeo. No sella nada: solo lleva. */}
+        <button className="btn-primary focus__cerrar" onClick={() => navigate("/daily-shutdown")}>
+          {/* La luna es el icono del shutdown en el sidebar: el botón dice a
+            * dónde lleva antes de leerse. La flecha rebota para empujar hacia
+            * allá —es el único paso siguiente de esta pantalla— y se queda
+            * quieta con `prefers-reduced-motion`. */}
+          <Moon size={15} />
+          Cerrar el día
+          <ArrowRight size={15} className="focus__flecha" />
+        </button>
       </div>
     );
   }

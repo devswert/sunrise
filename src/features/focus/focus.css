@@ -135,27 +135,118 @@
   color: var(--muted);
 }
 
-/* Estado vacío */
+/* --- Día terminado ---
+ * Es la única vista de la app que celebra algo, así que se permite un gesto: la
+ * marca de sunrise saliendo sobre el horizonte, con el resto apretado debajo.
+ * El espaciado es corto a propósito —cuatro cosas separadas por 14vh se leen
+ * como cuatro pantallas— y el peso lo pone el sol, no el aire. */
 .focus--empty {
   align-items: center;
-  justify-content: center;
-  padding-top: 14vh;
+  justify-content: flex-start;
+  padding-top: 12vh;
   text-align: center;
   color: var(--muted);
 }
-.focus__done-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--mint) 55%, transparent);
-  color: var(--mint-ink);
+
+.focus__amanecer {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   margin-bottom: var(--space-2);
 }
+/* El resplandor. Va detrás del `<svg>` —que por eso lleva `position: relative`—
+ * porque un elemento posicionado pinta sobre uno que no lo está. */
+.focus__amanecer::before {
+  content: "";
+  position: absolute;
+  inset: -44px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--butter) 55%, transparent) 0%,
+    transparent 68%
+  );
+}
+.focus__sol {
+  position: relative;
+  animation: focus-amanece 900ms ease-out both;
+}
+@keyframes focus-amanece {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus__sol {
+    animation: none;
+  }
+}
+
 .focus--empty h1 {
-  font-size: 22px;
+  font-size: 26px;
+  color: var(--ink);
+  margin: 0;
+}
+
+/* Resumen del día: dos números grandes separados por una línea, sin cajas. Lo
+ * que se mira acá es "cuánto hice", no una tabla. */
+.focus__resumen {
+  display: flex;
+  align-items: center;
+  margin-top: var(--space-4);
+}
+.focus__dato {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 0 var(--space-5);
+}
+.focus__dato + .focus__dato {
+  border-left: 1px solid var(--border);
+}
+.focus__dato strong {
+  font-family: var(--font-title);
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.focus__dato span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.focus__cerrar {
+  margin-top: var(--space-5);
+  /* Un poco más de aire a la derecha: la flecha se mueve, y pegada al borde el
+   * rebote se ve como si el botón creciera. */
+  padding-right: 12px;
+}
+.focus__flecha {
+  animation: focus-empuja 1.4s ease-in-out infinite;
+}
+@keyframes focus-empuja {
+  0%,
+  60%,
+  100% {
+    transform: none;
+  }
+  30% {
+    transform: translateX(3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus__flecha {
+    animation: none;
+  }
 }
 
 /* Referencia a la siguiente tarea (sin lista completa) */

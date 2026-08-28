@@ -19,7 +19,12 @@ export interface LastTask {
 function readLast(): LastTask | null {
   try {
     const raw = localStorage.getItem(LAST_KEY);
-    return raw ? (JSON.parse(raw) as LastTask) : null;
+    if (!raw) return null;
+    const v = JSON.parse(raw) as LastTask;
+    // Un registro sin `taskId` —corrupto, o de un formato que ya no existe—
+    // haría que `refresh` pida la tarea `undefined` y reviente sin síntoma
+    // visible salvo un taxímetro que deja de actualizarse.
+    return typeof v?.taskId === "number" ? v : null;
   } catch {
     return null;
   }
@@ -32,6 +37,47 @@ function writeLast(v: LastTask | null) {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Escribe solo si el registro cambió.
+ *
+ * `refresh` escribe, y escribir dispara el evento `storage` en la **otra**
+ * ventana, que refresca y vuelve a escribir. Eso se sostiene mientras el valor
+ * sea idéntico en cada salto; desde que `refresh` puede avanzar a la siguiente
+ * tarea —y eso cuesta una llamada a `focus_queue`— un registro que varíe
+ * convierte el ida y vuelta en un ping-pong con un IPC por salto.
+ */
+function persistLast(v: LastTask | null) {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(LAST_KEY);
+  } catch {
+    /* ignore */
+  }
+  if (raw === (v ? JSON.stringify(v) : null)) return;
+  writeLast(v);
+}
+
+/**
+ * La siguiente pendiente de hoy **en pausa**, o `null` si no queda ninguna —y
+ * entonces el taxímetro se oculta, que es la señal de que no queda nada por
+ * hacer. Excluye `exceptId` porque la recién completada puede seguir en la cola
+ * que se lee.
+ */
+async function nextPaused(exceptId: number): Promise<LastTask | null> {
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const next = (await api.focusQueue(todayISO(), hhmm)).find((t) => t.id !== exceptId);
+  if (!next) return null;
+  return {
+    taskId: next.id,
+    title: next.title,
+    estimatedMinutes: next.estimatedMinutes,
+    // En 0: el taxímetro cuenta lo de HOY, y a esta tarea todavía no le pusiste
+    // tiempo hoy. Empieza a correr cuando le des play.
+    seconds: 0,
+  };
 }
 
 function broadcast() {
@@ -118,7 +164,7 @@ interface TimerState {
   toggle: (taskId: number) => Promise<void>;
   dismissLast: () => void;
   tick: () => void;
-  /** Completa la tarea del taxímetro y salta a la siguiente del día. */
+  /** Completa la tarea del taxímetro y deja lista la siguiente del día. */
   completeAndAdvance: () => Promise<void>;
 }
 
@@ -142,21 +188,26 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // planned pueden haber cambiado desde que se guardó el snapshot.
     if (!active && last) {
       const fresh = await api.getTask(last.taskId);
-      if (fresh) {
-        last = {
-          taskId: fresh.id,
-          title: fresh.title,
-          estimatedMinutes: fresh.estimatedMinutes,
-          seconds: fresh.actualSeconds,
-        };
-        writeLast(last);
-      } else {
+      if (!fresh) {
         // La tarea ya no está: la borraron en la otra ventana, o se restauró un
         // respaldo anterior a que existiera. El taxímetro no puede seguir
         // ofreciendo darle play a un id que ya no resuelve.
         last = null;
-        writeLast(null);
+      } else if (fresh.status === "DONE") {
+        // La completaron desde otro lado (Focus, la card, el modal): el
+        // taxímetro no puede seguir ofreciendo retomar algo ya cerrado, así que
+        // avanza igual que si hubieras usado su propio check —y si no queda
+        // nada pendiente, se oculta.
+        last = await nextPaused(fresh.id);
+      } else {
+        // `seconds` NO se toma de `actualSeconds`: eso es el total histórico y
+        // el taxímetro cuenta lo de hoy. Acá solo se refrescan el título y el
+        // estimado, que es para lo que existe esta re-lectura.
+        last = { ...last, title: fresh.title, estimatedMinutes: fresh.estimatedMinutes };
       }
+      // Sin `broadcast()`: refrescar no es mutar, y avisarle a la otra ventana
+      // la haría refrescar y avisar de vuelta.
+      persistLast(last);
     }
 
     if (active) {
@@ -185,10 +236,11 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     const res = await api.stopTimer();
     if (res) {
       const [taskId, seconds] = res;
+      const guardada = readLast();
       const last: LastTask = {
         taskId,
-        title: prev?.title ?? readLast()?.title ?? "",
-        estimatedMinutes: prev?.estimatedMinutes ?? readLast()?.estimatedMinutes ?? null,
+        title: prev?.title ?? guardada?.title ?? "",
+        estimatedMinutes: prev?.estimatedMinutes ?? guardada?.estimatedMinutes ?? null,
         seconds: (prev?.baseSeconds ?? 0) + seconds,
       };
       writeLast(last);
@@ -217,15 +269,11 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   },
 
   completeAndAdvance: async () => {
-    const { active, last, stop, start, dismissLast } = get();
+    const { active, last, stop } = get();
     const taskId = active?.taskId ?? last?.taskId;
     if (taskId == null) return;
 
     if (active) await stop();
-
-    const today = todayISO();
-    const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
     // Manda la completada al final de SU día, no de hoy: el taxímetro puede
     // estar cronometrando una tarea de otro día (se arrancó desde la semana, o
@@ -240,13 +288,14 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       await api.moveTask(taskId, doneDate, lastPos + 1);
     }
 
-    // Siguiente pendiente del día; si no queda ninguna, el taxímetro se oculta.
-    const next = (await api.focusQueue(today, hhmm)).find((t) => t.id !== taskId);
-    if (next) {
-      await start(next.id);
-    } else {
-      dismissLast();
-    }
+    // Avanzar no es empezar: la siguiente queda **en pausa**, esperando su play.
+    // Arrancarla sola hacía que el tiempo de una tarea que ni miraste empezara a
+    // correr por haber completado la anterior. Si no queda ninguna, el taxímetro
+    // se oculta: no queda nada que cronometrar.
+    const next = await nextPaused(taskId);
+    writeLast(next);
+    set({ active: null, elapsed: 0, last: next });
+    broadcast();
     useAppStore.getState().bumpData();
   },
 

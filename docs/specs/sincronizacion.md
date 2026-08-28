@@ -25,8 +25,8 @@ store y no estado local.
 
 | Clave | Escribe | Escucha |
 |---|---|---|
-| `sunrise-timer` | `timerStore` (start/stop/dismiss) | `useTimerRuntime` (ambas ventanas) |
-| `sunrise-last-task` | `timerStore` | `useTimerRuntime` |
+| `sunrise-timer` | `timerStore` (start/stop/dismiss/completar) | `useTimerRuntime` (ambas ventanas) |
+| `sunrise-last-task` | `timerStore` (tarea en pausa) | `useTimerRuntime` |
 | `sunrise-data` | `bumpData()` | `useDataSync` en `main` + `useTimerRuntime` |
 | `sunrise-theme` | `theme.ts` | `timer.tsx` |
 | `sunrise-tax-pos` | la ventana flotante | `useFloatingWindow` al mostrarla |

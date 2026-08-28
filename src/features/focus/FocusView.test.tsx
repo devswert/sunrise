@@ -1,8 +1,22 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../../lib/types";
 import { FocusView } from "./FocusView";
+import { useAppStore } from "../../lib/store";
+
+const celebrate = vi.fn();
+vi.mock("../../lib/confetti", () => ({ celebrate: () => celebrate() }));
+
+/** Focus navega al cierre del día, así que necesita un router. */
+function renderFocus() {
+  return render(
+    <MemoryRouter>
+      <FocusView />
+    </MemoryRouter>,
+  );
+}
 
 /** Task de prueba con lo mínimo. */
 function task(over: Partial<Task> & { id: number; title: string }): Task {
@@ -57,6 +71,20 @@ vi.mock("../../lib/ipc", () => ({
     getTask: vi.fn(async () => null),
     startTimer: vi.fn(),
     stopTimer: vi.fn(async () => null),
+    dailyLog: vi.fn(async () => [
+      {
+        date: "2026-08-10",
+        note: null,
+        closedAt: null,
+        mood: null,
+        workedSeconds: 5400,
+        plannedMinutes: 120,
+        unestimated: 0,
+        done: [{ task: task({ id: 1, title: "Primera tarea", status: "DONE" }), note: null }],
+        timeline: [],
+        cells: [],
+      },
+    ]),
   },
 }));
 
@@ -64,10 +92,11 @@ describe("FocusView", () => {
   beforeEach(() => {
     for (const t of queue) t.status = "TODO";
     setStatus.mockClear();
+    celebrate.mockClear();
   });
 
   it("muestra la tarea actual como título y la lista del día", async () => {
-    render(<FocusView />);
+    renderFocus();
     expect(await screen.findByRole("heading", { name: "Primera tarea" })).toBeInTheDocument();
     // Solo se indica cuál es la siguiente (sin lista completa ni clicks).
     expect(screen.getByText("Siguiente")).toBeInTheDocument();
@@ -77,7 +106,7 @@ describe("FocusView", () => {
 
   it("al marcar el check completa y pasa sola a la siguiente", async () => {
     const user = userEvent.setup();
-    render(<FocusView />);
+    renderFocus();
     await screen.findByRole("heading", { name: "Primera tarea" });
 
     await user.click(screen.getByRole("button", { name: "Completar tarea" }));
@@ -91,10 +120,66 @@ describe("FocusView", () => {
     });
   });
 
-  it("muestra el estado vacío cuando no queda nada", async () => {
+  it("muestra el resumen del día cuando no queda nada", async () => {
     for (const t of queue) t.status = "DONE";
-    render(<FocusView />);
-    expect(await screen.findByText("Día completado")).toBeInTheDocument();
+    renderFocus();
+
+    expect(await screen.findByText("Listo por hoy")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("tarea completada")).toBeInTheDocument();
+    expect(await screen.findByText("1h 30m")).toBeInTheDocument();
+    expect(screen.getByText("de 2h planificadas")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cerrar el día" })).toBeInTheDocument();
+  });
+
+  it("le avisa al resto de la app al completar", async () => {
+    const user = userEvent.setup();
+    const antes = useAppStore.getState().dataVersion;
+    renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+
+    await user.click(screen.getByRole("button", { name: "Completar tarea" }));
+
+    // Sin esto, el taxímetro de la ventana flotante seguía ofreciendo retomar
+    // la tarea que acabas de cerrar: completar detiene el timer en Rust, y
+    // nadie se lo contaba a la otra ventana.
+    await waitFor(() => expect(useAppStore.getState().dataVersion).toBeGreaterThan(antes));
+  });
+
+  it("celebra solo al completar la última", async () => {
+    const user = userEvent.setup();
+    queue[1].status = "DONE";
+    renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+
+    await user.click(screen.getByRole("button", { name: "Completar tarea" }));
+
+    await waitFor(() => expect(celebrate).toHaveBeenCalledTimes(1));
+  });
+
+  it("al completar la última muestra el resumen sin recargar", async () => {
+    const user = userEvent.setup();
+    queue[1].status = "DONE";
+    renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+
+    await user.click(screen.getByRole("button", { name: "Completar tarea" }));
+
+    // El camino real: el resumen se pide recién al vaciarse la cola, así que
+    // tiene que llegar solo, sin volver a entrar a la vista.
+    expect(await screen.findByText("Listo por hoy")).toBeInTheDocument();
+    expect(await screen.findByText("1h 30m")).toBeInTheDocument();
+  });
+
+  it("no celebra si todavía queda algo por hacer", async () => {
+    const user = userEvent.setup();
+    renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+
+    await user.click(screen.getByRole("button", { name: "Completar tarea" }));
+
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+    expect(celebrate).not.toHaveBeenCalled();
   });
 });
 
@@ -116,7 +201,7 @@ describe("FocusView · detalle de la tarea", () => {
       }),
     );
 
-    render(<FocusView />);
+    renderFocus();
 
     expect(await screen.findByRole("button", { name: /Entrar a Google Meet/ })).toBeInTheDocument();
     expect(screen.getByText("Ana")).toBeInTheDocument();
@@ -130,7 +215,7 @@ describe("FocusView · detalle de la tarea", () => {
     queue.length = 0;
     queue.push(task({ id: 21, title: "Escribir specs" }));
 
-    render(<FocusView />);
+    renderFocus();
 
     expect(await screen.findByLabelText("Notas")).toBeInTheDocument();
     expect(screen.getByLabelText("Cambiar canal")).toBeInTheDocument();
