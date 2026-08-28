@@ -240,6 +240,27 @@ siguiente corrida.
   que no avisaba, y la card se quedaba en pantalla después de borrarse (Mej.20).
 - Notas en markdown (`react-markdown` + `remark-gfm`), click para editar.
   Los links se extraen del texto con `extractLinks` y se listan aparte.
+- **Un link pegado en el título al crear la tarea termina acá como chip**, y el
+  camino es el de arriba: el link **sale del título** y se escribe en las notas
+  bajo una sección `# Recursos:`, un ítem por link (`resources.ts`). Las notas
+  son el único lugar donde vive un link —los chips salen de `extractLinks(notes)`
+  y nada más—, así que darle una sección propia es lo que permite limpiar el
+  título sin inventarle una columna a la tarea ni dejar el link tirado en medio
+  de una nota. Si la sección ya existe, el link entra **al final de su lista**,
+  no en una segunda sección. Tres detalles que no son evidentes:
+  - **La cosecha usa el mismo patrón que `extractLinks`.** Dos detectores
+    distintos dejarían guardado un link que después ningún chip dibuja.
+  - **Al escribir solo se cosecha un link ya cerrado** (con un espacio detrás);
+    al **pegar** se cosecha todo. `https://g` ya calza con el patrón, así que
+    cosechar en cada tecla se comería la URL a la novena letra. Y por lo mismo el
+    espacio final se recorta al pegar pero no al escribir: es el que acaba de
+    cerrar la URL, y sacarlo pega la letra siguiente a la palabra anterior.
+  - **El modal de creación dibuja los links cosechados con una ×.** El título se
+    limpia solo; sin ver a dónde fue el link, el gesto se leería como que se
+    perdió, y no habría forma de arrepentirse antes de crear.
+
+  **Editar el título en el detalle no cosecha nada**: acá el link ya se escribe a
+  mano donde va.
 - **El tiempo trabajado ("Real" en la UI, `actual_seconds` en la DB) es siempre
   el total de la tarea**, más lo que va de la corrida en
   curso si el timer está en ella (`task.actualSeconds + timer.runTotal`). Antes

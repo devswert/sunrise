@@ -51,6 +51,51 @@
   color: var(--faint);
 }
 
+/* Recursos cosechados del título. Misma tinta que los links del detalle
+   (`.tmodal__link`): es la misma cosa vista antes de guardarla. La URL es el
+   único elemento que puede crecer, así que es la que se recorta —el ícono y la
+   × tienen que quedar siempre—, y por eso el `min-width: 0` del ítem: sin él un
+   flex hijo no baja de su contenido y la fila se sale de la caja. */
+.compose__res {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.compose__res-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--sky-ink);
+}
+.compose__res-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compose__res-del {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+}
+.compose__res-del:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+
 .compose__toolbar {
   display: flex;
   flex-wrap: wrap;

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
-import { CalendarDays, Clock, Hash, Plus, Target } from "lucide-react";
+import { CalendarDays, Clock, Hash, Link2, Plus, Target, X } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, Objective } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { channelOptions } from "./channelOptions";
+import { appendResources, harvestLinks } from "./resources";
 import { Popover } from "../../components/Popover";
 import { es } from "date-fns/locale";
 import { dateLabel, isToday, isoWeekId, parseISODate, toISODate, todayISO } from "../../lib/date";
@@ -31,6 +32,8 @@ export function AddTaskModal() {
     composeDefaults.objectiveId ?? null,
   );
   const [picker, setPicker] = useState<Picker>(null);
+  /** Los links que se cosecharon del título. Se guardan en las notas al crear. */
+  const [resources, setResources] = useState<string[]>([]);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [objectives, setObjectives] = useState<Objective[]>([]);
@@ -56,11 +59,30 @@ export function AddTaskModal() {
     if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight}px`;
   }, [title]);
 
+  /**
+   * Cosecha los links de un texto y los suma a la lista de recursos.
+   * Devuelve el texto ya sin ellos, que es lo que queda en el título.
+   */
+  function cosechar(texto: string, terminatedOnly = false): string {
+    const { text, links } = harvestLinks(texto, terminatedOnly);
+    if (links.length > 0) {
+      setResources((prev) => [...prev, ...links.filter((l) => !prev.includes(l))]);
+    }
+    return text;
+  }
+
   async function create() {
-    const t = title.trim();
+    // Última pasada: un link escrito a mano al final del título no lo cosechó
+    // ni el pegado ni el `onChange` —que solo mira links cerrados—, así que sin
+    // esto se crearía con el link todavía adentro.
+    const { text, links } = harvestLinks(title);
+    const t = text.trim();
     if (!t) return;
+    const todos = [...resources, ...links.filter((l) => !resources.includes(l))];
+    const notes = appendResources("", todos);
     await api.createTask({
       title: t,
+      notes: notes || undefined,
       scheduledDate: date,
       estimatedMinutes: planned,
       categoryId,
@@ -120,7 +142,24 @@ export function AddTaskModal() {
           className="compose__title"
           placeholder="Descripción de la tarea…"
           value={title}
-          onChange={(e) => setTitle(e.target.value.replace(/\s*\n\s*/g, " "))}
+          /* El aplanado de saltos va **antes** de cosechar: un pegado multilínea
+           * termina la URL con el salto, que convertido en espacio la deja
+           * cerrada y lista para que la levante hasta el `onChange`. */
+          onChange={(e) => setTitle(cosechar(e.target.value.replace(/\s*\n\s*/g, " "), true))}
+          /* Pegar es el gesto que motivó esto, y lo que se pega llega entero:
+           * acá se cosecha todo, sin esperar a que la URL quede cerrada —al
+           * final de un pegado no hay espacio que la cierre. Se inserta a mano
+           * porque hay que quedarse con el resto del texto pegado. */
+          onPaste={(e) => {
+            const pegado = e.clipboardData.getData("text");
+            if (!/https?:\/\//.test(pegado)) return;
+            e.preventDefault();
+            const limpio = cosechar(pegado.replace(/\s*\n\s*/g, " "));
+            const el = e.currentTarget;
+            const desde = el.selectionStart ?? title.length;
+            const hasta = el.selectionEnd ?? desde;
+            setTitle((prev) => `${prev.slice(0, desde)}${limpio}${prev.slice(hasta)}`.trimStart());
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
               e.preventDefault();
@@ -128,6 +167,30 @@ export function AddTaskModal() {
             }
           }}
         />
+
+        {/* --- Recursos cosechados ---
+          * La lista existe para poder **deshacer**: el título se limpia solo, y
+          * sin ver a dónde fue el link el gesto se sentiría como que se perdió.
+          * Va acá y no en la barra de abajo porque es parte de lo que se está
+          * escribiendo, no un ajuste de la tarea. */}
+        {resources.length > 0 && (
+          <ul className="compose__res">
+            {resources.map((l) => (
+              <li key={l} className="compose__res-item">
+                <Link2 size={13} />
+                <span className="compose__res-url">{l.replace(/^https?:\/\//, "")}</span>
+                <button
+                  type="button"
+                  className="compose__res-del"
+                  aria-label={`Quitar ${l}`}
+                  onClick={() => setResources((prev) => prev.filter((x) => x !== l))}
+                >
+                  <X size={12} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="compose__toolbar">
           <div className="chip-wrap" ref={dateRef}>
