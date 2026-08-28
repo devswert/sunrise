@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { useSidebarStore } from "./sidebar";
 import { useAppStore } from "./store";
 import { useSettingsStore } from "./settings";
 import { shortcutKey, useShortcuts } from "./shortcuts";
@@ -45,6 +46,29 @@ describe("useShortcuts", () => {
   beforeEach(() => {
     useSettingsStore.setState({ values: {}, loaded: true });
     useAppStore.setState({ composeOpen: false, quitOpen: false });
+    useSidebarStore.setState({ collapsed: false });
+  });
+
+  // El colapso no lo toca solo el botón de la columna: como el listener vive
+  // fuera del sidebar, el estado es un store compartido y no un `useState`.
+  it("⌘S colapsa el sidebar y volver a pulsarlo lo expande", () => {
+    renderApp();
+
+    press("s");
+    expect(useSidebarStore.getState().collapsed).toBe(true);
+
+    press("s");
+    expect(useSidebarStore.getState().collapsed).toBe(false);
+  });
+
+  // Misma regla que el resto: escribiendo, ⌘S no hace nada. Es a propósito,
+  // para no pisar lo que el campo entienda por esa combinación.
+  it("⌘S se ignora con el foco en un campo de texto", () => {
+    renderApp();
+    screen.getByLabelText("campo").focus();
+
+    press("s");
+    expect(useSidebarStore.getState().collapsed).toBe(false);
   });
 
   it("⌘1 / ⌘2 / ⌘3 navegan a Home, Today y Focus", () => {

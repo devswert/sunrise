@@ -1,9 +1,19 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { displayCombo } from "../lib/shortcuts";
+import { useSidebarStore } from "../lib/sidebar";
+
+/**
+ * El colapso vive en un store de módulo (lo comparte con el atajo de teclado),
+ * así que no se resetea solo entre tests: limpiar localStorage ya no alcanza.
+ */
+function resetSidebar() {
+  localStorage.clear();
+  useSidebarStore.setState({ collapsed: false });
+}
 
 function renderSidebar() {
   return render(
@@ -42,7 +52,7 @@ describe("Sidebar · atajos", () => {
 
 describe("Sidebar", () => {
   beforeEach(() => {
-    localStorage.clear();
+    resetSidebar();
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-sidebar");
   });
@@ -92,7 +102,7 @@ describe("Sidebar", () => {
 
 describe("Sidebar · colapsar", () => {
   beforeEach(() => {
-    localStorage.clear();
+    resetSidebar();
     document.documentElement.removeAttribute("data-sidebar");
   });
 
@@ -117,9 +127,18 @@ describe("Sidebar · colapsar", () => {
     );
   });
 
+  // Se reimporta el módulo en vez de rerenderizar: el store se siembra desde
+  // localStorage **al crearse**, que en la app es una vez por ventana. Un
+  // `render` más sobre el store ya vivo no probaría el arranque en frío.
   it("recuerda la elección entre sesiones", async () => {
     localStorage.setItem("sunrise-sidebar-collapsed", "1");
-    renderSidebar();
+    vi.resetModules();
+    const { Sidebar: SidebarNuevo } = await import("./Sidebar");
+    render(
+      <MemoryRouter>
+        <SidebarNuevo />
+      </MemoryRouter>,
+    );
     // `find…` y no `get…`: el sidebar carga los contextos del backlog en un
     // efecto asíncrono, y salir del test antes deja el aviso de `act`.
     expect(
@@ -177,7 +196,7 @@ describe("Sidebar · backlog", () => {
   // El estado de colapsado vive en `localStorage` y sobrevive entre tests: sin
   // esto el sidebar arranca colapsado y el conteo no se dibuja.
   beforeEach(() => {
-    localStorage.clear();
+    resetSidebar();
   });
 
   it("el item Backlog lleva el total de pendientes", async () => {

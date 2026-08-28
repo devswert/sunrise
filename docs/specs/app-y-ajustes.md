@@ -101,6 +101,8 @@ la vista.
 | Ir a Home | `Mod+1` |
 | Ir a Today | `Mod+2` |
 | Ir a Focus | `Mod+3` |
+| Ir a Configs | `Mod+,` |
+| Mostrar u ocultar el sidebar | `Mod+S` |
 
 - Se guardan en `settings`, **una fila por atajo**: `hotkey_<accion>`.
 - El valor es **normalizado y portable**: `Mod+Shift+F`, nunca `cmd+F`. `Mod` es

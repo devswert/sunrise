@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSidebarStore } from "./sidebar";
 import { useAppStore } from "./store";
 import { useSettingsStore } from "./settings";
 
@@ -20,7 +21,8 @@ export type ShortcutId =
   | "goto_home"
   | "goto_today"
   | "goto_focus"
-  | "goto_settings";
+  | "goto_settings"
+  | "toggle_sidebar";
 
 export interface ShortcutAction {
   id: ShortcutId;
@@ -37,6 +39,7 @@ export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
   { id: "goto_today", label: "Ir a Today", fallback: "Mod+2", path: "/today" },
   { id: "goto_focus", label: "Ir a Focus", fallback: "Mod+3", path: "/focus" },
   { id: "goto_settings", label: "Ir a Configs", fallback: "Mod+,", path: "/settings" },
+  { id: "toggle_sidebar", label: "Mostrar u ocultar el sidebar", fallback: "Mod+S" },
 ];
 
 /** Clave en la tabla `settings`: una fila por atajo. */
@@ -222,6 +225,7 @@ export function isEditingText(el: Element | null): boolean {
  */
 export function useShortcuts() {
   const openCompose = useAppStore((s) => s.openCompose);
+  const toggleSidebar = useSidebarStore((s) => s.toggle);
   const quitOpen = useAppStore((s) => s.quitOpen);
   const values = useSettingsStore((s) => s.values);
   const navigate = useNavigate();
@@ -240,10 +244,11 @@ export function useShortcuts() {
         e.preventDefault();
         if (action.path) navigate(action.path);
         else if (action.id === "add_task") openCompose();
+        else if (action.id === "toggle_sidebar") toggleSidebar();
         return;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [resolved, openCompose, navigate, quitOpen]);
+  }, [resolved, openCompose, toggleSidebar, navigate, quitOpen]);
 }
