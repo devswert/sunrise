@@ -348,6 +348,9 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                         setPicker(null);
                         await api.moveTask(task.id, null, 0);
                         await onChanged();
+                        // Mover entre backlog y calendario cambia el contador del
+                        // sidebar, que vive fuera del `onChanged` de la vista.
+                        bumpData();
                         flash();
                       }}
                     >
@@ -365,6 +368,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                       setPicker(null);
                       await api.moveTask(task.id, iso, 0);
                       await onChanged();
+                      bumpData();
                       flash();
                     }}
                   />

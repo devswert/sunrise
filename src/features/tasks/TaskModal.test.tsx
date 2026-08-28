@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import type { Task, TimeEntry } from "../../lib/types";
+import { useAppStore } from "../../lib/store";
 import { TaskModal } from "./TaskModal";
 
 const startTimer = vi.fn(async () => {});
@@ -10,6 +11,7 @@ const stopTimer = vi.fn(async () => null);
 const updateTask = vi.fn(async (_id: number, _patch: unknown) => null);
 const listTimeEntries = vi.fn(async (): Promise<TimeEntry[]> => []);
 const setTaskRailOnly = vi.fn(async (_id: number, _railOnly: boolean) => null);
+const moveTask = vi.fn(async (_id: number, _date: string | null, _pos: number) => null);
 
 /** Entrada cerrada de `seconds` segundos que arranca ese día a las 09:00 local. */
 function entry(id: number, day: string, seconds: number): TimeEntry {
@@ -50,7 +52,7 @@ vi.mock("../../lib/ipc", () => ({
     setTaskStatus: vi.fn(async () => null),
     setActualSeconds: vi.fn(async () => null),
     setTaskRailOnly: (id: number, railOnly: boolean) => setTaskRailOnly(id, railOnly),
-    moveTask: vi.fn(async () => null),
+    moveTask: (id: number, date: string | null, pos: number) => moveTask(id, date, pos),
     deleteTask: vi.fn(async () => undefined),
   },
 }));
@@ -317,5 +319,28 @@ describe("TaskModal · un evento ignorado", () => {
     renderModal();
     expect(await screen.findByLabelText("Iniciar")).toBeTruthy();
     expect(screen.queryByRole("switch", { name: "Ignorar este evento" })).toBeNull();
+  });
+});
+
+describe("TaskModal · sacarle la fecha a una tarea", () => {
+  beforeEach(() => {
+    moveTask.mockClear();
+    estadoTimer = { ...TIMER_DETENIDO };
+  });
+
+  // El contador de Backlog del sidebar no se entera por el `onChanged` de la
+  // vista: escucha `dataVersion`. Sin el bump, la tarea aparecía en el backlog
+  // con el badge todavía en el número viejo.
+  it("avisa al resto de la app, para que el contador del sidebar se mueva", async () => {
+    const antes = useAppStore.getState().dataVersion;
+    renderModal();
+
+    await userEvent.click(screen.getByText("Inicio"));
+    await userEvent.click(await screen.findByText("Sin fecha (backlog)"));
+
+    expect(moveTask).toHaveBeenCalledWith(7, null, 0);
+    await waitFor(() =>
+      expect(useAppStore.getState().dataVersion).toBeGreaterThan(antes),
+    );
   });
 });
