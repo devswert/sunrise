@@ -25,6 +25,19 @@ export function timeRange(start: string | null, end: string | null): string | nu
 }
 
 /**
+ * Si la tarea trae algo del calendario, y por lo tanto la tarjeta se dibuja.
+ *
+ * Se exporta porque quien la muestra a veces necesita saberlo antes: en Focus,
+ * la línea que separa las notas solo tiene sentido si hay una tarjeta arriba de
+ * la que separarlas.
+ */
+export function hasCalendarData(task: Task): boolean {
+  const range = timeRange(task.eventStart, task.eventEnd);
+  const description = task.eventDescription ? readableDescription(task.eventDescription) : "";
+  return Boolean(range || task.meetingUrl || task.attendees.length > 0 || description);
+}
+
+/**
  * Bloque de datos del evento en el detalle de una tarea importada.
  *
  * Todo lo de acá es **de solo lectura**: lo escribe el feed, no tú. Va arriba de
@@ -41,8 +54,7 @@ export function CalendarEventCard({ task }: { task: Task }) {
   const description = task.eventDescription
     ? readableDescription(task.eventDescription)
     : "";
-  const hayAlgo = range || task.meetingUrl || task.attendees.length > 0 || description;
-  if (!hayAlgo) return null;
+  if (!hasCalendarData(task)) return null;
 
   return (
     <div className="evento">

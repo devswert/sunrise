@@ -209,6 +209,34 @@ describe("FocusView · detalle de la tarea", () => {
     expect(screen.getByText("Revisar el trimestre")).toBeInTheDocument();
   });
 
+  it("la línea sobre las notas solo aparece cuando la tarea trae datos del calendario", async () => {
+    // Sin tarjeta del evento no hay nada que separar: la línea quedaba paralela
+    // a la del título, con aire vacío en medio.
+    queue.length = 0;
+    queue.push(task({ id: 22, title: "Escribir specs" }));
+
+    const { unmount } = renderFocus();
+    const notas = (await screen.findByLabelText("Notas")).closest(".focus__notas");
+    expect(notas).not.toBeNull();
+    expect(notas!.className).not.toContain("has-event");
+    unmount();
+
+    queue.length = 0;
+    queue.push(
+      task({
+        id: 23,
+        title: "Coordinación",
+        source: "CALENDAR",
+        eventStart: "2026-08-13T19:00:00Z",
+        eventEnd: "2026-08-13T19:30:00Z",
+      }),
+    );
+
+    renderFocus();
+    const conEvento = (await screen.findByLabelText("Notas")).closest(".focus__notas");
+    expect(conEvento!.className).toContain("has-event");
+  });
+
   it("las notas y el canal se pueden editar, pero no se puede eliminar", async () => {
     // Replanificar en Focus es normal —te sientas a trabajar y ves que la tarea
     // era de otro contexto—. Borrar no: un botón de eliminar al lado del play es

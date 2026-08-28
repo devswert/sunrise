@@ -9,13 +9,14 @@ import { todayISO } from "../../lib/date";
 import { formatMinutes, hours, hoursFromMinutes } from "../../lib/capacity";
 import { celebrate } from "../../lib/confetti";
 import { useTimer, hms } from "../timer/useTimer";
-import { CalendarEventCard } from "../calendar/EventoDelCalendario";
+import { CalendarEventCard, hasCalendarData } from "../calendar/EventoDelCalendario";
 import { NotesEditor } from "../tasks/NotesEditor";
 import { useAutosave } from "../tasks/useAutosave";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { SunriseMark } from "../../components/SunriseMark";
 import type { Category } from "../../lib/types";
 import { Hash } from "lucide-react";
+import { chipVars } from "../tasks/chipVars";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
 
@@ -245,23 +246,24 @@ export function FocusView() {
   return (
     <div className="focus">
       <div className="focus__card">
-        <div className="focus__head">
-          <button
-            className="focus__check"
-            aria-label="Completar tarea"
-            onClick={complete}
-          >
-            <Check size={18} strokeWidth={3} />
-          </button>
-          <h1 className="focus__title">{current.title}</h1>
-
+        {/* Dos filas y no una: el título es lo que se lee primero y con el canal
+          * y los tiempos al lado quedaba estrangulado en una columna angosta,
+          * peor mientras más largo. Arriba van los metadatos —canal a la
+          * izquierda, tiempos y play a la derecha—; abajo el título, con todo el
+          * ancho para él. */}
+        <div className="focus__meta">
           {/* Canal editable: replanificar en Focus es normal —te sientas a
             * trabajar y te das cuenta de que la tarea era de otro contexto—.
             * Lo que NO está acá es eliminar: Focus es para trabajar, y un botón
             * de borrar al lado del play es un accidente esperando. */}
           <div className="chip-wrap" ref={canalRef}>
+            {/* El mismo chip que la card y el modal —`.cat-tag` + `chipVars`—, no
+              * una píldora con el color fijo de la app: el fondo teñido es por lo
+              * que se reconoce el canal de reojo en el resto de las vistas. */}
             <button
-              className={`chip${channel ? " is-set" : ""}`}
+              type="button"
+              className={`cat-tag focus__canal${channel ? "" : " is-empty"}`}
+              style={chipVars(channel)}
               aria-label="Cambiar canal"
               onClick={() => setPicker((p) => (p === "canal" ? null : "canal"))}
             >
@@ -353,6 +355,17 @@ export function FocusView() {
           </div>
         </div>
 
+        <div className="focus__head">
+          <button
+            className="focus__check"
+            aria-label="Completar tarea"
+            onClick={complete}
+          >
+            <Check size={18} strokeWidth={3} />
+          </button>
+          <h1 className="focus__title">{current.title}</h1>
+        </div>
+
         {timer.overEstimate && running && (
           <div className="focus__over">
             Pasaste el tiempo estimado — puedes seguir trabajando.
@@ -365,7 +378,10 @@ export function FocusView() {
           * por dónde entrar no tiene sentido. */}
         <CalendarEventCard task={current} />
 
-        <div className="focus__notas">
+        {/* La línea de arriba solo cuando hay tarjeta del calendario que separar:
+          * en una tarea escrita a mano dejaba dos líneas paralelas con nada en
+          * medio. */}
+        <div className={`focus__notas${hasCalendarData(current) ? " has-event" : ""}`}>
           <NotesEditor
             value={current.notes ?? ""}
             onDebounced={(v) => autosave.commitDebounced({ notes: v })}

@@ -18,7 +18,38 @@
   gap: var(--space-4);
 }
 
-/* Título + tiempos + play en una sola fila; los tiempos van a la derecha. */
+/* Fila de metadatos: canal a la izquierda, tiempos y play a la derecha. Va
+ * arriba del título para no comerle ancho — un título largo partido en cuatro
+ * líneas mientras sobra espacio a la derecha era el síntoma. */
+.focus__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* Un poco más de aire que el resto de la tarjeta: los tiempos son piezas altas
+   * y pegados al título competían con él por la misma línea de lectura. */
+  margin-bottom: var(--space-2);
+}
+
+/* Solo los resets de botón: el chip lo pinta `.cat-tag` con las variables del
+ * canal, igual que en la card de la semana. */
+button.focus__canal {
+  border: none;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 12.5px;
+  padding: 3px 10px;
+}
+button.focus__canal:hover {
+  filter: brightness(0.95);
+}
+/* Sin canal no se dibuja una píldora vacía: queda el numeral tenue. */
+button.focus__canal.is-empty {
+  background: transparent;
+  color: var(--faint);
+  padding: 0;
+}
+
+/* Check + título, con todo el ancho de la tarjeta para el título. */
 .focus__head {
   display: flex;
   align-items: center;

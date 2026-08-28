@@ -1097,8 +1097,13 @@
 
 /* Focus muestra el mismo detalle que el modal, con más aire: es la pantalla en
  * la que estás cuando empieza la reunión. */
+/* La línea separa las notas propias de la tarjeta del calendario. Sin tarjeta
+ * no hay nada que separar: quedaba una segunda línea paralela a la del título,
+ * con aire vacío en medio. */
 .focus__notas {
   margin-top: var(--space-4);
+}
+.focus__notas.has-event {
   border-top: 1px solid var(--border);
   padding-top: var(--space-3);
 }

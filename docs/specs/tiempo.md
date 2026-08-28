@@ -139,6 +139,15 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   izquierda de lo que estás mirando, y se corre otra vez al colapsar el sidebar
   con ⌘S. Se mide en cada llamada por eso. Vale para las tres celebraciones:
   Focus, planning y shutdown.
+- **El encabezado son dos filas, no una**: arriba el canal a la izquierda y los
+  tiempos con el play a la derecha; abajo el check y el título, con todo el ancho
+  de la tarjeta. En una sola fila el título quedaba en una columna angosta y un
+  título largo se partía en cuatro líneas con espacio libre al lado. El chip del
+  canal es el mismo `.cat-tag` + `chipVars` de la card y el modal (§7): teñido con
+  el color del canal, no con un color fijo de la vista.
+- **La línea sobre las notas solo se dibuja si hay tarjeta del calendario**
+  (`hasCalendarData`): sin nada que separar quedaba una segunda línea paralela a
+  la del título con aire vacío en medio.
 - ↑/↓ mueven el foco entre tareas del día (ignorado si el foco está en un
   input/textarea).
 - Si el timer arranca en otra tarea, Focus salta a ella **una sola vez por
