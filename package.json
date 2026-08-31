@@ -1,6 +1,6 @@
 {
   "name": "sunrise",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "sunrise — planner diario de escritorio, con los datos en tu máquina",
   "type": "module",
   "private": true,

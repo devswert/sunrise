@@ -15,6 +15,44 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.7.0 — 2026-08-31
+
+Configs se rediseñó entera. Cada ajuste ahora muestra a la izquierda qué es y para
+qué sirve, y a la derecha lo que se edita, en vez de un párrafo a todo el ancho con
+el control perdido al medio; y las explicaciones se acortaron a lo que no se
+adivina mirando el control. La sección de Canales arranca plegada y cada canal dice
+cuántas tareas lleva, que es lo que hacía falta para saber cuáles sobran.
+
+### Detalle
+
+- Cada ajuste es una fila de dos columnas: a la izquierda su nombre y su
+  explicación, a la derecha el control, alineado con el de todas las demás
+  secciones. Entre ajustes va una línea, así una sección de cinco campos deja de
+  leerse como un bloque de texto.
+- La vista quedó centrada, como el resto de las pantallas, y el título pasó a
+  "Configuraciones", con su icono.
+- **Canales arranca plegado.** Con dos contextos y catorce canales la lista abierta
+  no entra en pantalla; cerrada, cada contexto dice cuántos canales tiene.
+- **Cada canal muestra cuántas tareas lleva**, para poder decidir si sobra. Es el
+  total histórico y no lo pendiente —contando solo lo pendiente, casi todos marcan
+  cero— y no incluye los eventos del calendario marcados como ignorados: reservar
+  hora no es usar el canal.
+- El nombre de un canal se pinta con su color, y el canal elegido se muestra como
+  su chip `#tag` en las tres pantallas donde se elige: la lista de calendarios, el
+  alta de un calendario y el detalle de un objetivo.
+- Canales, Atajos y los calendarios pierden las cajas y pasan a una lista con
+  líneas de separación. Un calendario con error, que lo anunciaba con el borde de
+  su caja, ahora lo dice con una banda roja a la izquierda.
+- Los atajos se ven como los demás ajustes, con la combinación y su botón de
+  restaurar unidos en un solo control.
+- Dev Tools se distingue con borde discontinuo: es un banco de pruebas, no una
+  sección de ajustes, y solo existe en dev.
+- El menú lateral deja de rebotar al apretar una sección: la animación cruzaba las
+  secciones intermedias y el resaltado marcaba cuatro antes de quedarse en la
+  elegida.
+- El icono de cada sección quedó a la izquierda de su nombre, y las cards se
+  separan con más aire y una sombra más suave.
+
 ## v0.6.0 — 2026-08-28
 
 Las tareas ahora tienen prioridad, de P1 —lo que arde— a P5 —lo que puede
