@@ -123,6 +123,15 @@
   background: color-mix(in srgb, var(--apricot) 22%, transparent);
   border-color: color-mix(in srgb, var(--apricot) 40%, transparent);
 }
+/* El chip de un canal lleva el color de su canal, no el apricot genérico de
+   `.chip.is-set`: es el mismo dato que el `#tag` de las tarjetas, y ahí ya viene
+   teñido — verlo en dos colores distintos según la pantalla lo desconecta de su
+   canal. Los tokens los pone el componente con `chipVarsForColor`. */
+.chip.is-set.chip--canal {
+  color: var(--tag-ink);
+  background: color-mix(in srgb, var(--tag-bg) 30%, transparent);
+  border-color: color-mix(in srgb, var(--tag-bg) 45%, transparent);
+}
 .chip.is-open {
   border-color: var(--apricot);
 }

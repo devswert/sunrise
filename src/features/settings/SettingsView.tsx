@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import {
+  ChevronRight,
+  Download,
+  Plus,
+  RotateCcw,
+  Settings as SettingsIcon,
+  Trash2,
+} from "lucide-react";
 import { api } from "../../lib/ipc";
 import { PALETTE } from "../../lib/palette";
 import type { AppUpdate, Category } from "../../lib/types";
@@ -54,10 +61,11 @@ function Card({
   return (
     <section className="set-card" id={`set-${id}`} data-section={id}>
       <header className="set-card__head">
-        <h2>
-          <Icono size={16} aria-hidden /> {title}
-        </h2>
-        <p>{hint}</p>
+        <Icono size={16} aria-hidden className="set-card__icon" />
+        <div className="set-card__head-text">
+          <h2>{title}</h2>
+          <p>{hint}</p>
+        </div>
       </header>
       {children}
     </section>
@@ -154,33 +162,37 @@ function GeneralCard() {
   return (
     <Card id="general" title="General" hint="Ajustes del día a día.">
       <div className="set-field">
-        <label className="set-field__label" htmlFor="cap">
-          Capacidad diaria
-        </label>
-        <input
-          id="cap"
-          className={`set-input${error ? " is-invalid" : ""}`}
-          aria-label="Capacidad diaria"
-          value={value}
-          {...PLAIN_INPUT}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setError(false);
-          }}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            if (e.key === "Escape") {
-              setDraft(null);
+        <div className="set-field__text">
+          <label className="set-field__label" htmlFor="cap">
+            Capacidad diaria
+          </label>
+          <span className={`set-note${error ? " is-error" : ""}`}>
+            {error
+              ? "No entendí esa duración. Prueba 8h, 7h30 o 480."
+              : "Contra este número se pinta el semáforo de la semana. Acepta 8h, 7h30 o 480."}
+          </span>
+        </div>
+        <div className="set-field__control">
+          <input
+            id="cap"
+            className={`set-input${error ? " is-invalid" : ""}`}
+            aria-label="Capacidad diaria"
+            value={value}
+            {...PLAIN_INPUT}
+            onChange={(e) => {
+              setDraft(e.target.value);
               setError(false);
-            }
-          }}
-        />
-        <span className={`set-note${error ? " is-error" : ""}`}>
-          {error
-            ? "No entendí esa duración. Prueba 8h, 7h30 o 480."
-            : "Objetivo de minutos planificados por día; el semáforo de la semana se pinta contra este número. Acepta 8h, 7h30 o 480."}
-        </span>
+            }}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") {
+                setDraft(null);
+                setError(false);
+              }
+            }}
+          />
+        </div>
       </div>
 
       <JornadaFields />
@@ -212,10 +224,15 @@ function Prioridades() {
 
   return (
     <div className="set-field">
-      <div className="set-field__row">
+      <div className="set-field__text">
         <label className="set-field__label" htmlFor="prioridades">
           Prioridades
         </label>
+        <span className="set-note">
+          Cinco niveles fijos, de P1 a P5. Apagarlo los esconde sin borrarlos.
+        </span>
+      </div>
+      <div className="set-field__control">
         <Switch
           id="prioridades"
           label="Prioridades"
@@ -223,10 +240,6 @@ function Prioridades() {
           onChange={(v) => void setSetting(SettingKey.PRIORITIES_ENABLED, v ? "1" : "0")}
         />
       </div>
-      <span className="set-note">
-        Cinco niveles fijos, de P1 (lo que arde) a P5. Apagarlo esconde el indicador de las
-        tarjetas y los filtros del backlog; el nivel que ya tenga cada tarea se conserva.
-      </span>
     </div>
   );
 }
@@ -256,30 +269,32 @@ function CollapsedDaysField() {
   };
 
   return (
-    <div className="set-field">
-      <span className="set-field__label">Días plegados</span>
-      <div className="set-weekdays" role="group" aria-label="Días plegados">
-        {ISO_WEEKDAYS.map((day) => {
-          const on = collapsed.includes(day);
-          return (
-            <button
-              key={day}
-              type="button"
-              className={`set-weekday${on ? " is-on" : ""}`}
-              aria-pressed={on}
-              onClick={() => void toggle(day)}
-            >
-              {isoWeekdayLabel(day)}
-            </button>
-          );
-        })}
+    <div className="set-field set-field--stack">
+      <div className="set-field__text">
+        <span className="set-field__label">Días plegados</span>
+        <span className="set-note">
+          Se dibujan como una tira angosta y no reciben tareas arrastradas; un click los
+          abre. <strong>Hoy nunca se pliega</strong>, aunque esté marcado.
+        </span>
       </div>
-      <span className="set-note">
-        En la vista semana se dibujan como una tira angosta con el día en vertical, y
-        no reciben tareas arrastradas. Si un día plegado tiene tareas se muestra
-        cuántas, y un click lo abre. <strong>Hoy nunca se pliega</strong>, aunque esté
-        marcado.
-      </span>
+      <div className="set-field__control">
+        <div className="set-weekdays" role="group" aria-label="Días plegados">
+          {ISO_WEEKDAYS.map((day) => {
+            const on = collapsed.includes(day);
+            return (
+              <button
+                key={day}
+                type="button"
+                className={`set-weekday${on ? " is-on" : ""}`}
+                aria-pressed={on}
+                onClick={() => void toggle(day)}
+              >
+                {isoWeekdayLabel(day)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -325,10 +340,19 @@ function InicioAutomatico() {
 
   return (
     <div className="set-field">
-      <div className="set-field__row">
+      <div className="set-field__text">
         <label className="set-field__label" htmlFor="autostart">
           Abrir sunrise al iniciar sesión
         </label>
+        {/* Solo el fallo. El ajuste se explica solo, y la nota que estaba acá
+          * hablaba del respaldo y del cierre del día, que son otras secciones. */}
+        {error && (
+          <span className="set-note is-error">
+            No se pudo cambiar el inicio automático: {error}
+          </span>
+        )}
+      </div>
+      <div className="set-field__control">
         <Switch
           id="autostart"
           label="Abrir sunrise al iniciar sesión"
@@ -337,11 +361,6 @@ function InicioAutomatico() {
           onChange={(v) => void cambiar(v)}
         />
       </div>
-      <span className={`set-note${error ? " is-error" : ""}`}>
-        {error
-          ? `No se pudo cambiar el inicio automático: ${error}`
-          : "El respaldo automático y el aviso de cerrar el día ocurren a una hora fija, y solo si sunrise está abierta."}
-      </span>
     </div>
   );
 }
@@ -430,46 +449,52 @@ function Actualizaciones() {
 
   return (
     <div className="set-field">
-      <div className="set-field__row">
+      <div className="set-field__text">
         <span className="set-field__label">Actualizaciones</span>
-        <div className="upd-acciones">
-          {hay && (
-            <button type="button" className="resp-btn upd-btn--primario" onClick={() => void instalar()}>
-              <Download size={13} aria-hidden />
-              <span className="resp-btn__texto">Instalar {hay.version} y reiniciar</span>
-            </button>
-          )}
-          <button type="button" className="resp-btn" onClick={() => void buscar()} disabled={busy}>
-            {status.kind === "buscando" ? <Spinner size={13} /> : <RotateCcw size={13} aria-hidden />}
-            <span className="resp-btn__texto">
-              {status.kind === "buscando" ? "Buscando…" : "Buscar"}
-            </span>
-          </button>
-          {hayAnuncio && (
-            <button type="button" className="resp-btn" onClick={() => showWhatsNew(version)}>
-              <Sparkles size={13} aria-hidden />
-              <span className="resp-btn__texto">Ver lo nuevo</span>
-            </button>
-          )}
-        </div>
+        <span className="set-note">
+          {status.kind === "instalando"
+            ? progress?.installing
+              ? "Instalando. La app se reinicia sola y vuelve al frente."
+              : progress?.total
+                ? `Descargando: ${Math.min(100, Math.round((progress.downloaded / progress.total) * 100))} %. Se reinicia sola al terminar.`
+                : "Descargando. Se reinicia sola al terminar."
+            : status.kind === "hay"
+              ? `Hay una versión nueva: ${hay!.version}${hay!.date ? `, del ${hay!.date}` : ""}. Tienes la ${hay!.currentVersion}.`
+              : status.kind === "al-dia"
+                ? `Estás en la última versión${version ? ` (${version})` : ""}.`
+                : status.kind === "sin-respuesta"
+                  ? `No se pudo preguntar; puede que estés sin conexión. ${status.detalle}`
+                  : `Versión ${version || "…"}. Se busca sola al abrir y cada 4 horas.`}
+        </span>
       </div>
-      <span className="set-note">
-        {status.kind === "instalando"
-          ? progress?.installing
-            ? "Instalando la versión nueva. La app se reinicia sola y vuelve al frente."
-            : progress?.total
-              ? `Descargando la versión nueva: ${Math.min(100, Math.round((progress.downloaded / progress.total) * 100))} %. La app se va a reiniciar sola al terminar.`
-              : "Descargando la versión nueva. La app se va a reiniciar sola al terminar."
-          : status.kind === "hay"
-            ? `Hay una versión nueva: ${hay!.version}${hay!.date ? `, publicada el ${hay!.date}` : ""}. Tienes la ${hay!.currentVersion}.`
-            : status.kind === "al-dia"
-              ? `Estás en la última versión${version ? ` (${version})` : ""}.`
-              : status.kind === "sin-respuesta"
-                ? `No se pudo preguntar por versiones nuevas; puede ser que estés sin conexión. ${status.detalle}`
-                : `Estás usando la versión ${version || "…"}. Se busca sola al abrir y cada 4 horas; acá puedes preguntar ahora.`}
-      </span>
+      <div className="set-field__control">
+        {hay && (
+          <button
+            type="button"
+            className="resp-btn upd-btn--primario"
+            onClick={() => void instalar()}
+          >
+            <Download size={13} aria-hidden />
+            <span className="resp-btn__texto">Instalar {hay.version} y reiniciar</span>
+          </button>
+        )}
+        <button type="button" className="resp-btn" onClick={() => void buscar()} disabled={busy}>
+          {status.kind === "buscando" ? <Spinner size={13} /> : <RotateCcw size={13} aria-hidden />}
+          <span className="resp-btn__texto">
+            {status.kind === "buscando" ? "Buscando…" : "Buscar"}
+          </span>
+        </button>
+        {/* Un link y no un tercer botón: el único que hace algo acá es "Buscar" —
+          * el resto es abrir un modal de lectura, y dos botones del mismo peso
+          * hacían dudar cuál era la acción de la sección. */}
+        {hayAnuncio && (
+          <button type="button" className="set-note__link" onClick={() => showWhatsNew(version)}>
+            Ver lo nuevo de la {version}
+          </button>
+        )}
+      </div>
       {/* Las notas del Release en crudo: es markdown escrito a mano y puede venir
-        * largo, así que va en un bloque aparte y no en la bajada. */}
+        * largo, así que va en un bloque aparte, a lo ancho del campo. */}
       {hay?.notes && <p className="upd-notas">{hay.notes}</p>}
     </div>
   );
@@ -510,7 +535,7 @@ function JornadaFields() {
   }
 
   const field = (cual: "start" | "end", label: string, id: string) => (
-    <div className="set-field set-field--inline">
+    <div className="set-pair">
       <label className="set-field__label" htmlFor={id}>
         {label}
       </label>
@@ -538,19 +563,23 @@ function JornadaFields() {
   );
 
   return (
-    <div className="set-field">
-      <span className="set-field__label">Jornada</span>
-      <div className="set-jornada">
-        {field("start", "Inicio", "work-start")}
-        {field("end", "Fin", "work-end")}
+    <div className="set-field set-field--wide">
+      <div className="set-field__text">
+        <span className="set-field__label">Jornada</span>
+        <span className={`set-note${error ? " is-error" : ""}`}>
+          {error === "start"
+            ? "Una hora en formato 24 h (09:00), y antes del fin de jornada."
+            : error === "end"
+              ? "Una hora en formato 24 h (18:00), y después del inicio."
+              : "La grilla del rail en Today. No recorta: una reunión fuera se ve igual."}
+        </span>
       </div>
-      <span className={`set-note${error ? " is-error" : ""}`}>
-        {error === "start"
-          ? "Una hora en formato 24 h (09:00), y antes del fin de jornada."
-          : error === "end"
-            ? "Una hora en formato 24 h (18:00), y después del inicio."
-            : "Define la grilla del rail de calendario en Today y desde dónde se proyectan las tareas sin hora. No recorta: una reunión fuera de la jornada se muestra igual."}
-      </span>
+      <div className="set-field__control">
+        <div className="set-jornada">
+          {field("start", "Inicio", "work-start")}
+          {field("end", "Fin", "work-end")}
+        </div>
+      </div>
     </div>
   );
 }
@@ -599,14 +628,21 @@ function ShortcutsCard() {
     <Card
       id="atajos"
       title="Atajos"
-      hint="Requieren ⌘ (o Ctrl). Se ignoran mientras escribes en un campo de texto."
+      hint="Requieren ⌘ (o Ctrl). Se ignoran mientras escribes."
     >
-      <ul className="set-list">
+      {/* Cada atajo es un campo como los de General: nombre a la izquierda, su
+        * control a la derecha, separados por la misma divisoria. Antes eran cajas
+        * apiladas, y seis cajas dentro de una card es una lista dentro de una
+        * lista. */}
+      <ul className="set-list set-list--campos">
         {SHORTCUT_ACTIONS.map((a) => {
           const esDefault = resolved[a.id] === a.fallback;
           return (
-            <li className="set-row" key={a.id}>
-              <span className="set-row__name">{a.label}</span>
+            <li className="set-field" key={a.id}>
+              <div className="set-field__text">
+                <span className="set-field__label">{a.label}</span>
+              </div>
+              <div className="set-field__control set-field__control--fila hotkey-grupo">
               <button
                 className={`hotkey${capturing === a.id ? " is-capturing" : ""}`}
                 aria-label={`Cambiar atajo de ${a.label}`}
@@ -626,6 +662,7 @@ function ShortcutsCard() {
               >
                 <RotateCcw size={14} />
               </button>
+              </div>
             </li>
           );
         })}
@@ -710,6 +747,7 @@ function AddRow({
       <input
         ref={ref}
         className="set-row__input"
+        style={{ color: `var(--${color}-ink)` }}
         placeholder={placeholder}
         aria-label={placeholder}
         value={name}
@@ -733,18 +771,58 @@ function AddRow({
  */
 function ChannelsCard() {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [usage, setUsage] = useState<Map<number, number>>(new Map());
   /** `"root"` = creando contexto; un id = creando canal dentro de ese contexto. */
   const [adding, setAdding] = useState<number | "root" | null>(null);
+  /**
+   * Los contextos abiertos. **Arranca vacío: todos cerrados.**
+   *
+   * Con dos contextos y catorce canales, la lista abierta mide más que la sección
+   * General entera y no entra en pantalla; cerrada son dos filas. Se viene acá a
+   * tocar un canal puntual, no a leer los dieciséis, así que el estado que sirve
+   * de entrada es el plegado.
+   */
+  const [abiertos, setAbiertos] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
-    setCategories(await api.listCategories());
+    // En paralelo: son dos lecturas independientes y la lista no tiene por qué
+    // esperar al conteo para dibujarse.
+    const [cats, uso] = await Promise.all([api.listCategories(), api.categoryUsage()]);
+    setCategories(cats);
+    setUsage(new Map(uso.map((u) => [u.categoryId, u.tasks])));
   }, []);
   useEffect(() => {
     load();
   }, [load]);
 
   const parents = useMemo(() => categories.filter((c) => c.parentId === null), [categories]);
-  const childrenOf = (id: number) => categories.filter((c) => c.parentId === id);
+  const childrenOf = useCallback(
+    (id: number) => categories.filter((c) => c.parentId === id),
+    [categories],
+  );
+
+  /**
+   * Lo que muestra un contexto: sus canales y las tareas de todos ellos juntas.
+   *
+   * El propio contexto puede tener tareas colgando —una tarea puede ir en
+   * cualquiera de los dos niveles—, así que se suma él también y no solo sus
+   * hijos.
+   */
+  const totalDe = (p: Category) =>
+    childrenOf(p.id).reduce((n, ch) => n + (usage.get(ch.id) ?? 0), usage.get(p.id) ?? 0);
+
+  const toggle = (id: number) =>
+    setAbiertos((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
+  /** Abre el contexto donde se va a crear: si no, la fila nueva nace escondida. */
+  const addInto = (id: number) => {
+    setAbiertos((prev) => new Set(prev).add(id));
+    setAdding(id);
+  };
 
   const rename = async (c: Category, name: string) => {
     await api.updateCategory(c.id, name, c.color);
@@ -767,9 +845,9 @@ function ChannelsCard() {
     <Card
       id="canales"
       title="Canales"
-      hint="Los contextos son las carpetas del backlog; los canales son el #tag de las tarjetas. Una tarea puede ir en cualquiera de los dos niveles."
+      hint="Los contextos son las carpetas del backlog; los canales, el #tag de las tarjetas."
     >
-      <ul className="set-list">
+      <ul className="set-list set-list--plana">
         {/* Agregar va arriba: es lo primero que se busca. */}
         {adding === "root" ? (
           <AddRow
@@ -785,13 +863,40 @@ function ChannelsCard() {
           </li>
         )}
 
-        {parents.map((p) => (
+        {parents.map((p) => {
+          const hijos = childrenOf(p.id);
+          const abierto = abiertos.has(p.id);
+          return (
           <li key={p.id} className="set-group">
             <ul className="set-list">
-              <li className="set-row">
+              <li className="set-row set-row--contexto">
+                {/* El chevron y no la fila entera: la fila lleva un input que se
+                  * edita con un click, y ese click no puede además plegar.
+                  *
+                  * Sin canales no hay chevron —no hay nada que abrir—, pero el
+                  * hueco se conserva para que los nombres de todos los contextos
+                  * arranquen en la misma columna. */}
+                {hijos.length > 0 ? (
+                  <button
+                    className="set-row__chevron"
+                    aria-expanded={abierto}
+                    aria-label={`${abierto ? "Cerrar" : "Abrir"} ${p.name}`}
+                    onClick={() => toggle(p.id)}
+                  >
+                    <ChevronRight size={14} aria-hidden />
+                  </button>
+                ) : (
+                  <span className="set-row__chevron is-empty" aria-hidden />
+                )}
                 <ColorDot value={p.color} onChange={(color) => recolor(p, color)} />
                 <input
                   className="set-row__input"
+                  /* El nombre lleva el color de su canal, como el chip `#tag` de
+                     las tarjetas: es la misma cosa nombrada en dos lugares, y con
+                     el punto solo había que cruzar la vista para asociarlos. El
+                     token `-ink` y no el plano — es el que tiene contraste medido
+                     sobre el fondo de la fila. */
+                  style={{ color: `var(--${p.color}-ink)` }}
                   defaultValue={p.name}
                   onBlur={(e) => {
                     if (e.target.value.trim() && e.target.value !== p.name) {
@@ -801,11 +906,21 @@ function ChannelsCard() {
                   aria-label={`Nombre de ${p.name}`}
                   {...PLAIN_INPUT}
                 />
+                {/* Cuántos canales tiene y cuánto se usan, sin abrirlo. Es lo que
+                  * hace útil el estado cerrado: sin esto, un contexto plegado no
+                  * dice nada y hay que abrirlo para saber qué hay dentro. */}
+                <span className="set-row__uso">
+                  {/* Un contexto sin canales no dice "0 canales": es la mitad de la
+                    * frase ocupada por un cero, y lo único que informa es cuánto se
+                    * usa él mismo. */}
+                  {hijos.length > 0 && `${hijos.length} ${hijos.length === 1 ? "canal" : "canales"} · `}
+                  {totalDe(p)} {totalDe(p) === 1 ? "tarea" : "tareas"}
+                </span>
                 <button
                   className="set-row__icon"
                   aria-label={`Agregar canal en ${p.name}`}
                   title="Agregar canal dentro"
-                  onClick={() => setAdding(p.id)}
+                  onClick={() => addInto(p.id)}
                 >
                   <Plus size={14} />
                 </button>
@@ -818,7 +933,7 @@ function ChannelsCard() {
                 </button>
               </li>
 
-              {adding === p.id && (
+              {abierto && adding === p.id && (
                 <AddRow
                   child
                   placeholder={`Nombre del canal en ${p.name}`}
@@ -827,11 +942,13 @@ function ChannelsCard() {
                 />
               )}
 
-              {childrenOf(p.id).map((ch) => (
+              {abierto &&
+                hijos.map((ch) => (
                 <li className="set-row is-child" key={ch.id}>
                   <ColorDot value={ch.color} onChange={(color) => recolor(ch, color)} />
                   <input
                     className="set-row__input"
+                    style={{ color: `var(--${ch.color}-ink)` }}
                     defaultValue={ch.name}
                     onBlur={(e) => {
                       if (e.target.value.trim() && e.target.value !== ch.name) {
@@ -841,6 +958,11 @@ function ChannelsCard() {
                     aria-label={`Nombre de ${ch.name}`}
                     {...PLAIN_INPUT}
                   />
+                  {/* Sin tareas nunca: es lo que dice que se puede borrar sin
+                    * pensarlo, que es la pregunta que uno trae a esta sección. */}
+                  <span className="set-row__uso">
+                    {usage.get(ch.id) ?? 0} {(usage.get(ch.id) ?? 0) === 1 ? "tarea" : "tareas"}
+                  </span>
                   <button
                     className="set-row__icon is-danger"
                     aria-label={`Eliminar ${ch.name}`}
@@ -849,10 +971,11 @@ function ChannelsCard() {
                     <Trash2 size={14} />
                   </button>
                 </li>
-              ))}
+                ))}
             </ul>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </Card>
   );
@@ -890,10 +1013,11 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
  * simplemente no hace nada, sin error—, y la animación es parte de lo pedido.
  * Con `prefers-reduced-motion` se salta el salto animado.
  */
-function animarScrollHasta(target: HTMLElement, duration = 320) {
+function animarScrollHasta(target: HTMLElement, alTerminar: () => void, duration = 320) {
   const cont = scrollParent(target);
   if (!cont) {
     target.scrollIntoView({ block: "start" });
+    alTerminar();
     return;
   }
 
@@ -901,10 +1025,14 @@ function animarScrollHasta(target: HTMLElement, duration = 320) {
   const from = cont.scrollTop;
   const delta = target.getBoundingClientRect().top - cont.getBoundingClientRect().top - margen;
   const to = Math.max(0, Math.min(from + delta, cont.scrollHeight - cont.clientHeight));
-  if (Math.abs(to - from) < 1) return;
+  if (Math.abs(to - from) < 1) {
+    alTerminar();
+    return;
+  }
 
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
     cont.scrollTop = to;
+    alTerminar();
     return;
   }
 
@@ -915,6 +1043,11 @@ function animarScrollHasta(target: HTMLElement, duration = 320) {
     const t = Math.min(1, (ahora - t0) / duration);
     cont.scrollTop = from + (to - from) * easeInOut(t);
     if (t < 1) requestAnimationFrame(paso);
+    // Un frame después del último: el observer emite al final del frame en que
+    // se movió el scroll, así que soltar el candado en el mismo tick deja pasar
+    // justo la emisión de la sección de llegada... y también la de la última
+    // intermedia, que es el rebote que se ve.
+    else requestAnimationFrame(alTerminar);
   };
   requestAnimationFrame(paso);
 }
@@ -927,6 +1060,18 @@ function animarScrollHasta(target: HTMLElement, duration = 320) {
  */
 function useActiveTab(): [TabId, (id: TabId) => void] {
   const [active, setActive] = useState<TabId>("general");
+  /**
+   * La sección a la que se está viajando por click, o `null` si el scroll es del
+   * usuario.
+   *
+   * **El resaltado automático tiene que callarse durante el viaje.** Sin esto, la
+   * animación cruza cada sección intermedia, el observer emite por todas, y el
+   * menú marca cuatro secciones en 320 ms antes de quedarse en la que se apretó:
+   * se ve como un rebote y contradice al click, que es la orden más explícita que
+   * puede dar el usuario. Es un `ref` y no estado porque lo lee el callback del
+   * observer, que se registra una sola vez.
+   */
+  const viajandoA = useRef<TabId | null>(null);
 
   useEffect(() => {
     // El resaltado automático es una mejora: sin `IntersectionObserver`
@@ -943,6 +1088,8 @@ function useActiveTab(): [TabId, (id: TabId) => void] {
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        // Mientras dura el viaje por click manda el destino, no lo que se cruza.
+        if (viajandoA.current) return;
         const id = visible?.target.getAttribute("data-section");
         if (id) setActive(id as TabId);
       },
@@ -957,7 +1104,21 @@ function useActiveTab(): [TabId, (id: TabId) => void] {
   const goTo = (id: TabId) => {
     setActive(id);
     const el = document.getElementById(`set-${id}`);
-    if (el) animarScrollHasta(el);
+    if (!el) return;
+    viajandoA.current = id;
+    // Solo si nadie apretó otra tab mientras tanto: el viaje viejo termina
+    // después que el nuevo empezó y le soltaría el candado en la cara.
+    const soltar = () => {
+      if (viajandoA.current === id) viajandoA.current = null;
+    };
+    animarScrollHasta(el, soltar);
+    // Red de seguridad, y no redundancia: la animación avanza por
+    // `requestAnimationFrame`, que **no corre con la ventana oculta**. Si alguien
+    // aprieta una tab y esconde la ventana en el mismo segundo, sin esto el
+    // candado queda puesto y el menú deja de seguir al scroll al volver. Los
+    // timers sí corren en ese estado. Soltar de más no rompe nada: el peor caso
+    // es un resaltado que vuelve a seguir al scroll un pelo antes de tiempo.
+    window.setTimeout(soltar, 600);
   };
 
   return [active, goTo];
@@ -970,7 +1131,13 @@ export function SettingsView() {
 
   return (
     <div className="settings">
-      <h1 className="settings__title">Configs</h1>
+      {/* Con icono y a 22px, como los `h1` de weekly planning y de la review. El
+          icono es `Settings`, el mismo del sidebar: se llega desde ahí y la marca
+          tiene que ser la misma. Centrado, que es lo único en que se aparta de sus
+          hermanas: acá el título corona dos columnas, no encabeza una. */}
+      <h1 className="settings__title">
+        <SettingsIcon size={20} aria-hidden /> Configuraciones
+      </h1>
 
       <nav className="set-tabs" aria-label="Secciones de ajustes">
         {tabs.map((t) => (

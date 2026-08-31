@@ -5,7 +5,7 @@ use tauri::{Emitter, Manager, State};
 use crate::backup;
 use crate::db::Db;
 use crate::models::{
-    ActiveTimer, AppUpdate, BackupFile, CalendarFeed, Category, LogDay, Objective,
+    ActiveTimer, AppUpdate, BackupFile, CalendarFeed, Category, CategoryUsage, LogDay, Objective,
     Profile, Rescue, RestoreResult, Task, TaskEvent, TimeEntry, DayWork, WeeklyRollup,
 };
 use crate::repo::{self, NewTask, ObjectivePatch, TaskPatch};
@@ -386,6 +386,12 @@ pub fn get_task(db: State<'_, Db>, id: i64) -> Result<Option<Task>, String> {
 pub fn list_categories(db: State<'_, Db>) -> Result<Vec<Category>, String> {
     let conn = db.0.lock().map_err(e)?;
     repo::list_categories(&conn).map_err(e)
+}
+
+#[tauri::command]
+pub fn category_usage(db: State<'_, Db>) -> Result<Vec<CategoryUsage>, String> {
+    let conn = db.0.lock().map_err(e)?;
+    repo::category_usage(&conn).map_err(e)
 }
 
 #[tauri::command]

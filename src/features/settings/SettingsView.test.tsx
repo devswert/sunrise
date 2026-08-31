@@ -267,7 +267,7 @@ describe("SettingsView · actualizaciones", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Buscar/ }));
 
     expect(await screen.findByText(/Hay una versión nueva: 0\.2\.0/)).toBeInTheDocument();
-    expect(screen.getByText(/publicada el 2026-09-01/)).toBeInTheDocument();
+    expect(screen.getByText(/del 2026-09-01/)).toBeInTheDocument();
     expect(screen.getByText("- El rail muestra los feriados")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Instalar 0\.2\.0 y reiniciar/ }),
@@ -304,7 +304,7 @@ describe("SettingsView · actualizaciones", () => {
     render(<SettingsView />);
     await userEvent.click(await screen.findByRole("button", { name: /Buscar/ }));
 
-    expect(await screen.findByText(/No se pudo preguntar por versiones nuevas/)).toBeInTheDocument();
+    expect(await screen.findByText(/No se pudo preguntar/)).toBeInTheDocument();
     expect(screen.queryByText(/Estás en la última versión/)).not.toBeInTheDocument();
   });
 });
@@ -349,6 +349,61 @@ describe("SettingsView · alta de un canal", () => {
     await userEvent.tab();
 
     expect(create).toHaveBeenCalledWith(null, "Lecturas", "lavender");
+  });
+});
+
+/**
+ * Con dos contextos y catorce canales la lista abierta no entra en pantalla, así
+ * que la sección arranca plegada. Lo que hace usable ese estado es el contador:
+ * un contexto cerrado que no dice nada obliga a abrirlo para saber qué hay.
+ */
+describe("SettingsView · canales plegados", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const arbol = () => {
+    vi.spyOn(api, "listCategories").mockResolvedValue([
+      { id: 1, parentId: null, name: "ha-engineering", color: "mint", position: 0, archived: false },
+      { id: 2, parentId: 1, name: "issues", color: "peach", position: 0, archived: false },
+      { id: 3, parentId: 1, name: "rs", color: "periwinkle", position: 1, archived: false },
+      { id: 4, parentId: null, name: "suelto", color: "rose", position: 1, archived: false },
+    ]);
+    vi.spyOn(api, "categoryUsage").mockResolvedValue([
+      { categoryId: 2, tasks: 6 },
+      { categoryId: 4, tasks: 3 },
+    ]);
+  };
+
+  it("los contextos arrancan cerrados y dicen qué esconden", async () => {
+    arbol();
+    render(<SettingsView />);
+
+    expect(await screen.findByDisplayValue("ha-engineering")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("issues")).not.toBeInTheDocument();
+    expect(screen.getByText("2 canales · 6 tareas")).toBeInTheDocument();
+  });
+
+  it("abrirlo muestra sus canales con lo que usa cada uno", async () => {
+    arbol();
+    render(<SettingsView />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Abrir ha-engineering" }));
+
+    expect(screen.getByDisplayValue("issues")).toBeInTheDocument();
+    expect(screen.getByText("6 tareas")).toBeInTheDocument();
+    // El que nunca se usó es el que se puede borrar sin pensarlo.
+    expect(screen.getByText("0 tareas")).toBeInTheDocument();
+  });
+
+  /** Sin canales no hay nada que abrir, y "0 canales" no informa nada. */
+  it("un contexto sin canales no ofrece abrirse ni los cuenta", async () => {
+    arbol();
+    render(<SettingsView />);
+
+    expect(await screen.findByDisplayValue("suelto")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Abrir suelto" })).not.toBeInTheDocument();
+    expect(screen.getByText("3 tareas")).toBeInTheDocument();
   });
 });
 

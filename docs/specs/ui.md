@@ -326,6 +326,176 @@ también necesitan su icono — importarlo desde `SettingsView` sería un ciclo.
 de las cards tiene que seguir al de la lista**: el resaltado lo decide un
 `IntersectionObserver`, así que si divergen el menú marca una y se ve otra.
 
+**El título va centrado sobre las dos columnas, con el icono del sidebar.** Es lo
+único en que se aparta de los `h1` de sus vistas hermanas (mismo icono de 20px, mismo
+cuerpo de 22px, pero ahí alineados a la izquierda): acá el título corona un menú y un
+panel, y pegado al borde izquierdo se lee como el rótulo del menú.
+
+**El icono de cada sección va en una pastilla neutra a la izquierda del nombre**, no
+suelto: a 16px sobre el fondo de la card mide lo mismo que una letra del nombre y se lee
+como parte de él. El fondo es `--surface-sunken` y no un tinte por sección — acá el icono
+identifica, no clasifica, y en esta app el color siempre significa algo. La medida sale de
+los atributos del SVG, así que la regla necesita `box-sizing: content-box` para que el
+padding no infle el glifo.
+
+**El icono es hermano del texto, no hijo del `h2`**, aunque termine alineado con él: como
+hijo quedaba atado a la línea del título y no se podía mover respecto del bloque. El
+encabezado es `flex` con `align-items: flex-start` sobre `.set-card__icon` y
+`.set-card__head-text`, así el icono queda arriba, a la altura del nombre, y no baila con
+el largo de la bajada —hay secciones de una línea y de tres—. Las acciones de sección —el
+sync de calendarios, los botones de respaldo— se van a la derecha con `margin-left: auto`
+sobre `.set-card__acciones`, no con un `justify-content`: con tres hijos, repartirlos
+separaría el icono de su título.
+
+**Las bajadas y las notas explican, no narran.** Una o dos líneas, con el dato que no se
+adivina mirando el control —que hoy nunca se pliega, que un sonido inexistente llega mudo,
+que el Alert Style no lo decide la app— y sin el párrafo alrededor. El motivo largo, cuando
+existe, va en el doc comment del componente, que es donde lo busca quien lo va a tocar.
+
+**Se probó de marca de agua y no funcionó, por dos motivos distintos.** Grande y
+translúcida detrás del título, se lee como suciedad sobre el nombre a cualquier opacidad
+en que se distinga. Movida a la esquina superior derecha resuelve eso, pero Calendarios y
+Respaldo llevan sus acciones justo ahí y los botones tienen fondo opaco, así que el glifo
+asoma en pedazos alrededor de ellos — con y sin `overflow: hidden` en la card, y sacarla
+por la esquina agrega que un glifo cortado se lee como un error de recorte.
+
+**La fila de un ajuste son dos columnas: qué es, y qué se edita.** `.set-field` es una
+grilla de `minmax(0, 1fr)` y una columna derecha de **ancho fijo** (220px). A la izquierda
+va `.set-field__text` —la etiqueta y su explicación, una debajo de la otra—; a la derecha
+`.set-field__control`. El ancho de la derecha es fijo a propósito: ajustado al contenido,
+cada campo tendría el suyo y los controles quedarían escalonados bajando la página. Y va
+con `align-items: start`, no `center`: con una explicación de dos o tres líneas, centrar
+arrastra el control hasta la mitad del párrafo y lo despega de su etiqueta.
+
+Antes la explicación se llevaba la línea completa **por debajo** del control (`.set-note`
+tenía `flex: 1 1 100%`). Con eso cada ajuste medía dos filas de alto completo y una
+sección de cinco campos se leía como un solo bloque de texto. Lo que la corta ahora es la
+divisoria de `.set-field + .set-field`, con 16px de aire a cada lado —la mitad la pone el
+`gap` de la card y la otra el `padding-top` de la regla, así la línea queda centrada en el
+aire y no pegada al campo de arriba.
+
+Dos escapatorias, y son excepciones: `.set-field--wide` sube la columna a 288px para los
+pares de campo corto con etiqueta (inicio/fin de jornada, hora/conservar del respaldo), y
+`.set-field--stack` manda el campo entero a una sola columna cuando el control no entra en
+220px —un grupo de tres botones, una ruta absoluta de iCloud—. En modo apilado el texto
+lleva `max-width: 58ch` para no leerse con una medida distinta al resto.
+
+**Un interruptor se centra contra el bloque de texto entero**, no contra su primera
+línea: es la excepción al `align-items: start` de la fila, y la pone
+`.set-field__control:has(> .switch)`. Un control ancho —botones, la fila de días— tiene
+que arrancar a la altura de la etiqueta; un switch mide 20px y arriba del todo se lee
+como si colgara. Va con `:has` y no con una clase aparte a propósito: así vale para
+cualquier switch que se agregue después, y el que la olvidaría no ve ningún error.
+
+**En una lista con divisorias, el `gap` del contenedor tiene que ser cero.** La divisoria
+es el `border-top` de la fila de abajo, así que el gap cae **antes** de la línea y suma de
+un solo lado: con 6px de gap y 7 de padding quedaban 27px del texto a la línea y 10 de la
+línea al texto siguiente. Sin gap —y lo mismo con el `margin-top` entre grupos— el aire lo
+pone solo el padding de la fila y sale parejo por construcción, también en el cruce de un
+contexto al siguiente.
+
+**Las secciones de lista no llevan la fila dibujada como caja.** Seis u ocho cajas
+apiladas dentro de una card son una lista dentro de una lista, y el borde de cada fila
+compite con el de la card que las contiene. Vale para las tres: Canales usa
+`.set-list--plana`, Atajos son campos, y los calendarios (`.feed`) siguen la misma regla.
+Sin borde ni fondo, separadas por la misma divisoria de 1px que separa los campos en el
+resto de Configs.
+
+Dos excepciones, y las dos por la misma razón —lo que la caja decía hay que decirlo de otra
+forma—: la fila de alta de un canal **conserva** su caja punteada, porque es la única que
+todavía no existe y sin ella no se distingue de las guardadas; y un feed roto, que antes lo
+anunciaba con el borde de su recuadro, ahora lo dice con una banda de 2px a la izquierda.
+
+**Atajos no es una lista, son campos.** Cada atajo es un `.set-field` con su nombre a la
+izquierda y su combinación a la derecha, igual que "Abrir sunrise al iniciar sesión". Van
+más compactos que un campo de General —8px de padding en vez de los 16 de la divisoria
+general, que la regla pisa— porque un atajo es una línea sola, nombre y tecla, y no un
+ajuste con su explicación.
+
+**El aire de la card tiene que igualar el de sus filas**, y eso se arregla en la card
+(`.set-card:has(.set-list--campos)`), no con un margen negativo en la lista, que es la
+misma cuenta escrita al revés. El espacio sobre el primer atajo no lo pone su padding sino
+el `gap` de la card, así que con filas de 8 y `gap` de 16 el primero quedaba a 24 de la
+divisoria del encabezado y el resto a 8 de la suya — se leía como si estuviera hundido.
+Con `gap: 0` queda a 8, igual que todos. **El `padding-bottom` sí se conserva en 8 y no
+baja a cero**: el aire de arriba no es solo el `gap` —el encabezado suma su propio
+`padding-bottom` antes de la divisoria— así que en cero el último atajo queda pegado al
+borde. La
+combinación y su restaurar van **unidos como un solo control** (`.hotkey-grupo`): comparten
+borde y solo redondean los cantos de afuera. Separados, el restaurar se leía como una
+acción de la fila al mismo nivel que la combinación, y no como el deshacer de ese campo.
+
+Dos trampas del contenedor, las dos pagadas:
+
+- **`.set-field__control--fila` tiene que quedar después de `.set-field__control`** en la
+  hoja. Misma especificidad, gana la última, y desde antes el `flex-direction: column`
+  seguía mandando: el restaurar caía debajo de la combinación.
+- **Al pasar a fila hace falta `justify-content: flex-end`.** El `align-items: flex-end` de
+  la columna deja de alinear a la derecha y pasa a gobernar el eje vertical, así que el
+  grupo quedaba flotando a media columna en vez de pegado al borde.
+- **El `gap: 0` del grupo va con las dos clases** (`.set-field__control.hotkey-grupo`): con
+  `.hotkey-grupo` sola pierde por orden contra el `gap` de `.set-field__control`, y los dos
+  botones quedan separados por 8px en vez de unidos.
+
+Y un atajo no tiene bajada, así que su fila va con `align-items: center` en vez del `start`
+del resto: si no, el nombre cuelga 6px más arriba que su tecla.
+
+**El aire de una card es 24 arriba y 16 abajo, y no es asimetría por descuido.** El espacio
+sobre el contenido no lo pone el padding sino el `gap` de la card (16), así que con 24
+abajo la sección quedaba descentrada — medido: 16 contra 25. Arriba se conservan los 24,
+que son el aire del encabezado.
+
+**Dev Tools se marca como lo que es**: borde discontinuo y un tinte apricot al 4%, sin
+sombra. Es el mismo apricot de la marca `DEV` del sidebar, así que las dos señales de "esto
+no es producción" son la misma señal.
+
+**Los contextos de Canales arrancan plegados, y cada uno dice qué esconde.** Con dos
+contextos y catorce canales —que es la forma real de los datos, no una hipótesis— la lista
+abierta mide más que la sección General entera y no entra en pantalla; cerrada son dos
+filas. Pliega el chevron y no la fila completa: la fila lleva el input del renombre, y ese
+click no puede además plegar. Un contexto sin canales no muestra chevron —no hay nada que
+abrir— pero conserva su hueco, o los nombres no arrancan en la misma columna.
+
+**Un canal elegido se muestra como su chip teñido, en todas las pantallas.** El selector
+de Calendarios (la lista y el modal de alta) y el del modal de objetivos usaban un chip
+gris o el apricot genérico de `.chip.is-set`; es el mismo dato que el `#tag` de las
+tarjetas, y verlo en dos colores distintos según la pantalla lo desconecta de su canal. Los
+tokens salen de `chipVars` —o de `chipVarsForColor` cuando solo se tiene el token y no la
+`Category`, que es el caso de los selectores que trabajan sobre `SearchOption`—.
+
+**El contador es histórico, no pendientes.** La pregunta de esta sección es "¿este canal
+sirve para algo?", y "¿qué me falta?" ya la responde el Backlog. Medido sobre los datos
+reales: contando solo lo pendiente, catorce de dieciséis canales marcan cero y la columna
+no distingue nada. Con el histórico, los que nunca se usaron se ven de una pasada, que es
+lo que hace falta para decidir si borrar. **No cuenta los eventos ignorados**
+(`rail_only`): sin ese filtro el canal del feed sale como el más usado de todos por
+reservas de hora — en la base real son 18 de 67.
+
+Y va en su propio comando (`category_usage`), no como un campo de `Category`:
+`list_categories` se lee en cada picker de canal de la app y no tiene por qué pagar un
+`COUNT` sobre `tasks` cada vez.
+
+**Las ocho cards se separan con sombra difusa, no con el borde solo.** Con
+`--shadow-sm` (1px) la columna de secciones se leía como una tabla; van con
+`--shadow-md` y radio `--radius-lg`, a 32px unas de otras. La sombra lleva además un
+`inset 0 1px 0` blanco al 5%: no se ve en claro, y en oscuro es lo único que despega el
+canto superior de la card del fondo, donde el borde y la sombra casi no tienen contraste.
+
+**El resaltado automático se calla mientras dura un viaje por click.** Apretar una tab
+anima el scroll hasta su sección, y esa animación cruza todas las intermedias: el
+`IntersectionObserver` emitía por cada una y el menú marcaba cuatro secciones en 320 ms
+antes de quedarse en la que se apretó. Un `ref` con el destino hace que el observer se
+ignore mientras el viaje corre, y se suelta un frame **después** del último paso —soltarlo
+en el mismo tick deja pasar la emisión de la última intermedia, que es justo el rebote—.
+Hay además un `setTimeout` de respaldo: la animación avanza por `requestAnimationFrame`,
+que no corre con la ventana oculta, y sin esa red un click seguido de esconder la ventana
+dejaba el candado puesto para siempre.
+
+**La sección abierta del menú se marca con la misma regla que `.set-weekday.is-on`**
+(apricot al 22% con `--apricot-ink`, contraste ya medido). El fondo que usaba antes,
+`--surface-raised`, es exactamente el de las cards que la tab tiene al lado, y por eso el
+diseño viejo necesitaba además una barrita apricot a la izquierda para que se notara.
+
 ## La marca
 
 **Un sol saliendo sobre el horizonte, y un solo archivo.** `public/app-icon.svg` es la

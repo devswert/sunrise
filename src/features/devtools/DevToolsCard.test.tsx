@@ -30,7 +30,7 @@ describe("Dev Tools · notificaciones", () => {
   it("fuera de la app lo dice, en vez de ofrecer botones que no van a hacer nada", async () => {
     render(<DevToolsCard />);
 
-    expect(await screen.findByText(/existen solo en la app/)).toBeInTheDocument();
+    expect(await screen.findByText(/Solo existen dentro de la app/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cierre del día" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Próxima reunión" })).toBeDisabled();
   });
@@ -38,7 +38,7 @@ describe("Dev Tools · notificaciones", () => {
   it("sin marca del día no hay nada que borrar", async () => {
     render(<DevToolsCard />);
 
-    expect(await screen.findByText(/todavía no se ha avisado/)).toBeInTheDocument();
+    expect(await screen.findByText(/Todavía no se avisó hoy/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Volver a avisar hoy" })).toBeDisabled();
   });
 
@@ -49,6 +49,6 @@ describe("Dev Tools · notificaciones", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Volver a avisar hoy" }));
 
     expect(useSettingsStore.getState().values[SettingKey.SHUTDOWN_NOTIFIED_ON]).toBe("");
-    expect(await screen.findByText(/todavía no se ha avisado/)).toBeInTheDocument();
+    expect(await screen.findByText(/Todavía no se avisó hoy/)).toBeInTheDocument();
   });
 });

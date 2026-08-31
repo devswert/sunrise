@@ -12,9 +12,18 @@ import type { Category } from "../../lib/types";
  * decidir: se nombra el token y el tema resuelve.
  */
 export function chipVars(category: Category | null | undefined): CSSProperties | undefined {
-  if (!category) return undefined;
+  return chipVarsForColor(category?.color);
+}
+
+/**
+ * Lo mismo desde el token pelado, para quien no tiene la `Category` a mano: los
+ * selectores de canal de Calendarios trabajan sobre `SearchOption`, que lleva el
+ * color pero no la categoría entera.
+ */
+export function chipVarsForColor(color: string | null | undefined): CSSProperties | undefined {
+  if (!color) return undefined;
   return {
-    "--tag-bg": `var(--${category.color})`,
-    "--tag-ink": `var(--${category.color}-ink)`,
+    "--tag-bg": `var(--${color})`,
+    "--tag-ink": `var(--${color}-ink)`,
   } as CSSProperties;
 }

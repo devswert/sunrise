@@ -330,7 +330,7 @@ export function BackupCard() {
     save: (raw: string) => Promise<void>,
     placeholder: string,
   ) => (
-    <div className="set-field set-field--inline">
+    <div className="set-pair">
       <label className="set-field__label" htmlFor={`resp-${id}`}>
         {label}
       </label>
@@ -359,21 +359,19 @@ export function BackupCard() {
   return (
     <section className="set-card" id="set-respaldo" data-section="respaldo">
       {/* Las acciones van en la fila del título, como el sync de Calendarios. */}
-      <header className="set-card__head set-card__head--conaccion">
-        <div>
-          <h2>
-            {/* El mismo icono que su tab: sale de `TABS` para que no se separen. */}
-            <SectionIcon size={16} aria-hidden /> Respaldo
-          </h2>
+      <header className="set-card__head">
+        {/* El mismo icono que su tab: sale de `TABS` para que no se separen. */}
+        <SectionIcon size={16} aria-hidden className="set-card__icon" />
+        <div className="set-card__head-text">
+          <h2>Respaldo</h2>
           <p>
-            Una copia comprimida de toda tu información, con un <code>manifest.yml</code> que
-            dice de qué versión salió. Elige una carpeta sincronizada (Drive, Dropbox,
-            iCloud).
+            Una copia comprimida de todo, con un <code>manifest.yml</code> de la versión.
+            Elige una carpeta sincronizada.
           </p>
         </div>
         {/* `resp-btn` comparte definición con `.sync-btn` (week.css): el mismo
           * botón plano del sync de calendarios, con su mismo icono de 13px. */}
-        <div className="resp-acciones">
+        <div className="resp-acciones set-card__acciones">
           <button
             type="button"
             className="resp-btn"
@@ -393,13 +391,22 @@ export function BackupCard() {
         </div>
       </header>
 
-      <div className="set-field">
-        {/* La etiqueta y el botón comparten fila, y el campo se lleva el ancho
-          * completo abajo: una ruta absoluta de iCloud no entra en menos. */}
+      {/* Ancho completo y no la columna de 220px del resto: una ruta absoluta de
+        * iCloud no entra en menos. */}
+      <div className="set-field set-field--stack">
         <div className="resp-carpeta__head">
-          <label className="set-field__label" htmlFor="resp-dir">
-            Carpeta
-          </label>
+          <div className="set-field__text">
+            <label className="set-field__label" htmlFor="resp-dir">
+              Carpeta
+            </label>
+            <span className={`set-note${error?.field === "dir" ? " is-error" : ""}`}>
+              {error?.field === "dir"
+                ? error.text
+                : settings.active
+                  ? "Se comprueba que se pueda escribir al guardarla. Vacíala para apagar."
+                  : "Sin carpeta no hay respaldo automático ni manual."}
+            </span>
+          </div>
           {isTauri() && (
             <button
               className="btn-ghost"
@@ -415,72 +422,71 @@ export function BackupCard() {
             </button>
           )}
         </div>
-        <div className="resp-carpeta">
-          <input
-            id="resp-dir"
-            className={`set-input${error?.field === "dir" ? " is-invalid" : ""}`}
-            aria-label="Carpeta de respaldos"
-            placeholder="Sin carpeta: el respaldo está apagado"
-            value={draft.dir ?? settings.dir}
-            onChange={(ev) => {
-              setDraft((b) => ({ ...b, dir: ev.target.value }));
-              setError(null);
-            }}
-            onBlur={(ev) => void guardarCarpeta(ev.target.value)}
-            onKeyDown={(ev) => {
-              if (ev.key === "Enter") (ev.target as HTMLInputElement).blur();
-              if (ev.key === "Escape") {
-                setDraft((b) => ({ ...b, dir: undefined }));
+        <div className="set-field__control">
+          <div className="resp-carpeta">
+            <input
+              id="resp-dir"
+              className={`set-input${error?.field === "dir" ? " is-invalid" : ""}`}
+              aria-label="Carpeta de respaldos"
+              placeholder="Sin carpeta: el respaldo está apagado"
+              value={draft.dir ?? settings.dir}
+              onChange={(ev) => {
+                setDraft((b) => ({ ...b, dir: ev.target.value }));
                 setError(null);
-              }
-            }}
-          />
+              }}
+              onBlur={(ev) => void guardarCarpeta(ev.target.value)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter") (ev.target as HTMLInputElement).blur();
+                if (ev.key === "Escape") {
+                  setDraft((b) => ({ ...b, dir: undefined }));
+                  setError(null);
+                }
+              }}
+            />
+          </div>
         </div>
-        <span className={`set-note${error?.field === "dir" ? " is-error" : ""}`}>
-          {error?.field === "dir"
-            ? error.text
-            : settings.active
-              ? "Se comprueba que se pueda escribir ahí al guardarla. Vacíala para apagar el respaldo."
-              : "Sin carpeta no hay respaldo automático ni manual."}
-        </span>
       </div>
 
-      <div className="set-field">
-        <span className="set-field__label">Automático</span>
-        <div className="set-jornada">
-          {field("hour", "Hora", settings.hour, saveHour, SETTING_DEFAULTS.backupTime)}
-          {field(
-            "keep",
-            "Conservar",
-            String(settings.keep),
-            saveKeep,
-            String(SETTING_DEFAULTS.backupKeep),
+      <div className="set-field set-field--wide">
+        <div className="set-field__text">
+          <span className="set-field__label">Automático</span>
+          <span
+            className={`set-note${
+              error?.field === "hour" || error?.field === "keep" ? " is-error" : ""
+            }`}
+          >
+            {error?.field === "hour" || error?.field === "keep"
+              ? error.text
+              : "Una vez al día pasada esa hora. Si la app estaba cerrada, al abrirla."}
+          </span>
+        </div>
+        <div className="set-field__control">
+          <div className="set-jornada">
+            {field("hour", "Hora", settings.hour, saveHour, SETTING_DEFAULTS.backupTime)}
+            {field(
+              "keep",
+              "Conservar",
+              String(settings.keep),
+              saveKeep,
+              String(SETTING_DEFAULTS.backupKeep),
+            )}
+          </div>
+          {settings.active && ranToday && (
+            // **Una marca que afirma algo tiene que poder desmentirse.** Sin esto,
+            // el respaldo de hoy ya está hecho y no hay forma de saberlo ni de
+            // volver a probarlo: cambiarle la hora no lo dispara —la regla es una
+            // vez al día— y parece que el automático estuviera roto.
+            <span className="set-note">
+              Ya se hizo el de hoy.{" "}
+              <button
+                className="set-note__link"
+                onClick={() => void setSetting(SettingKey.BACKUP_RAN_ON, "")}
+              >
+                Volver a respaldar hoy
+              </button>
+            </span>
           )}
         </div>
-        <span
-          className={`set-note${
-            error?.field === "hour" || error?.field === "keep" ? " is-error" : ""
-          }`}
-        >
-          {error?.field === "hour" || error?.field === "keep"
-            ? error.text
-            : "Corre una vez al día pasada esa hora, con la app abierta. Si estaba cerrada, se hace al abrirla."}
-        </span>
-        {settings.active && ranToday && (
-          // **Una marca que afirma algo tiene que poder desmentirse.** Sin esto,
-          // el respaldo de hoy ya está hecho y no hay forma de saberlo ni de
-          // volver a probarlo: cambiarle la hora no lo dispara —la regla es una
-          // vez al día— y parece que el automático estuviera roto.
-          <span className="set-note">
-            Ya se hizo el de hoy.{" "}
-            <button
-              className="set-note__link"
-              onClick={() => void setSetting(SettingKey.BACKUP_RAN_ON, "")}
-            >
-              Volver a respaldar hoy
-            </button>
-          </span>
-        )}
       </div>
 
       {ultimoError && (

@@ -79,14 +79,12 @@ export function NotificationsCard() {
     // de la tab, o el click no lleva a ninguna parte.
     <section className="set-card" id="set-notificaciones" data-section="notificaciones">
       <header className="set-card__head">
-        <h2>
-          {/* El mismo icono que su tab: sale de `TABS` para que no se separen. */}
-          <SectionIcon size={16} aria-hidden /> Notificaciones
-        </h2>
-        <p>
-          Qué avisos recibir. Los manda macOS, así que su estilo —si se quedan en
-          pantalla o se van solos— lo decide el sistema.
-        </p>
+        {/* El mismo icono que su tab: sale de `TABS` para que no se separen. */}
+        <SectionIcon size={16} aria-hidden className="set-card__icon" />
+        <div className="set-card__head-text">
+          <h2>Notificaciones</h2>
+          <p>Qué quieres que te avise sunrise.</p>
+        </div>
       </header>
 
       {/*
@@ -101,8 +99,16 @@ export function NotificationsCard() {
         aviso—, así que el botón se apaga en vez de fallar sin explicar nada.
       */}
       <div className="set-field">
-        <div className="set-field__row">
+        <div className="set-field__text">
           <span className="set-field__label">Sonido de los avisos</span>
+          <span className={`set-note${soundError ? " is-error" : ""}`}>
+            {soundError ??
+              (sound === SYSTEM_SOUND
+                ? "Lo elige el sistema, así que no se puede oír por adelantado."
+                : "Los del sistema, más lo que haya en ~/Library/Sounds. Un nombre que no existe suena mudo, sin avisar.")}
+          </span>
+        </div>
+        <div className="set-field__control">
           <div className="upd-acciones">
             <div className="chip-wrap" ref={soundRef}>
               <button
@@ -142,19 +148,18 @@ export function NotificationsCard() {
             </button>
           </div>
         </div>
-        <span className={`set-note${soundError ? " is-error" : ""}`}>
-          {soundError ??
-            (sound === SYSTEM_SOUND
-              ? "El sistema elige cuál, así que este no se puede oír por adelantado."
-              : "Los del sistema, más lo que haya en ~/Library/Sounds: ahí va uno propio y aparece en esta lista con el nombre del archivo. Un nombre que no existe no suena y no avisa, así que si un aviso llega mudo, es esto.")}
-        </span>
       </div>
 
       <div className="set-field">
-        <div className="set-field__row">
+        <div className="set-field__text">
           <label className="set-field__label" htmlFor="notice-meeting">
             Evento de tu Calendar importado
           </label>
+          {error && <span className="set-note is-error">{error}</span>}
+        </div>
+        {/* En fila y no apilados: los minutos son el detalle del mismo ajuste que
+          * enciende el switch, y debajo se leían como un segundo ajuste. */}
+        <div className="set-field__control set-field__control--fila">
           <Switch
             id="notice-meeting"
             label="Avisar antes de un evento del calendario"
@@ -166,36 +171,42 @@ export function NotificationsCard() {
               )
             }
           />
+          {meetingOn && (
+            <div className="set-jornada">
+              {/* `set-pair` y no dos clases propias: es el mismo par etiqueta +
+                * campo corto de la jornada y del respaldo. Las que había acá
+                * (`set-input-wrap`, `set-input-label`) no tenían CSS en ninguna
+                * hoja, y por eso el número quedaba pegado a su etiqueta. */}
+              <label className="set-pair">
+                <span className="set-field__label">Minutos antes</span>
+                <input
+                  id="notice-lead"
+                  className={`set-input set-input--hora${error ? " is-invalid" : ""}`}
+                  value={draft ?? String(lead)}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={(e) => void guardarMinutos(e.target.value)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter") (ev.target as HTMLInputElement).blur();
+                    if (ev.key === "Escape") {
+                      setDraft(null);
+                      setError(null);
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          )}
         </div>
-        {meetingOn && (
-          <div className="set-jornada">
-            <label className="set-input-wrap">
-              <span className="set-input-label">Minutos antes</span>
-              <input
-                id="notice-lead"
-                className={`set-input set-input--hora${error ? " is-invalid" : ""}`}
-                value={draft ?? String(lead)}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={(e) => void guardarMinutos(e.target.value)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter") (ev.target as HTMLInputElement).blur();
-                  if (ev.key === "Escape") {
-                    setDraft(null);
-                    setError(null);
-                  }
-                }}
-              />
-            </label>
-          </div>
-        )}
-        {error && <span className="set-note is-error">{error}</span>}
       </div>
 
       <div className="set-field">
-        <div className="set-field__row">
+        <div className="set-field__text">
           <label className="set-field__label" htmlFor="notice-shutdown">
             Hora de cerrar el día
           </label>
+          <span className="set-note">A la hora de fin de jornada, una vez al día.</span>
+        </div>
+        <div className="set-field__control">
           <Switch
             id="notice-shutdown"
             label="Avisar a la hora de cerrar el día"
@@ -203,16 +214,18 @@ export function NotificationsCard() {
             onChange={(v) => toggle(SettingKey.NOTICE_SHUTDOWN, v)}
           />
         </div>
-        <span className="set-note">
-          A la hora de fin de la jornada, y una sola vez al día.
-        </span>
       </div>
 
       <div className="set-field">
-        <div className="set-field__row">
+        <div className="set-field__text">
           <label className="set-field__label" htmlFor="notice-bell">
             Se acabó el tiempo estimado
           </label>
+          <span className="set-note">
+            La campana suena siempre; esto agrega un aviso que lleva a Focus.
+          </span>
+        </div>
+        <div className="set-field__control">
           <Switch
             id="notice-bell"
             label="Tocar la campana al llegar al estimado"
@@ -220,12 +233,6 @@ export function NotificationsCard() {
             onChange={(v) => toggle(SettingKey.NOTICE_BELL, v)}
           />
         </div>
-        <span className="set-note">
-          La campana suena siempre. Esto agrega una notificación que puedes apretar para ir a
-          Focus con la tarea que estabas cronometrando. Llega <strong>muda</strong>: la
-          campanada ya está sonando, y las dos cosas juntas se escuchan como un solo sonido
-          reventado.
-        </span>
       </div>
 
       {/*

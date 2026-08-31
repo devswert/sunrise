@@ -160,7 +160,7 @@ para lo que sirve —planificar alrededor—. Sin esto, hora y cuarto de almuerz
 leían como hora y cuarto de trabajo planificado y el semáforo de capacidad mentía
 todos los días.
 
-"Ignorar" es literal, y son **cinco exclusiones** además de la tarjeta:
+"Ignorar" es literal, y son **seis exclusiones** además de la tarjeta:
 
 | Lectura | Qué se excluye | Por qué |
 |---|---|---|
@@ -170,6 +170,7 @@ todos los días.
 | `meetings_for_date` | el aviso | no interrumpe para anunciar el almuerzo |
 | rollup semanal (regla 3) | su duración | una reunión sin trackear no se cuenta como trabajada |
 | `last_day_with_tasks` | el día | un día con solo un almuerzo no es un día que repasar |
+| `category_usage` (Configs → Canales) | la tarea | reservar hora no es usar el canal |
 
 **La exclusión de la tarjeta vive en `tasksByDate`, así que una vista que quiera
 "lo del día" tiene que leer de ahí y no del arreglo crudo `tasks`.** El cierre del

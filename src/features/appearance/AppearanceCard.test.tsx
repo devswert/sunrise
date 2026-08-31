@@ -21,7 +21,7 @@ describe("AppearanceCard", () => {
   it("de fábrica suena la campana de la app, y no ofrece volver a ella", async () => {
     render(<AppearanceCard />);
 
-    expect(await screen.findByText(/campana de sunrise, sintetizada/)).toBeInTheDocument();
+    expect(await screen.findByText(/suena al llegar al tiempo estimado/)).toBeInTheDocument();
     // Volver a donde ya estás es un botón que no hace nada.
     expect(screen.queryByRole("button", { name: /Volver a la de sunrise/ })).toBeNull();
   });
@@ -52,7 +52,7 @@ describe("AppearanceCard", () => {
     render(<AppearanceCard />);
 
     expect(useSettingsStore.getState().values[SettingKey.BELL_SOUND]).toBe(SUNRISE_BELL);
-    expect(await screen.findByText(/campana de sunrise, sintetizada/)).toBeInTheDocument();
+    expect(await screen.findByText(/suena al llegar al tiempo estimado/)).toBeInTheDocument();
   });
 
   /**

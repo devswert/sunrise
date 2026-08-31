@@ -5,6 +5,7 @@ import type { Category, Objective, Task } from "../../lib/types";
 import { SearchSelect } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
 import { channelOptions } from "../tasks/channelOptions";
+import { chipVars } from "../tasks/chipVars";
 import { formatMinutes } from "../../lib/capacity";
 import { shortWeekday } from "../../lib/date";
 import { shortDuration } from "../tasks/timeByDay";
@@ -232,10 +233,20 @@ export function ObjectiveModal({
             onClick={() => setPicker((p) => (p === "channel" ? null : "channel"))}
           >
             <span className="omodal__chip-label">Channel</span>
-            <span className={`omodal__chip-value${channel ? " is-set" : ""}`}>
-              <Hash size={13} />
-              {channel ? channel.name : "ninguno"}
-            </span>
+            {/* Con canal elegido va el chip teñido, el mismo `#tag` que llevan las
+              * tarjetas: es el mismo dato y verlo en gris acá lo desconecta de su
+              * canal. Sin canal no hay color que mostrar, así que se queda el
+              * numeral en gris. */}
+            {channel ? (
+              <span className="cat-tag" style={chipVars(channel)}>
+                #{channel.name}
+              </span>
+            ) : (
+              <span className="omodal__chip-value">
+                <Hash size={13} />
+                ninguno
+              </span>
+            )}
           </button>
           {picker === "channel" && (
             <Popover anchorRef={chanRef} onClose={() => setPicker(null)}>

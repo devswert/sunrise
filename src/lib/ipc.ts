@@ -7,6 +7,7 @@ import type {
   Rescue,
   CalendarFeed,
   Category,
+  CategoryUsage,
   Objective,
   ObjectivePatch,
   Task,
@@ -269,6 +270,9 @@ export const api = {
 
   // --- categories ---
   listCategories: () => (isTauri() ? invoke<Category[]>("list_categories") : mock.listCategories()),
+
+  categoryUsage: () =>
+    isTauri() ? invoke<CategoryUsage[]>("category_usage") : mock.categoryUsage(),
 
   createCategory: (parentId: number | null, name: string, color: string) =>
     isTauri()

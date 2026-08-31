@@ -4,6 +4,7 @@ import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
 import { Spinner } from "../../components/Spinner";
 import { PLAIN_INPUT } from "../../components/plainInput";
+import { chipVarsForColor } from "../tasks/chipVars";
 
 /** Mismo piso que `POLL_MINIMO` en `repo.rs`. */
 export const POLL_MINIMO = 2;
@@ -139,8 +140,7 @@ export function AddFeedModal({
               }}
             />
             <span className="set-note">
-              En Google Calendar: Configuración del calendario → Integrar calendario → la de
-              abajo, la que dice que no la compartas.
+              En Google Calendar: Configuración del calendario → Integrar calendario.
             </span>
           </label>
 
@@ -149,7 +149,8 @@ export function AddFeedModal({
               <span className="feedfield__label">Canal por defecto</span>
               <div className="chip-wrap" ref={catRef}>
                 <button
-                  className={`chip${category ? " is-set" : ""}`}
+                  className={`chip${category ? " is-set chip--canal" : ""}`}
+                  style={chipVarsForColor(category?.color)}
                   aria-label="Canal por defecto del calendario"
                   onClick={() => setAbierto((v) => !v)}
                 >

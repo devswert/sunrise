@@ -797,20 +797,34 @@
 /* --- Settings --- */
 .settings {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr);
+  /* 176px y no 148: el menú pasó a 14px y "Notificaciones" ya no entraba en la
+     medida vieja sin partirse en dos líneas. */
+  grid-template-columns: 176px minmax(0, 1fr);
   grid-template-areas:
     "title  title"
     "tabs   panels";
   gap: var(--space-3) var(--space-5);
   align-items: start;
-  max-width: 820px;
+  max-width: 880px;
+  /* Centrado, como `.planning` y `.review`: sin esto el `max-width` deja la
+     vista pegada al borde izquierdo y medio ancho de pantalla vacío. */
+  margin-inline: auto;
+  width: 100%;
   padding-bottom: 40vh; /* deja bajar hasta la última sección con el scroll */
 }
 .settings__title {
   grid-area: title;
+  /* Centrado sobre las dos columnas: es lo único en que este título se aparta de
+     los de sus vistas hermanas. Ahí encabeza una columna y va a la izquierda;
+     acá corona un menú y un panel, y pegado a un borde se lee como el rótulo del
+     menú y no como el de la pantalla. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   font-family: var(--font-title);
-  font-size: 24px;
-  margin: 0 0 var(--space-2);
+  font-size: 22px;
+  margin: 0 0 var(--space-4);
 }
 
 /* Tabs verticales. Se quedan fijas mientras la columna derecha se desplaza. */
@@ -823,76 +837,123 @@
   gap: 2px;
 }
 .set-tab {
-  /* Flex y no `text-align`: el icono va antes de la etiqueta y las cinco tabs
-     tienen que alinear su texto en la misma columna. */
+  /* Flex y no `text-align`: el icono va antes de la etiqueta y las tabs tienen
+     que alinear su texto en la misma columna. */
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   text-align: left;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border: none;
-  border-left: 2px solid transparent;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition: color 120ms ease, background 120ms ease;
 }
 .set-tab:hover {
   color: var(--ink);
-  background: var(--surface-raised);
+  background: var(--surface-sunken);
 }
 /* El icono acompaña, no compite: se apaga salvo en la sección activa. */
 .set-tab svg {
   flex: 0 0 auto;
   color: var(--faint);
 }
+/* La marca de la sección activa la pone la regla compartida con `.set-weekday.is-on`
+   (más abajo): es la misma frase —"esta es la opción elegida"— y su contraste ya
+   está medido. Acá solo va lo propio de una tab. El fondo no puede ser
+   `--surface-raised`, que es el mismo de las cards de al lado: relleno con ese
+   token la tab activa deja de leerse como marcada. */
 .set-tab.is-active {
-  color: var(--ink);
   font-weight: 500;
-  border-left-color: var(--apricot);
-  background: var(--surface-raised);
 }
-.set-tab.is-active svg,
 .set-tab:hover svg {
   color: var(--muted);
 }
+/* Después del hover a propósito: con la misma especificidad, la sección activa
+   tiene que ganarle al puntero encima. */
+.set-tab.is-active svg {
+  color: currentColor;
+}
 
+/* El aire entre secciones va acá y no como `margin-bottom` de cada card: por
+   card, la última se lleva un margen muerto que nadie pidió. El `padding-bottom`
+   de `.settings` ya se encarga de que la última alcance el tope al navegar. */
 .set-panels {
   grid-area: panels;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-6);
   min-width: 0;
 }
 
 .set-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
+  /* 16 arriba y 16 abajo de cada divisoria entre campos: el `gap` pone la mitad
+     y el `padding-top` de `.set-field + .set-field` la otra, así la línea queda
+     centrada en el aire y no pegada al campo de arriba. */
+  gap: var(--space-4);
+  /* Abajo 16 y no 24: el aire de arriba del contenido lo pone el `gap` de la
+     card (16), así que con 24 abajo la sección quedaba descentrada —medido: 16
+     contra 25—. Arriba sí se conservan los 24, que son el aire del encabezado. */
+  padding: var(--space-5) var(--space-5) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 12px);
+  border-radius: var(--radius-lg);
   background: var(--surface-raised);
-  box-shadow: var(--shadow-sm);
+  /* Sombra difusa y no la de 1px: son ocho cards apiladas en una columna larga y
+     con `--shadow-sm` la separación quedaba a cargo del borde solo, que a esta
+     escala se lee como una tabla. El `inset` de arriba es una luz de 1px en el
+     canto: no se ve en claro y en oscuro es lo que despega la card del fondo,
+     donde el borde y la sombra casi no tienen contraste contra qué recortarse. */
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   /* El scroll animado no debe dejar la card pegada al borde superior. */
   scroll-margin-top: var(--space-4);
 }
-/* Flex por el icono, que va antes del nombre y tiene que quedar centrado con la
-   línea del texto. Un poco más grande que la bajada para que se lea como el
-   encabezado de la sección y no como otra línea más de la card. */
-.set-card__head h2 {
+/* El encabezado se separa de los ajustes con la misma divisoria que los separa
+   entre sí: sin ella el nombre de la sección era una línea más de la card.
+
+   El icono es hermano del texto y no hijo del `h2`, aunque se alinee con él: como
+   hijo quedaba atado a la línea del título y no podía moverse respecto del bloque.
+   `flex-start` lo deja arriba, a la altura del nombre, y no bailando con el largo
+   de la bajada —hay secciones de una línea y de tres—. */
+.set-card__head {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-title);
-  font-size: 17px;
-  margin: 0 0 4px;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
 }
-.set-card__head h2 svg {
+.set-card__head-text {
+  min-width: 0;
+}
+.set-card__head h2 {
+  font-family: var(--font-title);
+  font-size: 18px;
+  margin: 0;
+}
+/* El icono de la sección va en una pastilla, no suelto: a 16px sobre el fondo de
+   la card mide lo mismo que una letra del nombre y se lee como parte de él. El
+   fondo es neutro a propósito — acá el icono identifica la sección, no la
+   clasifica, y en esta app el color siempre significa algo. La medida sale de los
+   atributos del SVG (16px), así que el `box-sizing` es lo que hace que el padding
+   no la infle.
+
+   **Acá al lado del título, y no de marca de agua en una esquina.** Se probó
+   grande y translúcida detrás del título (se lee como suciedad sobre el nombre),
+   y arriba a la derecha entera y cortada por la esquina (en las dos cards que
+   llevan acciones ahí, el glifo asoma en pedazos alrededor de los botones). */
+.set-card__icon {
   flex: 0 0 auto;
+  box-sizing: content-box;
+  width: 16px;
+  height: 16px;
+  padding: 7px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
   color: var(--muted);
 }
 /* La bajada explica la sección que sigue, no la pantalla entera. */
@@ -932,6 +993,179 @@
 }
 .set-row.is-child {
   margin-left: var(--space-5);
+}
+
+/* Dev Tools no es una sección de ajustes: es un banco de pruebas que existe solo
+   en dev y que un usuario de la app instalada no ve nunca. El borde discontinuo y
+   el tinte de la campana lo dicen sin una etiqueta que lo repita — es el mismo
+   apricot que el sidebar usa para su marca `DEV`, así que las dos señales de "esto
+   no es producción" son la misma. Sin sombra: no está apoyada sobre la pila como
+   las otras cards, está pegada al final. */
+.set-card--dev {
+  border: 1px dashed color-mix(in srgb, var(--apricot) 55%, var(--border));
+  background: color-mix(in srgb, var(--apricot) 4%, var(--surface-raised));
+  box-shadow: none;
+}
+.set-card--dev .set-card__icon {
+  background: color-mix(in srgb, var(--apricot) 16%, transparent);
+  color: var(--apricot-ink);
+}
+
+/* --- Listas sin caja -------------------------------------------------------
+ *
+ * Canales y Atajos son las dos secciones que son una lista y no un montón de
+ * campos, y con la fila dibujada como caja pasaba algo que se ve mal: seis u ocho
+ * cajas apiladas dentro de una card son una lista dentro de una lista, y el borde
+ * de cada fila compite con el de la card que las contiene. Sin caja y separadas
+ * por la misma divisoria de 1px que separa los campos en el resto de Configs, las
+ * dos secciones se leen igual que sus hermanas.
+ */
+/* **El `gap` de la lista tiene que irse a cero, no ajustarse.** La divisoria es el
+   `border-top` de la fila de abajo, así que el gap cae **antes** de la línea y
+   suma de un solo lado: con 6px de gap y 7 de padding quedaban 27px del texto a
+   la línea y 10 de la línea al texto siguiente. Sin gap, el aire lo pone solo el
+   padding de la fila y sale parejo por construcción. */
+.set-list--plana {
+  gap: 0;
+}
+.set-list--plana .set-list {
+  gap: 0;
+}
+/* El margen entre grupos hacía lo mismo que el gap, del lado de arriba nomás. */
+.set-list--plana .set-group + .set-group {
+  margin-top: 0;
+}
+.set-list--plana .set-row,
+.set-list--plana .set-row--contexto {
+  border: none;
+  border-radius: 0;
+  background: none;
+  padding: var(--space-2) 0;
+  min-height: 0;
+}
+/* La divisoria entre filas, y no arriba de la primera: de eso ya se encarga la
+   del encabezado de la card. `.set-group` es el envoltorio de un contexto con sus
+   canales, así que la regla tiene que valer entre grupos y dentro de uno. */
+.set-list--plana .set-row + .set-row,
+.set-list--plana .set-group + .set-group > .set-list > .set-row:first-child {
+  border-top: 1px solid var(--border);
+}
+/* La fila de alta sí conserva un borde: es la única que no existe todavía, y sin
+   la caja punteada no se distingue de las que ya están guardadas. */
+.set-list--plana .set-row.is-adding {
+  border: 1px dashed var(--apricot);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+}
+/* El contexto sin caja se distingue por el peso del nombre, no por el fondo. */
+.set-list--plana .set-row--contexto {
+  background: none;
+}
+
+/* Atajos usa el mismo esquema que las listas planas y por la misma razón: `gap` en
+   cero y el aire en el padding de cada fila, así el espacio queda parejo a los dos
+   lados de la divisoria. Y más compacto que un campo de General, porque un atajo
+   es una línea sola —nombre y tecla— y no un ajuste con su explicación.
+
+   Con 8 de padding, arriba del primero quedan 24 (16 del `gap` de la card + 8) y
+   abajo del último otros 24 (8 + los 16 del `padding` de la card): el mismo aire
+   en las dos puntas. */
+.set-list--campos {
+  gap: 0;
+}
+/* **El aire de la card tiene que igualar el de sus filas.** El espacio sobre el
+   primer atajo no lo pone su padding sino el `gap` de la card (16), así que con
+   filas de 8 el primero quedaba a 24 de la divisoria del encabezado y el resto a
+   8 de la suya: se ve como si el primero estuviera hundido. Se resuelve en la
+   card y no con un margen negativo en la lista, que es la misma cuenta escrita al
+   revés. El `:has` lo ata a la sección que lo necesita sin tocar el JSX de `Card`,
+   que es genérico. */
+.set-card:has(.set-list--campos) {
+  gap: 0;
+  /* No cero: el aire de arriba del primer atajo no es solo el `gap` —el
+     encabezado aporta además su propio `padding-bottom` antes de la divisoria—,
+     así que con 0 acá el último quedaba pegado al borde y la sección se veía
+     caída hacia abajo. */
+  padding-bottom: var(--space-2);
+}
+.set-list--campos .set-field {
+  padding: var(--space-2) 0;
+}
+/* Pisa el `padding-top: var(--space-4)` de la regla general de la divisoria: acá
+   el aire ya lo puso el padding de arriba. */
+.set-list--campos .set-field + .set-field {
+  padding-top: var(--space-2);
+}
+
+/* Un atajo no tiene bajada, así que su control se centra con el nombre en vez de
+   colgar del tope de la fila. */
+.set-list--campos .set-field {
+  align-items: center;
+}
+
+/* La combinación y su restaurar, unidos como un solo control: comparten borde y
+   solo redondean los cantos de afuera. Separados, el restaurar se leía como una
+   acción de la fila —al mismo nivel que la combinación— y no como el deshacer de
+   ese campo, que es lo que es.
+
+   El `gap: 0` va con las dos clases y no con `.hotkey-grupo` sola: con una sola
+   pierde por orden contra el `gap` de `.set-field__control`, que se define más
+   abajo en esta misma hoja. */
+.set-field__control.hotkey-grupo {
+  gap: 0;
+}
+.hotkey-grupo .hotkey {
+  /* Sin el mínimo de 116px: acá la columna ya está a la derecha y lo que se lee
+     es la tecla, que mide lo que mide. */
+  min-width: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.hotkey-grupo .set-row__icon {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-sunken);
+  align-self: stretch;
+  align-items: center;
+}
+
+/* El contexto es el contenedor, no un canal más. Con dieciséis filas idénticas la
+   sangría sola no alcanzaba para saber dónde empieza un grupo y dónde termina. */
+.set-row--contexto {
+  background: var(--surface-sunken);
+  font-weight: 500;
+}
+/* El triángulo gira al abrir. Es el único control de la fila que pliega: el resto
+   es un input que se edita con un click. */
+.set-row__chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform 140ms ease;
+}
+.set-row__chevron[aria-expanded="true"] {
+  transform: rotate(90deg);
+}
+/* El hueco de un contexto sin canales: sin él, su nombre arranca 22px antes que
+   el de los demás y la columna se desalinea. */
+.set-row__chevron.is-empty {
+  width: 14px;
+  height: 14px;
+}
+/* Cuánto se usa el canal, al lado de los iconos. En `--faint` y en tabulares: es
+   un dato de apoyo para decidir si borrar, no algo que se lea fila por fila, y
+   alineado como número no baila entre filas. */
+.set-row__uso {
+  flex-shrink: 0;
+  color: var(--faint);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .set-row.is-adding {
   border-style: dashed;
@@ -1232,31 +1466,42 @@
 }
 
 /* --- Lista de calendarios en Configs ---------------------------------------- */
-.set-card__head--conaccion {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
+/* Las acciones de una sección (el sync de calendarios, los botones de respaldo)
+   se van al extremo derecho de la fila del título. `margin-left: auto` y no un
+   `justify-content` en el encabezado: ahí hay tres hijos —icono, texto,
+   acciones— y repartirlos separaría el icono de su título. */
+.set-card__acciones {
+  margin-left: auto;
+  flex: 0 0 auto;
 }
+/* `gap: 0` por la misma razón que en las otras listas de Configs: la divisoria es
+   el `border-top` del feed de abajo, así que un gap caería antes de la línea y
+   sumaría de un solo lado. */
 .feeds {
   list-style: none;
-  margin: 0 0 var(--space-2);
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 0;
 }
+/* Sin caja, como los canales y los atajos: un calendario dibujado como tarjeta
+   dentro de la card de la sección es una caja dentro de una caja, y su borde
+   compite con el de la card que lo contiene. */
 .feed {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  padding: var(--space-2) 0;
 }
+.feed + .feed {
+  border-top: 1px solid var(--border);
+}
+/* Un feed roto ya no puede decirlo con el borde de su caja, así que lo dice con
+   una banda a la izquierda: es la única marca que queda cuando no hay recuadro. */
 .feed.is-roto {
-  border-color: var(--rose-ink);
+  border-left: 2px solid var(--rose-ink);
+  padding-left: var(--space-2);
 }
 .feed__linea {
   display: flex;
@@ -1435,25 +1680,123 @@
   border-color: var(--muted);
 }
 
+/* --- La fila de un ajuste ---------------------------------------------------
+ *
+ * Dos columnas: a la izquierda qué es (`__text`: la etiqueta y su explicación),
+ * a la derecha el control que se edita (`__control`). La columna derecha es de
+ * ancho fijo **a propósito**: si se ajustara al contenido, cada campo tendría el
+ * suyo y los controles quedarían escalonados bajando la página.
+ *
+ * `align-items: start` y no `center`: con una explicación de dos o tres líneas,
+ * centrar arrastra el control hasta la mitad del párrafo y lo despega de su
+ * etiqueta, que es lo único con lo que se lee.
+ *
+ * El control se alinea a la derecha dentro de su columna. Los `.set-input` se
+ * llevan la columna entera, así que los campos de texto también comparten borde
+ * izquierdo; un interruptor, que mide lo que mide, queda a ras del borde de la
+ * card igual que todos los demás.
+ */
 .set-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--set-control-w, 220px);
+  align-items: start;
+  gap: var(--space-2) var(--space-4);
+}
+/* La divisoria entre ajustes. Sin ella una sección de cinco campos se lee como
+   un solo bloque de texto, que es justo lo que hay que evitar. No la lleva el
+   primero: el encabezado de la card ya lo separa. */
+.set-field + .set-field {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}
+/* La columna izquierda: qué es esto. */
+.set-field__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+/* La columna derecha: qué se edita. Columna y no fila porque algunos ajustes
+   cuelgan un segundo control del primero (los minutos de aviso bajo su switch). */
+.set-field__control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+/* Dos controles que son uno: el atajo y su deshacer, el switch y sus minutos. Va
+   **después** de la regla de arriba y no junto a las listas: con la misma
+   especificidad gana la última, y desde allá el `column` seguía mandando. */
+.set-field__control--fila {
+  flex-direction: row;
+  align-items: center;
+  /* `justify-content` y no `align-items`: al pasar a fila, el `align-items:
+     flex-end` de la columna deja de alinear a la derecha y pasa a gobernar el eje
+     vertical. Sin esto el grupo quedaba flotando a media columna. */
+  justify-content: flex-end;
+}
+/* Solo el control directo: un `.set-input--hora` anidado en un `.set-jornada`
+   tiene su propio ancho corto y no debe llevarse la columna. */
+.set-field__control > .set-input {
+  width: 100%;
+}
+/* Un interruptor se centra contra el bloque de texto entero, no contra su primera
+   línea. Es la excepción al `align-items: start` de la fila: un campo con control
+   ancho —botones, una lista de días— tiene que arrancar a la altura de la
+   etiqueta, pero un switch mide 20px y arriba del todo se lee como si colgara.
+   El `:has` lo resuelve solo para cualquier switch que se agregue después; con
+   una clase aparte, el que la olvide no ve ningún error. */
+.set-field__control:has(> .switch) {
+  align-self: center;
+}
+.set-field__label {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+/* La escapatoria para los controles que no entran en 220px —un grupo de tres
+   botones, una ruta absoluta—: el campo pasa a una sola columna y el control se
+   lleva el ancho completo debajo del texto. Son la excepción, no la norma. */
+/* Un escalón antes de la escapatoria: dos campos cortos con su etiqueta
+   (inicio/fin de jornada, hora/conservar) piden ~280px y siguen siendo una fila
+   de dos columnas. Escalona un poco los controles respecto del resto, y es
+   preferible a mandar el ajuste entero a ancho completo. */
+.set-field--wide {
+  --set-control-w: 288px;
+}
+.set-field--stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+.set-field--stack .set-field__control {
+  align-items: stretch;
+}
+/* Sin tope, la explicación de un campo apilado corre el ancho entero de la card
+   y se lee con una medida distinta a la de los campos de dos columnas, que la
+   tienen acotada por su grilla. Es aproximadamente el mismo largo de línea. */
+.set-field--stack .set-field__text {
+  max-width: 58ch;
+}
+/* Las notas del Release son el tercer hijo de la grilla y se llevan las dos
+   columnas: es un bloque de markdown en crudo, no el control del campo. */
+.set-field > .upd-notas {
+  grid-column: 1 / -1;
+}
+
+/* Etiqueta + campo corto en una misma línea, para los pares que viven dentro de
+   otro ajuste (inicio/fin de jornada, hora/conservar del respaldo). Nombre
+   propio y no `.set-field`, que desde el rediseño es una grilla de dos columnas
+   y no una fila. */
+.set-pair {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
-.set-field__label {
-  font-size: 13px;
+.set-pair .set-field__label {
+  font-weight: 400;
+  color: var(--muted);
 }
-/* Etiqueta a la izquierda, control a la derecha, ocupando la línea completa.
-   Es la fila de un interruptor: sin el `space-between` el switch queda pegado a
-   la etiqueta, a media card, y no se lee como el control de esa línea. */
-.set-field__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex: 1 1 100%;
-}
+
 .set-input {
   border: 1px solid var(--border);
   background: var(--surface);
@@ -1477,9 +1820,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-4);
-}
-.set-field--inline {
-  flex-wrap: nowrap;
 }
 .set-input--hora {
   width: 76px;
@@ -1509,17 +1849,23 @@
    destino de un arrastre: acá dice "este día está tomado por el ajuste".
    `.resp-btn.is-on` comparte la regla porque dice lo mismo —"esta es la opción
    elegida", en la tipografía de Apariencia— y una segunda definición idéntica se
-   separaría de esta con el primer ajuste. Medido: 5.1 de contraste en claro y 8.3 en
-   oscuro; con `--accent` al 22% habrían sido 4.4, bajo el mínimo AA. */
+   separaría de esta con el primer ajuste. Lo mismo vale para `.set-tab.is-active`:
+   la sección abierta del menú de Configs es la misma frase, y el fondo que usaba
+   antes (`--surface-raised`) es el de las cards que tiene al lado. Medido: 5.1 de
+   contraste en claro y 8.3 en oscuro; con `--accent` al 22% habrían sido 4.4, bajo
+   el mínimo AA. */
 .set-weekday.is-on,
-.resp-btn.is-on {
+.resp-btn.is-on,
+.set-tab.is-active {
   background: color-mix(in srgb, var(--apricot) 22%, transparent);
   border-color: var(--apricot-ink);
   color: var(--apricot-ink);
 }
 
+/* La explicación del ajuste. Vive en la columna izquierda, bajo su etiqueta:
+   antes se llevaba la línea completa por debajo del control, y con eso cada
+   ajuste medía dos filas y la sección entera se leía como un bloque. */
 .set-note {
-  flex: 1 1 100%;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;

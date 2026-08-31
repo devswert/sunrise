@@ -205,6 +205,7 @@ pub fn run() {
             commands::set_actual_seconds,
             // categories
             commands::list_categories,
+            commands::category_usage,
             commands::create_category,
             commands::update_category,
             commands::delete_category,

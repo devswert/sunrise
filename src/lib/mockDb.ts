@@ -7,6 +7,7 @@ import type {
   Rescue,
   CalendarFeed,
   Category,
+  CategoryUsage,
   Objective,
   ObjectivePatch,
   Task,
@@ -361,6 +362,17 @@ export const mock = {
   ping: async () => "pong",
 
   listCategories: async (): Promise<Category[]> => categories.filter((c) => !c.archived),
+
+  // Mismo filtro que el SQL: los eventos ignorados no cuentan, y un canal sin
+  // tareas no aparece en el resultado.
+  categoryUsage: async (): Promise<CategoryUsage[]> => {
+    const porCanal = new Map<number, number>();
+    for (const t of tasks) {
+      if (t.categoryId == null || t.railOnly) continue;
+      porCanal.set(t.categoryId, (porCanal.get(t.categoryId) ?? 0) + 1);
+    }
+    return [...porCanal].map(([categoryId, count]) => ({ categoryId, tasks: count }));
+  },
 
   listObjectives: async (isoWeek: string): Promise<Objective[]> =>
     objectives.filter((o) => o.isoWeek === isoWeek).sort((a, b) => a.position - b.position),

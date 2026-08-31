@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, RefreshCw, Trash2, TriangleAlert } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { CalendarFeed, Category } from "../../lib/types";
+import { chipVarsForColor } from "../tasks/chipVars";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
 import { Spinner } from "../../components/Spinner";
@@ -59,20 +60,21 @@ export function FeedsCard({ categories }: Props) {
 
   return (
     <section className="set-card" id="set-calendarios" data-section="calendarios">
-      <header className="set-card__head set-card__head--conaccion">
-        <div>
-          <h2>
-            {/* El mismo icono que su tab: sale de `TABS` para que no se separen. */}
-            <SectionIcon size={16} aria-hidden /> Calendarios
-          </h2>
+      <header className="set-card__head">
+        {/* El mismo icono que su tab: sale de `TABS` para que no se separen. */}
+        <SectionIcon size={16} aria-hidden className="set-card__icon" />
+        <div className="set-card__head-text">
+          <h2>Calendarios</h2>
           <p>
-            Los eventos entran como tareas normales: les puedes poner el taxímetro, completarlas
-            y moverlas. Se traen las <strong>próximas tres semanas</strong>, sin los cancelados.
+            Los eventos entran como tareas normales. Se traen las{" "}
+            <strong>próximas tres semanas</strong>, sin cancelados.
           </p>
         </div>
         {/* Alineado a la derecha en la fila del título, y compartiendo estado con
           * el botón de la vista semana. */}
-        <SyncButton />
+        <div className="set-card__acciones">
+          <SyncButton />
+        </div>
       </header>
 
       {feeds.length === 0 ? (
@@ -237,7 +239,8 @@ function FeedItem({
       <div className="feed__meta">
         <div className="chip-wrap" ref={catRef}>
           <button
-            className={`chip${channel ? " is-set" : ""}`}
+            className={`chip${channel ? " is-set chip--canal" : ""}`}
+            style={chipVarsForColor(channel?.color)}
             aria-label={`Canal por defecto de ${feed.name}`}
             onClick={() => setAbierto((v) => !v)}
           >

@@ -87,56 +87,56 @@ export function AppearanceCard() {
   return (
     <section className="set-card" id="set-apariencia" data-section="apariencia">
       <header className="set-card__head">
-        <h2>
-          <SectionIcon size={16} aria-hidden /> Apariencia
-        </h2>
-        <p>Cómo se ve y cómo suena sunrise.</p>
+        <SectionIcon size={16} aria-hidden className="set-card__icon" />
+        <div className="set-card__head-text">
+          <h2>Apariencia</h2>
+          <p>Cómo se ve y cómo suena sunrise.</p>
+        </div>
       </header>
 
       <div className="set-field">
-        <div className="set-field__row">
+        <div className="set-field__text">
           <span className="set-field__label">Campana del taxímetro</span>
-          <div className="upd-acciones">
-            <button
-              type="button"
-              className="resp-btn"
-              disabled={outsideApp}
-              onClick={() => void api.playBell()}
-            >
-              <Play size={13} aria-hidden />
-              <span className="resp-btn__texto">Probar</span>
-            </button>
-            <button
-              type="button"
-              className="resp-btn"
-              disabled={outsideApp || instalando}
-              aria-busy={instalando}
-              onClick={() => void elegirCampana()}
-            >
-              {instalando ? <Spinner size={13} /> : <Upload size={13} aria-hidden />}
-              <span className="resp-btn__texto">
-                {instalando ? "Instalando…" : "Elegir un audio"}
-              </span>
-            </button>
-            {propia && (
-              <button
-                type="button"
-                className="resp-btn"
-                onClick={() => void volverALaDeSunrise()}
-              >
-                <Bell size={13} aria-hidden />
-                <span className="resp-btn__texto">Volver a la de sunrise</span>
-              </button>
-            )}
-          </div>
+          <span className={`set-note${error ? " is-error" : ""}`}>
+            {error
+              ? error
+              : propia
+                ? `Suena ${campana}, del que la app guardó una copia. Si el original se borró por fuera, vuelve la de sunrise.`
+                : "La que suena al llegar al tiempo estimado. Puedes poner un audio propio."}
+          </span>
         </div>
-        <span className={`set-note${error ? " is-error" : ""}`}>
-          {error
-            ? error
-            : propia
-              ? `Suena ${campana}, que la app copió a su carpeta. Pruébala: si el archivo se borró por fuera, vas a oír la de sunrise. Volver a la de sunrise descarta la copia — tu archivo original queda donde está.`
-              : "Suena la campana de sunrise, sintetizada. Puedes elegir un audio propio y la app se queda con una copia."}
-        </span>
+        {/* Apilados y no en fila: elegir arriba, que es a lo que se viene, y probar
+            debajo. En fila los tres competían por el mismo peso y el más largo
+            —"Volver a la de sunrise"— quedaba mandando el ancho de la sección. */}
+        <div className="set-field__control">
+          <button
+            type="button"
+            className="resp-btn"
+            disabled={outsideApp || instalando}
+            aria-busy={instalando}
+            onClick={() => void elegirCampana()}
+          >
+            {instalando ? <Spinner size={13} /> : <Upload size={13} aria-hidden />}
+            <span className="resp-btn__texto">
+              {instalando ? "Instalando…" : "Elegir un audio"}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="resp-btn"
+            disabled={outsideApp}
+            onClick={() => void api.playBell()}
+          >
+            <Play size={13} aria-hidden />
+            <span className="resp-btn__texto">Probar</span>
+          </button>
+          {propia && (
+            <button type="button" className="resp-btn" onClick={() => void volverALaDeSunrise()}>
+              <Bell size={13} aria-hidden />
+              <span className="resp-btn__texto">Volver a la de sunrise</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <FontPicker
@@ -195,8 +195,21 @@ function FontPicker({
 
   return (
     <div className="set-field">
-      <div className="set-field__row">
+      <div className="set-field__text">
         <span className="set-field__label">{etiqueta}</span>
+        {/* La muestra usa la fuente elegida: es lo único que responde "¿cómo se ve?"
+            sin tener que cerrar Configs. Y va con el tamaño de su rol. */}
+        <span
+          className="set-note"
+          style={{
+            fontFamily: `var(--font-${rol})`,
+            fontSize: rol === "title" ? 17 : 13,
+          }}
+        >
+          Lunes 7 — revisar la semana y cerrar el día.
+        </span>
+      </div>
+      <div className="set-field__control">
         <div className="chip-wrap" ref={ancla}>
           <button
             className="chip is-set"
@@ -220,17 +233,6 @@ function FontPicker({
           )}
         </div>
       </div>
-      {/* La muestra usa la fuente elegida: es lo único que responde "¿cómo se ve?"
-          sin tener que cerrar Configs. Y va con el tamaño de su rol. */}
-      <span
-        className="set-note"
-        style={{
-          fontFamily: `var(--font-${rol})`,
-          fontSize: rol === "title" ? 17 : 13,
-        }}
-      >
-        Lunes 7 — revisar la semana y cerrar el día.
-      </span>
     </div>
   );
 }

@@ -2,15 +2,14 @@
    campos, las notas) y solo agrega lo propio: la fila carpeta + botón, la lista
    de archivos y los dos avisos. */
 
-/* Ocupa su **propia línea** dentro de `.set-field`, que es una fila flex con
-   `wrap`: la etiqueta queda arriba y el campo se lleva el ancho completo de la
-   card. Compartir la línea con "Carpeta" costaba unos 70px, y acá cada píxel es
-   un trozo más de ruta visible. */
+/* Ocupa su **propia línea**: el campo va debajo del texto del ajuste y se lleva
+   el ancho completo de la card (por eso su `.set-field` es `--stack`).
+   Compartir la línea con "Carpeta" costaba unos 70px, y acá cada píxel es un
+   trozo más de ruta visible. */
 .resp-carpeta {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex: 1 1 100%;
   min-width: 0;
 }
 /* El campo toma todo el ancho disponible: una ruta absoluta es larga y hay que
@@ -26,13 +25,14 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-/* Etiqueta a la izquierda, "Elegir…" a la derecha, y el campo entero abajo. */
+/* El texto del ajuste a la izquierda, "Elegir…" a la derecha, y el campo entero
+   abajo. `start` y no `center`: a la izquierda ya no va solo la etiqueta sino
+   también su explicación, y centrar dejaría el botón a media altura del párrafo. */
 .resp-carpeta__head {
   display: flex;
-  align-items: center;
+  align-items: start;
   justify-content: space-between;
-  gap: var(--space-2);
-  flex: 1 1 100%;
+  gap: var(--space-3);
 }
 .resp-carpeta__head .btn-ghost {
   flex: 0 0 auto;

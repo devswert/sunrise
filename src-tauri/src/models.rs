@@ -15,6 +15,21 @@ pub struct Category {
     pub archived: bool,
 }
 
+/// Cuántas tareas lleva un canal, para la sección Canales de Configs.
+///
+/// Va aparte de `Category` y no como un campo suyo a propósito: `list_categories`
+/// se lee en cada picker de canal de la app —la card, el detalle, los filtros— y
+/// no tiene por qué pagar un `COUNT` sobre `tasks` cada vez. Acá el conteo se pide
+/// solo donde se muestra.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryUsage {
+    pub category_id: i64,
+    /// Histórico, no pendientes: la pregunta que responde la sección es "¿este
+    /// canal sirve para algo?", y con solo lo pendiente casi todos marcan cero.
+    pub tasks: i64,
+}
+
 impl Category {
     pub fn from_row(r: &Row) -> rusqlite::Result<Self> {
         Ok(Category {

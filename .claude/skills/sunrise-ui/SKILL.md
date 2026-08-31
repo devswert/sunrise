@@ -174,6 +174,24 @@ foco. Cuélgalos de `window` en un `useEffect`, en **fase de burbuja** para que 
 control interno pueda quedarse con la tecla antes (`SearchSelect` corta el Enter con
 `stopPropagation`), y saltea el handler si el diálogo de salida está arriba.
 
+**La fila de un ajuste de Configs son dos columnas, y la derecha es de ancho
+fijo.** `.set-field` es una grilla: a la izquierda `.set-field__text` (la etiqueta
+y su explicación, una debajo de la otra), a la derecha `.set-field__control` en
+220px fijos. Fijo y no ajustado al contenido, porque si cada campo se mide solo,
+los controles quedan escalonados bajando la página. `align-items: start`: con una
+explicación de dos o tres líneas, centrar despega el control de su etiqueta.
+
+Dos escapatorias, en ese orden: `.set-field--wide` sube la columna a 288px para un
+par de campos cortos con etiqueta, y `.set-field--stack` manda el campo a una sola
+columna cuando el control no entra —tres botones, una ruta absoluta—. Un
+`.set-note` va **dentro** de `__text`, nunca suelto como hermano del control: eso
+era el diseño viejo y hacía que cada ajuste midiera dos filas y la sección entera
+se leyera como un bloque. Lo que separa los ajustes es la divisoria de
+`.set-field + .set-field`.
+
+**Las secciones de lista (Canales, Atajos, Calendarios) no son campos**: son datos
+del usuario, siguen en `.set-row` y no pasan por esta grilla.
+
 **Una lista corta de cosas comparables va en filas, no en cards en grilla.** Los
 objetivos de la semana pasaron por dos columnas de cards y no funcionó: con tres o
 cuatro ítems las cards desperdician ancho, obligan a saltar de una a otra para

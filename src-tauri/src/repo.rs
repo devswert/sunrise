@@ -26,7 +26,8 @@ where
 }
 
 use crate::models::{
-    ActiveTimer, CalendarFeed, Category, LogDay, DoneTask, Objective, ObjectiveWork, Attendee,
+    ActiveTimer, CalendarFeed, Category, CategoryUsage, LogDay, DoneTask, Objective, ObjectiveWork,
+    Attendee,
     Rescue, RollupCell, RollupDay, Task, TaskEvent, TimeEntry, DayWork, DaySegment,
     WeeklyRollup,
 };
@@ -1716,6 +1717,30 @@ pub fn list_categories(conn: &Connection) -> Result<Vec<Category>> {
          WHERE archived = 0 ORDER BY COALESCE(parent_id, id), position, id",
     )?;
     let rows = stmt.query_map([], Category::from_row)?.collect();
+    rows
+}
+
+/// Cuántas tareas tiene cada canal. Solo devuelve los que tienen al menos una,
+/// así que un canal ausente del resultado es un canal sin usar.
+///
+/// **Los eventos ignorados no cuentan** (`rail_only = 1`). Es la sexta lectura que
+/// los excluye, y por el mismo motivo que las otras cinco: un almuerzo o un focus
+/// time del calendario ocupa la agenda pero no es trabajo. Sin el filtro, el canal
+/// del feed aparece como el más usado de todos por reservas de hora.
+pub fn category_usage(conn: &Connection) -> Result<Vec<CategoryUsage>> {
+    let mut stmt = conn.prepare(
+        "SELECT category_id, COUNT(*) AS tasks FROM tasks
+         WHERE category_id IS NOT NULL AND rail_only = 0
+         GROUP BY category_id",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(CategoryUsage {
+                category_id: r.get("category_id")?,
+                tasks: r.get("tasks")?,
+            })
+        })?
+        .collect();
     rows
 }
 
@@ -4462,6 +4487,47 @@ mod tests {
             .map(|x| x.seconds)
             .sum();
         assert_eq!(ctx, 5400);
+    }
+
+    /// El almuerzo entra por la ruta de verdad —un evento del feed, marcado con
+    /// `set_series_rail_only`— y no con un UPDATE a mano: lo que hay que probar es
+    /// que el conteo mira la misma marca que ponen las otras cinco exclusiones.
+    #[test]
+    fn el_uso_de_un_canal_no_cuenta_los_eventos_ignorados() {
+        let c = conn();
+        let work = create_category(&c, None, "Trabajo", "sky").unwrap();
+        let dev = create_category(&c, Some(work.id), "Dev", "mint").unwrap();
+        let vacio = create_category(&c, Some(work.id), "Sin usar", "lavender").unwrap();
+
+        let mut n = new_task("feature", Some("2026-08-11"));
+        n.category_id = Some(dev.id);
+        create_task(&c, n).unwrap();
+
+        let f = feed(&c);
+        import_events(
+            &c,
+            f.id,
+            &[event("lunch@x#20260810T131500", "Lunch", "2026-08-10")],
+            Some(dev.id),
+        )
+        .unwrap();
+
+        let uso = category_usage(&c).unwrap();
+        let de = |cat: i64| uso.iter().find(|u| u.category_id == cat).map(|u| u.tasks);
+        assert_eq!(de(dev.id), Some(2), "todavía cuenta como tarjeta normal");
+
+        let lunes = list_tasks_for_date(&c, "2026-08-10").unwrap();
+        let almuerzo = lunes.iter().find(|t| t.title == "Lunch").unwrap();
+        set_series_rail_only(&c, almuerzo.id, true).unwrap();
+
+        let uso = category_usage(&c).unwrap();
+        let de = |cat: i64| uso.iter().find(|u| u.category_id == cat).map(|u| u.tasks);
+        assert_eq!(de(dev.id), Some(1), "el evento ignorado deja de sumar");
+        assert_eq!(
+            de(vacio.id),
+            None,
+            "un canal sin tareas no aparece en el resultado"
+        );
     }
 
     #[test]

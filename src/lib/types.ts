@@ -10,6 +10,19 @@ export interface Category {
   archived: boolean;
 }
 
+/**
+ * Cuántas tareas lleva un canal. Solo vienen los que tienen al menos una, así que
+ * un canal ausente de la lista es un canal que nunca se usó.
+ *
+ * **No incluye los eventos ignorados** (`railOnly`): un almuerzo del calendario
+ * ocupa la agenda pero no es trabajo, y sin ese filtro el canal del feed sale como
+ * el más usado de todos por reservas de hora.
+ */
+export interface CategoryUsage {
+  categoryId: number;
+  tasks: number;
+}
+
 /** Objetivo/ritual semanal (isoWeek ej. "2026-W32"). */
 export interface Objective {
   id: number;

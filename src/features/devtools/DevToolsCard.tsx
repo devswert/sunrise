@@ -53,15 +53,13 @@ const RESULT_NOTE: Record<NotifyResult, string> = {
  */
 export function DevToolsCard() {
   return (
-    <section className="set-card" id="set-dev-tools" data-section="dev-tools">
+    <section className="set-card set-card--dev" id="set-dev-tools" data-section="dev-tools">
       <header className="set-card__head">
-        <h2>
-          <SectionIcon size={16} aria-hidden /> Dev Tools
-        </h2>
-        <p>
-          Herramientas de desarrollo: esta sección existe solo cuando la app corre en dev,
-          y no aparece en la versión instalada.
-        </p>
+        <SectionIcon size={16} aria-hidden className="set-card__icon" />
+        <div className="set-card__head-text">
+          <h2>Dev Tools</h2>
+          <p>Solo en dev. No aparece en la versión instalada.</p>
+        </div>
       </header>
 
       <NotificationTools />
@@ -121,18 +119,30 @@ function NotificationTools() {
   return (
     <>
       <div className="set-field">
-        <div className="set-field__row">
+        <div className="set-field__text">
           <span className="set-field__label">Notificaciones</span>
+          <span className="set-note">
+            Los avisos del sistema llegan cuando estás en otra ventana. Acá se prueban sin
+            esperar la hora.
+          </span>
         </div>
-        <span className="set-note">
-          Los avisos del sistema son lo único que no se puede ver dentro de la app: llegan
-          cuando estás en otra ventana. Acá se prueban sin esperar la hora.
-        </span>
       </div>
 
       <div className="set-field">
-        <div className="set-field__row">
+        <div className="set-field__text">
           <span className="set-field__label">Permiso del sistema</span>
+          <span className={`set-note${perm === "unknown" ? " is-error" : ""}`}>
+            {perm === "granted"
+              ? "Concedido: los avisos llegan."
+              : perm === "unknown"
+                ? // El plugin solo dice sí o no, así que no hay forma de saber si
+                  // fue denegado o si nunca se preguntó. La ruta va escrita porque
+                  // un permiso denegado ya no se puede volver a pedir desde acá.
+                  "Sin permiso, o denegado. Si al pedirlo no sale el diálogo, está denegado: Ajustes del sistema → Notificaciones → sunrise."
+                : "Solo existen dentro de la app; en el browser no hay nada que probar."}
+          </span>
+        </div>
+        <div className="set-field__control">
           {perm !== "granted" && (
             <button
               type="button"
@@ -145,22 +155,18 @@ function NotificationTools() {
             </button>
           )}
         </div>
-        <span className={`set-note${perm === "unknown" ? " is-error" : ""}`}>
-          {perm === "granted"
-            ? "Concedido: los avisos llegan."
-            : perm === "unknown"
-              ? // El plugin solo dice sí o no, así que no hay forma de saber si
-                // fue denegado o si nunca se preguntó. La ruta va escrita porque
-                // un permiso denegado ya no se puede volver a pedir desde acá.
-                "Sin permiso todavía, o denegado. Si al pedirlo no aparece el diálogo de macOS, está denegado: se cambia en Ajustes del sistema → Notificaciones → sunrise."
-              : "Los avisos del sistema existen solo en la app; en el browser no hay nada que probar."}
-        </span>
       </div>
 
 
-      <div className="set-field">
-        <div className="set-field__row">
+      <div className="set-field set-field--stack">
+        <div className="set-field__text">
           <span className="set-field__label">Probar un aviso</span>
+          <span className="set-note">
+            {notice ??
+              "El aviso de verdad, con su texto y su sonido. Que se quede en pantalla lo decide el Alert Style de abajo, no la app."}
+          </span>
+        </div>
+        <div className="set-field__control">
           <div className="upd-acciones">
             <button
               type="button"
@@ -199,15 +205,18 @@ function NotificationTools() {
             </button>
           </div>
         </div>
-        <span className="set-note">
-          {notice ??
-            "Sale el aviso de verdad, con su mismo texto y su sonido. El de próxima tarea lleva botones; que se quede en pantalla o no depende del Alert Style de abajo, no de la app."}
-        </span>
       </div>
 
       <div className="set-field">
-        <div className="set-field__row">
+        <div className="set-field__text">
           <span className="set-field__label">Aviso del cierre de hoy</span>
+          <span className="set-note">
+            {notifiedToday
+              ? "Hoy ya se dio por avisado. Bórralo para probar el camino real."
+              : "Todavía no se avisó hoy: llega al pasar el fin de tu jornada."}
+          </span>
+        </div>
+        <div className="set-field__control">
           <button
             type="button"
             className="resp-btn"
@@ -218,18 +227,20 @@ function NotificationTools() {
             <span className="resp-btn__texto">Volver a avisar hoy</span>
           </button>
         </div>
-        <span className="set-note">
-          {notifiedToday
-            ? "Hoy ya se dio por avisado, así que no va a volver a llegar. Bórralo para probar el camino real."
-            : "Hoy todavía no se ha avisado: el aviso va a llegar cuando pase el fin de tu jornada."}
-        </span>
       </div>
 
       <div className="set-field">
-        <div className="set-field__row">
+        <div className="set-field__text">
           <span className="set-field__label">
             {identity ? <>Los avisos salen como <code>{identity}</code></> : "Que se queden pegados"}
           </span>
+          <span className="set-note">
+            {identity.startsWith("com.apple")
+              ? "macOS no conoce a sunrise, así que el aviso sale prestado y manda el ajuste de esa app. Instala el .dmg una vez y se arregla."
+              : "Lo decide Ajustes del sistema → Notificaciones → sunrise → Alert Style, en Temporary o Persistent. No se puede leer ni cambiar desde acá."}
+          </span>
+        </div>
+        <div className="set-field__control">
           <button
             type="button"
             className="resp-btn"
@@ -240,11 +251,6 @@ function NotificationTools() {
             <span className="resp-btn__texto">Abrir Ajustes del sistema</span>
           </button>
         </div>
-        <span className="set-note">
-          {identity.startsWith("com.apple")
-            ? "macOS no conoce el identificador de sunrise, así que el aviso sale prestado y manda el ajuste de esa app. Instala el .dmg una vez y en dev pasa a salir como sunrise."
-            : "Que un aviso se quede en pantalla o se vaya solo lo decide una sola cosa, y no es la app: Ajustes del sistema → Notificaciones → sunrise → Alert Style, en Temporary o Persistent. No hay forma de leerlo ni de cambiarlo desde acá."}
-        </span>
       </div>
     </>
   );
