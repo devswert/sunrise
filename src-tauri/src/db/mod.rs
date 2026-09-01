@@ -89,6 +89,26 @@ mod tests {
         conn
     }
 
+    /// La base con las migraciones aplicadas **solo hasta `version`**, para poder
+    /// sembrar el estado que existía antes de una y después correr el resto.
+    ///
+    /// Es la única forma de probar una migración de datos: aplicarla toda y después
+    /// re-escribir su SQL a mano prueba la copia, no la migración.
+    fn migrated_hasta(version: i64) -> Connection {
+        let conn = open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _migrations (version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now')));",
+        )
+        .unwrap();
+        for (v, sql) in migrations::MIGRATIONS.iter().filter(|(v, _)| *v <= version) {
+            conn.execute_batch(sql).unwrap();
+            conn.execute("INSERT INTO _migrations (version) VALUES (?1)", [v])
+                .unwrap();
+        }
+        conn
+    }
+
     /// Dev y producción **no pueden** apuntar al mismo archivo: comparten el
     /// directorio de datos, así que el nombre es lo único que las separa. Los
     /// tests corren con `debug_assertions`, o sea en el lado "dev".
@@ -124,19 +144,9 @@ mod tests {
     /// valor que había, y la clave nueva promete una hora que ese valor no tiene.
     #[test]
     fn la_migracion_10_borra_la_marca_vieja_del_ritual() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE _migrations (version INTEGER PRIMARY KEY,
-                applied_at TEXT NOT NULL DEFAULT (datetime('now')));",
-        )
-        .unwrap();
-        // Se aplica hasta la 9 —el estado en que existía la clave vieja— y recién
-        // ahí corre el resto: aplicando todo de una no habría nada que borrar.
-        for (version, sql) in migrations::MIGRATIONS.iter().filter(|(v, _)| *v <= 9) {
-            conn.execute_batch(sql).unwrap();
-            conn.execute("INSERT INTO _migrations (version) VALUES (?1)", [version])
-                .unwrap();
-        }
+        // Hasta la 9 —el estado en que existía la clave vieja— y recién ahí el
+        // resto: aplicando todo de una no habría nada que borrar.
+        let conn = migrated_hasta(9);
         conn.execute_batch("INSERT INTO settings (key, value) VALUES ('planned_on', '2026-08-20');")
             .unwrap();
 
@@ -158,7 +168,11 @@ mod tests {
     /// volvería a mirar una fila ya marcada `ORPHANED`.
     #[test]
     fn la_migracion_6_libera_las_orphaned_que_si_se_trabajaron() {
-        let conn = migrated();
+        // Hasta la 5, que es el estado en que estas filas quedaron escondidas, y
+        // recién después corre la 6. Antes este test **re-escribía a mano el SQL de
+        // la migración** sobre una base ya migrada: si alguien cambiaba el `UPDATE`
+        // de la 6, el test seguía verde probando su propia copia.
+        let conn = migrated_hasta(5);
         conn.execute_batch(
             "INSERT INTO calendar_feeds (id, name, ics_url) VALUES (1, 'trabajo', 'https://x');
              INSERT INTO tasks (id, title, position, status, source, source_state, feed_id,
@@ -174,15 +188,7 @@ mod tests {
         )
         .unwrap();
 
-        // Se re-aplica a mano: la migración ya corrió en `migrated()`.
-        conn.execute_batch(
-            "UPDATE tasks
-                SET source_state = 'ACTIVE', feed_id = NULL, calendar_uid = NULL
-              WHERE source_state = 'ORPHANED'
-                AND (status = 'DONE'
-                     OR EXISTS (SELECT 1 FROM time_entries e WHERE e.task_id = tasks.id));",
-        )
-        .unwrap();
+        migrations::run(&conn).unwrap();
 
         let status = |id: i64| -> (String, Option<i64>) {
             conn.query_row(
