@@ -258,7 +258,6 @@ function logEvent(
   }
 })();
 
-
 /**
  * Espeja `repo::place_by_time` para la semilla: ubica una tarea del calendario
  * por su hora dentro de su día, sin desplazar lo que no tiene hora.
@@ -1058,11 +1057,24 @@ export const mock = {
    * devuelve el nombre y listo. Lo que **no** se simula es el rechazo de un archivo
    * ilegible: eso lo decide rodio y solo existe en la app (hay tests en `sound.rs`).
    */
-  installBellFile: async (path: string): Promise<string> =>
-    path.split("/").pop() || path,
+  installBellFile: async (path: string): Promise<string> => path.split("/").pop() || path,
 
   /** No hay audio en jsdom ni en el browser; que no falle es todo lo que hace. */
   playBell: async (): Promise<void> => {},
+
+  /**
+   * Fuera de Tauri no hay segunda ventana que mostrar, así que devuelve `false`
+   * ("no quedó visible") y nadie tiene que ramificar por eso.
+   *
+   * Existe para que el invariante sea cierto sin asterisco: **todo método de `api`
+   * pasa por este mock**. Antes éste era el único que resolvía en `ipc.ts` con un
+   * `Promise.resolve(false)` inline, y esa excepción es justo la que deja pasar la
+   * siguiente sin discusión. Lo vigila `ipcContract.test.ts`.
+   */
+  setTaximeterVisible: async (
+    _visible: boolean,
+    _pos?: { x: number; y: number } | null,
+  ): Promise<boolean> => false,
 
   previewNoticeSound: async (_name: string): Promise<void> => {},
 

@@ -70,9 +70,7 @@ export const api = {
       : mock.moveTask(id, date, position),
 
   demotePending: (today: string) =>
-    isTauri()
-      ? invoke<number>("demote_pending", { today })
-      : mock.demotePending(today),
+    isTauri() ? invoke<number>("demote_pending", { today }) : mock.demotePending(today),
 
   listTasksForRange: (start: string, end: string) =>
     isTauri()
@@ -113,7 +111,7 @@ export const api = {
           x: pos?.x ?? null,
           y: pos?.y ?? null,
         })
-      : Promise.resolve(false),
+      : mock.setTaximeterVisible(visible, pos),
 
   listTaskEvents: (taskId: number) =>
     isTauri() ? invoke<TaskEvent[]>("list_task_events", { taskId }) : mock.listTaskEvents(taskId),
@@ -138,9 +136,7 @@ export const api = {
 
   /** El rollup de la semana ISO que arranca en `weekStart` (lunes). */
   weeklyRollup: (weekStart: string) =>
-    isTauri()
-      ? invoke<WeeklyRollup>("weekly_rollup", { weekStart })
-      : mock.weeklyRollup(weekStart),
+    isTauri() ? invoke<WeeklyRollup>("weekly_rollup", { weekStart }) : mock.weeklyRollup(weekStart),
 
   /**
    * Los `days` días que terminan en `toDate`, del más nuevo al más viejo.
@@ -151,9 +147,7 @@ export const api = {
    * corren contra `mockDb`, que recibe posicional.
    */
   dailyLog: (toDate: string, days: number) =>
-    isTauri()
-      ? invoke<LogDay[]>("daily_log", { toDate, days })
-      : mock.dailyLog(toDate, days),
+    isTauri() ? invoke<LogDay[]>("daily_log", { toDate, days }) : mock.dailyLog(toDate, days),
 
   /** Escribe (o borra) la reflexión del día. **No lo cierra.** */
   setDayNote: (date: string, note: string | null) =>
@@ -170,9 +164,7 @@ export const api = {
 
   /** Sube una tarea a la bitácora del día, sin resumen todavía. */
   includeInLog: (date: string, taskId: number) =>
-    isTauri()
-      ? invoke<void>("include_in_log", { date, taskId })
-      : mock.includeInLog(date, taskId),
+    isTauri() ? invoke<void>("include_in_log", { date, taskId }) : mock.includeInLog(date, taskId),
 
   removeFromLog: (date: string, taskId: number) =>
     isTauri()
@@ -188,7 +180,6 @@ export const api = {
 
   focusQueue: (date: string, nowHhmm: string) =>
     isTauri() ? invoke<Task[]>("focus_queue", { date, nowHhmm }) : mock.focusQueue(date, nowHhmm),
-
 
   /**
    * Un aviso del sistema **con botón**, que en macOS es lo que lo vuelve una
@@ -218,19 +209,25 @@ export const api = {
    */
   previewMeetingNotice: (title: string, time: string) =>
     isTauri()
-      ? invoke<{ title: string; body: string; action: string; silent: boolean }>("preview_meeting_notice", {
-          title,
-          time,
-        })
+      ? invoke<{ title: string; body: string; action: string; silent: boolean }>(
+          "preview_meeting_notice",
+          {
+            title,
+            time,
+          },
+        )
       : mock.previewMeetingNotice(title, time),
 
   /** Lo mismo para el de la campana, que también lo manda Rust (`bell::copy`). */
   previewBellNotice: (title: string, minutes: number) =>
     isTauri()
-      ? invoke<{ title: string; body: string; action: string; silent: boolean }>("preview_bell_notice", {
-          title,
-          minutes,
-        })
+      ? invoke<{ title: string; body: string; action: string; silent: boolean }>(
+          "preview_bell_notice",
+          {
+            title,
+            minutes,
+          },
+        )
       : mock.previewBellNotice(title, minutes),
 
   /** Los sonidos que macOS puede tocar, del sistema y de `~/Library/Sounds`. */
@@ -264,9 +261,7 @@ export const api = {
    * las capabilities dejó la app sin avisos (SPECS §4.25).
    */
   openNotificationSettings: () =>
-    isTauri()
-      ? invoke<void>("open_notification_settings")
-      : mock.openNotificationSettings(),
+    isTauri() ? invoke<void>("open_notification_settings") : mock.openNotificationSettings(),
 
   // --- categories ---
   listCategories: () => (isTauri() ? invoke<Category[]>("list_categories") : mock.listCategories()),
@@ -303,9 +298,7 @@ export const api = {
       : mock.createObjective(isoWeek, title, categoryId ?? null),
 
   updateObjective: (id: number, patch: ObjectivePatch) =>
-    isTauri()
-      ? invoke<void>("update_objective", { id, patch })
-      : mock.updateObjective(id, patch),
+    isTauri() ? invoke<void>("update_objective", { id, patch }) : mock.updateObjective(id, patch),
 
   deleteObjective: (id: number) =>
     isTauri() ? invoke<void>("delete_objective", { id }) : mock.deleteObjective(id),
@@ -340,20 +333,16 @@ export const api = {
    */
   profile: () => (isTauri() ? invoke<Profile>("profile") : mock.profile()),
 
-  createBackup: () =>
-    isTauri() ? invoke<BackupFile>("create_backup") : mock.createBackup(),
+  createBackup: () => (isTauri() ? invoke<BackupFile>("create_backup") : mock.createBackup()),
 
   /** Falla si no se puede escribir ahí. Se llama al guardar la carpeta. */
   testBackupDir: (dir: string) =>
     isTauri() ? invoke<void>("test_backup_dir", { dir }) : mock.testBackupDir(dir),
 
-  listBackups: () =>
-    isTauri() ? invoke<BackupFile[]>("list_backups") : mock.listBackups(),
+  listBackups: () => (isTauri() ? invoke<BackupFile[]>("list_backups") : mock.listBackups()),
 
   restoreBackup: (zipPath: string) =>
-    isTauri()
-      ? invoke<RestoreResult>("restore_backup", { zipPath })
-      : mock.restoreBackup(zipPath),
+    isTauri() ? invoke<RestoreResult>("restore_backup", { zipPath }) : mock.restoreBackup(zipPath),
 
   // --- feeds de calendario ---
   listCalendarFeeds: () =>
@@ -417,8 +406,7 @@ export const api = {
     isTauri() ? invoke<AppUpdate | null>("check_for_update") : mock.checkForUpdate(),
 
   /** Descarga, instala y **reinicia la app**. No devuelve si sale bien. */
-  installUpdate: () =>
-    isTauri() ? invoke<void>("install_update") : mock.installUpdate(),
+  installUpdate: () => (isTauri() ? invoke<void>("install_update") : mock.installUpdate()),
 
   // --- ciclo de vida ---
   /** Detiene el timer y cierra la app. Fuera de Tauri no hay nada que cerrar. */
