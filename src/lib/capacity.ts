@@ -20,6 +20,22 @@ export function computeCapacityLevel(
   return CapacityLevel.OK;
 }
 
+/**
+ * Las duraciones que ofrecen **todos** los selectores de tiempo de la app: el
+ * chip del modal de crear, los dos pickers del detalle y de la card, los de Focus
+ * y el reparto por día de un objetivo.
+ *
+ * Una sola lista y no una por pantalla: estaba copiada en tres archivos y ya
+ * habían divergido —una tenía 180 y 240, otra no— así que la misma pregunta se
+ * respondía distinto según dónde la hicieras. Vive acá, con `formatMinutes` y
+ * `parseDuration`, porque es el módulo que todos los selectores ya importan.
+ *
+ * Arranca de 5 en 5 y después se abre: **sin 10 ni 25**. La lista corta se lee de
+ * un vistazo, y los valores del medio se escriben a mano en los pickers que
+ * aceptan texto libre (`TimePicker`).
+ */
+export const TIME_PRESETS = [5, 15, 20, 30, 45, 60, 90, 120, 180, 240];
+
 /** Formatea minutos como "H:MM" (ej. 135 -> "2:15"). */
 export function formatMinutes(totalMinutes: number): string {
   const m = Math.max(0, Math.round(totalMinutes));

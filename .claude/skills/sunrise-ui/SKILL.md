@@ -174,6 +174,45 @@ foco. Cuélgalos de `window` en un `useEffect`, en **fase de burbuja** para que 
 control interno pueda quedarse con la tecla antes (`SearchSelect` corta el Enter con
 `stopPropagation`), y saltea el handler si el diálogo de salida está arriba.
 
+**El click afuera cierra, salvo en `AddTaskModal`.** Ahí no cierra, y es a
+propósito: es el único modal donde lo que se pierde no existe en ningún otro lado
+—no hay autosave que rescatar, la tarea todavía no está creada— y el gesto que lo
+disparaba, un click al pasar, no se parece a "descartar esto". El corolario es la
+trampa de arriba: con el overlay bloqueado, **Escape pasa a ser la única salida**,
+así que tiene que estar colgado de `window` o un click en el overlay manda el foco
+al `body` y deja el modal sin forma de cerrarse.
+
+**El modal de crear adivina, pero no pisa.** Los chips de tiempo, canal y objetivo
+se llenan solos desde el título (`suggest.ts`, §4.31), y cada uno se **traba** en
+cuanto el usuario lo elige a mano — los `composeDefaults` incluidos. Si agregas un
+chip que se pueda sugerir, agrégale la traba en el mismo commit: una sugerencia que
+pisa lo recién elegido convierte la ayuda en algo contra lo que hay que pelear. El
+vocabulario que dispara las sugerencias **es un ajuste**, no una constante
+(Configs → Sugerencias), y las palabras se comparan con tolerancia
+(`matching.ts`): plural y un typo cuentan como la misma palabra, así que la lista
+se llena con una palabra por idea y no con todas sus variantes. La cercanía la
+mide **Jaro-Winkler con su corte convencional de 0.9** — si tocas ese número,
+tené a mano por qué: lo que había antes eran tramos elegidos a ojo, y volver a eso
+es volver a un umbral que solo se justifica por nuestros tests.
+
+**Una lista de palabras se dibuja en pills, no en un campo con comas.** Es la
+fila de reglas del sugeridor (`SuggestionsCard`, `.set-pills`): cada palabra es su
+propia cosa —se cuenta de un vistazo y se borra sola— y el campo del final agrega
+la siguiente con Enter o coma. Si escribís otro campo de "varios valores cortos",
+ese es el patrón; el texto con comas obliga a leer la frase entera para contar.
+
+**Un chip es una etiqueta, no un botón relleno.** `.chip` va con el fondo del papel
+y un borde suave; puesto, lo único que cambia es la tinta del texto
+(`--muted` → `--ink`). El relleno de color queda para dos casos y solo dos: el chip
+de un canal, donde el color **es** el dato (`chip--canal` + `chipVarsForColor`, el
+mismo `#tag` de las cards), y el borde apricot del chip con su popover abierto, que
+es un estado momentáneo. La clase la comparten el modal de crear y los selectores
+de Calendarios: un cambio ahí se ve en los tres.
+
+**Los presets de duración son una sola lista**, `TIME_PRESETS` en `lib/capacity.ts`.
+Estaba copiada en `TimePicker`, `ObjectiveModal` y el modal de crear, y ya habían
+divergido. Si agregas un selector de tiempo, importa esa.
+
 **La fila de un ajuste de Configs son dos columnas, y la derecha es de ancho
 fijo.** `.set-field` es una grilla: a la izquierda `.set-field__text` (la etiqueta
 y su explicación, una debajo de la otra), a la derecha `.set-field__control` en

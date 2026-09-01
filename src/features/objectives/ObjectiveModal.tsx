@@ -6,14 +6,13 @@ import { SearchSelect } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
 import { channelOptions } from "../tasks/channelOptions";
 import { chipVars } from "../tasks/chipVars";
-import { formatMinutes } from "../../lib/capacity";
+import { TIME_PRESETS, formatMinutes } from "../../lib/capacity";
 import { shortWeekday } from "../../lib/date";
 import { shortDuration } from "../tasks/timeByDay";
 import { useAppStore } from "../../lib/store";
 import "./objectives.css";
 
 /** Los mismos escalones que ofrece el estimado de una tarea. */
-const MINUTE_PRESETS = [5, 10, 15, 20, 25, 30, 45, 60, 90, 120];
 
 interface ObjectiveModalProps {
   objective: Objective;
@@ -357,7 +356,7 @@ function DiaCasilla({ date, minutes, count, open, onToggle, onPick }: DiaCasilla
       {open && (
         <Popover anchorRef={ref} onClose={onToggle}>
           <SearchSelect
-            options={MINUTE_PRESETS.map((m) => ({
+            options={TIME_PRESETS.map((m) => ({
               value: String(m),
               label: formatMinutes(m),
               hint: `${m} min`,

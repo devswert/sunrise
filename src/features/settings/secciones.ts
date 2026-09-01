@@ -7,6 +7,7 @@ import {
   Keyboard,
   Palette,
   SlidersHorizontal,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,6 +34,10 @@ export const TABS = [
   { id: "calendarios", label: "Calendarios", icon: CalendarDays },
   // Los canales son el `#tag` de las tarjetas, así que el numeral.
   { id: "canales", label: "Canales", icon: Hash },
+  // Después de Canales: la mitad de sus reglas apuntan a un canal, así que se
+  // lee en el orden en que se piensa —primero cuáles hay, después qué palabra
+  // lleva a cuál—.
+  { id: "sugerencias", label: "Sugerencias", icon: Sparkles },
   { id: "atajos", label: "Atajos", icon: Keyboard },
   // Antes de Respaldo: se visita más que él y menos que el resto.
   { id: "notificaciones", label: "Notificaciones", icon: BellRing },

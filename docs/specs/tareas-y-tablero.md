@@ -1,6 +1,6 @@
-# §4.1–4.5, 4.30 Tareas y tablero
+# §4.1–4.5, 4.30–4.31 Tareas y tablero
 
-El CRUD de tareas, la degradación diaria al backlog, la vista semana y Today, el modal de detalle y el backlog.
+El CRUD de tareas, la degradación diaria al backlog, la vista semana y Today, el modal de detalle, el backlog, las prioridades y el modal de crear.
 
 Vuelve al [índice de SPECS](../SPECS.md).
 ---
@@ -602,7 +602,138 @@ no distingue estos cinco matices entre sí. Sin prioridad **no dibuja nada** —
 marca que está o no está, como la banderita del objetivo, así que tampoco depende
 de `hidePlaceholders`.
 
-Dónde aparece: el indicador en la card (§4.3), el selector en el detalle (§4.4), y
-el filtro de la vista Backlog más el filtro y el orden del panel (§4.5). La lógica
+Dónde aparece: el indicador en la card (§4.3), el selector en el detalle (§4.4), el
+chip del modal de crear (§4.31), y el filtro de la vista Backlog más el filtro y el
+orden del panel (§4.5). La lógica
 —color, comparador, filtro y orden— es pura y vive en
 `src/features/tasks/priority.ts`.
+
+### 4.31 Modal de crear (`AddTaskModal`)
+
+La tarea se agrega **en medio de una reunión**: la frase se escribe entera y se le
+da Enter. Todo lo que sigue sale de ahí.
+
+- **El click afuera no cierra.** Es el único modal de la app donde lo que se
+  pierde no existe en ningún otro lado —no hay autosave que rescatar, la tarea
+  todavía no está creada—, y el gesto que lo disparaba (un click al pasar) no se
+  parece en nada a "descartar esto". Para salir están Escape y el atajo. Escape
+  con un popover abierto cierra el popover, no el modal.
+- **Los chips se llenan solos mientras se escribe** (`suggest.ts`): tiempo
+  estimado, canal y objetivo de la semana. Tres reglas y una condición:
+  - **Tiempo**: lo explícito manda ("30 min", "2h", "media hora", "hora y media",
+    "un cuarto de hora"); recién si no hay número deciden las palabras clave, que
+    son **configurables** (Configs → Sugerencias, más abajo). Entre dos reglas que
+    calzan gana la de **menos minutos**, por lo mismo que los defaults se
+    equivocan a la baja: subir un estimado es un click, y una agenda inflada deja
+    de mirarse. El resultado se **redondea a un preset** de `TIME_PRESETS`:
+    sugerir 25 min dejaría un chip que el picker no sabe volver a elegir.
+  - **Canal**, tres formas en orden: el `#canal` escrito a mano —comparado
+    **exacto**, porque es una intención y no una coincidencia: si `#docs-api` no
+    existe, caer en `docs` es peor que no calzar—; una palabra mapeada en Configs
+    (`issues`, `soporte`, `tickets` → `#incidencias`); y por último el nombre del
+    canal aparecido en la frase, y entre varios el más largo. Para los nombres
+    compuestos siguen valiendo los bordes de palabra: sin ellos `Docs` se
+    activaría dentro de "documentación", que no habla de él.
+  - **Objetivo**: solapamiento de palabras significativas con el título del
+    objetivo. "Significativas" es concreto: se normalizan (sin tildes, en
+    minúsculas), se descartan las de menos de cuatro letras y las vacías de
+    contenido (`para`, `hacer`, `todos`…), y hace falta que coincidan **dos**, o
+    **una sola si tiene seis letras o más**. Bajo el umbral **no sugiere nada**: un
+    objetivo puesto por casualidad se guarda igual y nadie lo revisa después, así
+    que es peor que ninguno.
+  - **Las palabras se comparan con tolerancia** (`matching.ts`), y es lo que hace
+    usable la lista configurable: si hubiera que escribir cada plural y cada
+    variante, la lista se abandona a la tercera. Tres reglas, en este orden:
+    igualdad tras normalizar (sin tildes, en minúsculas); **plural** (`+s`/`+es`,
+    en cualquier sentido); y **Jaro-Winkler ≥ 0.9**.
+
+    Jaro-Winkler es el algoritmo estándar para comparar nombres escritos a mano
+    —el de la deduplicación de padrones—: da una similitud normalizada entre 0 y 1
+    y premia el prefijo compartido, que acá viene bien porque el typo casi nunca
+    está en la primera letra. **0.9 es su corte convencional**, y se deja en ese
+    valor a propósito: antes esto eran tres tramos de distancia de edición
+    elegidos a ojo contra nuestros propios ejemplos, y un umbral publicado vale
+    más que unos números calibrados para pasar los tests de uno. Medido: entran
+    `reviwe`/`review` (0.97), `tikcet`/`tickets` (0.92 — el typo y el plural
+    juntos) y `sporte`/`soporte` (0.91); quedan afuera `mail`/`mall` (0.87),
+    `docs`/`dock` (0.88) y `doc`/`docente` (0.87).
+
+    Dos decisiones alrededor del algoritmo. **El plural se pregunta antes** y no
+    se le deja a la métrica: es una certeza, y así `issue`/`issues` no queda
+    sujeto a que dos letras sobre cinco pasen el umbral. Y **solo se comparan con
+    tolerancia las palabras sueltas**: un compuesto con guion (`#docs-api`) es un
+    nombre propio y se compara literal, o parecerse a un pedazo de él terminaría
+    sugiriendo el canal `docs`. Lo que sí se acepta a sabiendas son las colisiones
+    entre palabras largas que de verdad son distintas —`revisar`/`revisor`, 0.94—:
+    lo que se juega es un chip que se corrige con un click, contra una función que
+    deja de servir apenas escribes rápido, que es cuando se usa.
+  - **No pisa lo elegido a mano.** Cada uno de los tres se traba en cuanto el
+    usuario lo elige en su picker, y los `composeDefaults` cuentan como elegidos
+    (quien abrió el modal desde una columna de canal ya dijo cuál). Sin la traba
+    la ayuda se convierte en algo contra lo que hay que pelear.
+  - **El `#canal` capturado sale del título al crear** (`stripChannelTag`), por lo
+    mismo que los links de §4.4: si se queda, el canal viaja escrito dos veces y
+    se lee en cada card. Solo la etiqueta —una anotación, no prosa—; el nombre
+    suelto se queda, porque recortar "Preparar la meetings del lunes" deja una
+    frase rota. Y lo mismo con el "90 min" de una frase: ahí el número puede ser
+    del asunto ("comprar 2 horas de créditos"), así que no se toca. **Al crear y
+    no al tipear**, igual que la cosecha de links espera a que la URL esté
+    cerrada: borrarle el `#docs` a alguien que va escribiendo `#docs-api` le come
+    lo que acaba de teclear.
+  - **Se recalcula entero en cada tecla**, no se acumula: borrar "reunión" de la
+    frase tiene que llevarse los 30 minutos con ella, no dejarlos colgados de una
+    palabra que ya no está. Por eso `suggestFromTitle` es pura y devuelve los
+    campos **ausentes** cuando no sabe — ausente es "no sé", `null` es una
+    decisión, y la decisión la toma el usuario.
+- **Configs → Sugerencias** (`SuggestionsCard.tsx`, en `features/tasks`: la card
+  es de esta función y Configs solo la hospeda, como `FeedsCard`). Dos listas de
+  reglas —palabras → minutos y palabras → canal—, editables en el lugar y con
+  autosave, sin botón Guardar. Tres decisiones de forma:
+  - **Cada palabra es una pill**, no un texto con comas. Separadas por coma se
+    leen como una frase y hay que recorrerla entera para ver cuántas hay; en pills
+    se cuentan de un vistazo y cada una se borra sola. Sin color, a diferencia del
+    `#tag` de las tarjetas: acá no clasifican nada, son el mismo dato repetido. Se
+    confirman con Enter o coma —guardar por tecla sería un `setSetting` por
+    letra—, y también al salir del campo, porque lo tecleado y no confirmado se
+    perdería en silencio. Pegar `issues, soporte` deja dos pills, no una.
+  - **Una sola explicación para las dos listas.** Hacen lo mismo —un grupo de
+    palabras que significa algo— y contarlo dos veces obliga a leer las dos para
+    descubrir que dicen lo mismo; lo propio de cada una cabe en su rótulo.
+  - **El vocabulario de fábrica es corto** (21 palabras, no 50): una lista larga se
+    lee como algo cerrado, y lo que hay que invitar es lo contrario. Los sinónimos
+    no vienen puestos (`contestar` junto a `responder`) porque agregarlos toma dos
+    segundos, y el plural y los typos ya los toma `mismaPalabra`. **Ninguna palabra
+    de fábrica se parece a otra por encima del umbral**, y al agregar una hay que
+    verificar lo mismo: dos parecidas con tiempos distintos hacen que el chip lo
+    decida el desempate y no lo que se escribió. Se guardan como JSON en `suggest_time_rules` y
+  `suggest_channel_rules`, con la doctrina de `collapsed_weekdays`: **ausente ⇒ el
+  default, presente ⇒ lo que diga, incluso vacío**. Vaciar la lista de tiempos es
+  "no me adivines el tiempo" y tiene que sobrevivir al reinicio, no volver a los
+  defaults. La de canales **arranca vacía** —los canales los inventa cada uno— y
+  ahí ausente y vacío significan lo mismo. Todo lo que no calce con la forma
+  esperada se descarta **regla por regla** (`parseTimeRules`): una fila rota, o un
+  canal que se borró después, no puede apagar la lista entera.
+- **Los chips se leen como etiquetas, no como botones**: fondo del papel y un
+  borde suave, que es lo único que dice "esto se puede cambiar". Antes cada chip
+  puesto se rellenaba de apricot y la barra entera terminaba pintada de un color
+  que no significaba nada — el valor ya se distingue por el texto, que pasa de
+  `--muted` a `--ink`. El apricot queda para lo que sí es un estado momentáneo: el
+  chip con su popover abierto.
+- **El chip de canal va teñido con el color de su canal** (`chip--canal` +
+  `chipVarsForColor`, los mismos que los selectores de Calendarios): es el mismo
+  dato que el `#tag` de las cards, y verlo en el apricot genérico de `.chip.is-set`
+  acá y en su color allá lo desconecta de su canal. El `#` sigue la regla de la
+  lista de la que se eligió (`channelOptions`): lo llevan los channels, no los
+  contextos.
+- **La prioridad solo si el interruptor está encendido** (§4.30). Mismo popover
+  sin buscador que el detalle, y `null` explícito en "Sin prioridad".
+- **El atajo del calendario dice "Al backlog", no "Sin fecha"**: con una fecha ya
+  puesta, lo que se elige no es un estado sino a dónde se manda la tarea, y el
+  backlog es el lugar que tiene nombre.
+- **Los presets de tiempo son los mismos en toda la app** (`TIME_PRESETS` en
+  `lib/capacity.ts`): el chip de acá, los dos pickers del detalle y de la card,
+  los de Focus y el reparto por día de un objetivo. Estaban copiados en tres
+  archivos y ya habían divergido —una lista tenía 180 y 240 y otra no—, así que la
+  misma pregunta se respondía distinto según dónde la hicieras.
+- Los links pegados en el título se cosechan y quedan como recursos: el camino
+  entero está en §4.4.

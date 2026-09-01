@@ -37,6 +37,7 @@ import { useUpdateStore } from "../updates/updateStore";
 import { minutesFromTime } from "../calendar/railLayout";
 import { PLAIN_INPUT } from "../../components/plainInput";
 import { useProfile } from "../../lib/profile";
+import { SuggestionsCard } from "../tasks/SuggestionsCard";
 import {
   SHORTCUT_ACTIONS,
   type ShortcutId,
@@ -1241,6 +1242,7 @@ export function SettingsView() {
         <AppearanceCard />
         <CalendariosCard />
         <ChannelsCard />
+        <SuggestionsCard />
         <ShortcutsCard />
         <NotificationsCard />
         <BackupCard />

@@ -7,11 +7,11 @@ Vuelve al [índice de SPECS](../SPECS.md).
 
 ### 4.8 Settings
 
-Seis secciones, cada una con título y bajada propia (`Card` en
+Siete secciones, cada una con título y bajada propia (`Card` en
 `SettingsView.tsx`), en este orden: **General**, **Apariencia** (§4.28),
-**Calendarios** (§4.12), **Canales**, **Atajos de teclado** (§4.9),
-**Notificaciones** (§4.27) y **Respaldo** (§4.17). En dev hay una séptima al final,
-**Dev Tools** (§4.24), que la app instalada no muestra. El orden de la
+**Calendarios** (§4.12), **Canales**, **Sugerencias** (§4.31), **Atajos de
+teclado** (§4.9), **Notificaciones** (§4.27) y **Respaldo** (§4.17). En dev hay
+una octava al final, **Dev Tools** (§4.24), que la app instalada no muestra. El orden de la
 lista lateral y el de las cards **tienen que coincidir**: el resaltado lo decide
 un `IntersectionObserver` sobre las secciones, así que si divergen la lista marca
 una y se ve otra. Las dos salen de la misma lista, `settings/secciones.ts`, que es
@@ -35,6 +35,10 @@ también de donde sale el icono de cada una (§7) — y desde Mej.1 lo vigila un
   fija. Apagarlo esconde el indicador de las cards, el selector del detalle y los
   filtros del backlog; **el nivel de cada tarea se conserva**, así que probar el
   switch no cuesta repriorizar nada.
+- **Sugerencias** (`suggest_time_rules`, `suggest_channel_rules`): el vocabulario
+  del sugeridor del modal de crear. La card vive en `features/tasks`
+  (`SuggestionsCard.tsx`) y Configs solo la hospeda, como `FeedsCard`; la función
+  entera está en §4.31.
 - **Abrir sunrise al iniciar sesión** (§4.18): el único control de Configs que
   **no** lee ni escribe la tabla `settings`.
 - **El alta de un contexto o canal se confirma con Enter o al salir de la fila**,

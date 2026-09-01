@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { formatMinutes, parseDuration } from "../lib/capacity";
+import { TIME_PRESETS, formatMinutes, parseDuration } from "../lib/capacity";
 import { PLAIN_INPUT } from "./plainInput";
-
-const PRESETS = [5, 10, 15, 20, 25, 30, 45, 60, 90, 120, 180, 240];
 
 interface TimePickerProps {
   /** Minutos actuales (null = sin valor). */
@@ -29,9 +27,9 @@ export function TimePicker({ value, onSelect, clearLabel = "Sin estimar" }: Time
 
   const options = useMemo(() => {
     const q = query.trim();
-    if (!q) return PRESETS;
+    if (!q) return TIME_PRESETS;
     // Filtra presets por texto y por su equivalente formateado.
-    return PRESETS.filter((m) => String(m).includes(q) || formatMinutes(m).includes(q));
+    return TIME_PRESETS.filter((m) => String(m).includes(q) || formatMinutes(m).includes(q));
   }, [query]);
 
   /** Lo escrito va primero si es válido y no coincide con un preset. */

@@ -995,6 +995,79 @@
   margin-left: var(--space-5);
 }
 
+/* --- La fila de palabras del sugeridor (Configs → Sugerencias) --------------
+ *
+ * Cada palabra es una **pill** y no un texto con comas: separadas por coma se
+ * leen como una frase y hay que recorrerla entera para contar cuántas hay; así
+ * se cuentan de un vistazo y cada una se borra sola. Es el mismo dibujo que el
+ * `#tag` de las tarjetas — cada palabra es una cosa, no parte de una oración—,
+ * pero **sin color**: acá no clasifican nada, son el mismo tipo de dato repetido.
+ *
+ * La fila crece hacia abajo cuando no caben (`wrap`), y por eso el
+ * `align-items: center` de `.set-row` se cambia por `start`: con dos líneas de
+ * pills, el selector de la derecha centrado verticalmente flota lejos de la
+ * primera. */
+.set-row--pills {
+  align-items: flex-start;
+  padding: 6px 8px;
+}
+.set-pills {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.set-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 9px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.set-pill__del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  padding: 0;
+}
+.set-pill__del:hover {
+  background: var(--border);
+  color: var(--ink);
+}
+/* El campo donde se escribe la siguiente: sin caja propia, para que la fila se
+   lea como un solo control y no como pills seguidas de un input. Crece con lo
+   tecleado desde un mínimo que dé lugar al placeholder. */
+.set-pills__input {
+  flex: 1;
+  /* Chico a propósito: con un mínimo grande el campo no entra al lado de la
+     última pill y se cae solo a una línea nueva, que se lee como una fila vacía
+     debajo de la que tiene las palabras. */
+  min-width: 72px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  padding: 3px 2px;
+}
+.set-pills__input::placeholder {
+  color: var(--faint);
+}
+
 /* Dev Tools no es una sección de ajustes: es un banco de pruebas que existe solo
    en dev y que un usuario de la app instalada no ve nunca. El borde discontinuo y
    el tinte de la campana lo dicen sin una etiqueta que lo repita — es el mismo
@@ -1702,6 +1775,13 @@
   align-items: start;
   gap: var(--space-2) var(--space-4);
 }
+/* Un ajuste **sin control a la derecha**: el rótulo de una lista que viene
+   debajo (las reglas del sugeridor). Sin esto se lleva igual los 220px de la
+   columna derecha, y la explicación se estrangula al lado de un hueco vacío. */
+.set-field--ancho {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 /* La divisoria entre ajustes. Sin ella una sección de cinco campos se lee como
    un solo bloque de texto, que es justo lo que hay que evitar. No la lleva el
    primero: el encabezado de la card ya lo separa. */

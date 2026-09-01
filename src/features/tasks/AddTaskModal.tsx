@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
-import { CalendarDays, Clock, Hash, Link2, Plus, Target, X } from "lucide-react";
+import { CalendarDays, Clock, Flag, Hash, Link2, Plus, Target, X } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, Objective } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
@@ -11,10 +11,22 @@ import { appendResources, harvestLinks } from "./resources";
 import { Popover } from "../../components/Popover";
 import { es } from "date-fns/locale";
 import { dateLabel, isToday, isoWeekId, parseISODate, toISODate, todayISO } from "../../lib/date";
-import { formatMinutes } from "../../lib/capacity";
+import { TIME_PRESETS, formatMinutes } from "../../lib/capacity";
+import { usePrioritiesOn, useSuggestRules } from "../../lib/settings";
+import { PRIORITIES, type Priority } from "../../lib/enums";
+import { PriorityTag } from "./PriorityTag";
+import { priorityVar } from "./priority";
+import { chipVarsForColor } from "./chipVars";
+import { stripChannelTag, suggestFromTitle } from "./suggest";
 
-const TIME_PRESETS = [5, 10, 15, 20, 25, 30, 45, 60, 90, 120, 180, 240];
-type Picker = "date" | "planned" | "channel" | "objective" | null;
+type Picker = "date" | "planned" | "channel" | "objective" | "priority" | null;
+
+/**
+ * Los tres campos que el sugeridor puede escribir solo. Uno se "traba" en cuanto
+ * el usuario lo elige a mano — y no se destraba: una sugerencia que pisa lo que
+ * acabás de elegir convierte la ayuda en algo contra lo que hay que pelear.
+ */
+type Campo = "planned" | "channel" | "objective";
 
 export function AddTaskModal() {
   const { composeDefaults, closeCompose, bumpData } = useAppStore();
@@ -28,7 +40,26 @@ export function AddTaskModal() {
   const [objectiveId, setObjectiveId] = useState<number | null>(
     composeDefaults.objectiveId ?? null,
   );
+  const [priority, setPriority] = useState<Priority | null>(null);
   const [picker, setPicker] = useState<Picker>(null);
+  /**
+   * Lo que el usuario ya eligió a mano, y que el sugeridor deja de tocar. Los
+   * defaults con los que abre el modal cuentan como elegidos: quien lo abrió
+   * desde una columna de canal ya dijo cuál, y adivinarle encima sería pisarlo.
+   */
+  const trabado = useRef<Record<Campo, boolean>>({
+    planned: false,
+    channel: composeDefaults.categoryId != null,
+    objective: composeDefaults.objectiveId != null,
+  });
+  /**
+   * Un `ref` y no estado: trabar un campo no cambia nada de lo que se dibuja, y
+   * como estado entraría en las dependencias del efecto de sugerencia — donde
+   * solo serviría para recalcular los otros dos chips de gusto.
+   */
+  const trabar = (c: Campo) => {
+    trabado.current[c] = true;
+  };
   /** Los links que se cosecharon del título. Se guardan en las notas al crear. */
   const [resources, setResources] = useState<string[]>([]);
 
@@ -39,6 +70,9 @@ export function AddTaskModal() {
   const timeRef = useRef<HTMLDivElement>(null);
   const chanRef = useRef<HTMLDivElement>(null);
   const objRef = useRef<HTMLDivElement>(null);
+  const prioRef = useRef<HTMLDivElement>(null);
+  const prioridades = usePrioritiesOn();
+  const reglas = useSuggestRules();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -57,6 +91,59 @@ export function AddTaskModal() {
   }, [title]);
 
   /**
+   * Escape y ⌘Enter cuelgan de `window`, no del div del modal.
+   *
+   * Con el click afuera bloqueado, Escape pasó a ser **la única salida**, y un
+   * `onKeyDown` en el div solo se dispara si el foco está adentro: alcanza un
+   * click en el borde del modal —o en el overlay, que ahora no cierra— para que
+   * el foco se vaya al `body` y la tecla no llegue a ningún lado. Es la trampa
+   * que ya pagó `TaskModal`, con el mismo síntoma: la tecla muerta sin nada que
+   * apunte al foco.
+   *
+   * Fase de burbuja a propósito, para que un control interno se quede con la
+   * tecla antes (`SearchSelect` corta el Enter con `stopPropagation`).
+   *
+   * **Sin lista de dependencias, a propósito**: `create()` cierra sobre el título
+   * y los cuatro chips, así que el handler tiene que rebindearse en cada render o
+   * ⌘Enter guardaría lo que había al montarse. Acotarlo a `[picker]` es el bug de
+   * closure vieja, no una optimización.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Con el diálogo de salida encima, las teclas son suyas.
+      if (useAppStore.getState().quitOpen) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (picker) setPicker(null);
+        else closeCompose();
+        return;
+      }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        void create();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  /**
+   * Los chips que se deducen del título, **recalculados enteros en cada tecla**.
+   *
+   * Es una función del título actual y no un acumulado, y eso es lo que hace que
+   * borrar funcione: si se saca "reunión" de la frase, los 30 minutos se van con
+   * ella en vez de quedar colgados de una palabra que ya no está. Un campo que
+   * el sugeridor no resuelve vuelve a vacío por el mismo motivo — mientras nadie
+   * lo haya elegido a mano, el chip dice lo que dice el título y nada más.
+   */
+  useEffect(() => {
+    const sugerido = suggestFromTitle(title, categories, objectives, reglas);
+    if (!trabado.current.planned) setPlanned(sugerido.minutes ?? null);
+    if (!trabado.current.channel) setCategoryId(sugerido.categoryId ?? null);
+    if (!trabado.current.objective) setObjectiveId(sugerido.objectiveId ?? null);
+  }, [title, categories, objectives, reglas]);
+
+  /**
    * Cosecha los links de un texto y los suma a la lista de recursos.
    * Devuelve el texto ya sin ellos, que es lo que queda en el título.
    */
@@ -73,7 +160,9 @@ export function AddTaskModal() {
     // ni el pegado ni el `onChange` —que solo mira links cerrados—, así que sin
     // esto se crearía con el link todavía adentro.
     const { text, links } = harvestLinks(title);
-    const t = text.trim();
+    // El `#canal` que ya quedó en su campo sale del título, igual que los links:
+    // si no, el canal viaja escrito dos veces y se lee en cada card.
+    const t = stripChannelTag(text, selectedCat).trim();
     if (!t) return;
     const todos = [...resources, ...links.filter((l) => !resources.includes(l))];
     const notes = appendResources("", todos);
@@ -84,6 +173,7 @@ export function AddTaskModal() {
       estimatedMinutes: planned,
       categoryId,
       objectiveId,
+      priority,
     });
     bumpData();
     closeCompose();
@@ -114,17 +204,12 @@ export function AddTaskModal() {
   const dateChip = date ? (isToday(date) ? "Hoy" : dateLabel(date)) : "Sin fecha";
 
   return (
-    <div className="compose-overlay" onClick={closeCompose}>
-      <div
-        className="compose"
-        role="dialog"
-        aria-label="Nueva tarea"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) create();
-          if (e.key === "Escape") picker ? setPicker(null) : closeCompose();
-        }}
-      >
+    /* El click afuera **no cierra**. Es el único modal de la app donde lo que se
+     * pierde es texto que todavía no existe en ningún lado, y el gesto que lo
+     * disparaba —un click al pasar— no se parece en nada a "descartar esto".
+     * Para salir están Escape y la tecla de siempre. */
+    <div className="compose-overlay">
+      <div className="compose" role="dialog" aria-label="Nueva tarea">
         {/* Mismo campo que el título de `TaskModal`, y por el mismo motivo: una
          * descripción larga en un `input` de una línea se va corriendo a la
          * izquierda y deja de verse el principio, que es lo que uno está
@@ -213,13 +298,16 @@ export function AddTaskModal() {
                   >
                     Hoy
                   </button>
+                  {/* "Al backlog" y no "Sin fecha": con una fecha ya puesta, lo
+                   * que se está eligiendo no es un estado sino a dónde se manda
+                   * la tarea, y el backlog es el lugar que tiene nombre. */}
                   <button
                     onClick={() => {
                       setDate(null);
                       setPicker(null);
                     }}
                   >
-                    Sin fecha
+                    Al backlog
                   </button>
                 </div>
                 <DayPicker
@@ -252,6 +340,7 @@ export function AddTaskModal() {
                   clearLabel="Sin estimar"
                   onSelect={(v) => {
                     setPlanned(v ? Number(v) : null);
+                    trabar("planned");
                     setPicker(null);
                   }}
                 />
@@ -260,11 +349,25 @@ export function AddTaskModal() {
           </div>
 
           <div className="chip-wrap" ref={chanRef}>
+            {/* Teñido con el color de su canal —`chip--canal` + `chipVarsForColor`,
+             * los mismos que usan los selectores de Calendarios—, porque es el
+             * mismo dato que el `#tag` de las cards: verlo en apricot genérico acá
+             * y en su color allá lo desconecta de su canal. El `#` sigue la regla
+             * de la lista de la que se eligió (`channelOptions`): lo llevan los
+             * channels, no los contextos. */}
             <button
-              className={`chip${picker === "channel" ? " is-open" : ""}${selectedCat ? " is-set" : ""}`}
+              className={`chip${picker === "channel" ? " is-open" : ""}${
+                selectedCat ? " is-set chip--canal" : ""
+              }`}
+              style={chipVarsForColor(selectedCat?.color)}
               onClick={() => toggle("channel")}
             >
-              <Hash size={14} /> {selectedCat ? selectedCat.name : "canal"}
+              <Hash size={14} />{" "}
+              {selectedCat
+                ? selectedCat.parentId != null
+                  ? `#${selectedCat.name}`
+                  : selectedCat.name
+                : "canal"}
             </button>
             {picker === "channel" && (
               <Popover anchorRef={chanRef} onClose={() => setPicker(null)}>
@@ -275,6 +378,7 @@ export function AddTaskModal() {
                   clearLabel="Sin canal"
                   onSelect={(v) => {
                     setCategoryId(v ? Number(v) : null);
+                    trabar("channel");
                     setPicker(null);
                   }}
                 />
@@ -299,12 +403,77 @@ export function AddTaskModal() {
                   emptyLabel="No hay objetivos esta semana"
                   onSelect={(v) => {
                     setObjectiveId(v ? Number(v) : null);
+                    trabar("objective");
                     setPicker(null);
                   }}
                 />
               </Popover>
             )}
           </div>
+
+          {/* La prioridad solo si el interruptor está encendido (§ ajustes): con
+           * las prioridades apagadas no hay nada que elegir, y un chip que no
+           * lleva a ningún lado es peor que la ausencia.
+           *
+           * Sin buscador, igual que en el detalle: son cinco opciones fijas que
+           * caben enteras en el popover. */}
+          {prioridades && (
+            <div className="chip-wrap" ref={prioRef}>
+              <button
+                className={`chip${picker === "priority" ? " is-open" : ""}${
+                  priority ? " is-set" : ""
+                }`}
+                onClick={() => toggle("priority")}
+              >
+                {priority ? (
+                  <PriorityTag priority={priority} />
+                ) : (
+                  <>
+                    <Flag size={14} /> prioridad
+                  </>
+                )}
+              </button>
+              {picker === "priority" && (
+                <Popover
+                  anchorRef={prioRef}
+                  align="right"
+                  className="popover--pad"
+                  onClose={() => setPicker(null)}
+                >
+                  <div className="prio-menu">
+                    {PRIORITIES.map((p) => (
+                      <button
+                        key={p}
+                        className={`prio-menu__item${p === priority ? " is-active" : ""}`}
+                        onClick={() => {
+                          setPriority(p);
+                          setPicker(null);
+                        }}
+                      >
+                        <span
+                          className="prio-tag__dot"
+                          style={{ background: priorityVar(p) }}
+                          aria-hidden
+                        />
+                        {p}
+                      </button>
+                    ))}
+                    <button
+                      className={`prio-menu__item prio-menu__none${
+                        priority === null ? " is-active" : ""
+                      }`}
+                      onClick={() => {
+                        setPriority(null);
+                        setPicker(null);
+                      }}
+                    >
+                      Sin prioridad
+                    </button>
+                  </div>
+                </Popover>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="compose__foot">

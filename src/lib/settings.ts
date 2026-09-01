@@ -1,9 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 import { api } from "./ipc";
 import { FontChoice, SUNRISE_BELL } from "./enums";
 import { useAppStore } from "./store";
 import { setZone } from "./date";
+import {
+  type SuggestRules,
+  parseChannelRules,
+  parseTimeRules,
+} from "../features/tasks/suggestRules";
 
 /**
  * Ajustes de la app, respaldados en la tabla `settings`.
@@ -45,6 +50,14 @@ export const SettingKey = {
   FONT_BODY: "font_body",
   /** El interruptor general de prioridades. Solo lo lee el front. */
   PRIORITIES_ENABLED: "priorities_enabled",
+  /**
+   * Las reglas del sugeridor del modal de crear (§4.31), como JSON: qué palabras
+   * valen cuántos minutos y qué palabras apuntan a qué canal. Solo las lee el
+   * front. Doctrina de `collapsed_weekdays`: **ausente ⇒ el default, presente ⇒
+   * lo que diga, incluso vacío** — vaciar la lista es "no me adivines".
+   */
+  SUGGEST_TIME_RULES: "suggest_time_rules",
+  SUGGEST_CHANNEL_RULES: "suggest_channel_rules",
   /**
    * La zona en la que se vive el día, como nombre IANA (`America/Santiago`).
    * **La lee también Rust** (`repo::zone`), que es quien decide dónde empieza y
@@ -430,4 +443,21 @@ export function useCapacitySettings(): { target: number; warnRatio: number } {
     target: dailyCapacityMinutes(values),
     warnRatio: capacityWarnRatio(values),
   };
+}
+
+/**
+ * Las reglas del sugeridor, ya interpretadas (§4.31).
+ *
+ * El parseo vive en `suggestRules.ts` con el resto de la función; acá solo se
+ * atan las dos claves. `useMemo` porque el resultado entra en un efecto del modal
+ * de crear: un arreglo nuevo en cada render lo dispararía en loop.
+ */
+export function useSuggestRules(): SuggestRules {
+  const values = useSettingsStore((s) => s.values);
+  const time = values[SettingKey.SUGGEST_TIME_RULES];
+  const channel = values[SettingKey.SUGGEST_CHANNEL_RULES];
+  return useMemo(
+    () => ({ time: parseTimeRules(time), channel: parseChannelRules(channel) }),
+    [time, channel],
+  );
 }

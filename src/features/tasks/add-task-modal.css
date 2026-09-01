@@ -104,36 +104,46 @@
   padding-top: var(--space-3);
 }
 
+/* --- Los chips de la barra ---
+   Se leen como **etiquetas**, no como botones: fondo del papel y un borde suave
+   que es lo único que dice "esto se puede cambiar". El relleno naranja que
+   llevaban todos al estar puestos —`--apricot` sobre cada chip— pintaba la barra
+   entera de un color que no significaba nada: el valor ya se distingue por el
+   texto, que pasa de `--muted` a `--ink`. El apricot queda para lo que sí es un
+   estado momentáneo: el chip con su popover abierto. */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--surface-sunken);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
   font-size: 13px;
   color: var(--muted);
 }
 .chip:hover {
   color: var(--ink);
+  background: var(--surface-sunken);
 }
 .chip.is-set {
   color: var(--ink);
-  background: color-mix(in srgb, var(--apricot) 22%, transparent);
-  border-color: color-mix(in srgb, var(--apricot) 40%, transparent);
 }
-/* El chip de un canal lleva el color de su canal, no el apricot genérico de
-   `.chip.is-set`: es el mismo dato que el `#tag` de las tarjetas, y ahí ya viene
-   teñido — verlo en dos colores distintos según la pantalla lo desconecta de su
-   canal. Los tokens los pone el componente con `chipVarsForColor`. */
+/* El chip de un canal lleva el color de su canal, y ese sí es información: es el
+   mismo dato que el `#tag` de las tarjetas, y verlo en otro color según la
+   pantalla lo desconecta de su canal. Los tokens los pone el componente con
+   `chipVarsForColor`. */
 .chip.is-set.chip--canal {
   color: var(--tag-ink);
   background: color-mix(in srgb, var(--tag-bg) 30%, transparent);
   border-color: color-mix(in srgb, var(--tag-bg) 45%, transparent);
 }
+.chip.is-set.chip--canal:hover {
+  background: color-mix(in srgb, var(--tag-bg) 42%, transparent);
+}
 .chip.is-open {
-  border-color: var(--apricot);
+  border-color: var(--apricot-ink);
+  color: var(--ink);
 }
 
 /* Popover anclado al chip */
