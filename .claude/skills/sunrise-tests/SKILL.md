@@ -16,14 +16,13 @@ pnpm test:rust   # cargo test (SQLite en memoria)
 pnpm test:all    # ambos
 ```
 
-Estado en el commit `1175035`: 39 tests front (11 archivos) y 24 Rust, verdes.
-
 ## Rust: la lógica va donde se puede testear
 
 `repo.rs` son funciones puras sobre `&Connection` y no conocen Tauri —por eso se
-pueden probar sin levantar la app. `commands.rs` son wrappers delgados y **no se
-testean**. Si escribes lógica dentro de un comando, la estás poniendo fuera del
-alcance de los tests: bájala a `repo.rs`.
+pueden probar sin levantar la app. `commands.rs` son wrappers delgados, y por eso
+casi no tiene tests: los pocos que hay no prueban wrappers sino helpers puros
+(`sound_or_default`) y la config del updater. Si escribes lógica dentro de un
+comando, la estás poniendo fuera del alcance de los tests: bájala a `repo.rs`.
 
 Los tests viven en el `mod tests` del propio archivo:
 
@@ -85,9 +84,9 @@ un día cualquiera al que nadie va a asociar el cambio.
 Vitest + React Testing Library. Los tests se agarran de **`aria-label` y roles**,
 no de clases CSS — mantenlos al tocar componentes.
 
-Cubierto hoy: `capacity` (semáforo y parseo de duraciones), `date`, `history`,
-`useTimer`, `useDragOrClick`, `TaskCard`, `TaskModal`, `Sidebar`, `FocusView`,
-`SettingsView`.
+Qué está cubierto lo dice el árbol, no esta skill: `ls src/**/*.test.ts*`. Lo que
+**no** está cubierto y conviene saber: la ventana flotante (`FloatingTimer`,
+`useFloatingWindow`), `useAutosave` y el runtime del updater.
 
 Para lógica pura (fechas, capacidad, formato, historial) prefiere un test de
 unidad sobre `src/lib/*` antes que uno de componente: es más rápido y falla más
@@ -108,13 +107,14 @@ hacen): aislar un caso con `-t` lo puede dejar pasar en falso.
 1h 30m" cuenta también la semilla y falla apenas alguien la toque: pide el total
 a `api.weeklyRollup(...)` y compara contra eso, o mide el delta antes y después.
 
-## El hueco conocido
+## El cruce entre ventanas ya está cubierto
 
-**Nada cubre el cruce entre las dos ventanas**, que es exactamente donde está el
-bug activo de sincronización (ver la skill `sunrise-sync-ventanas`). Un test que
-simule el evento `storage` y verifique que la vista recarga cierra la clase
-entera de bug. Si estás por ahí, es el test de mayor retorno que se puede
-escribir en este repo.
+**No lo vuelvas a escribir.** `src/lib/store.test.tsx` dispara un
+`new StorageEvent("storage", …)` y verifica que `dataVersion` avanza;
+`src/features/today/TodayView.sync.test.tsx` verifica que la vista recarga con eso.
+Los dos se ponen rojos si alguien desactiva `useDataSync`. Si vas a tocar la
+sincronización, esos son los tests que tienen que seguir verdes — el detalle del
+mecanismo está en la skill `sunrise-sync-ventanas`.
 
 ## Notas de entorno
 

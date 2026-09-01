@@ -2,7 +2,7 @@
 
 Vuelve al [índice de SPECS](../SPECS.md).
 
-Obligatorios por milestone. Estado actual: **596 front (66 archivos) y 224 Rust**.
+Obligatorios por milestone. Cuántos hay lo dice el runner, no este documento.
 
 ```bash
 pnpm test        # Vitest + RTL
@@ -61,7 +61,7 @@ qué defienden.
   que no prueba comportamiento sino el contrato, y existe porque las dos suites corren
   contra `mockDb` y por definición no pueden ver un desacuerdo con Rust
   ([§2.2](arquitectura.md)).
-- **`tokens.test.ts`** son nueve. El que **lee todos los CSS** exige que ninguna regla
+- **`tokens.test.ts`**: el que **lee todos los CSS** exige que ninguna regla
   pinte un color a full con su propio `-ink`: es el par que da 2.0 de contraste, y el
   modo de falla es que compila, se ve "verde sobre verde" y hay que medirlo para
   descubrirlo. Lo acompaña uno que exige que el glob **haya leído algo** — con el CSS
