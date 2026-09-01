@@ -71,7 +71,7 @@ export function FeedsCard({ categories }: Props) {
           </p>
         </div>
         {/* Alineado a la derecha en la fila del título, y compartiendo estado con
-          * el botón de la vista semana. */}
+         * el botón de la vista semana. */}
         <div className="set-card__acciones">
           <SyncButton />
         </div>
@@ -203,7 +203,7 @@ function FeedItem({
 
         <div className="feed__acciones">
           {/* Botón sin texto: el estado va en los atributos, porque con la
-            * animación apagada el icono no cuenta nada por sí solo. */}
+           * animación apagada el icono no cuenta nada por sí solo. */}
           <button
             className="set-row__icon"
             aria-label={`Sincronizar ${feed.name}`}

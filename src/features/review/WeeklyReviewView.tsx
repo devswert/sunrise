@@ -25,13 +25,7 @@ import { useAppStore } from "../../lib/store";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
 import { channelOptions } from "../tasks/channelOptions";
-import {
-  hayFiltro,
-  matchesFilter,
-  SIN_FILTRO,
-  toggleId,
-  type ReviewFilter,
-} from "./reviewFilter";
+import { hayFiltro, matchesFilter, SIN_FILTRO, toggleId, type ReviewFilter } from "./reviewFilter";
 import { TaskCardStatic } from "../week/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
 import { Donut } from "../../components/Donut";
@@ -98,15 +92,7 @@ function FiltroSelect({
   );
 }
 
-function Chip({
-  color,
-  value,
-  label,
-}: {
-  color: string;
-  value: string | number;
-  label: string;
-}) {
+function Chip({ color, value, label }: { color: string; value: string | number; label: string }) {
   return (
     <span className="chip-cifra">
       <span className="chip-cifra__punto" style={{ background: color }} />
@@ -196,8 +182,7 @@ export function WeeklyReviewView() {
     [rollup, filter, catMap],
   );
 
-  const selectedTask =
-    rollup?.completedTasks.find((t) => t.id === abierta?.id) ?? abierta;
+  const selectedTask = rollup?.completedTasks.find((t) => t.id === abierta?.id) ?? abierta;
   const esSemanaActual = dates.includes(todayISO());
   const cumplidos = objectives.filter((o) => o.completed).length;
 
@@ -419,9 +404,7 @@ export function WeeklyReviewView() {
                         >
                           {o.title}
                         </button>
-                        {trabajado > 0 && (
-                          <span className="review__obj-h">{hours(trabajado)}</span>
-                        )}
+                        {trabajado > 0 && <span className="review__obj-h">{hours(trabajado)}</span>}
                       </li>
                     );
                   })}

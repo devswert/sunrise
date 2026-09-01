@@ -52,10 +52,7 @@ export function useSidebarCollapsed() {
   const toggle = useSidebarStore((s) => s.toggle);
 
   useEffect(() => {
-    document.documentElement.setAttribute(
-      "data-sidebar",
-      collapsed ? "collapsed" : "expanded",
-    );
+    document.documentElement.setAttribute("data-sidebar", collapsed ? "collapsed" : "expanded");
     try {
       localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
     } catch {

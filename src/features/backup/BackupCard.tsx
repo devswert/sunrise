@@ -84,15 +84,14 @@ function ConfirmarRestore({
       }
     >
       <p className="dialog__body">
-        Se va a reemplazar <strong>toda</strong> tu información actual por la del respaldo.
-        Las tareas, notas y tiempos que hayas registrado después de{" "}
-        <code>{zip.split("/").pop()}</code> no se pueden recuperar: no se mezcla nada, se
-        escribe encima.
+        Se va a reemplazar <strong>toda</strong> tu información actual por la del respaldo. Las
+        tareas, notas y tiempos que hayas registrado después de <code>{zip.split("/").pop()}</code>{" "}
+        no se pueden recuperar: no se mezcla nada, se escribe encima.
       </p>
       <p className="dialog__body">
-        Antes de pisarla, sunrise guarda una copia de tu base actual en la carpeta de
-        respaldos. Si tenías el timer corriendo, va a quedar apuntando a la base nueva. Lo
-        único que se mantiene es esta configuración de respaldo.
+        Antes de pisarla, sunrise guarda una copia de tu base actual en la carpeta de respaldos. Si
+        tenías el timer corriendo, va a quedar apuntando a la base nueva. Lo único que se mantiene
+        es esta configuración de respaldo.
       </p>
     </Dialog>
   );
@@ -143,16 +142,13 @@ function RestauracionLista({ r, onClose }: { r: RestoreResult; onClose: () => vo
         <dd>
           {r.createdAt ? (
             <>
-              {readableMoment(r.createdAt)} <span className="resp-resumen__hace">
-                ({relativeTime(r.createdAt)})
-              </span>
+              {readableMoment(r.createdAt)}{" "}
+              <span className="resp-resumen__hace">({relativeTime(r.createdAt)})</span>
             </>
           ) : (
             // Un respaldo viejo puede no traer manifest. Se dice, en vez de
             // mostrar la fecha del archivo como si fuera la del snapshot.
-            <span className="resp-resumen__hace">
-              sin manifest: {r.from.split("/").pop()}
-            </span>
+            <span className="resp-resumen__hace">sin manifest: {r.from.split("/").pop()}</span>
           )}
         </dd>
 
@@ -180,7 +176,6 @@ function RestauracionLista({ r, onClose }: { r: RestoreResult; onClose: () => vo
           <code>{r.backupCopy}</code>
         </dd>
       </dl>
-
     </Dialog>
   );
 }
@@ -365,12 +360,12 @@ export function BackupCard() {
         <div className="set-card__head-text">
           <h2>Respaldo</h2>
           <p>
-            Una copia comprimida de todo, con un <code>manifest.yml</code> de la versión.
-            Elige una carpeta sincronizada.
+            Una copia comprimida de todo, con un <code>manifest.yml</code> de la versión. Elige una
+            carpeta sincronizada.
           </p>
         </div>
         {/* `resp-btn` comparte definición con `.sync-btn` (week.css): el mismo
-          * botón plano del sync de calendarios, con su mismo icono de 13px. */}
+         * botón plano del sync de calendarios, con su mismo icono de 13px. */}
         <div className="resp-acciones set-card__acciones">
           <button
             type="button"
@@ -392,7 +387,7 @@ export function BackupCard() {
       </header>
 
       {/* Ancho completo y no la columna de 220px del resto: una ruta absoluta de
-        * iCloud no entra en menos. */}
+       * iCloud no entra en menos. */}
       <div className="set-field set-field--stack">
         <div className="resp-carpeta__head">
           <div className="set-field__text">
@@ -541,9 +536,7 @@ export function BackupCard() {
         />
       )}
 
-      {restaurado && (
-        <RestauracionLista r={restaurado} onClose={() => setRestaurado(null)} />
-      )}
+      {restaurado && <RestauracionLista r={restaurado} onClose={() => setRestaurado(null)} />}
     </section>
   );
 }

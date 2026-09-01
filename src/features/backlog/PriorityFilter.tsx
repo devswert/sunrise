@@ -76,8 +76,8 @@ export function PriorityFilter({ value, onChange }: Props) {
         <SlidersHorizontal size={12} aria-hidden />
         Prioridad
         {/* Cuántos niveles hay elegidos, no cuáles: con el popover cerrado, "3"
-          * alcanza para saber que el filtro está puesto, y las tres etiquetas
-          * estirarían el botón fuera de la cabecera. */}
+         * alcanza para saber que el filtro está puesto, y las tres etiquetas
+         * estirarían el botón fuera de la cabecera. */}
         {value.size > 0 && <span className="bfilter__count">{value.size}</span>}
       </button>
       {open && (

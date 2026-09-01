@@ -90,9 +90,9 @@ export function PanelFilters({
             )}
 
             {/* El `SearchSelect` va **embebido**, no detrás de un segundo popover:
-              * un popover encima de otro se cierra al primer click afuera del de
-              * arriba, que acá es el de adentro. Trae su propio buscador, que es
-              * el que recibe el foco al abrirse. */}
+             * un popover encima de otro se cierra al primer click afuera del de
+             * arriba, que acá es el de adentro. Trae su propio buscador, que es
+             * el que recibe el foco al abrirse. */}
             <section className="bfilters__sec">
               <span className="bfilters__label">
                 Canal
@@ -118,8 +118,8 @@ export function PanelFilters({
               <section className="bfilters__sec">
                 <span className="bfilters__label">Orden</span>
                 {/* Dos opciones excluyentes y siempre hay una: van como un par de
-                  * botones marcados, no como una lista de la que se elige — es la
-                  * misma diferencia entre un radio y un menú. */}
+                 * botones marcados, no como una lista de la que se elige — es la
+                 * misma diferencia entre un radio y un menú. */}
                 <div className="bfilters__orden">
                   <button
                     className={`bfilters__opt${sort === BacklogSort.CREATED ? " is-active" : ""}`}

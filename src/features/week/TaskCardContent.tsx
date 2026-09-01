@@ -81,18 +81,18 @@ export function TaskCardContent({
   return (
     <>
       {/* La fila aparece si hay hora **o** si viene del calendario: un evento de
-        * día completo no tiene hora, y sin esta condición perdía su marca de
-        * origen por completo al mover el icono acá. */}
+       * día completo no tiene hora, y sin esta condición perdía su marca de
+       * origen por completo al mover el icono acá. */}
       {(task.scheduledTime || task.source === "CALENDAR") && (
         <div className="tc__top">
           {/* La hora es un label con el mismo diseño que ACTUAL/PLANNED pero con
-            * su propio color: es información de otra naturaleza —cuándo, no
-            * cuánto— y confundirlas cuesta un segundo de lectura cada vez.
-            *
-            * El icono va acá y no junto al título: una reunión importada no se
-            * planifica como una tarea propia (no la puedes achicar ni moverla sin
-            * avisarle a alguien), y su marca natural es la hora, que es
-            * justamente lo que no se puede tocar. */}
+           * su propio color: es información de otra naturaleza —cuándo, no
+           * cuánto— y confundirlas cuesta un segundo de lectura cada vez.
+           *
+           * El icono va acá y no junto al título: una reunión importada no se
+           * planifica como una tarea propia (no la puedes achicar ni moverla sin
+           * avisarle a alguien), y su marca natural es la hora, que es
+           * justamente lo que no se puede tocar. */}
           <span className={`tc__time${task.scheduledTime ? "" : " is-todoeldia"}`}>
             {task.source === "CALENDAR" && (
               <CalendarDays size={11} aria-label="Viene del calendario" />
@@ -105,7 +105,7 @@ export function TaskCardContent({
       {/* Título + tiempo alineados en la misma fila */}
       <div className="tc__main">
         {/* `title` nativo: el clamp de dos líneas puede estar cortando, y sin
-          * esto la única forma de ver el texto entero sería abrir el detalle. */}
+         * esto la única forma de ver el texto entero sería abrir el detalle. */}
         <div className="tc__title" title={task.title}>
           {task.title}
         </div>
@@ -155,17 +155,17 @@ export function TaskCardContent({
         </button>
 
         {/* La prioridad. Como la banderita del objetivo, **no es un botón**: el
-          * nivel se cambia en el detalle, y un target clickeable de 20px entre el
-          * check y el reloj se aprieta sin querer. Sin prioridad no dibuja nada, y
-          * eso no depende de `hidePlaceholders` — no es un relleno de campo vacío,
-          * es una marca que está o no está. */}
+         * nivel se cambia en el detalle, y un target clickeable de 20px entre el
+         * check y el reloj se aprieta sin querer. Sin prioridad no dibuja nada, y
+         * eso no depende de `hidePlaceholders` — no es un relleno de campo vacío,
+         * es una marca que está o no está. */}
         {prioridades && <PriorityTag priority={task.priority} />}
 
         {/* Marca de "esto cuelga de un objetivo". **Solo el icono, sin el
-          * nombre**: en una card de 200px el título del objetivo compite con el de
-          * la tarea, y saber de cuál se trata es una pregunta del detalle, no de
-          * la lista. Por lo mismo no lleva relleno cuando no hay objetivo — no es
-          * un placeholder, así que tampoco depende de `hidePlaceholders`. */}
+         * nombre**: en una card de 200px el título del objetivo compite con el de
+         * la tarea, y saber de cuál se trata es una pregunta del detalle, no de
+         * la lista. Por lo mismo no lleva relleno cuando no hay objetivo — no es
+         * un placeholder, así que tampoco depende de `hidePlaceholders`. */}
         {task.objectiveId != null && (
           <span className="tc__obj" title="Cuelga de un objetivo">
             <Flag size={11} aria-label="Cuelga de un objetivo" />
@@ -173,41 +173,37 @@ export function TaskCardContent({
         )}
 
         {/* Canal editable desde la lista. Sin canal y con `hidePlaceholders` no se
-          * dibuja: el chip vacío es solo un numeral, y en una lista de tareas sin
-          * canal es una columna de glifos que no dice nada. */}
+         * dibuja: el chip vacío es solo un numeral, y en una lista de tareas sin
+         * canal es una columna de glifos que no dice nada. */}
         {!(hidePlaceholders && !category) && (
-        <div className="chip-wrap tc__tagwrap" ref={tagRef} onPointerDown={stop}>
-          <button
-            type="button"
-            className={`cat-tag tc__tag${category ? "" : " is-empty"}`}
-            style={chipVars(category)}
-            aria-label="Cambiar canal"
-            onClick={(e) => {
-              stop(e);
-              setPicker((p) => (p === "channel" ? null : "channel"));
-            }}
-          >
-            {category ? (
-              `#${category.name}`
-            ) : (
-              <Hash size={12} />
+          <div className="chip-wrap tc__tagwrap" ref={tagRef} onPointerDown={stop}>
+            <button
+              type="button"
+              className={`cat-tag tc__tag${category ? "" : " is-empty"}`}
+              style={chipVars(category)}
+              aria-label="Cambiar canal"
+              onClick={(e) => {
+                stop(e);
+                setPicker((p) => (p === "channel" ? null : "channel"));
+              }}
+            >
+              {category ? `#${category.name}` : <Hash size={12} />}
+            </button>
+            {picker === "channel" && (
+              <Popover anchorRef={tagRef} align="right" onClose={() => setPicker(null)}>
+                <SearchSelect
+                  options={options}
+                  value={task.categoryId != null ? String(task.categoryId) : null}
+                  placeholder="Buscar canal…"
+                  clearLabel="Sin canal"
+                  onSelect={(v) => {
+                    onPatch?.(task.id, { categoryId: v ? Number(v) : null });
+                    setPicker(null);
+                  }}
+                />
+              </Popover>
             )}
-          </button>
-          {picker === "channel" && (
-            <Popover anchorRef={tagRef} align="right" onClose={() => setPicker(null)}>
-              <SearchSelect
-                options={options}
-                value={task.categoryId != null ? String(task.categoryId) : null}
-                placeholder="Buscar canal…"
-                clearLabel="Sin canal"
-                onSelect={(v) => {
-                  onPatch?.(task.id, { categoryId: v ? Number(v) : null });
-                  setPicker(null);
-                }}
-              />
-            </Popover>
-          )}
-        </div>
+          </div>
         )}
       </div>
 

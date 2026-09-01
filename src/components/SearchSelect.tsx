@@ -63,8 +63,7 @@ export function SearchSelect({
     if (!q) return options;
     return options.filter(
       (o) =>
-        !o.group &&
-        (o.label.toLowerCase().includes(q) || (o.hint ?? "").toLowerCase().includes(q)),
+        !o.group && (o.label.toLowerCase().includes(q) || (o.hint ?? "").toLowerCase().includes(q)),
     );
   }, [options, query]);
 
@@ -132,9 +131,7 @@ export function SearchSelect({
               onMouseEnter={() => setCursor(idx)}
               onClick={() => onSelect(o.value)}
             >
-              {o.color && (
-                <span className="ss__dot" style={{ background: `var(--${o.color})` }} />
-              )}
+              {o.color && <span className="ss__dot" style={{ background: `var(--${o.color})` }} />}
               <span className="ss__label">{o.label}</span>
               {o.hint && <span className="ss__hint">{o.hint}</span>}
               {marcado(o.value) && <Check size={13} className="ss__tick" />}

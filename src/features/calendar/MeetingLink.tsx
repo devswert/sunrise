@@ -63,13 +63,7 @@ export function roomId(url: string): string | null {
  * navega a ninguna parte (ver `abrirExterno`), y un link que no lleva a nada es
  * peor que un botón. Se **ve** como link porque es lo que hace.
  */
-export function MeetingLink({
-  url,
-  className = "",
-}: {
-  url: string | null;
-  className?: string;
-}) {
+export function MeetingLink({ url, className = "" }: { url: string | null; className?: string }) {
   if (!url) return null;
   const sala = roomId(url);
 

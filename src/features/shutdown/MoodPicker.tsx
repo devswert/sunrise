@@ -11,9 +11,24 @@ import { Popover } from "../../components/Popover";
  * offline, y encima obliga a buscar entre miles para elegir una cara.
  */
 const CARAS = [
-  "🤩", "😄", "🙂", "😌", "😐", "😕",
-  "😣", "😤", "😩", "🥱", "🤯", "😶‍🌫️",
-  "🔥", "🚀", "💪", "🧠", "🐢", "🌧️",
+  "🤩",
+  "😄",
+  "🙂",
+  "😌",
+  "😐",
+  "😕",
+  "😣",
+  "😤",
+  "😩",
+  "🥱",
+  "🤯",
+  "😶‍🌫️",
+  "🔥",
+  "🚀",
+  "💪",
+  "🧠",
+  "🐢",
+  "🌧️",
 ];
 
 interface Props {

@@ -25,11 +25,7 @@ export function PriorityTag({
   if (!priority) return null;
   return (
     <span className={`prio-tag${className ? ` ${className}` : ""}`}>
-      <span
-        className="prio-tag__dot"
-        style={{ background: priorityVar(priority) }}
-        aria-hidden
-      />
+      <span className="prio-tag__dot" style={{ background: priorityVar(priority) }} aria-hidden />
       {priority}
     </span>
   );

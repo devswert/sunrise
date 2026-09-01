@@ -19,15 +19,12 @@ type Picker = "date" | "planned" | "channel" | "objective" | null;
 export function AddTaskModal() {
   const { composeDefaults, closeCompose, bumpData } = useAppStore();
 
-  const initialDate =
-    composeDefaults.date !== undefined ? composeDefaults.date : todayISO();
+  const initialDate = composeDefaults.date !== undefined ? composeDefaults.date : todayISO();
 
   const [title, setTitle] = useState("");
   const [date, setDate] = useState<string | null>(initialDate);
   const [planned, setPlanned] = useState<number | null>(null);
-  const [categoryId, setCategoryId] = useState<number | null>(
-    composeDefaults.categoryId ?? null,
-  );
+  const [categoryId, setCategoryId] = useState<number | null>(composeDefaults.categoryId ?? null);
   const [objectiveId, setObjectiveId] = useState<number | null>(
     composeDefaults.objectiveId ?? null,
   );
@@ -129,13 +126,13 @@ export function AddTaskModal() {
         }}
       >
         {/* Mismo campo que el título de `TaskModal`, y por el mismo motivo: una
-          * descripción larga en un `input` de una línea se va corriendo a la
-          * izquierda y deja de verse el principio, que es lo que uno está
-          * escribiendo. Crece hasta el tope de `.compose__title` y ahí scrollea.
-          *
-          * Enter **crea la tarea** —es el gesto de este modal, no un salto de
-          * línea—, así que el `preventDefault` va igual: sin él el textarea
-          * metía un `\n` antes de que `create()` leyera el título. */}
+         * descripción larga en un `input` de una línea se va corriendo a la
+         * izquierda y deja de verse el principio, que es lo que uno está
+         * escribiendo. Crece hasta el tope de `.compose__title` y ahí scrollea.
+         *
+         * Enter **crea la tarea** —es el gesto de este modal, no un salto de
+         * línea—, así que el `preventDefault` va igual: sin él el textarea
+         * metía un `\n` antes de que `create()` leyera el título. */}
         <textarea
           ref={inputRef}
           rows={1}
@@ -169,10 +166,10 @@ export function AddTaskModal() {
         />
 
         {/* --- Recursos cosechados ---
-          * La lista existe para poder **deshacer**: el título se limpia solo, y
-          * sin ver a dónde fue el link el gesto se sentiría como que se perdió.
-          * Va acá y no en la barra de abajo porque es parte de lo que se está
-          * escribiendo, no un ajuste de la tarea. */}
+         * La lista existe para poder **deshacer**: el título se limpia solo, y
+         * sin ver a dónde fue el link el gesto se sentiría como que se perdió.
+         * Va acá y no en la barra de abajo porque es parte de lo que se está
+         * escribiendo, no un ajuste de la tarea. */}
         {resources.length > 0 && (
           <ul className="compose__res">
             {resources.map((l) => (
@@ -201,10 +198,29 @@ export function AddTaskModal() {
               <CalendarDays size={14} /> {dateChip}
             </button>
             {picker === "date" && (
-              <Popover anchorRef={dateRef} align="center" className="popover--pad" onClose={() => setPicker(null)}>
+              <Popover
+                anchorRef={dateRef}
+                align="center"
+                className="popover--pad"
+                onClose={() => setPicker(null)}
+              >
                 <div className="panel-quick">
-                  <button onClick={() => { setDate(todayISO()); setPicker(null); }}>Hoy</button>
-                  <button onClick={() => { setDate(null); setPicker(null); }}>Sin fecha</button>
+                  <button
+                    onClick={() => {
+                      setDate(todayISO());
+                      setPicker(null);
+                    }}
+                  >
+                    Hoy
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDate(null);
+                      setPicker(null);
+                    }}
+                  >
+                    Sin fecha
+                  </button>
                 </div>
                 <DayPicker
                   mode="single"

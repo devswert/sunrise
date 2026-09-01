@@ -34,10 +34,10 @@ const db: Task[] = [
     calendarUid: null,
     eventStart: null,
     eventEnd: null,
-  meetingUrl: null,
-  eventDescription: null,
-  attendees: [],
-  railOnly: false,
+    meetingUrl: null,
+    eventDescription: null,
+    attendees: [],
+    railOnly: false,
     createdAt: "2026-08-11T09:00:00Z",
     updatedAt: "2026-08-11T09:00:00Z",
   },
@@ -96,9 +96,7 @@ describe("TodayView · sincronización entre ventanas", () => {
     // Sin el listener de `useDataSync` esto se queda en "Marcar como
     // completada" para siempre: era el bug reportado.
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Marcar como pendiente" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Marcar como pendiente" })).toBeInTheDocument();
     });
   });
 
@@ -107,13 +105,9 @@ describe("TodayView · sincronización entre ventanas", () => {
     await screen.findByRole("button", { name: "Marcar como completada" });
 
     db[0].status = "DONE";
-    window.dispatchEvent(
-      new StorageEvent("storage", { key: "sunrise-theme", newValue: "dark" }),
-    );
+    window.dispatchEvent(new StorageEvent("storage", { key: "sunrise-theme", newValue: "dark" }));
 
     await new Promise((r) => setTimeout(r, 20));
-    expect(
-      screen.getByRole("button", { name: "Marcar como completada" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Marcar como completada" })).toBeInTheDocument();
   });
 });

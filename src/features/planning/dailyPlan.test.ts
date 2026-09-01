@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Task } from "../../lib/types";
 import { CapacityLevel } from "../../lib/enums";
-import {
-  capacityMessage,
-  daySummary,
-  dayRecap,
-  lastDayWithTasks,
-} from "./dailyPlan";
+import { capacityMessage, daySummary, dayRecap, lastDayWithTasks } from "./dailyPlan";
 
 const DIA = "2026-08-17";
 
@@ -190,4 +185,3 @@ describe("lastDayWithTasks · eventos ignorados", () => {
     expect(lastDayWithTasks([soloAlmuerzo, conTrabajo], "2026-08-17")).toBe("2026-08-13");
   });
 });
-

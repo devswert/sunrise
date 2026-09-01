@@ -366,15 +366,12 @@ describe("TaskModal · sacarle la fecha a una tarea", () => {
     await userEvent.click(await screen.findByText("Sin fecha (backlog)"));
 
     expect(moveTask).toHaveBeenCalledWith(7, null, 0);
-    await waitFor(() =>
-      expect(useAppStore.getState().dataVersion).toBeGreaterThan(antes),
-    );
+    await waitFor(() => expect(useAppStore.getState().dataVersion).toBeGreaterThan(antes));
   });
-
 });
 
 describe("TaskModal · prioridad", () => {
-  it("sin prioridad dice \"ninguna\", como el objetivo", () => {
+  it('sin prioridad dice "ninguna", como el objetivo', () => {
     renderModal();
 
     expect(screen.getByText("Prioridad")).toBeInTheDocument();
@@ -391,7 +388,7 @@ describe("TaskModal · prioridad", () => {
     expect(document.querySelector(".prio-tag")).toHaveTextContent("P2");
   });
 
-  it("\"Sin prioridad\" la quita, y eso viaja como null y no como ausencia", async () => {
+  it('"Sin prioridad" la quita, y eso viaja como null y no como ausencia', async () => {
     // Ausente en el patch significa "no tocar", así que quitar tiene que mandar
     // el `null` explícito o el nivel se quedaría puesto.
     renderModal(vi.fn(), { ...baseTask, priority: Priority.P1 });
@@ -406,9 +403,7 @@ describe("TaskModal · prioridad", () => {
   it("el selector va a la izquierda del de objetivos", () => {
     renderModal();
 
-    const rotulos = [...document.querySelectorAll(".tmodal__meta-label")].map(
-      (e) => e.textContent,
-    );
+    const rotulos = [...document.querySelectorAll(".tmodal__meta-label")].map((e) => e.textContent);
     expect(rotulos.indexOf("Prioridad")).toBeLessThan(rotulos.indexOf("Objetivo"));
   });
 });

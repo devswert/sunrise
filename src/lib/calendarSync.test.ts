@@ -6,9 +6,10 @@ const feeds: CalendarFeed[] = [];
 /** Resuelve cuando el test lo diga, para poder mirar el estado "en curso". */
 let release: (() => void) | null = null;
 const syncCalendarFeeds = vi.fn(
-  () => new Promise<number>((res) => {
-    release = () => res(1);
-  }),
+  () =>
+    new Promise<number>((res) => {
+      release = () => res(1);
+    }),
 );
 
 vi.mock("./ipc", () => ({

@@ -139,12 +139,7 @@ describe("armarRail", () => {
   it("el ancho se decide por grupo, no por el día entero", () => {
     // Tres juntas a las 10, una sola a las 16: la de las 16 usa todo el ancho.
     const r = buildRail(
-      [
-        event(1, "10:00", 60),
-        event(2, "10:00", 60),
-        event(3, "10:00", 60),
-        event(4, "16:00", 30),
-      ],
+      [event(1, "10:00", 60), event(2, "10:00", 60), event(3, "10:00", 60), event(4, "16:00", 30)],
       "09:00",
       "18:00",
     );
@@ -442,10 +437,7 @@ describe("armarRail · proyección de las tareas sin hora", () => {
     // La otra mitad de la regla: el orden de las cards es lo que decide, así que
     // el mismo día con las cards al revés se dibuja distinto.
     const r = buildRail(
-      [
-        task({ id: 1, position: 0, estimatedMinutes: 60 }),
-        event(9, "15:00", 60, { position: 1 }),
-      ],
+      [task({ id: 1, position: 0, estimatedMinutes: 60 }), event(9, "15:00", 60, { position: 1 })],
       "09:00",
       "18:00",
     );

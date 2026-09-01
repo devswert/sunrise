@@ -195,9 +195,7 @@ describe("FocusView · detalle de la tarea", () => {
         title: "Coordinación",
         source: "CALENDAR",
         meetingUrl: "https://meet.google.com/abc-defg-hij",
-        attendees: [
-          { name: "Ana", email: "ana@acme.cl", status: "ACCEPTED", isOrganizer: true },
-        ],
+        attendees: [{ name: "Ana", email: "ana@acme.cl", status: "ACCEPTED", isOrganizer: true }],
         eventDescription: "Revisar el trimestre",
       }),
     );

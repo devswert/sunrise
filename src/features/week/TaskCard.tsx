@@ -24,20 +24,19 @@ export function TaskCard({
   onPatch,
   hidePlaceholders,
 }: TaskCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({
-      id: `task-${task.id}`,
-      // `status` viaja acá porque el panel de backlog lo necesita **durante** el
-      // arrastre para decidir si se ilumina, y en ese momento solo tiene los
-      // datos del `active` — la tarea vive en la columna de otro día, no en su
-      // lista. Ver `BacklogPanel`.
-      data: {
-        type: "task",
-        taskId: task.id,
-        date: task.scheduledDate,
-        status: task.status,
-      },
-    });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `task-${task.id}`,
+    // `status` viaja acá porque el panel de backlog lo necesita **durante** el
+    // arrastre para decidir si se ilumina, y en ese momento solo tiene los
+    // datos del `active` — la tarea vive en la columna de otro día, no en su
+    // lista. Ver `BacklogPanel`.
+    data: {
+      type: "task",
+      taskId: task.id,
+      date: task.scheduledDate,
+      status: task.status,
+    },
+  });
 
   const done = task.status === "DONE";
   const running = useTimerStore((s) => s.active?.taskId === task.id);

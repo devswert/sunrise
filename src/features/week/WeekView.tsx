@@ -200,8 +200,7 @@ export function WeekView() {
    * fecha adentro del board, ese camino existe.
    */
   const lastSelected = useRef<Task | null>(null);
-  const found =
-    selectedId != null ? (board.tasks.find((t) => t.id === selectedId) ?? null) : null;
+  const found = selectedId != null ? (board.tasks.find((t) => t.id === selectedId) ?? null) : null;
   if (selectedId == null) lastSelected.current = null;
   else if (found) lastSelected.current = found;
   const selectedTask = found ?? lastSelected.current;
@@ -352,8 +351,8 @@ export function WeekView() {
           </DragOverlay>
 
           {/* **Adentro** del `DndContext`, y es el primero de la tira que lo
-            * necesita: el panel es zona de drop en los dos sentidos. Los costos
-            * de que además se superponga están escritos en `BacklogPanel`. */}
+           * necesita: el panel es zona de drop en los dos sentidos. Los costos
+           * de que además se superponga están escritos en `BacklogPanel`. */}
           {backlog.mounted && (
             <BacklogPanel
               leaving={backlog.leaving}

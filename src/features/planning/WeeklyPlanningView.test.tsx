@@ -75,7 +75,9 @@ describe("WeeklyPlanningView", () => {
 
     await userEvent.click(await screen.findByText("cerrar Mej.15"));
     const modal = await screen.findByRole("dialog", { name: /cerrar Mej.15/ });
-    await userEvent.click(within(modal).getAllByRole("button", { name: /Repartir minutos del/ })[0]);
+    await userEvent.click(
+      within(modal).getAllByRole("button", { name: /Repartir minutos del/ })[0],
+    );
     await userEvent.click(await screen.findByText("Sin tiempo"));
 
     await waitFor(async () => {

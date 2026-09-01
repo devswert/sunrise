@@ -122,8 +122,8 @@ function NotificationTools() {
         <div className="set-field__text">
           <span className="set-field__label">Notificaciones</span>
           <span className="set-note">
-            Los avisos del sistema llegan cuando estás en otra ventana. Acá se prueban sin
-            esperar la hora.
+            Los avisos del sistema llegan cuando estás en otra ventana. Acá se prueban sin esperar
+            la hora.
           </span>
         </div>
       </div>
@@ -156,7 +156,6 @@ function NotificationTools() {
           )}
         </div>
       </div>
-
 
       <div className="set-field set-field--stack">
         <div className="set-field__text">
@@ -232,7 +231,13 @@ function NotificationTools() {
       <div className="set-field">
         <div className="set-field__text">
           <span className="set-field__label">
-            {identity ? <>Los avisos salen como <code>{identity}</code></> : "Que se queden pegados"}
+            {identity ? (
+              <>
+                Los avisos salen como <code>{identity}</code>
+              </>
+            ) : (
+              "Que se queden pegados"
+            )}
           </span>
           <span className="set-note">
             {identity.startsWith("com.apple")

@@ -27,9 +27,7 @@ describe("describeTaskEvent", () => {
     // acá en vez de aparecer suelto en el historial.
     const tipos = ["CREATED", "START_DATE_SET", "MOVED", "CARRIED_OVER"] as const;
     for (const type of tipos) {
-      const line = describeTaskEvent(
-        ev({ type, fromDate: "2026-08-05", toDate: "2026-08-06" }),
-      );
+      const line = describeTaskEvent(ev({ type, fromDate: "2026-08-05", toDate: "2026-08-06" }));
       // `\s` y no `\b`: en JS `\b` se define con [A-Za-z0-9_], así que después
       // de la "ú" no hay frontera de palabra y la primera versión de este test
       // pasaba igual con "Tú creaste esta tarea".

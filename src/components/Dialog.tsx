@@ -98,9 +98,7 @@ export function Dialog({
     <div className="modal-overlay" onClick={onClose}>
       <div
         ref={panel}
-        className={`dialog${icon ? " dialog--hero" : ""}${
-          variant ? ` dialog--${variant}` : ""
-        }`}
+        className={`dialog${icon ? " dialog--hero" : ""}${variant ? ` dialog--${variant}` : ""}`}
         role="alertdialog"
         aria-label={label}
         aria-modal="true"

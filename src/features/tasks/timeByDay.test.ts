@@ -42,11 +42,7 @@ describe("tiempoPorDia", () => {
   });
 
   it("suma la corrida en curso al día de hoy", () => {
-    const days = timeByDay(
-      [entry({ day: "2026-08-11", seconds: 2700 })],
-      120,
-      "2026-08-13",
-    );
+    const days = timeByDay([entry({ day: "2026-08-11", seconds: 2700 })], 120, "2026-08-13");
     expect(days).toEqual([
       { date: "2026-08-11", seconds: 2700 },
       { date: "2026-08-13", seconds: 120 },
@@ -55,7 +51,11 @@ describe("tiempoPorDia", () => {
 
   it("ignora la entrada abierta: su tiempo entra por `extraHoy`", () => {
     // Si se contara, se sumaría dos veces (o se contaría con `seconds = 0`).
-    const days = timeByDay([entry({ day: "2026-08-13", seconds: 0, abierta: true })], 300, "2026-08-13");
+    const days = timeByDay(
+      [entry({ day: "2026-08-13", seconds: 0, abierta: true })],
+      300,
+      "2026-08-13",
+    );
     expect(days).toEqual([{ date: "2026-08-13", seconds: 300 }]);
   });
 

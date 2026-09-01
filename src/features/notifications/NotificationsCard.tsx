@@ -158,7 +158,7 @@ export function NotificationsCard() {
           {error && <span className="set-note is-error">{error}</span>}
         </div>
         {/* En fila y no apilados: los minutos son el detalle del mismo ajuste que
-          * enciende el switch, y debajo se leían como un segundo ajuste. */}
+         * enciende el switch, y debajo se leían como un segundo ajuste. */}
         <div className="set-field__control set-field__control--fila">
           <Switch
             id="notice-meeting"
@@ -174,9 +174,9 @@ export function NotificationsCard() {
           {meetingOn && (
             <div className="set-jornada">
               {/* `set-pair` y no dos clases propias: es el mismo par etiqueta +
-                * campo corto de la jornada y del respaldo. Las que había acá
-                * (`set-input-wrap`, `set-input-label`) no tenían CSS en ninguna
-                * hoja, y por eso el número quedaba pegado a su etiqueta. */}
+               * campo corto de la jornada y del respaldo. Las que había acá
+               * (`set-input-wrap`, `set-input-label`) no tenían CSS en ninguna
+               * hoja, y por eso el número quedaba pegado a su etiqueta. */}
               <label className="set-pair">
                 <span className="set-field__label">Minutos antes</span>
                 <input
@@ -246,9 +246,8 @@ export function NotificationsCard() {
       <p className="resp-nota" role="note">
         <BellRing size={14} aria-hidden />
         <span>
-          Para que los avisos <strong>se queden en pantalla</strong> hasta que los
-          respondas, macOS pide su estilo en <em>Persistent</em>. Lo elige el sistema, no
-          sunrise.{" "}
+          Para que los avisos <strong>se queden en pantalla</strong> hasta que los respondas, macOS
+          pide su estilo en <em>Persistent</em>. Lo elige el sistema, no sunrise.{" "}
           <button className="set-note__link" onClick={() => void openNotificationSettings()}>
             Abrir Ajustes → Notificaciones
             <ExternalLink size={11} aria-hidden />
@@ -258,8 +257,8 @@ export function NotificationsCard() {
 
       {perm === "unknown" && (
         <span className="set-note is-error">
-          macOS todavía no tiene permiso para mostrar avisos de sunrise. Se pide la primera vez
-          que hay uno que mandar.
+          macOS todavía no tiene permiso para mostrar avisos de sunrise. Se pide la primera vez que
+          hay uno que mandar.
         </span>
       )}
     </section>

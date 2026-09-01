@@ -199,9 +199,9 @@ describe("UpdateBanner · estás al día", () => {
     await userEvent.click(b);
     // Desaparece la franja y queda el modal con el anuncio.
     expect(screen.queryByRole("button", { name: /Estás al día/ })).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("alertdialog", { name: "Lo nuevo en la 0.1.0" }),
-    ).toHaveTextContent(/primera versión que se puede instalar/i);
+    expect(screen.getByRole("alertdialog", { name: "Lo nuevo en la 0.1.0" })).toHaveTextContent(
+      /primera versión que se puede instalar/i,
+    );
   });
 
   /** A los 30 segundos se va solo, sin que nadie lo toque. */

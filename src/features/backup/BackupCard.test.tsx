@@ -118,9 +118,9 @@ describe("BackupCard · respaldar", () => {
     await userEvent.click(screen.getByRole("button", { name: /Respaldar ahora/ }));
 
     expect(await screen.findByText(/Respaldo listo/)).toBeInTheDocument();
-    expect(
-      screen.getAllByRole("button", { name: /Restaurar el respaldo del/ }),
-    ).toHaveLength(before + 1);
+    expect(screen.getAllByRole("button", { name: /Restaurar el respaldo del/ })).toHaveLength(
+      before + 1,
+    );
   });
 
   /**
@@ -133,9 +133,7 @@ describe("BackupCard · respaldar", () => {
       .set(SettingKey.BACKUP_LAST_ERROR, "no se puede escribir en /Volumes/backup");
     render(<BackupCard />);
 
-    expect(
-      await screen.findByText(/El último respaldo automático falló/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/El último respaldo automático falló/)).toBeInTheDocument();
     expect(screen.getByText(/\/Volumes\/backup/)).toBeInTheDocument();
   });
 

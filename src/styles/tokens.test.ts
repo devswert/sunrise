@@ -58,9 +58,7 @@ describe("tokens · paleta", () => {
   it("cada color del picker tiene sus dos tokens", () => {
     for (const color of PALETTE) {
       expect(tokens, `falta --${color}`).toMatch(new RegExp(`--${color}:\\s*#[0-9a-f]{6}`));
-      expect(tokens, `falta --${color}-ink`).toMatch(
-        new RegExp(`--${color}-ink:\\s*#[0-9a-f]{6}`),
-      );
+      expect(tokens, `falta --${color}-ink`).toMatch(new RegExp(`--${color}-ink:\\s*#[0-9a-f]{6}`));
     }
   });
 
@@ -89,9 +87,7 @@ describe("tokens · paleta", () => {
     }
     const oscuro = tokens.slice(tokens.indexOf("/* --- Tema oscuro"));
     for (const color of PALETTE) {
-      expect(oscuro, `--${color} no debería redefinirse por tema`).not.toContain(
-        `--${color}: #`,
-      );
+      expect(oscuro, `--${color} no debería redefinirse por tema`).not.toContain(`--${color}: #`);
     }
   });
 

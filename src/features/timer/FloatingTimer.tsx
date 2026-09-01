@@ -54,8 +54,7 @@ export function FloatingTimer() {
   const running = !!active;
   const seconds = display?.seconds ?? 0;
   const planned = display?.estimatedMinutes ?? null;
-  const pct =
-    planned && planned > 0 ? Math.min(100, (seconds / (planned * 60)) * 100) : 0;
+  const pct = planned && planned > 0 ? Math.min(100, (seconds / (planned * 60)) * 100) : 0;
 
   const drag = useDragOrClick(openFocus);
 
@@ -74,9 +73,7 @@ export function FloatingTimer() {
         <div className="tax__time">
           <span className={`tax__actual${overEstimate ? " is-over" : ""}`}>{hms(seconds)}</span>
           <span className="tax__sep"> / </span>
-          <span className="tax__planned">
-            {planned != null ? formatMinutes(planned) : "--:--"}
-          </span>
+          <span className="tax__planned">{planned != null ? formatMinutes(planned) : "--:--"}</span>
         </div>
       </div>
 
@@ -86,27 +83,27 @@ export function FloatingTimer() {
        * caja. El detalle está en `timer.css`. */}
       <div className="tax__controls">
         <div className="tax__opts">
-        <button
-          className="tax__opt"
-          aria-label="Ocultar taxímetro"
-          title="Ocultar"
-          onClick={() => {
-            if (running) void stop();
-            dismissLast();
-          }}
-        >
-          <EyeOff size={14} />
-        </button>
+          <button
+            className="tax__opt"
+            aria-label="Ocultar taxímetro"
+            title="Ocultar"
+            onClick={() => {
+              if (running) void stop();
+              dismissLast();
+            }}
+          >
+            <EyeOff size={14} />
+          </button>
 
-        <button
-          className="tax__opt"
-          aria-label="Completar y pasar a la siguiente"
-          title="Completar tarea"
-          disabled={!display}
-          onClick={() => void completeAndAdvance()}
-        >
-          <Check size={14} />
-        </button>
+          <button
+            className="tax__opt"
+            aria-label="Completar y pasar a la siguiente"
+            title="Completar tarea"
+            disabled={!display}
+            onClick={() => void completeAndAdvance()}
+          >
+            <Check size={14} />
+          </button>
         </div>
 
         <button
@@ -229,4 +226,3 @@ function writePos(p: { x: number; y: number }) {
     /* ignore */
   }
 }
-

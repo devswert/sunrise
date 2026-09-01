@@ -114,7 +114,9 @@ describe("tocaAvisarCierre", () => {
     expect(shouldRemindShutdown({ ...base, nowHhmm: "19:00", values })).toBe(false);
     // Pero al día siguiente sí: la marca es una fecha, no un booleano, así que
     // una sesión abierta cruzando la medianoche vuelve a avisar.
-    expect(shouldRemindShutdown({ ...base, nowHhmm: "19:00", values, today: "2026-08-13" })).toBe(true);
+    expect(shouldRemindShutdown({ ...base, nowHhmm: "19:00", values, today: "2026-08-13" })).toBe(
+      true,
+    );
   });
 
   it("no avisa si ya cerraste el día", () => {
@@ -132,7 +134,11 @@ describe("tocaAvisarCierre", () => {
     // decisión, se cae en el default de la clave.
     expect(shouldRemindShutdown({ ...base, nowHhmm: "19:00", values: {} })).toBe(true);
     expect(
-      shouldRemindShutdown({ ...base, nowHhmm: "19:00", values: { [SettingKey.NOTICE_SHUTDOWN]: "sí" } }),
+      shouldRemindShutdown({
+        ...base,
+        nowHhmm: "19:00",
+        values: { [SettingKey.NOTICE_SHUTDOWN]: "sí" },
+      }),
     ).toBe(true);
   });
 });

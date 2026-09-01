@@ -44,9 +44,7 @@ describe("Sidebar · atajos", () => {
         <Sidebar />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("link", { name: "Backlog" })).not.toHaveAttribute(
-      "aria-keyshortcuts",
-    );
+    expect(screen.getByRole("link", { name: "Backlog" })).not.toHaveAttribute("aria-keyshortcuts");
   });
 });
 
@@ -60,9 +58,7 @@ describe("Sidebar", () => {
   it("renderiza la marca y los links de navegación clave", () => {
     renderSidebar();
     expect(screen.getByText("sunrise")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Weekly review" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Weekly review" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Focus" })).toBeInTheDocument();
     expect(screen.getByText("Daily rituals")).toBeInTheDocument();
   });
@@ -118,9 +114,7 @@ describe("Sidebar · colapsar", () => {
     // El ancho lo define un token en `:root`, no una clase del shell: si el
     // atributo no se estampa, el sidebar se ve angosto por dentro pero su
     // columna sigue midiendo 232px y queda una franja vacía al lado.
-    expect(document.documentElement.getAttribute("data-sidebar")).toBe(
-      "collapsed",
-    );
+    expect(document.documentElement.getAttribute("data-sidebar")).toBe("collapsed");
     expect(screen.getByRole("button", { name: "Expandir" })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -141,12 +135,8 @@ describe("Sidebar · colapsar", () => {
     );
     // `find…` y no `get…`: el sidebar carga los contextos del backlog en un
     // efecto asíncrono, y salir del test antes deja el aviso de `act`.
-    expect(
-      await screen.findByRole("button", { name: "Expandir" }),
-    ).toBeInTheDocument();
-    expect(document.documentElement.getAttribute("data-sidebar")).toBe(
-      "collapsed",
-    );
+    expect(await screen.findByRole("button", { name: "Expandir" })).toBeInTheDocument();
+    expect(document.documentElement.getAttribute("data-sidebar")).toBe("collapsed");
   });
 
   /**
@@ -159,16 +149,11 @@ describe("Sidebar · colapsar", () => {
     const user = userEvent.setup();
     renderSidebar();
 
-    expect(screen.getByRole("link", { name: "Focus" })).not.toHaveAttribute(
-      "title",
-    );
+    expect(screen.getByRole("link", { name: "Focus" })).not.toHaveAttribute("title");
 
     await user.click(screen.getByRole("button", { name: "Colapsar" }));
 
-    expect(screen.getByRole("link", { name: "Focus" })).toHaveAttribute(
-      "title",
-      "Focus",
-    );
+    expect(screen.getByRole("link", { name: "Focus" })).toHaveAttribute("title", "Focus");
   });
 
   /**
@@ -181,9 +166,7 @@ describe("Sidebar · colapsar", () => {
     const user = userEvent.setup();
     renderSidebar();
     await user.click(screen.getByRole("button", { name: "Colapsar" }));
-    expect(
-      screen.getByRole("switch", { name: "Cambiar a modo oscuro" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Cambiar a modo oscuro" })).toBeInTheDocument();
   });
 });
 

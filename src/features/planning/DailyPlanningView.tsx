@@ -134,9 +134,7 @@ export function DailyPlanningView() {
       setTrabajadoAyer(0);
       return;
     }
-    void api
-      .dayWork(diaAnterior)
-      .then((rows: DayWork[]) => setTrabajadoAyer(workedMinutes(rows)));
+    void api.dayWork(diaAnterior).then((rows: DayWork[]) => setTrabajadoAyer(workedMinutes(rows)));
   }, [diaAnterior, dataVersion]);
 
   // Busca también en los días previos y en el backlog: el paso 1 abre tareas que
@@ -336,7 +334,6 @@ export function DailyPlanningView() {
                 )}
               </section>
             )}
-
           </div>
         )}
 
@@ -444,8 +441,7 @@ export function DailyPlanningView() {
             {notice.time
               ? `Hoy a las ${notice.time} cerraste la planificación.`
               : "Hoy ya cerraste la planificación (la marca no dice a qué hora)."}{" "}
-            Puedes revisarla igual —nada se deshace—, pero si venías de paso, la semana te
-            espera.
+            Puedes revisarla igual —nada se deshace—, pero si venías de paso, la semana te espera.
           </p>
           {/* El desmentido va pegado a la frase que hace la afirmación, y no en la
            * fila de botones: corrige el texto en vez de ofrecer una salida más, y

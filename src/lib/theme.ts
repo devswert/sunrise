@@ -42,10 +42,7 @@ export function enableThemeTransition(durationMs = 350) {
   const el = document.documentElement;
   el.classList.add("theme-transition");
   if (transitionTimer) clearTimeout(transitionTimer);
-  transitionTimer = setTimeout(
-    () => el.classList.remove("theme-transition"),
-    durationMs + 60,
-  );
+  transitionTimer = setTimeout(() => el.classList.remove("theme-transition"), durationMs + 60);
 }
 
 /** Hook de tema: devuelve el tema actual, un toggle y un setter. */

@@ -364,7 +364,14 @@ describe("SettingsView · canales plegados", () => {
 
   const arbol = () => {
     vi.spyOn(api, "listCategories").mockResolvedValue([
-      { id: 1, parentId: null, name: "ha-engineering", color: "mint", position: 0, archived: false },
+      {
+        id: 1,
+        parentId: null,
+        name: "ha-engineering",
+        color: "mint",
+        position: 0,
+        archived: false,
+      },
       { id: 2, parentId: 1, name: "issues", color: "peach", position: 0, archived: false },
       { id: 3, parentId: 1, name: "rs", color: "periwinkle", position: 1, archived: false },
       { id: 4, parentId: null, name: "suelto", color: "rose", position: 1, archived: false },

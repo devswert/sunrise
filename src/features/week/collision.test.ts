@@ -80,9 +80,9 @@ describe("boardCollision · los fallbacks", () => {
    * resultado tiene que ser la columna.
    */
   it("con puntero, el backlog no se alcanza por descarte", () => {
-    expect(
-      collide({ pointer: { x: 1000, y: 400 }, draggedRect: rect(250, 350) }),
-    ).toEqual([COLUMN.id]);
+    expect(collide({ pointer: { x: 1000, y: 400 }, draggedRect: rect(250, 350) })).toEqual([
+      COLUMN.id,
+    ]);
   });
 
   /**

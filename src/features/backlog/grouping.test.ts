@@ -82,7 +82,7 @@ describe("groupByContext", () => {
 });
 
 describe("filterByChannel", () => {
-  it("sin canal elegido no filtra: es \"todos\", no \"los que no tienen\"", () => {
+  it('sin canal elegido no filtra: es "todos", no "los que no tienen"', () => {
     const lista = [task(10, WORK.id), task(11, null)];
     expect(filterByChannel(lista, CATEGORIES, null)).toEqual(lista);
   });

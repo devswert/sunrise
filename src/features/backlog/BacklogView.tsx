@@ -88,9 +88,7 @@ export function BacklogView() {
   // Mismo `includes` en minúsculas que el buscador de los selects, y por lo mismo
   // no se normalizan acentos: los dos campos se escriben igual que se leen.
   const filtro = query.trim().toLowerCase();
-  const porTitulo = filtro
-    ? tasks.filter((t) => t.title.toLowerCase().includes(filtro))
-    : tasks;
+  const porTitulo = filtro ? tasks.filter((t) => t.title.toLowerCase().includes(filtro)) : tasks;
   // Con las prioridades apagadas el filtro no se dibuja, así que tampoco puede
   // seguir aplicándose: quedaría una vista recortada por un control invisible.
   const visibles = prioridades ? filterByPriority(porTitulo, levels) : porTitulo;
@@ -103,7 +101,7 @@ export function BacklogView() {
   return (
     <div className="backlog">
       {/* Misma cabecera de dos líneas que los paneles de la tira —qué es esto, y
-        * qué hay adentro—, en el cuerpo de tipo de una vista. */}
+       * qué hay adentro—, en el cuerpo de tipo de una vista. */}
       <header className="backlog__head">
         <div>
           <h1 className="backlog__title">
@@ -111,7 +109,7 @@ export function BacklogView() {
           </h1>
           <p className="backlog__sub">
             {/* Filtrando, el total se queda al lado del filtrado: "2" a secas
-              * escondería que el backlog tiene veinte. */}
+             * escondería que el backlog tiene veinte. */}
             {filtrando && `${visibles.length} de `}
             {tasks.length} {tasks.length === 1 ? "pendiente" : "pendientes"}
           </p>
@@ -156,8 +154,8 @@ export function BacklogView() {
                 {g.folder?.name ?? "Sin contexto"}
               </span>
               {/* Cuántas tiene, en el lugar donde una columna de día lleva su
-                * fecha. Con las columnas lado a lado es lo que dice de un vistazo
-                * dónde hay algo que mirar. */}
+               * fecha. Con las columnas lado a lado es lo que dice de un vistazo
+               * dónde hay algo que mirar. */}
               <span className="day-col__date">{g.items.length}</span>
             </header>
 
@@ -173,13 +171,10 @@ export function BacklogView() {
 
             <div className="day-col__list">
               {g.items.map((t) => (
-                <div
-                  className={`backlog__item${rescued.get(t.id) ? " has-from" : ""}`}
-                  key={t.id}
-                >
+                <div className={`backlog__item${rescued.get(t.id) ? " has-from" : ""}`} key={t.id}>
                   <TaskCardStatic
                     task={t}
-                    category={t.categoryId != null ? catMap.get(t.categoryId) ?? null : null}
+                    category={t.categoryId != null ? (catMap.get(t.categoryId) ?? null) : null}
                     categories={categories}
                     onToggle={toggle}
                     onOpen={setSelected}
@@ -193,9 +188,7 @@ export function BacklogView() {
                    * contexto— pero saber que esto viene de un día cambia cómo se
                    * lee: no lo guardaste, se degradó solo. */}
                   {!!rescued.get(t.id) && (
-                    <span className="backlog__from">
-                      Desde el {shortDate(rescued.get(t.id)!)}
-                    </span>
+                    <span className="backlog__from">Desde el {shortDate(rescued.get(t.id)!)}</span>
                   )}
                 </div>
               ))}

@@ -297,9 +297,7 @@ export function DailyShutdownView() {
           {/* Qué quedó, y a dónde va. */}
           <section className="entrada__bloque">
             <h2 className="entrada__h2">Qué quedó pendiente</h2>
-            <p className="entrada__lema">
-              Se replanifica en el daily planning; acá solo se mira.
-            </p>
+            <p className="entrada__lema">Se replanifica en el daily planning; acá solo se mira.</p>
             {pending.length === 0 ? (
               <p className="review__vacio">No quedó nada abierto. Buen día.</p>
             ) : (

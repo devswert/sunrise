@@ -183,12 +183,7 @@ export function AddFeedModal({
                 onChange={(e) => setPollMinutes(e.target.value)}
                 onBlur={() =>
                   setPollMinutes(
-                    String(
-                      Math.max(
-                        POLL_MINIMO,
-                        Number.parseInt(pollMinutes, 10) || POLL_DEFAULT,
-                      ),
-                    ),
+                    String(Math.max(POLL_MINIMO, Number.parseInt(pollMinutes, 10) || POLL_DEFAULT)),
                   )
                 }
               />
@@ -197,8 +192,8 @@ export function AddFeedModal({
         </div>
 
         {/* Sin nota sobre el intervalo: el campo ya no deja escribir menos de
-          * `POLL_MINIMO`, así que explicar el límite es decir dos veces algo que
-          * el usuario no puede desobedecer. */}
+         * `POLL_MINIMO`, así que explicar el límite es decir dos veces algo que
+         * el usuario no puede desobedecer. */}
         <footer className="feedmodal__foot feedmodal__foot--soloacciones">
           <div className="feedmodal__acciones">
             <button className="btn-ghost" onClick={onClose}>

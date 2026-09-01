@@ -82,9 +82,7 @@ export function BacklogPanel({
     data: { type: "column", date: null },
   });
 
-  const dragged = active?.data.current as
-    | { date?: string | null; status?: string }
-    | undefined;
+  const dragged = active?.data.current as { date?: string | null; status?: string } | undefined;
   /**
    * No se ilumina cuando el drop no va a hacer nada, y son dos casos —los mismos
    * dos que `resolveDrop` descarta—: la tarea ya está en el backlog, o está
@@ -146,7 +144,7 @@ export function BacklogPanel({
         hidePlaceholders
       />
       {/* De qué día se cayó. Saber que esto viene de un día cambia cómo se lee: no
-        * lo guardaste, se degradó solo. */}
+       * lo guardaste, se degradó solo. */}
       {!!rescued.get(t.id) && (
         <span className="backlog-panel__from">Desde el {shortDate(rescued.get(t.id)!)}</span>
       )}
@@ -160,8 +158,8 @@ export function BacklogPanel({
       aria-label="Backlog"
     >
       {/* `panel-head` es la cabecera compartida con la agenda superpuesta: los dos
-        * paneles se alternan en el mismo lugar, así que dos cabeceras distintas
-        * se leerían como un salto. Vive en `week.css`. */}
+       * paneles se alternan en el mismo lugar, así que dos cabeceras distintas
+       * se leerían como un salto. Vive en `week.css`. */}
       <header className="panel-head">
         <div className="panel-head__row">
           <Inbox size={14} aria-hidden className="panel-head__icon" />
@@ -171,18 +169,18 @@ export function BacklogPanel({
           </button>
         </div>
         {/* El control va en la fila del contador y no en una tercera línea, y no
-          * es solo prolijidad: **el contador es lo que los filtros cambian**, así
-          * que puestos al lado se leen juntos ("2 de 12" ← por esto). Abajo, con
-          * la cabecera terminada arriba, parecía el primer elemento de la lista.
-          *
-          * A la altura de la X no va porque esa fila es del `panel-head`
-          * compartido con la agenda, y el backlog es el único de los dos que
-          * filtra: meter ahí un botón que en el otro panel no existe es la forma
-          * de que las dos cabeceras dejen de leerse como la misma. */}
+         * es solo prolijidad: **el contador es lo que los filtros cambian**, así
+         * que puestos al lado se leen juntos ("2 de 12" ← por esto). Abajo, con
+         * la cabecera terminada arriba, parecía el primer elemento de la lista.
+         *
+         * A la altura de la X no va porque esa fila es del `panel-head`
+         * compartido con la agenda, y el backlog es el único de los dos que
+         * filtra: meter ahí un botón que en el otro panel no existe es la forma
+         * de que las dos cabeceras dejen de leerse como la misma. */}
         <div className="panel-head__meta">
           <p className="panel-head__sub">
             {/* Filtrando, el total se queda al lado: igual que en la vista, "2" a
-              * secas escondería que el backlog tiene veinte. */}
+             * secas escondería que el backlog tiene veinte. */}
             {visibles.length !== tasks.length && `${visibles.length} de `}
             {tasks.length} {tasks.length === 1 ? "pendiente" : "pendientes"}
           </p>
@@ -225,9 +223,9 @@ export function BacklogPanel({
           )}
 
           {/* Ordenado por prioridad, **una sola lista sin rótulos de contexto**:
-            * la pregunta es qué es lo más urgente, y esa pregunta cruza los
-            * contextos. El chip de canal de cada card sigue diciendo de dónde
-            * viene, así que la agrupación no se pierde, se deja de imponer. */}
+           * la pregunta es qué es lo más urgente, y esa pregunta cruza los
+           * contextos. El chip de canal de cada card sigue diciendo de dónde
+           * viene, así que la agrupación no se pierde, se deja de imponer. */}
           {plano && (
             <div className="backlog-panel__list backlog-panel__plano">
               {lista.map((t) => card(t))}

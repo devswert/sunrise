@@ -1,8 +1,5 @@
 import { useDroppable } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CalendarClock, Inbox, Plus } from "lucide-react";
 import { shortDate } from "../../lib/date";
 import type { Category, Task, TaskPatch } from "../../lib/types";
@@ -28,10 +25,7 @@ interface Props {
  * y la fecha en `undefined` hacía que `has()` dijera que sí y que el formateo de
  * fecha recibiera nada, y eso tumbaba la vista entera (pantalla en blanco).
  */
-function diaDeOrigen(
-  rescued: Map<number, string> | undefined,
-  t: Task | undefined,
-): string | null {
+function diaDeOrigen(rescued: Map<number, string> | undefined, t: Task | undefined): string | null {
   return (t != null && rescued?.get(t.id)) || null;
 }
 
@@ -63,14 +57,10 @@ export function BacklogColumn({
   // acá, o reordenar dentro del backlog prende y apaga el marco sin que nada se
   // esté moviendo de lista.
   const yaEstaAca =
-    ((active?.data.current as { date?: string | null } | undefined)?.date ??
-      null) === null;
+    ((active?.data.current as { date?: string | null } | undefined)?.date ?? null) === null;
 
   return (
-    <section
-      ref={setNodeRef}
-      className={`day-col${isOver && !yaEstaAca ? " is-over" : ""}`}
-    >
+    <section ref={setNodeRef} className={`day-col${isOver && !yaEstaAca ? " is-over" : ""}`}>
       {/* Mismo slot vacío que las columnas del día: sin él las listas de al lado
        * arrancan a distinta altura. */}
       <div className="day-progress-slot" />
@@ -85,10 +75,7 @@ export function BacklogColumn({
       </header>
 
       <div className="day-col__actions">
-        <button
-          className="add-task"
-          onClick={() => openCompose({ date: null })}
-        >
+        <button className="add-task" onClick={() => openCompose({ date: null })}>
           <Plus size={14} aria-hidden />
           <span className="add-task__label">Agregar al backlog</span>
         </button>
@@ -117,18 +104,13 @@ export function BacklogColumn({
                  * caso normal cada día sale una sola vez. */}
                 {desde && desde !== desdeAnterior && (
                   <div className="col-grupo">
-                    <CalendarClock size={12} aria-hidden /> Desde el{" "}
-                    {shortDate(desde)}
+                    <CalendarClock size={12} aria-hidden /> Desde el {shortDate(desde)}
                   </div>
                 )}
-                {!desde && desdeAnterior && (
-                  <div className="col-grupo">Guardadas</div>
-                )}
+                {!desde && desdeAnterior && <div className="col-grupo">Guardadas</div>}
                 <TaskCard
                   task={t}
-                  category={
-                    t.categoryId != null ? categoryMap.get(t.categoryId) : null
-                  }
+                  category={t.categoryId != null ? categoryMap.get(t.categoryId) : null}
                   categories={categories}
                   onToggle={onToggle}
                   onOpen={onOpen}

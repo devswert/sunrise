@@ -87,32 +87,32 @@ export default function App() {
   return (
     <HashRouter>
       <Shell>
-      {/* Sin barra de título, mover la ventana necesita una zona declarada.
-        * Cruza todo el borde superior y no solo el sidebar, porque el gesto de
-        * arrastrar una ventana se hace donde sea que esté vacío arriba. Tapa
-        * exactamente el alto que ya es padding en las dos columnas, así que no
-        * se come ningún click. */}
-      <div className="app-dragbar" data-tauri-drag-region />
-      <div className="app-shell">
-        <Sidebar />
-        <main className="app-main">
-          <Routes>
-            <Route path="/" element={<WeekView />} />
-            <Route path="/today" element={<TodayView />} />
-            <Route path="/focus" element={<FocusView />} />
-            <Route path="/daily-planning" element={<DailyPlanningView />} />
-            <Route path="/daily-shutdown" element={<DailyShutdownView />} />
-            <Route path="/daily-highlights" element={<DailyHighlightsView />} />
-            <Route path="/weekly-planning" element={<WeeklyPlanningView />} />
-            <Route path="/weekly-review" element={<WeeklyReviewView />} />
-            <Route path="/backlog" element={<BacklogView />} />
-            <Route path="/settings" element={<SettingsView />} />
-          </Routes>
-        </main>
-      </div>
-      {composeOpen && <AddTaskModal />}
-      <QuitConfirm />
-      <WhatsNew />
+        {/* Sin barra de título, mover la ventana necesita una zona declarada.
+         * Cruza todo el borde superior y no solo el sidebar, porque el gesto de
+         * arrastrar una ventana se hace donde sea que esté vacío arriba. Tapa
+         * exactamente el alto que ya es padding en las dos columnas, así que no
+         * se come ningún click. */}
+        <div className="app-dragbar" data-tauri-drag-region />
+        <div className="app-shell">
+          <Sidebar />
+          <main className="app-main">
+            <Routes>
+              <Route path="/" element={<WeekView />} />
+              <Route path="/today" element={<TodayView />} />
+              <Route path="/focus" element={<FocusView />} />
+              <Route path="/daily-planning" element={<DailyPlanningView />} />
+              <Route path="/daily-shutdown" element={<DailyShutdownView />} />
+              <Route path="/daily-highlights" element={<DailyHighlightsView />} />
+              <Route path="/weekly-planning" element={<WeeklyPlanningView />} />
+              <Route path="/weekly-review" element={<WeeklyReviewView />} />
+              <Route path="/backlog" element={<BacklogView />} />
+              <Route path="/settings" element={<SettingsView />} />
+            </Routes>
+          </main>
+        </div>
+        {composeOpen && <AddTaskModal />}
+        <QuitConfirm />
+        <WhatsNew />
       </Shell>
     </HashRouter>
   );

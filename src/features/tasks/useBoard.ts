@@ -61,12 +61,7 @@ function degradarUnaVez(today: string): Promise<void> {
  * filtra `IS NULL`. Y `tasksByDate` ya saltea las de fecha nula, así que las
  * columnas de día no se enteran de nada.
  */
-export function useBoard(
-  start: string,
-  end: string,
-  weekOf: string = start,
-  withBacklog = false,
-) {
+export function useBoard(start: string, end: string, weekOf: string = start, withBacklog = false) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [objectives, setObjectives] = useState<Objective[]>([]);

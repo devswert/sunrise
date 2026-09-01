@@ -77,10 +77,14 @@ describe("useDragOrClick", () => {
     const card = screen.getByTestId("card");
     const btn = screen.getByRole("button", { name: "pausa" });
 
-    pointer(card, [
-      ["down", 100, 30],
-      ["up", 100, 30],
-    ], btn);
+    pointer(
+      card,
+      [
+        ["down", 100, 30],
+        ["up", 100, 30],
+      ],
+      btn,
+    );
 
     expect(onClick).not.toHaveBeenCalled();
   });

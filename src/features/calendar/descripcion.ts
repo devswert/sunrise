@@ -58,8 +58,9 @@ function decodificarEntidades(s: string): string {
   // Numéricas: `&#8226;` y `&#x1F44B;`. Un código inválido se deja como está en
   // vez de romper el texto entero.
   out = out.replace(/&#(\d+);/g, (m, n) => seguro(() => String.fromCodePoint(Number(n))) ?? m);
-  out = out.replace(/&#x([0-9a-f]+);/gi, (m, n) =>
-    seguro(() => String.fromCodePoint(Number.parseInt(n, 16))) ?? m,
+  out = out.replace(
+    /&#x([0-9a-f]+);/gi,
+    (m, n) => seguro(() => String.fromCodePoint(Number.parseInt(n, 16))) ?? m,
   );
   return out;
 }

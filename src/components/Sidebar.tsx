@@ -87,17 +87,15 @@ function NavRow({
          queda para distinguir nueve iconos. Expandido estorbaría: el nombre ya
          está ahí, escrito. */
       title={collapsed ? item.label : undefined}
-      className={({ isActive }) =>
-        isActive ? "sidebar__link is-active" : "sidebar__link"
-      }
+      className={({ isActive }) => (isActive ? "sidebar__link is-active" : "sidebar__link")}
     >
       {/* Sin `size`: el tamaño lo pone el CSS, porque colapsado los iconos crecen
           y un prop no sabe en qué estado está el sidebar. */}
       <Icon className="sidebar__icon" strokeWidth={2} aria-hidden />
       <span className="sidebar__label">{item.label}</span>
       {/* El conteo gana el lugar del atajo cuando hay: el atajo se aprende una
-        * vez y el número cambia todo el tiempo. Colapsado no va: al lado de un
-        * icono sin nombre, un número suelto no dice de qué es. */}
+       * vez y el número cambia todo el tiempo. Colapsado no va: al lado de un
+       * icono sin nombre, un número suelto no dice de qué es. */}
       {count != null && count > 0 && !collapsed ? (
         <span className="sidebar__count" aria-hidden>
           {count}
@@ -150,18 +148,15 @@ export function Sidebar() {
   const profile = useProfile();
 
   return (
-    <nav
-      className={`sidebar${collapsed ? " is-collapsed" : ""}`}
-      aria-label="Navegación principal"
-    >
+    <nav className={`sidebar${collapsed ? " is-collapsed" : ""}`} aria-label="Navegación principal">
       {/* La marca arranca bajo los botones nativos de macOS, que flotan sobre el
-        * contenido desde que la ventana no tiene barra de título. El espacio lo
-        * pone el padding del sidebar (`--titlebar-h`), no un hueco acá.
-        *
-        * El botón de colapsar va acá y no al final de la columna: es un ajuste
-        * del marco, y el marco se maneja arriba, donde uno ya está mirando por
-        * los botones de la ventana. Abajo quedaba entre los items de navegación,
-        * pareciendo uno más. */}
+       * contenido desde que la ventana no tiene barra de título. El espacio lo
+       * pone el padding del sidebar (`--titlebar-h`), no un hueco acá.
+       *
+       * El botón de colapsar va acá y no al final de la columna: es un ajuste
+       * del marco, y el marco se maneja arriba, donde uno ya está mirando por
+       * los botones de la ventana. Abajo quedaba entre los items de navegación,
+       * pareciendo uno más. */}
       <div className="sidebar__top">
         <div className="sidebar__brand">
           <SunriseMark className="sidebar__brand-mark" />
@@ -219,7 +214,7 @@ export function Sidebar() {
       </div>
 
       {/* Footer: aviso del updater, switch de tema y Settings al final. El aviso
-        * va acá arriba y no junto a la navegación: no es un lugar al que ir. */}
+       * va acá arriba y no junto a la navegación: no es un lugar al que ir. */}
       <div className="sidebar__footer">
         <UpdateBanner />
         <div className="sidebar__theme-row">

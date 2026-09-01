@@ -149,9 +149,7 @@ describe("DailyPlanningView", () => {
     await goToToday();
 
     const cols = document.querySelectorAll<HTMLElement>(".daily-plan__col");
-    await waitFor(() =>
-      expect(within(cols[1]).getByText("Del lunes lejano")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(within(cols[1]).getByText("Del lunes lejano")).toBeInTheDocument());
     // El rótulo del grupo lleva **la fecha del día del que se cayó**, una sola vez
     // para todas las de ese día (Mej.21). Se lee del `.col-grupo` y no con
     // `getByText` porque el icono parte el texto en dos nodos.
@@ -235,9 +233,7 @@ describe("DailyPlanningView", () => {
 
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(screen.queryByText("La semana")).toBeNull();
-    await waitFor(() =>
-      expect(useSettingsStore.getState().values[SettingKey.PLANNED_AT]).toBe(""),
-    );
+    await waitFor(() => expect(useSettingsStore.getState().values[SettingKey.PLANNED_AT]).toBe(""));
   });
 
   it("desde el aviso se puede salir a la semana", async () => {

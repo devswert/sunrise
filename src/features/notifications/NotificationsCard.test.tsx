@@ -26,9 +26,7 @@ describe("NotificationsCard", () => {
   it("de fábrica: reunión y cierre encendidos, la campana apagada", async () => {
     render(<NotificationsCard />);
 
-    expect(
-      await screen.findByRole("switch", { name: /evento del calendario/i }),
-    ).toBeChecked();
+    expect(await screen.findByRole("switch", { name: /evento del calendario/i })).toBeChecked();
     expect(screen.getByRole("switch", { name: /cerrar el día/i })).toBeChecked();
     // La notificación de la campana es opt-in (decisión de M2): el sonido alcanza.
     expect(screen.getByRole("switch", { name: /campana/i })).not.toBeChecked();

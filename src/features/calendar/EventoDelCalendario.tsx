@@ -51,9 +51,7 @@ export function hasCalendarData(task: Task): boolean {
  */
 export function CalendarEventCard({ task }: { task: Task }) {
   const range = timeRange(task.eventStart, task.eventEnd);
-  const description = task.eventDescription
-    ? readableDescription(task.eventDescription)
-    : "";
+  const description = task.eventDescription ? readableDescription(task.eventDescription) : "";
   if (!hasCalendarData(task)) return null;
 
   return (
@@ -73,9 +71,9 @@ export function CalendarEventCard({ task }: { task: Task }) {
         <div className="evento__fila evento__desc">
           <StickyNote size={14} className="evento__icono" aria-hidden />
           {/* Texto y no markdown ni HTML: la descripción de Google llega con
-            * etiquetas dentro. Se convierte a texto legible (ver `descripcion.ts`)
-            * y el salto de línea lo respeta el CSS. Inyectarla como HTML sería un
-            * agujero de XSS por una invitación de calendario. */}
+           * etiquetas dentro. Se convierte a texto legible (ver `descripcion.ts`)
+           * y el salto de línea lo respeta el CSS. Inyectarla como HTML sería un
+           * agujero de XSS por una invitación de calendario. */}
           <span>{description}</span>
         </div>
       )}

@@ -70,8 +70,8 @@ export function QuitConfirm() {
     >
       {active ? (
         <p className="dialog__body">
-          El timer de <strong>{active.title}</strong> ({hms(elapsed)}) sigue corriendo y va
-          a seguir contando aunque cierres.
+          El timer de <strong>{active.title}</strong> ({hms(elapsed)}) sigue corriendo y va a seguir
+          contando aunque cierres.
         </p>
       ) : (
         <p className="dialog__body">Tus cambios ya están guardados.</p>

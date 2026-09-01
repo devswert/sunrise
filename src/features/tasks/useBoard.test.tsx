@@ -168,9 +168,7 @@ describe("useBoard · reorden optimista", () => {
       void verBoard().moveTask(1, hoy, 2);
     });
 
-    await waitFor(() =>
-      expect(verBoard().tasksByDate[hoy].map((t) => t.id)).toEqual([2, 3, 1]),
-    );
+    await waitFor(() => expect(verBoard().tasksByDate[hoy].map((t) => t.id)).toEqual([2, 3, 1]));
     // Todavía sin responder: el orden de arriba no vino de una recarga.
     expect(moveTask).toHaveBeenCalledTimes(1);
     expect(listTasksForRange).toHaveBeenCalledTimes(1);
@@ -277,7 +275,10 @@ describe("useBoard · el backlog opt-in", () => {
   });
 
   it("los rescates llegan como mapa, salteando los que no traen día", async () => {
-    rescues = [{ taskId: 9, fromDate: "2026-08-14" }, { taskId: 8, fromDate: "" }];
+    rescues = [
+      { taskId: 9, fromDate: "2026-08-14" },
+      { taskId: 8, fromDate: "" },
+    ];
     const { Probe, verBoard } = await freshBoard(undefined, true);
     render(<Probe />);
     await waitFor(() => expect(verBoard().rescues.size).toBe(1));

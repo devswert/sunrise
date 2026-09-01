@@ -4,14 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Flag, Hash, Link2, Pause, Play, Trash2, X } from "lucide-react";
 import { api } from "../../lib/ipc";
-import type {
-  Category,
-  Objective,
-  Task,
-  TaskEvent,
-  TaskPatch,
-  TimeEntry,
-} from "../../lib/types";
+import type { Category, Objective, Task, TaskEvent, TaskPatch, TimeEntry } from "../../lib/types";
 import { extractLinks, taskEventLine } from "./history";
 import { chipVars } from "./chipVars";
 import { abrirExterno } from "../calendar/MeetingLink";
@@ -116,13 +109,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
     setObjectiveId(task.objectiveId);
     setStartDate(task.scheduledDate);
     setDone(task.status === "DONE");
-  }, [
-    task.estimatedMinutes,
-    task.categoryId,
-    task.objectiveId,
-    task.scheduledDate,
-    task.status,
-  ]);
+  }, [task.estimatedMinutes, task.categoryId, task.objectiveId, task.scheduledDate, task.status]);
 
   useEffect(() => {
     if (editingNotes) notesRef.current?.focus();
@@ -331,14 +318,14 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
             {savedFlash && <span className="tmodal__saved">Guardado</span>}
 
             {/* La prioridad, a la izquierda del objetivo. Misma carcasa que sus
-              * dos vecinos —`chip-wrap` + `tmodal__meta` + `Popover`— y a
-              * propósito: es la tercera cosa que se elige de una lista en esta
-              * barra, y dibujarla distinta la haría parecer otra clase de control.
-              *
-              * **Sin buscador**, y ahí sí se separa del canal y del objetivo: son
-              * cinco opciones fijas que caben enteras en el popover, y un campo de
-              * texto encima de cinco filas es un paso más para llegar a lo mismo.
-              */}
+             * dos vecinos —`chip-wrap` + `tmodal__meta` + `Popover`— y a
+             * propósito: es la tercera cosa que se elige de una lista en esta
+             * barra, y dibujarla distinta la haría parecer otra clase de control.
+             *
+             * **Sin buscador**, y ahí sí se separa del canal y del objetivo: son
+             * cinco opciones fijas que caben enteras en el popover, y un campo de
+             * texto encima de cinco filas es un paso más para llegar a lo mismo.
+             */}
             {prioridades && (
               <div className="chip-wrap" ref={prioRef}>
                 <button className="tmodal__meta" onClick={() => toggle("priority")}>
@@ -423,7 +410,12 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                 </span>
               </button>
               {picker === "start" && (
-                <Popover anchorRef={startRef} align="right" className="popover--pad" onClose={() => setPicker(null)}>
+                <Popover
+                  anchorRef={startRef}
+                  align="right"
+                  className="popover--pad"
+                  onClose={() => setPicker(null)}
+                >
                   <div className="panel-quick">
                     <button
                       onClick={async () => {
@@ -469,38 +461,38 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
           {/* --- Título + tiempos --- */}
           <div className="tmodal__titlerow">
             {/* Ignorada: el círculo de completar no va, y su lugar **no** se
-              * reserva. Se probó reservarlo para que el título no perdiera la
-              * sangría, y el hueco vacío se veía peor que el título pegado al
-              * borde. */}
+             * reserva. Se probó reservarlo para que el título no perdiera la
+             * sangría, y el hueco vacío se veía peor que el título pegado al
+             * borde. */}
             {!ignorada && (
-            <button
-              type="button"
-              className={`tmodal__check${done ? " is-checked" : ""}`}
-              aria-label={done ? "Marcar como pendiente" : "Marcar como completada"}
-              aria-pressed={done}
-              onClick={async () => {
-                const next = !done;
-                setDone(next);
-                await api.setTaskStatus(task.id, next ? "DONE" : "TODO");
-                await onChanged();
-                bumpData(); // completar pudo detener el timer
-                flash();
-              }}
-            >
-              {done && <Check size={14} strokeWidth={3} />}
-            </button>
+              <button
+                type="button"
+                className={`tmodal__check${done ? " is-checked" : ""}`}
+                aria-label={done ? "Marcar como pendiente" : "Marcar como completada"}
+                aria-pressed={done}
+                onClick={async () => {
+                  const next = !done;
+                  setDone(next);
+                  await api.setTaskStatus(task.id, next ? "DONE" : "TODO");
+                  await onChanged();
+                  bumpData(); // completar pudo detener el timer
+                  flash();
+                }}
+              >
+                {done && <Check size={14} strokeWidth={3} />}
+              </button>
             )}
 
             {/* Es un `textarea` y no un `input` porque el título tiene que
-              * **leerse entero**: es el único lugar de la app donde no se
-              * recorta (la card lo corta en dos líneas). Crece con el texto
-              * hasta el tope de `.tmodal__title` y ahí scrollea, así el resto
-              * del detalle no se va abajo del pliegue por un título largo.
-              *
-              * El dato sigue siendo de una línea: Enter no escribe un salto
-              * —lo come el `onKeyDown`— y un pegado multilínea se aplana en el
-              * `onChange`. Un `\n` guardado se vería como un corte raro dentro
-              * del clamp de la card. */}
+             * **leerse entero**: es el único lugar de la app donde no se
+             * recorta (la card lo corta en dos líneas). Crece con el texto
+             * hasta el tope de `.tmodal__title` y ahí scrollea, así el resto
+             * del detalle no se va abajo del pliegue por un título largo.
+             *
+             * El dato sigue siendo de una línea: Enter no escribe un salto
+             * —lo come el `onKeyDown`— y un pegado multilínea se aplana en el
+             * `onChange`. Un `\n` guardado se vería como un corte raro dentro
+             * del clamp de la card. */}
             <textarea
               ref={titleRef}
               rows={1}
@@ -521,84 +513,84 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
             />
 
             {!ignorada && (
-            <div className="tmodal__times">
-              <div className="chip-wrap" ref={actualRef}>
-                <button
-                  className="tmodal__time"
-                  aria-label="Ajustar tiempo real"
-                  onClick={() => toggle("actual")}
-                >
-                  <span className="tmodal__time-label">Real</span>
-                  <span
-                    className={`tmodal__time-value is-actual${
-                      running && timer.overEstimate ? " is-over" : ""
-                    }`}
+              <div className="tmodal__times">
+                <div className="chip-wrap" ref={actualRef}>
+                  <button
+                    className="tmodal__time"
+                    aria-label="Ajustar tiempo real"
+                    onClick={() => toggle("actual")}
                   >
-                    {running ? hms(liveSeconds) : formatMinutes(Math.round(liveSeconds / 60))}
-                  </span>
-                </button>
-                {picker === "actual" && (
-                  <Popover anchorRef={actualRef} align="right" onClose={() => setPicker(null)}>
-                    <TimePicker
-                      value={Math.round(task.actualSeconds / 60)}
-                      clearLabel="Sin tiempo"
-                      onSelect={async (mins) => {
-                        setPicker(null);
-                        await api.setActualSeconds(task.id, (mins ?? 0) * 60);
-                        await onChanged();
-                        bumpData();
-                        flash();
-                      }}
-                    />
-                  </Popover>
-                )}
-              </div>
-              <div className="chip-wrap" ref={plannedRef}>
-                <button className="tmodal__time" onClick={() => toggle("planned")}>
-                  <span className="tmodal__time-label">Estimado</span>
-                  <span className="tmodal__time-value">
-                    {planned != null ? formatMinutes(planned) : "--:--"}
-                  </span>
-                </button>
-                {picker === "planned" && (
-                  <Popover anchorRef={plannedRef} align="right" onClose={() => setPicker(null)}>
-                    <TimePicker
-                      value={planned}
-                      onSelect={(mins) => {
-                        setPlanned(mins);
-                        setPicker(null);
-                        void commit({ estimatedMinutes: mins });
-                      }}
-                    />
-                  </Popover>
-                )}
-              </div>
+                    <span className="tmodal__time-label">Real</span>
+                    <span
+                      className={`tmodal__time-value is-actual${
+                        running && timer.overEstimate ? " is-over" : ""
+                      }`}
+                    >
+                      {running ? hms(liveSeconds) : formatMinutes(Math.round(liveSeconds / 60))}
+                    </span>
+                  </button>
+                  {picker === "actual" && (
+                    <Popover anchorRef={actualRef} align="right" onClose={() => setPicker(null)}>
+                      <TimePicker
+                        value={Math.round(task.actualSeconds / 60)}
+                        clearLabel="Sin tiempo"
+                        onSelect={async (mins) => {
+                          setPicker(null);
+                          await api.setActualSeconds(task.id, (mins ?? 0) * 60);
+                          await onChanged();
+                          bumpData();
+                          flash();
+                        }}
+                      />
+                    </Popover>
+                  )}
+                </div>
+                <div className="chip-wrap" ref={plannedRef}>
+                  <button className="tmodal__time" onClick={() => toggle("planned")}>
+                    <span className="tmodal__time-label">Estimado</span>
+                    <span className="tmodal__time-value">
+                      {planned != null ? formatMinutes(planned) : "--:--"}
+                    </span>
+                  </button>
+                  {picker === "planned" && (
+                    <Popover anchorRef={plannedRef} align="right" onClose={() => setPicker(null)}>
+                      <TimePicker
+                        value={planned}
+                        onSelect={(mins) => {
+                          setPlanned(mins);
+                          setPicker(null);
+                          void commit({ estimatedMinutes: mins });
+                        }}
+                      />
+                    </Popover>
+                  )}
+                </div>
 
-              <button
-                className={`tmodal__play${running ? " is-running" : ""}`}
-                aria-label={running ? "Pausar" : "Iniciar"}
-                onClick={async () => {
-                  if (running) {
-                    await timer.stop();
-                    return;
-                  }
-                  // Al arrancar desde el detalle, pasamos a trabajar: cierra el
-                  // modal y lleva a Focus con esa tarea.
-                  await timer.start(task.id);
-                  onClose();
-                  navigate("/focus");
-                }}
-              >
-                {running ? <Pause size={14} /> : <Play size={14} />}
-              </button>
-            </div>
+                <button
+                  className={`tmodal__play${running ? " is-running" : ""}`}
+                  aria-label={running ? "Pausar" : "Iniciar"}
+                  onClick={async () => {
+                    if (running) {
+                      await timer.stop();
+                      return;
+                    }
+                    // Al arrancar desde el detalle, pasamos a trabajar: cierra el
+                    // modal y lleva a Focus con esa tarea.
+                    await timer.start(task.id);
+                    onClose();
+                    navigate("/focus");
+                  }}
+                >
+                  {running ? <Pause size={14} /> : <Play size={14} />}
+                </button>
+              </div>
             )}
           </div>
 
           {/* --- Datos del evento del calendario ---
-            * Arriba de las notas y separado por una línea: el orden en que uno
-            * los necesita antes de una reunión es a qué hora, por dónde entro,
-            * quién viene y de qué se trata. Las notas propias van después. */}
+           * Arriba de las notas y separado por una línea: el orden en que uno
+           * los necesita antes de una reunión es a qué hora, por dónde entro,
+           * quién viene y de qué se trata. Las notas propias van después. */}
           <CalendarEventCard task={task} />
 
           {/* --- Notas (markdown) --- */}
@@ -655,10 +647,10 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
           )}
 
           {/* --- Tiempo por día ---
-            * Una tarea arrastrada varios días mostraba un único total sin decir
-            * cuánto cayó en cada día, y el dato estaba en `time_entries` desde
-            * M2 sin que ninguna vista lo leyera. También es lo que hace visible
-            * un ajuste manual de tiempo. */}
+           * Una tarea arrastrada varios días mostraba un único total sin decir
+           * cuánto cayó en cada día, y el dato estaba en `time_entries` desde
+           * M2 sin que ninguna vista lo leyera. También es lo que hace visible
+           * un ajuste manual de tiempo. */}
           {porDia.length > 0 && (
             <div className="tmodal__bydays">
               <span className="tmodal__bydays-title">Tiempo por día</span>
@@ -708,23 +700,23 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
             </button>
           )}
           {/* Ignorar el evento: lo que convierte un "focus time" del calendario
-            * —el almuerzo, un rato de concentración— en espacio reservado en vez
-            * de trabajo planificado (§4.12).
-            *
-            * Va **en el pie**, en el lugar que ocupaba "los cambios se guardan
-            * automáticamente": ese texto no decía nada que el usuario necesitara
-            * —el autosave se nota usándolo— y era el único espacio del modal que
-            * no hacía nada. Acá abajo queda además lejos del título y de las
-            * notas: es una decisión sobre el evento, no un campo que se edita.
-            *
-            * Marcar y desmarcar se hacen los dos desde acá. Una vez ignorada la
-            * tarea no tiene tarjeta, pero el detalle sigue siendo alcanzable: su
-            * bloque del rail lo abre igual que cualquier otro.
-            *
-            * Solo se ofrece en una tarea del calendario: en una escrita a mano no
-            * significa nada, ya está donde la pusiste. El rótulo dice **"como
-            * tarea"** porque eso es exactamente lo que deja de ser: el evento
-            * sigue ahí, en el rail, a su hora. */}
+           * —el almuerzo, un rato de concentración— en espacio reservado en vez
+           * de trabajo planificado (§4.12).
+           *
+           * Va **en el pie**, en el lugar que ocupaba "los cambios se guardan
+           * automáticamente": ese texto no decía nada que el usuario necesitara
+           * —el autosave se nota usándolo— y era el único espacio del modal que
+           * no hacía nada. Acá abajo queda además lejos del título y de las
+           * notas: es una decisión sobre el evento, no un campo que se edita.
+           *
+           * Marcar y desmarcar se hacen los dos desde acá. Una vez ignorada la
+           * tarea no tiene tarjeta, pero el detalle sigue siendo alcanzable: su
+           * bloque del rail lo abre igual que cualquier otro.
+           *
+           * Solo se ofrece en una tarea del calendario: en una escrita a mano no
+           * significa nada, ya está donde la pusiste. El rótulo dice **"como
+           * tarea"** porque eso es exactamente lo que deja de ser: el evento
+           * sigue ahí, en el rail, a su hora. */}
           {task.feedId != null && task.calendarUid != null && (
             <label className="tmodal__ignorar">
               <span className="tmodal__ignorar-texto">Ignorar como tarea</span>

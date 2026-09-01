@@ -10,9 +10,7 @@ function Probe() {
 
 /** Simula el aviso que manda la OTRA ventana al mutar datos. */
 function avisoDeLaOtraVentana(key: string = DATA_CHANNEL) {
-  window.dispatchEvent(
-    new StorageEvent("storage", { key, newValue: String(Date.now()) }),
-  );
+  window.dispatchEvent(new StorageEvent("storage", { key, newValue: String(Date.now()) }));
 }
 
 describe("useDataSync", () => {

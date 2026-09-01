@@ -21,9 +21,7 @@ window.addEventListener("storage", (e) => {
 // ve partida.
 followFonts();
 
-ReactDOM.createRoot(
-  document.getElementById("timer-root") as HTMLElement,
-).render(
+ReactDOM.createRoot(document.getElementById("timer-root") as HTMLElement).render(
   <React.StrictMode>
     <FloatingTimer />
   </React.StrictMode>,

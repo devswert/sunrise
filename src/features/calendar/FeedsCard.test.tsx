@@ -77,9 +77,7 @@ describe("FeedsCard", () => {
 
   it("sin calendarios ofrece agregar el primero", async () => {
     render(<FeedsCard categories={categories} />);
-    expect(
-      await screen.findByRole("button", { name: /Agregar calendario/ }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Agregar calendario/ })).toBeInTheDocument();
   });
 
   it("el alta es un modal y pide todos los datos de una vez", async () => {
@@ -92,10 +90,7 @@ describe("FeedsCard", () => {
     expect(screen.getByRole("dialog", { name: "Agregar calendario" })).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Nombre del calendario"), "Trabajo");
-    await user.type(
-      screen.getByLabelText("URL del calendario"),
-      "https://cal.example/secreto.ics",
-    );
+    await user.type(screen.getByLabelText("URL del calendario"), "https://cal.example/secreto.ics");
     await user.click(screen.getByRole("button", { name: "Agregar" }));
 
     await waitFor(() =>

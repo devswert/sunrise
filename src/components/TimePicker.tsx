@@ -31,9 +31,7 @@ export function TimePicker({ value, onSelect, clearLabel = "Sin estimar" }: Time
     const q = query.trim();
     if (!q) return PRESETS;
     // Filtra presets por texto y por su equivalente formateado.
-    return PRESETS.filter(
-      (m) => String(m).includes(q) || formatMinutes(m).includes(q),
-    );
+    return PRESETS.filter((m) => String(m).includes(q) || formatMinutes(m).includes(q));
   }, [query]);
 
   /** Lo escrito va primero si es válido y no coincide con un preset. */

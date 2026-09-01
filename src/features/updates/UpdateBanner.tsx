@@ -62,7 +62,7 @@ export function UpdateBanner() {
           <ChevronRight size={14} className="upd-banner__flecha" aria-hidden />
         </span>
         {/* La cuenta de los 30 segundos, dibujada. Quien no la mire no pierde nada;
-          * quien la mire sabe que el aviso se va solo y no lo tiene que cerrar. */}
+         * quien la mire sabe que el aviso se va solo y no lo tiene que cerrar. */}
         <span className="upd-banner__cuenta" aria-hidden />
       </button>
     );
@@ -117,9 +117,7 @@ export function UpdateBanner() {
       onClick={() => void instalar()}
       disabled={installing}
       title={
-        error
-          ? `No se pudo instalar: ${error}`
-          : `Instalar la ${available.version} y reiniciar`
+        error ? `No se pudo instalar: ${error}` : `Instalar la ${available.version} y reiniciar`
       }
     >
       <span className="upd-banner__fila">
@@ -138,10 +136,7 @@ export function UpdateBanner() {
         /* Decorativa a propósito: un `role="progressbar"` acá dentro le mete su
          * nombre al del botón que lo contiene, y lo que baja ya lo dice la línea
          * de texto —que es lo que lee un lector de pantalla. */
-        <span
-          className={`upd-banner__barra${pct == null ? " is-indeterminada" : ""}`}
-          aria-hidden
-        >
+        <span className={`upd-banner__barra${pct == null ? " is-indeterminada" : ""}`} aria-hidden>
           <span
             className="upd-banner__barra-fill"
             style={pct == null ? undefined : { width: `${pct}%` }}
@@ -166,11 +161,7 @@ function porcentaje(p: UpdateProgress | null): number | null {
 }
 
 /** La línea de abajo: qué está pasando, en palabras. */
-function bajada(
-  installing: boolean,
-  error: string | null,
-  p: UpdateProgress | null,
-): string {
+function bajada(installing: boolean, error: string | null, p: UpdateProgress | null): string {
   if (error) return "No se pudo. Reintenta.";
   if (!installing) return "Actualizar ahora";
   if (p?.installing) return "Instalando y reiniciando…";

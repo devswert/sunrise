@@ -33,7 +33,10 @@ function drop(
 
 describe("resolveDrop · hacia un día", () => {
   it("del backlog a un día: al final de la columna", () => {
-    expect(drop({ type: "column", date: MONDAY }, FROM_BACKLOG)).toEqual({ date: MONDAY, index: 3 });
+    expect(drop({ type: "column", date: MONDAY }, FROM_BACKLOG)).toEqual({
+      date: MONDAY,
+      index: 3,
+    });
   });
 
   it("soltar sobre una card toma el índice de esa card", () => {

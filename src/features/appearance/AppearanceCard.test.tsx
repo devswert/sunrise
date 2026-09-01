@@ -100,12 +100,9 @@ describe("AppearanceCard", () => {
     await useSettingsStore.getState().set(SettingKey.BELL_SOUND, "cuenco.mp3");
     render(<AppearanceCard />);
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Volver a la de sunrise/ }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: /Volver a la de sunrise/ }));
 
     expect(useSettingsStore.getState().values[SettingKey.BELL_SOUND]).toBe(SUNRISE_BELL);
     expect(borrar).toHaveBeenCalled();
   });
-
 });

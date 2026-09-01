@@ -72,7 +72,10 @@ function isValidKey(k: string): boolean {
  */
 export function parseCombo(raw: string | null | undefined): Combo | null {
   if (!raw) return null;
-  const parts = raw.split("+").map((p) => p.trim()).filter(Boolean);
+  const parts = raw
+    .split("+")
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (parts.length === 0) return null;
 
   const combo: Combo = { mod: false, shift: false, alt: false, key: "" };
@@ -138,9 +141,7 @@ export function displayCombo(raw: string): string {
 export function ariaKeyshortcuts(raw: string): string | undefined {
   const c = parseCombo(raw);
   if (!c) return undefined;
-  const queue = [c.shift ? "Shift" : null, c.alt ? "Alt" : null, c.key]
-    .filter(Boolean)
-    .join("+");
+  const queue = [c.shift ? "Shift" : null, c.alt ? "Alt" : null, c.key].filter(Boolean).join("+");
   return `Meta+${queue} Control+${queue}`;
 }
 
@@ -177,9 +178,7 @@ export function comboFromEvent(e: KeyboardEvent): string | null {
  * fábrica. Un valor vacío también cae al default, que es como se "restaura"
  * un atajo sin necesitar un comando para borrar filas.
  */
-export function resolveShortcuts(
-  values: Record<string, string>,
-): Record<ShortcutId, string> {
+export function resolveShortcuts(values: Record<string, string>): Record<ShortcutId, string> {
   const out = {} as Record<ShortcutId, string>;
   for (const a of SHORTCUT_ACTIONS) {
     const stored = values[shortcutKey(a.id)];

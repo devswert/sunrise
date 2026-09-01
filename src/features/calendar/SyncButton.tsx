@@ -33,11 +33,9 @@ export function SyncButton({ className = "" }: { className?: string }) {
       }
     >
       {sincronizando ? <Spinner size={13} /> : <CalendarSync size={13} aria-hidden />}
-      <span className="sync-btn__texto">
-        {sincronizando ? "Sincronizando…" : "Sync"}
-      </span>
+      <span className="sync-btn__texto">{sincronizando ? "Sincronizando…" : "Sync"}</span>
       {/* La antigüedad va como texto secundario y no en el label: el nombre
-        * accesible del botón tiene que ser la acción, no cuándo fue. */}
+       * accesible del botón tiene que ser la acción, no cuándo fue. */}
       {!sincronizando && (
         <span className="sync-btn__cuando" aria-hidden>
           {ultimaSync ? relativeTime(ultimaSync) : "nunca"}

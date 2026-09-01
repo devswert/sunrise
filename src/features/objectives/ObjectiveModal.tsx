@@ -234,9 +234,9 @@ export function ObjectiveModal({
           >
             <span className="omodal__chip-label">Channel</span>
             {/* Con canal elegido va el chip teñido, el mismo `#tag` que llevan las
-              * tarjetas: es el mismo dato y verlo en gris acá lo desconecta de su
-              * canal. Sin canal no hay color que mostrar, así que se queda el
-              * numeral en gris. */}
+             * tarjetas: es el mismo dato y verlo en gris acá lo desconecta de su
+             * canal. Sin canal no hay color que mostrar, así que se queda el
+             * numeral en gris. */}
             {channel ? (
               <span className="cat-tag" style={chipVars(channel)}>
                 #{channel.name}
@@ -289,17 +289,15 @@ export function ObjectiveModal({
             })}
           </div>
           <p className="omodal__pie">
-            Elegir minutos crea la tarea del día colgada de este objetivo. «Sin
-            tiempo» no la borra: la desliga y la deja en su día.
+            Elegir minutos crea la tarea del día colgada de este objetivo. «Sin tiempo» no la borra:
+            la desliga y la deja en su día.
           </p>
         </section>
 
         <section className="omodal__tareas">
           <div className="omodal__step-label">Tareas de la semana</div>
           {objTasks.length === 0 ? (
-            <p className="omodal__vacio">
-              Esta semana no hay tareas colgando de este objetivo.
-            </p>
+            <p className="omodal__vacio">Esta semana no hay tareas colgando de este objetivo.</p>
           ) : (
             objTasks.map((t) => (
               <div key={t.id} className={`omodal__tarea${t.status === "DONE" ? " is-done" : ""}`}>

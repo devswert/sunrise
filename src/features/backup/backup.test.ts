@@ -67,4 +67,3 @@ describe("momentoLegible", () => {
     expect(readableMoment("nunca")).toBe("nunca");
   });
 });
-

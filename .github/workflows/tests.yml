@@ -58,4 +58,18 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Antes de las suites, porque Vitest transpila con esbuild y **no
+      # typechequea**: un error de tipos pasaba las dos suites en verde y recién
+      # aparecía dentro del build de `release.yml`, o sea con el tag ya empujado y
+      # la versión ya commiteada. Es el mismo modo de falla que este workflow vino
+      # a cerrar para los tests, y estaba abierto para los tipos.
+      - run: pnpm typecheck
+
+      # Biome hace lint y formato en un solo binario de Rust, así que este paso
+      # cuesta menos de un segundo. Lo que vigila de verdad es
+      # `useExhaustiveDependencies`: un `useEffect` al que le falta una dependencia
+      # es la clase de bug por la que existe la skill `sunrise-sync-ventanas`, y
+      # hasta ahora no tenía ningún respaldo automático.
+      - run: pnpm lint
+
       - run: pnpm test:all

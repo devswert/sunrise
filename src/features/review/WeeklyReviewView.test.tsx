@@ -82,7 +82,9 @@ describe("WeeklyReviewView", () => {
     await userEvent.click(within(fila).getByLabelText("Completar objetivo"));
 
     await waitFor(async () => {
-      const [leido] = (await api.listObjectives(isoWeekId(new Date()))).filter((x) => x.id === o.id);
+      const [leido] = (await api.listObjectives(isoWeekId(new Date()))).filter(
+        (x) => x.id === o.id,
+      );
       expect(leido.completed).toBe(true);
     });
   });

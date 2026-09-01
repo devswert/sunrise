@@ -39,11 +39,7 @@ export interface ResumenDelDia {
  * siendo igual de largo. Lo pendiente se muestra aparte, que es la otra pregunta
  * ("¿alcanzo con lo que queda?").
  */
-export function daySummary(
-  tasks: Task[],
-  target: number,
-  warnRatio: number,
-): ResumenDelDia {
+export function daySummary(tasks: Task[], target: number, warnRatio: number): ResumenDelDia {
   let planned = 0;
   let pending = 0;
   let comprometidos = 0;

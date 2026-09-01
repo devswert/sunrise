@@ -68,9 +68,7 @@ describe("TaskCard", () => {
   it("el check dispara onToggle sin abrir el detalle", async () => {
     const user = userEvent.setup();
     const { onToggle, onOpen } = renderCard(makeTask());
-    await user.click(
-      screen.getByRole("button", { name: "Marcar como completada" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Marcar como completada" }));
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onOpen).not.toHaveBeenCalled();
   });
@@ -79,9 +77,7 @@ describe("TaskCard", () => {
     renderCard(makeTask({ status: "DONE" }));
     const card = screen.getByText("Demo task").closest(".task-card");
     expect(card).toHaveClass("is-done");
-    expect(
-      screen.getByRole("button", { name: "Marcar como pendiente" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Marcar como pendiente" })).toBeInTheDocument();
   });
 });
 

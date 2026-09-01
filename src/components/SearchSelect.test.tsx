@@ -51,7 +51,12 @@ describe("SearchSelect", () => {
     // por eso el popover de los filtros puede quedarse abierto.
     const onSelect = vi.fn();
     render(
-      <SearchSelect options={opciones} value={null} selected={new Set(["1"])} onSelect={onSelect} />,
+      <SearchSelect
+        options={opciones}
+        value={null}
+        selected={new Set(["1"])}
+        onSelect={onSelect}
+      />,
     );
 
     // Incluso sobre una ya marcada: apagar es el mismo evento que prender.

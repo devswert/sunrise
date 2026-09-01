@@ -21,13 +21,7 @@ import { useId } from "react";
  * (el sidebar y cualquier otra), dos `<linearGradient id="sol">` colisionan y el
  * navegador resuelve todas las referencias al primero.
  */
-export function SunriseMark({
-  size = 18,
-  className,
-}: {
-  size?: number;
-  className?: string;
-}) {
+export function SunriseMark({ size = 18, className }: { size?: number; className?: string }) {
   const sol = `sunrise-sol-${useId()}`;
 
   return (
