@@ -39,15 +39,18 @@ jobs:
     runs-on: macos-26
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Sin `version:`, igual que en release.yml: `action-setup` lee
       # `packageManager` de package.json y así CI no puede divergir de local.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          # `cache: pnpm` explícito y no de más: desde `setup-node` v6 el caché
+          # automático es **solo para npm**, y con otro gestor hay que pedirlo. Sin
+          # esta línea, `pnpm install` se baja todo de nuevo en cada corrida.
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
