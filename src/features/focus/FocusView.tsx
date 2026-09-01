@@ -5,7 +5,7 @@ import { TimePicker } from "../../components/TimePicker";
 import { Popover } from "../../components/Popover";
 import { api } from "../../lib/ipc";
 import type { LogDay, Task } from "../../lib/types";
-import { todayISO } from "../../lib/date";
+import { nowHhmm, todayISO } from "../../lib/date";
 import { formatMinutes, hours, hoursFromMinutes } from "../../lib/capacity";
 import { celebrate } from "../../lib/confetti";
 import { useTimer, hms } from "../timer/useTimer";
@@ -19,12 +19,6 @@ import { Hash } from "lucide-react";
 import { chipVars } from "../tasks/chipVars";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
-
-/** 'HH:mm' actual, para ordenar la cola respetando la hora. */
-function nowHhmm(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 /**
  * Focus Mode: solo la tarea actual.
@@ -194,15 +188,15 @@ export function FocusView() {
     return (
       <div className="focus focus--empty">
         {/* El sol de la marca saliendo, no un check en un círculo: el check ya
-          * está en cada tarea que cerraste, y acá lo que se celebra es el día
-          * entero. Sube al entrar, que es lo único que hace la marca. */}
+         * está en cada tarea que cerraste, y acá lo que se celebra es el día
+         * entero. Sube al entrar, que es lo único que hace la marca. */}
         <div className="focus__amanecer">
           <SunriseMark size={76} className="focus__sol" />
         </div>
         <h1>Listo por hoy</h1>
 
         {/* El resumen aparece cuando llega; no se reserva su espacio en blanco
-          * porque un día sin nada trabajado tampoco tiene qué contar. */}
+         * porque un día sin nada trabajado tampoco tiene qué contar. */}
         {completadas > 0 && (
           <div className="focus__resumen">
             <div className="focus__dato">
@@ -221,12 +215,12 @@ export function FocusView() {
         )}
 
         {/* El cierre del día es el paso siguiente natural, y llegar hasta él por
-          * el sidebar desde acá es un rodeo. No sella nada: solo lleva. */}
+         * el sidebar desde acá es un rodeo. No sella nada: solo lleva. */}
         <button className="btn-primary focus__cerrar" onClick={() => navigate("/daily-shutdown")}>
           {/* La luna es el icono del shutdown en el sidebar: el botón dice a
-            * dónde lleva antes de leerse. La flecha rebota para empujar hacia
-            * allá —es el único paso siguiente de esta pantalla— y se queda
-            * quieta con `prefers-reduced-motion`. */}
+           * dónde lleva antes de leerse. La flecha rebota para empujar hacia
+           * allá —es el único paso siguiente de esta pantalla— y se queda
+           * quieta con `prefers-reduced-motion`. */}
           <Moon size={15} />
           Cerrar el día
           <ArrowRight size={15} className="focus__flecha" />
@@ -247,19 +241,19 @@ export function FocusView() {
     <div className="focus">
       <div className="focus__card">
         {/* Dos filas y no una: el título es lo que se lee primero y con el canal
-          * y los tiempos al lado quedaba estrangulado en una columna angosta,
-          * peor mientras más largo. Arriba van los metadatos —canal a la
-          * izquierda, tiempos y play a la derecha—; abajo el título, con todo el
-          * ancho para él. */}
+         * y los tiempos al lado quedaba estrangulado en una columna angosta,
+         * peor mientras más largo. Arriba van los metadatos —canal a la
+         * izquierda, tiempos y play a la derecha—; abajo el título, con todo el
+         * ancho para él. */}
         <div className="focus__meta">
           {/* Canal editable: replanificar en Focus es normal —te sientas a
-            * trabajar y te das cuenta de que la tarea era de otro contexto—.
-            * Lo que NO está acá es eliminar: Focus es para trabajar, y un botón
-            * de borrar al lado del play es un accidente esperando. */}
+           * trabajar y te das cuenta de que la tarea era de otro contexto—.
+           * Lo que NO está acá es eliminar: Focus es para trabajar, y un botón
+           * de borrar al lado del play es un accidente esperando. */}
           <div className="chip-wrap" ref={canalRef}>
             {/* El mismo chip que la card y el modal —`.cat-tag` + `chipVars`—, no
-              * una píldora con el color fijo de la app: el fondo teñido es por lo
-              * que se reconoce el canal de reojo en el resto de las vistas. */}
+             * una píldora con el color fijo de la app: el fondo teñido es por lo
+             * que se reconoce el canal de reojo en el resto de las vistas. */}
             <button
               type="button"
               className={`cat-tag focus__canal${channel ? "" : " is-empty"}`}
@@ -356,31 +350,25 @@ export function FocusView() {
         </div>
 
         <div className="focus__head">
-          <button
-            className="focus__check"
-            aria-label="Completar tarea"
-            onClick={complete}
-          >
+          <button className="focus__check" aria-label="Completar tarea" onClick={complete}>
             <Check size={18} strokeWidth={3} />
           </button>
           <h1 className="focus__title">{current.title}</h1>
         </div>
 
         {timer.overEstimate && running && (
-          <div className="focus__over">
-            Pasaste el tiempo estimado — puedes seguir trabajando.
-          </div>
+          <div className="focus__over">Pasaste el tiempo estimado — puedes seguir trabajando.</div>
         )}
 
         {/* El mismo detalle que el modal de la semana: hora, link de la reunión,
-          * participantes y descripción. Es la vista en la que estás cuando
-          * empieza la reunión, así que tener que abrir otra pantalla para saber
-          * por dónde entrar no tiene sentido. */}
+         * participantes y descripción. Es la vista en la que estás cuando
+         * empieza la reunión, así que tener que abrir otra pantalla para saber
+         * por dónde entrar no tiene sentido. */}
         <CalendarEventCard task={current} />
 
         {/* La línea de arriba solo cuando hay tarjeta del calendario que separar:
-          * en una tarea escrita a mano dejaba dos líneas paralelas con nada en
-          * medio. */}
+         * en una tarea escrita a mano dejaba dos líneas paralelas con nada en
+         * medio. */}
         <div className={`focus__notas${hasCalendarData(current) ? " has-event" : ""}`}>
           <NotesEditor
             value={current.notes ?? ""}

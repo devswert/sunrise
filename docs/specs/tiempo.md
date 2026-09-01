@@ -7,6 +7,37 @@ Vuelve al [índice de SPECS](../SPECS.md).
 
 ### 4.6 Timer / taxímetro
 
+#### La zona en la que empieza y termina el día
+
+**Todo instante se guarda en UTC** (`repo::now()`); la zona es solo el lente con el
+que esos instantes se agrupan por día. Vive en `settings.timezone` como nombre IANA
+(`America/Santiago`); **ausente o vacía = la del sistema**, y no la siembra ninguna
+migración, así que el ajuste arranca sin efecto.
+
+Quién la resuelve:
+
+| Lado | Cómo |
+|---|---|
+| Rust, helpers de aritmética | por parámetro `tz: chrono_tz::Tz` |
+| Rust, llamadores sin `&Connection` (`bell.rs`, `start_of_today`) | `repo::zone_cached()`, caché de proceso que invalida `set_setting` |
+| Rust, entrada pública con conexión | `repo::zone(conn)` |
+| Front | `src/lib/date.ts`; la empuja `useSettingsRuntime` con `setZone` |
+
+**Solo nombres IANA.** `Intl` acepta también un desplazamiento fijo (`-04:00`) y
+`chrono_tz` no, así que aceptarlo dejaría los dos lados agrupando el día distinto.
+Se rechaza en `settings.timezone()` y hay tests a los dos lados que lo fijan.
+
+**Qué se mueve al cambiarla y qué no.** Se mueven todas las fronteras de día, o sea
+los totales por día y los rollups **incluidos los de semanas pasadas**. No se mueven
+las horas de reloj que escribió el usuario (`scheduled_time`, la jornada): son
+intenciones, no instantes. Sí se mueven las reuniones importadas, que son instantes
+reales — y por eso cambiar el ajuste **fuerza un re-sync de los feeds**, porque su
+`scheduled_time` se derivó al importar.
+
+El razonamiento completo, con lo que se midió y lo que se descartó, está en
+[DECISIONES §1 y §4](../DECISIONES.md).
+
+
 Respaldado en la DB (`time_entries`), no en memoria. Estado en
 `src/features/timer/timerStore.ts`.
 

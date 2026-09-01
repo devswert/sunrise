@@ -40,7 +40,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use chrono::{DateTime, Local, Timelike};
+use chrono::{DateTime, Timelike};
+use chrono::Utc;
+use chrono_tz::Tz;
 use rusqlite::Connection;
 use tauri::{AppHandle, Manager};
 
@@ -112,7 +114,7 @@ fn prefix(dev: bool) -> &'static str {
 /// minuto se pisen. Y el orden alfabético del nombre es el cronológico, así que
 /// la retención puede ordenar por nombre sin preguntarle nada al sistema de
 /// archivos (cuya fecha de creación no es confiable después de un `rsync`).
-pub fn file_name(now: DateTime<Local>, dev: bool) -> String {
+pub fn file_name(now: DateTime<Tz>, dev: bool) -> String {
     format!("{}{}.zip", prefix(dev), now.format("%Y%m%d-%H%M%S"))
 }
 
@@ -145,7 +147,7 @@ pub fn is_backup_name(name: &str, dev: bool) -> bool {
 
 /// El `manifest.yml`. Se escribe a mano —son seis líneas— para no arrastrar un
 /// serializador de YAML por esto.
-fn manifest_yaml(version: &str, schema: i64, now: DateTime<Local>, bytes: u64) -> String {
+fn manifest_yaml(version: &str, schema: i64, now: DateTime<Tz>, bytes: u64) -> String {
     // Todos los valores van entre comillas: `created_at` trae `:` y una versión
     // como `1.10` se leería como número si no.
     format!(
@@ -215,7 +217,7 @@ fn current_schema(conn: &Connection) -> Result<i64> {
 /// que ve aparecer: con el nombre definitivo desde el principio, la nube
 /// terminaría guardando un archivo a medio escribir que se ve como un respaldo
 /// válido. El `rename` dentro del mismo volumen es atómico.
-pub fn create(conn: &Connection, dir: &Path, now: DateTime<Local>, dev: bool) -> Result<BackupFile> {
+pub fn create(conn: &Connection, dir: &Path, now: DateTime<Tz>, dev: bool) -> Result<BackupFile> {
     fs::create_dir_all(dir)
         .with_context(|| format!("no se pudo crear la carpeta de respaldos {}", dir.display()))?;
 
@@ -248,7 +250,7 @@ pub fn create(conn: &Connection, dir: &Path, now: DateTime<Local>, dev: bool) ->
 }
 
 /// Arma el zip en `parcial`. Devuelve el tamaño del snapshot de la base.
-fn write_zip(conn: &Connection, partial: &Path, now: DateTime<Local>) -> Result<u64> {
+fn write_zip(conn: &Connection, partial: &Path, now: DateTime<Tz>) -> Result<u64> {
     let snapshot = temp_snapshot(conn)?;
     let db_bytes = fs::metadata(&snapshot)?.len();
     let schema = current_schema(conn)?;
@@ -306,7 +308,7 @@ pub fn create_and_prune(
     conn: &Connection,
     dir: &Path,
     keep: usize,
-    now: DateTime<Local>,
+    now: DateTime<Tz>,
     dev: bool,
 ) -> Result<BackupFile> {
     let done = create(conn, dir, now, dev)?;
@@ -535,7 +537,7 @@ pub fn prepare_restore(
 /// Va con nombre propio (`antes-de-restaurar-…`) y **no** con el patrón de
 /// `file_name`: así la retención no la borra nunca. Es la única salida si
 /// la restauración deja la base en un estado inesperado.
-pub fn safety_snapshot(conn: &Connection, dir: &Path, now: DateTime<Local>) -> Result<PathBuf> {
+pub fn safety_snapshot(conn: &Connection, dir: &Path, now: DateTime<Tz>) -> Result<PathBuf> {
     fs::create_dir_all(dir)?;
     let target = dir.join(format!(
         "antes-de-restaurar-{}.sqlite",
@@ -620,7 +622,7 @@ pub struct AutoSettings {
 /// disjuntos y ninguna retención alcanza al otro. Y apagado no había forma de
 /// probar el automático antes de publicar una versión, que es exactamente cuando
 /// importa que funcione.
-pub fn should_backup(s: &AutoSettings, now: DateTime<Local>) -> bool {
+pub fn should_backup(s: &AutoSettings, now: DateTime<Tz>) -> bool {
     if s.dir.as_deref().map(str::trim).unwrap_or("").is_empty() {
         return false;
     }
@@ -667,7 +669,7 @@ fn read_settings(app: &AppHandle) -> Option<AutoSettings> {
 /// reintentar cada minuto contra una carpeta que no está —un disco externo
 /// desconectado, un Drive sin sesión— es un error por minuto hasta la medianoche.
 /// Queda anotado y el botón de Configs sigue ahí para reintentar a mano.
-fn run(app: &AppHandle, today: &str, now: DateTime<Local>) {
+fn run(app: &AppHandle, today: &str, now: DateTime<Tz>) {
     let db = app.state::<Db>();
     let conn = match db.0.lock() {
         Ok(conn) => conn,
@@ -713,7 +715,9 @@ fn run(app: &AppHandle, today: &str, now: DateTime<Local>) {
 pub fn start_watcher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
-            let now = Local::now();
+            // La zona del usuario, no la del sistema: si el respaldo está puesto a las
+            // 20:00, tiene que dispararse a las 20:00 de su reloj.
+            let now = Utc::now().with_timezone(&crate::repo::zone_cached());
             if let Some(s) = read_settings(&app) {
                 if should_backup(&s, now) {
                     let today = now.format("%Y-%m-%d").to_string();
@@ -746,8 +750,8 @@ mod tests {
         c
     }
 
-    fn now() -> DateTime<Local> {
-        Local.timestamp_opt(1_787_000_000, 0).unwrap()
+    fn now() -> DateTime<Tz> {
+        crate::repo::zone_cached().timestamp_opt(1_787_000_000, 0).unwrap()
     }
 
     #[test]
@@ -870,7 +874,7 @@ mod tests {
         // desalinearía los índices del nombre.
         //
         // El esperado se **deriva de `now()`** y no es un literal: el nombre del
-        // zip lleva la hora local (`file_name` formatea un `DateTime<Local>`),
+        // zip lleva la hora local (`file_name` formatea un `DateTime<Tz>`),
         // así que un literal fija el huso de la máquina donde se escribió el
         // test. Pasaba en Chile y fallaba en CI, que corre en UTC —cuatro horas
         // de diferencia—, y dejó la suite roja en `main` desde el commit que
@@ -1104,8 +1108,10 @@ mod tests {
     }
 
     /// Un momento local concreto, para no depender del reloj de la máquina.
-    fn local(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Local> {
-        Local.with_ymd_and_hms(y, m, d, h, min, 0).unwrap()
+    fn local(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Tz> {
+        crate::repo::zone_cached()
+            .with_ymd_and_hms(y, m, d, h, min, 0)
+            .unwrap()
     }
 
     #[test]

@@ -8,6 +8,7 @@ import {
   startOfISOWeek,
 } from "date-fns";
 import { es } from "date-fns/locale";
+import { TZDate } from "@date-fns/tz";
 
 /**
  * El locale va **por llamada** y no con `setDefaultOptions`.
@@ -20,6 +21,122 @@ import { es } from "date-fns/locale";
  */
 const LOCALE = { locale: es };
 
+/**
+ * La zona en la que el usuario vive el día.
+ *
+ * **Se empuja, no se lee.** Lo natural sería que esto consultara el store de
+ * ajustes, y no se puede: `settings.ts` → `ipc.ts` → `mockDb.ts` → `date.ts`, así
+ * que preguntar desde acá cierra un ciclo de imports. Quien la sabe la deja acá con
+ * `setZone`, igual que en Rust, donde `set_setting` invalida el caché de
+ * `repo::zone`. Las dos puntas del puente terminaron con la misma forma por la
+ * misma razón: la zona es un dato global de hecho —un usuario, una máquina— y
+ * enhebrarla por parámetro hasta cada lector no compra nada.
+ *
+ * `null` = la del sistema, que es también el valor de fábrica: el ajuste ausente no
+ * cambia nada.
+ */
+let elegida: string | null = null;
+
+/**
+ * Fija la zona. La llama el runtime de ajustes cuando lee o escribe la clave.
+ *
+ * **Valida, aunque `timezone()` ya valide.** Son dos guardias a propósito: si una
+ * zona ilegible llegara hasta acá, `format` tira `RangeError` y se cae la vista
+ * entera —no el ajuste, la vista— y por un dato que la app puede ignorar sin
+ * consecuencias. Un nombre que la plataforma no conoce cae a la del sistema.
+ */
+export function setZone(tz: string | null): void {
+  const limpia = tz?.trim();
+  if (!limpia) {
+    elegida = null;
+    return;
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: limpia });
+    elegida = limpia;
+  } catch {
+    elegida = null;
+  }
+}
+
+/** La zona vigente, como nombre IANA. */
+export function zone(): string {
+  return elegida ?? systemZone();
+}
+
+/** La zona del sistema, ej. `'America/Santiago'`. */
+export function systemZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+/**
+ * Ahora, **leído en la zona del usuario**.
+ *
+ * Es el único puente entre "un instante" y "una fecha y hora de reloj", y por eso
+ * todo lo que responde "¿qué día es hoy?" o "¿qué hora es?" pasa por acá. Un `Date`
+ * pelado solo sabe exponer los campos de la zona del sistema; `TZDate` es lo que
+ * permite que `format` lea los de otra.
+ */
+export function nowLocal(): Date {
+  return new TZDate(Date.now(), zone());
+}
+
+/** Un `'YYYY-MM-DD'` como medianoche **en la zona del usuario**. */
+export function zonedDate(dateStr: string): Date {
+  return new TZDate(`${dateStr}T00:00:00`, zone());
+}
+
+/** La hora de reloj de ahora, `'HH:MM'`. */
+export function nowHhmm(): string {
+  return format(nowLocal(), "HH:mm");
+}
+
+/** Minutos transcurridos del día de hoy, en la zona del usuario. */
+export function nowMinutes(): number {
+  const d = nowLocal();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+/**
+ * El día `'YYYY-MM-DD'` al que pertenece un instante ISO, **en la zona del
+ * usuario**. Cadena vacía si no parsea.
+ *
+ * Es lo que antes se armaba a mano con `getFullYear/getMonth/getDate` en
+ * `weeklyReview.ts`: la misma cuenta, pero una sola vez y con la zona correcta.
+ */
+export function dayInZone(iso: string): string {
+  const d = new TZDate(iso, zone());
+  return Number.isNaN(d.getTime()) ? "" : format(d, "yyyy-MM-dd");
+}
+
+/** La hora de reloj `'HH:MM'` de un instante ISO, en la zona del usuario. */
+export function hhmmInZone(iso: string): string {
+  const d = new TZDate(iso, zone());
+  return Number.isNaN(d.getTime()) ? "" : format(d, "HH:mm");
+}
+
+/** Minutos del día de un instante ISO, leídos en la zona del usuario. */
+export function minutesOfDay(iso: string): number {
+  const d = new TZDate(iso, zone());
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+/**
+ * Medianoche del día al que pertenece ese instante, en la zona del usuario.
+ *
+ * Recibe epoch y no `Date` a propósito: un `Date` ya perdió la zona, y aceptarlo
+ * invitaría a pasarle uno construido con los campos del sistema.
+ */
+export function startOfDayAt(epochMs: number): Date {
+  const d = new TZDate(epochMs, zone());
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 /** 'lunes' → 'Lunes'. El español no capitaliza días ni meses; la UI sí. */
 function capitalizar(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -30,9 +147,9 @@ export function toISODate(d: Date): string {
   return format(d, "yyyy-MM-dd");
 }
 
-/** Hoy en 'YYYY-MM-DD' (hora local). */
+/** Hoy en 'YYYY-MM-DD', **en la zona del usuario**. */
 export function todayISO(): string {
-  return toISODate(new Date());
+  return toISODate(nowLocal());
 }
 
 /**

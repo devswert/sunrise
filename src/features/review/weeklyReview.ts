@@ -8,7 +8,7 @@
  */
 import type { Category, Task, WeeklyRollup } from "../../lib/types";
 import { groupBy, type Segmento } from "../../lib/segmentos";
-import { shortWeekday } from "../../lib/date";
+import { dayInZone, shortWeekday } from "../../lib/date";
 // Se re-exportan: el formato de duraciones vive en `lib/capacity.ts` —lo comparten
 // la review y la bitácora—, pero la vista lo pide junto al resto de sus cuentas.
 export { hours, hoursFromMinutes } from "../../lib/capacity";
@@ -72,10 +72,7 @@ export function closedByDay(rollup: WeeklyRollup): Map<string, Task[]> {
     // todo lo cerrado de tarde.
     const day = new Date(t.completedAt);
     if (Number.isNaN(day.getTime())) continue;
-    const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(
-      day.getDate(),
-    ).padStart(2, "0")}`;
-    por.get(key)?.push(t);
+    por.get(dayInZone(t.completedAt))?.push(t);
   }
   return por;
 }

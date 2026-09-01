@@ -6,7 +6,22 @@
 //! salir mal al interpretar un calendario real se prueba con fixtures y sin
 //! levantar nada.
 
-use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono_tz::Tz;
+
+/// La zona en la que el usuario vive el día, para ubicar un evento en una fecha y
+/// una hora de reloj.
+///
+/// **Viaja por parámetro y no se lee de ningún global.** Un parser que consulta
+/// estado de proceso no se puede testear con dos zonas distintas sin que los casos
+/// se pisen entre ellos, y este módulo tiene fixtures que solo son ciertas en una
+/// zona concreta. Quien la resuelve es `calendar/mod.rs`, que sí tiene la conexión.
+///
+/// **El `TZID` del evento manda sobre ella.** Un `DTSTART;TZID=America/Santiago` se
+/// lee en Santiago siempre; esta zona solo decide en qué fecha y a qué hora de *tu*
+/// reloj cae ese instante. Donde sí gobierna es en los `Floating` (los que no
+/// declaran zona: por definición se leen en la del lector) y en `today_in`, que
+/// define la ventana de import.
 use icalendar::{Calendar, Component, DatePerhapsTime, EventStatus};
 
 use crate::models::Attendee;
@@ -53,6 +68,7 @@ pub struct IcsEvent {
 /// La ventana existe porque un calendario de trabajo tiene series sin fin: sin
 /// acotar, "importar el calendario" es "importar hasta el año 2400".
 pub fn parse_events(
+    tz: Tz,
     ics: &str,
     from_date: NaiveDate,
     to_date: NaiveDate,
@@ -91,7 +107,7 @@ pub fn parse_events(
         .filter_map(|ev| {
             let uid = base_uid(ev.get_uid()?);
             let instant = ev.properties().get("RECURRENCE-ID").and_then(|p| {
-                instant_of_value(p.value(), p.params().get("TZID").map(|t| t.value()))
+                instant_of_value(tz, p.value(), p.params().get("TZID").map(|t| t.value()))
             })?;
             Some(format!("{uid}#{}", stamp(instant)))
         })
@@ -130,8 +146,21 @@ pub fn parse_events(
             _ => "(sin título)".to_string(),
         };
 
-        let all_day = matches!(ev.get_start(), Some(DatePerhapsTime::Date(_)));
-        let duration = duration_of(&ev);
+        // El día completo se detecta por la forma del `DTSTART` (`VALUE=DATE`), y
+        // **se guarda la fecha civil que trae**, sin pasar por ningún instante.
+        //
+        // Un feriado no ocurre en un momento: ocurre el 10. Convertirlo a instante
+        // obliga a inventarle una medianoche, y de ahí en adelante cualquier
+        // diferencia de zona lo corre un día. Peor: la medianoche la inventa
+        // `rrule` al parsear el `DTSTART`, en **su** zona (`Tz::LOCAL`, la del
+        // sistema), y eso no se puede cambiar desde acá. Guardar la fecha tal como
+        // viene saca el problema de raíz en vez de pelear con la conversión.
+        let civil = match ev.get_start() {
+            Some(DatePerhapsTime::Date(d)) => Some(d),
+            _ => None,
+        };
+        let all_day = civil.is_some();
+        let duration = duration_of(tz, &ev);
         let link = link_of(&ev);
         let description = ev
             .get_description()
@@ -146,12 +175,12 @@ pub fn parse_events(
         // Su `TZID` va aparte, en los parámetros: `property_value` devuelve el
         // valor pelado y ahí ya se perdió la zona.
         let overrides = ev.properties().get("RECURRENCE-ID").and_then(|p| {
-            instant_of_value(p.value(), p.params().get("TZID").map(|t| t.value()))
+            instant_of_value(tz, p.value(), p.params().get("TZID").map(|t| t.value()))
         });
 
         let is_series = ev.property_value("RRULE").is_some();
 
-        for local_start in occurrences(&ev, from_date, to_date) {
+        for local_start in occurrences(tz, &ev, from_date, to_date) {
             let key = match (&overrides, is_series) {
                 (Some(instant), _) => format!("{uid}#{}", stamp(*instant)),
                 (None, true) => format!("{uid}#{}", stamp(local_start)),
@@ -168,7 +197,10 @@ pub fn parse_events(
             out.push(IcsEvent {
                 uid: key,
                 title: title.clone(),
-                date: local_start.format("%Y-%m-%d").to_string(),
+                date: match civil {
+                    Some(d) => d.format("%Y-%m-%d").to_string(),
+                    None => local_start.format("%Y-%m-%d").to_string(),
+                },
                 hour: if all_day {
                     None
                 } else {
@@ -205,14 +237,15 @@ pub fn parse_events(
 /// devuelve un `RRuleSet` que, sin `RRULE`, rinde solo su `DTSTART`. Así no hay
 /// dos caminos que puedan divergir.
 fn occurrences(
+    tz: Tz,
     ev: &icalendar::CalendarEvent<'_>,
     from_date: NaiveDate,
     to_date: NaiveDate,
-) -> Vec<DateTime<Local>> {
+) -> Vec<DateTime<Tz>> {
     let Ok(set) = ev.get_recurrence() else {
         // Regla que `rrule` rechaza: mejor importar el `DTSTART` solo que perder
         // el evento entero en silencio.
-        return match ev.get_start().and_then(to_local) {
+        return match ev.get_start().and_then(|d| to_local(tz, d)) {
             Some(dt) if in_window(dt, from_date, to_date) => vec![dt],
             _ => vec![],
         };
@@ -221,19 +254,26 @@ fn occurrences(
     // El borde va en instantes y no en fechas: `after`/`before` comparan
     // momentos, así que el día `hasta` se incluye entero tomando su medianoche
     // siguiente.
-    let start = local_midnight(from_date);
-    let end = local_midnight(to_date + Duration::days(1));
+    let start = local_midnight(tz, from_date);
+    let end = local_midnight(tz, to_date + Duration::days(1));
     let (Some(start), Some(end)) = (start, end) else {
         return vec![];
     };
 
-    // `rrule` itera en su propio `Tz`; `LOCAL` es su envoltorio de `chrono::Local`.
-    set.after(start.with_timezone(&icalendar::Tz::LOCAL))
-        .before(end.with_timezone(&icalendar::Tz::LOCAL))
+    // `rrule` itera en su propio `Tz`, y hay que darle **la del usuario**, no
+    // `Tz::LOCAL` (que es su envoltorio de `chrono::Local`, o sea la del sistema).
+    // La diferencia solo se ve en los eventos de día completo: un
+    // `DTSTART;VALUE=DATE` no es un instante, así que `rrule` le inventa la
+    // medianoche de *su* zona, y si esa no es la del usuario el feriado aparece un
+    // día antes. Lo pilla `el_dia_completo_entra_sin_reloj_ni_duracion` corriendo
+    // con `TZ=UTC`, que es como corre CI.
+    let iter_tz = icalendar::Tz::Tz(tz);
+    set.after(start.with_timezone(&iter_tz))
+        .before(end.with_timezone(&iter_tz))
         .all(MAX_OCURRENCIAS)
         .dates
         .into_iter()
-        .map(|d| d.with_timezone(&Local))
+        .map(|d| d.with_timezone(&tz))
         .collect()
 }
 
@@ -369,9 +409,9 @@ fn trim_punctuation(t: &str) -> &str {
 }
 
 /// Cuánto dura el evento, mirando `DTEND` (o `DURATION` si es lo que trae).
-fn duration_of(ev: &icalendar::CalendarEvent<'_>) -> Option<Duration> {
-    let start = ev.get_start().and_then(to_local)?;
-    if let Some(end) = ev.get_end().and_then(to_local) {
+fn duration_of(tz: Tz, ev: &icalendar::CalendarEvent<'_>) -> Option<Duration> {
+    let start = ev.get_start().and_then(|d| to_local(tz, d))?;
+    if let Some(end) = ev.get_end().and_then(|d| to_local(tz, d)) {
         let d = end - start;
         return if d > Duration::zero() { Some(d) } else { None };
     }
@@ -385,40 +425,45 @@ fn duration_of(ev: &icalendar::CalendarEvent<'_>) -> Option<Duration> {
 /// y cortar el string por los primeros 10 caracteres lo mandaría al 10 pero con
 /// hora equivocada — o al día siguiente para un evento de la tarde. Este
 /// proyecto ya pagó dos veces por esa confusión.
-fn to_local(d: DatePerhapsTime) -> Option<DateTime<Local>> {
+fn to_local(tz: Tz, d: DatePerhapsTime) -> Option<DateTime<Tz>> {
     match d {
         DatePerhapsTime::DateTime(dt) => match dt {
-            icalendar::CalendarDateTime::Utc(utc) => Some(utc.with_timezone(&Local)),
-            icalendar::CalendarDateTime::Floating(naive) => local_from_naive(naive),
+            icalendar::CalendarDateTime::Utc(utc) => Some(utc.with_timezone(&tz)),
+            icalendar::CalendarDateTime::Floating(naive) => local_from_naive(tz, naive),
             icalendar::CalendarDateTime::WithTimezone { date_time, tzid } => {
-                let tz: chrono_tz::Tz = tzid.parse().ok()?;
+                // **`del_evento` y no `tz`**, y el nombre importa: son dos zonas
+                // distintas en la misma expresión. La del evento decide *qué
+                // instante* es; la del usuario, *a qué hora de su reloj* se
+                // muestra. Llamar `tz` a la primera la hacía tapar a la segunda y
+                // el evento salía con la hora de su propio calendario — lo pilló
+                // `la_instancia_editada_calza_aunque_el_calendario_este_en_otra_zona`.
+                let del_evento: chrono_tz::Tz = tzid.parse().ok()?;
                 // `.single()` falla en el salto de horario de verano; ahí se
                 // toma la primera lectura válida en vez de descartar el evento.
-                let zoned = tz
+                let zoned = del_evento
                     .from_local_datetime(&date_time)
                     .single()
-                    .or_else(|| tz.from_local_datetime(&date_time).earliest())?;
-                Some(zoned.with_timezone(&Local))
+                    .or_else(|| del_evento.from_local_datetime(&date_time).earliest())?;
+                Some(zoned.with_timezone(&tz))
             }
         },
         // Día completo: se ancla a la medianoche local para poder ubicarlo en un
         // día del tablero. La hora no se usa (ver `all_day`).
-        DatePerhapsTime::Date(date) => local_midnight(date),
+        DatePerhapsTime::Date(date) => local_midnight(tz, date),
     }
 }
 
-fn local_from_naive(naive: NaiveDateTime) -> Option<DateTime<Local>> {
-    Local
-        .from_local_datetime(&naive)
+fn local_from_naive(tz: Tz, naive: NaiveDateTime) -> Option<DateTime<Tz>> {
+    tz.from_local_datetime(&naive)
         .single()
-        .or_else(|| Local.from_local_datetime(&naive).earliest())
+        .or_else(|| tz.from_local_datetime(&naive).earliest())
 }
 
-fn local_midnight(date: NaiveDate) -> Option<DateTime<Local>> {
-    local_from_naive(date.and_hms_opt(0, 0, 0)?)
+fn local_midnight(tz: Tz, date: NaiveDate) -> Option<DateTime<Tz>> {
+    local_from_naive(tz, date.and_hms_opt(0, 0, 0)?)
 }
 
-fn in_window(dt: DateTime<Local>, from_date: NaiveDate, to_date: NaiveDate) -> bool {
+fn in_window(dt: DateTime<Tz>, from_date: NaiveDate, to_date: NaiveDate) -> bool {
     let d = dt.date_naive();
     d >= from_date && d <= to_date
 }
@@ -508,7 +553,7 @@ fn my_email(cal: &Calendar) -> Option<String> {
 
 /// Sello del instante para la clave de una instancia: `20260810T093000`.
 /// En hora local, que es la misma referencia que usa `fecha`.
-fn stamp(dt: DateTime<Local>) -> String {
+fn stamp(dt: DateTime<Tz>) -> String {
     dt.format("%Y%m%dT%H%M%S").to_string()
 }
 
@@ -524,24 +569,26 @@ fn stamp(dt: DateTime<Local>) -> String {
 ///
 /// Sin `tzid` el valor es flotante y ahí sí se lee en local, que es lo que manda
 /// el estándar.
-fn instant_of_value(value: &str, tzid: Option<&str>) -> Option<DateTime<Local>> {
+fn instant_of_value(tz: Tz, value: &str, tzid: Option<&str>) -> Option<DateTime<Tz>> {
     if let Ok(utc) = DateTime::parse_from_str(value, "%Y%m%dT%H%M%SZ") {
-        return Some(utc.with_timezone(&Local));
+        return Some(utc.with_timezone(&tz));
     }
     if let Ok(naive) = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S") {
-        if let Some(tz) = tzid.and_then(|t| t.parse::<chrono_tz::Tz>().ok()) {
+        // `del_evento`, no `tz`: ver la nota en `to_local` sobre por qué el
+        // nombre no es cosmético.
+        if let Some(del_evento) = tzid.and_then(|t| t.parse::<chrono_tz::Tz>().ok()) {
             // Igual que en `to_local`: `.single()` falla en el salto de horario
             // de verano, y ahí se toma la primera lectura válida.
-            let zoned = tz
+            let zoned = del_evento
                 .from_local_datetime(&naive)
                 .single()
-                .or_else(|| tz.from_local_datetime(&naive).earliest())?;
-            return Some(zoned.with_timezone(&Local));
+                .or_else(|| del_evento.from_local_datetime(&naive).earliest())?;
+            return Some(zoned.with_timezone(&tz));
         }
-        return local_from_naive(naive);
+        return local_from_naive(tz, naive);
     }
     if let Ok(date) = NaiveDate::parse_from_str(value, "%Y%m%d") {
-        return local_midnight(date);
+        return local_midnight(tz, date);
     }
     None
 }
@@ -566,15 +613,25 @@ pub fn window(today: NaiveDate) -> (NaiveDate, NaiveDate) {
     )
 }
 
-/// Hoy en hora local. Vive acá para que el resto del módulo no necesite `Local`.
-pub fn today_local() -> NaiveDate {
-    let now = Local::now();
+/// Hoy **en `tz`**. Vive acá para que el resto del módulo no arme fechas a mano.
+pub fn today_in(tz: Tz) -> NaiveDate {
+    let now = Utc::now().with_timezone(&tz);
     NaiveDate::from_ymd_opt(now.year(), now.month(), now.day()).expect("fecha de hoy válida")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **La zona de las fixtures de este módulo, fijada y no heredada del entorno.**
+    ///
+    /// Casi todas declaran `TZID=America/Santiago` y afirman en qué fecha cae el
+    /// evento, y eso solo es cierto leído desde Chile: a +14, un `DTSTART` de las
+    /// 23:00 UTC cae al día siguiente. Antes de que la zona fuera un parámetro,
+    /// dos de estos tests fallaban con `TZ=Pacific/Kiritimati` y no había forma de
+    /// arreglarlos sin renunciar a la fixture. Ahora la zona se declara acá y los
+    /// casos afirman algo verdadero en cualquier máquina.
+    const TZ_FIXTURES: Tz = chrono_tz::America::Santiago;
 
     /// Envuelve VEVENTs en un VCALENDAR mínimo.
     fn cal(body: &str) -> String {
@@ -604,7 +661,7 @@ mod tests {
 
     /// Ventana amplia, para los tests que no prueban el recorte.
     fn todo(ics: &str) -> Vec<IcsEvent> {
-        parse_events(ics, d("2026-01-01"), d("2026-12-31")).unwrap()
+        parse_events(TZ_FIXTURES, ics, d("2026-01-01"), d("2026-12-31")).unwrap()
     }
 
     #[test]
@@ -623,7 +680,7 @@ mod tests {
         // con la conversión local del instante, no con el día UTC.
         let expected = DateTime::parse_from_rfc3339("2026-08-10T23:00:00Z")
             .unwrap()
-            .with_timezone(&Local);
+            .with_timezone(&TZ_FIXTURES);
         assert_eq!(evs[0].date, expected.format("%Y-%m-%d").to_string());
         assert_eq!(evs[0].hour, Some(expected.format("%H:%M").to_string()));
         assert_eq!(evs[0].minutes, Some(30));
@@ -641,7 +698,7 @@ mod tests {
         let expected = chrono_tz::America::Santiago
             .with_ymd_and_hms(2026, 8, 10, 9, 0, 0)
             .unwrap()
-            .with_timezone(&Local);
+            .with_timezone(&TZ_FIXTURES);
         assert_eq!(evs[0].date, expected.format("%Y-%m-%d").to_string());
         assert_eq!(evs[0].hour, Some(expected.format("%H:%M").to_string()));
         assert_eq!(evs[0].minutes, Some(60));
@@ -695,7 +752,7 @@ mod tests {
             "BEGIN:VEVENT\nUID:infinita@test\nSUMMARY:Semanal\nDTSTART;TZID=America/Santiago:20260810T090000\nDTEND;TZID=America/Santiago:20260810T093000\nRRULE:FREQ=WEEKLY\nEND:VEVENT",
         );
         // Tres semanas exactas desde el primer lunes.
-        let evs = parse_events(&ics, d("2026-08-10"), d("2026-08-30")).unwrap();
+        let evs = parse_events(TZ_FIXTURES, &ics, d("2026-08-10"), d("2026-08-30")).unwrap();
         assert_eq!(evs.len(), 3);
         assert!(evs.iter().all(|e| e.date.as_str() >= "2026-08-10"));
         assert!(evs.iter().all(|e| e.date.as_str() <= "2026-08-30"));
@@ -730,7 +787,7 @@ mod tests {
             chrono_tz::America::Santiago
                 .with_ymd_and_hms(2026, 8, 17, 9, 0, 0)
                 .unwrap()
-                .with_timezone(&Local),
+                .with_timezone(&TZ_FIXTURES),
         );
         let key = format!("serie@test#{generated}");
         let same: Vec<_> = evs.iter().filter(|e| e.uid == key).collect();
@@ -743,7 +800,7 @@ mod tests {
         let moved = chrono_tz::America::Santiago
             .with_ymd_and_hms(2026, 8, 17, 11, 0, 0)
             .unwrap()
-            .with_timezone(&Local);
+            .with_timezone(&TZ_FIXTURES);
         assert_eq!(same[0].hour, Some(moved.format("%H:%M").to_string()));
     }
 
@@ -763,7 +820,7 @@ mod tests {
             chrono_tz::Europe::Madrid
                 .with_ymd_and_hms(2026, 8, 17, 9, 0, 0)
                 .unwrap()
-                .with_timezone(&Local),
+                .with_timezone(&TZ_FIXTURES),
         );
         let same: Vec<_> = evs
             .iter()
@@ -787,7 +844,7 @@ mod tests {
         let ics = cal(
             "BEGIN:VEVENT\nUID:lejos@test\nSUMMARY:Standup\nDTSTART;TZID=America/Santiago:20260810T090000\nDTEND;TZID=America/Santiago:20260810T091500\nRRULE:FREQ=WEEKLY;COUNT=2\nEND:VEVENT\nBEGIN:VEVENT\nUID:lejos@test\nRECURRENCE-ID;TZID=America/Santiago:20260817T090000\nSUMMARY:Standup (movido)\nDTSTART;TZID=America/Santiago:20261120T110000\nDTEND;TZID=America/Santiago:20261120T111500\nEND:VEVENT",
         );
-        let evs = parse_events(&ics, d("2026-08-10"), d("2026-08-31")).unwrap();
+        let evs = parse_events(TZ_FIXTURES, &ics, d("2026-08-10"), d("2026-08-31")).unwrap();
         assert_eq!(
             evs.len(),
             1,
@@ -846,7 +903,7 @@ mod tests {
         let ics = cal(
             "BEGIN:VEVENT\nUID:serie@test\nSUMMARY:Kaio\nDTSTART;TZID=America/Santiago:20260814T153000\nDTEND;TZID=America/Santiago:20260814T173000\nRRULE:FREQ=WEEKLY;UNTIL=20260828T035959Z;BYDAY=FR\nEND:VEVENT\nBEGIN:VEVENT\nUID:serie_R20260828T193000@test\nSUMMARY:Kaio (nuevo horario)\nDTSTART;TZID=America/Santiago:20260828T153000\nDTEND;TZID=America/Santiago:20260828T163000\nRRULE:FREQ=WEEKLY;UNTIL=20260912T035959Z;BYDAY=FR\nEND:VEVENT",
         );
-        let evs = parse_events(&ics, d("2026-08-14"), d("2026-09-15")).unwrap();
+        let evs = parse_events(TZ_FIXTURES, &ics, d("2026-08-14"), d("2026-09-15")).unwrap();
         // Todas las claves son de la serie **base**: ninguna trae el `_R`.
         assert!(
             evs.iter().all(|e| e.uid.starts_with("serie@test#")),
@@ -858,7 +915,7 @@ mod tests {
             chrono_tz::America::Santiago
                 .with_ymd_and_hms(2026, 8, 28, 15, 30, 0)
                 .unwrap()
-                .with_timezone(&Local),
+                .with_timezone(&TZ_FIXTURES),
         );
         let del_28 = evs
             .iter()
@@ -1149,6 +1206,6 @@ mod tests {
 
     #[test]
     fn un_ics_que_no_se_entiende_devuelve_error_y_no_panic() {
-        assert!(parse_events("esto no es un calendario", d("2026-01-01"), d("2026-12-31")).is_err());
+        assert!(parse_events(TZ_FIXTURES, "esto no es un calendario", d("2026-01-01"), d("2026-12-31")).is_err());
     }
 }

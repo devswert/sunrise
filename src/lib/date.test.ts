@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   dateLabel,
+  dayInZone,
+  minutesOfDay,
+  nowHhmm,
+  setZone,
+  startOfDayAt,
+  systemZone,
+  todayISO,
+  zone,
   isoWeekId,
   relativeTime,
   shortDate,
@@ -143,5 +151,83 @@ describe("relativeTime", () => {
 
   it("string vacío si la fecha no se entiende", () => {
     expect(hace("no es una fecha")).toBe("");
+  });
+});
+
+/**
+ * El punto de inyección de la zona, que es la razón de ser del ajuste.
+ *
+ * Antes de esto, un test que afirmara algo sobre "hoy" o sobre la hora solo podía
+ * pedir `TZ=` en el entorno: global al proceso, imposible de variar entre casos, y
+ * por eso la suite tenía casos que pasaban por la zona de la máquina. Acá cada
+ * caso declara su zona y afirma algo verdadero en cualquier parte.
+ */
+describe("la zona del usuario", () => {
+  const instante = new Date("2026-08-10T02:30:00Z").getTime();
+
+  afterEach(() => {
+    // Es estado de módulo: sin esto el caso siguiente heredaría la zona.
+    setZone(null);
+  });
+
+  it("sin ajuste usa la del sistema", () => {
+    setZone(null);
+    expect(zone()).toBe(systemZone());
+  });
+
+  it("ignora un valor vacío o de solo espacios", () => {
+    setZone("   ");
+    expect(zone()).toBe(systemZone());
+  });
+
+  it("el día de un instante depende de la zona, y por eso el ajuste existe", () => {
+    // Las 02:30 UTC del 10 son el **9** en Santiago (−04) y el 10 en Madrid (+02).
+    // Es el bug de medianoche completo, en una línea.
+    expect(dayInZone("2026-08-10T02:30:00Z")).not.toBe("");
+    setZone("America/Santiago");
+    expect(dayInZone("2026-08-10T02:30:00Z")).toBe("2026-08-09");
+    setZone("Europe/Madrid");
+    expect(dayInZone("2026-08-10T02:30:00Z")).toBe("2026-08-10");
+    setZone("Pacific/Kiritimati");
+    expect(dayInZone("2026-08-10T02:30:00Z")).toBe("2026-08-10");
+  });
+
+  it("hoy y la hora de reloj se leen en la zona elegida", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(instante);
+    try {
+      setZone("America/Santiago");
+      expect(todayISO()).toBe("2026-08-09");
+      expect(nowHhmm()).toBe("22:30");
+      setZone("Asia/Tokyo");
+      expect(todayISO()).toBe("2026-08-10");
+      expect(nowHhmm()).toBe("11:30");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("los minutos del día de un instante también", () => {
+    setZone("America/Santiago");
+    expect(minutesOfDay("2026-08-10T02:30:00Z")).toBe(22 * 60 + 30);
+    setZone("Asia/Tokyo");
+    expect(minutesOfDay("2026-08-10T02:30:00Z")).toBe(11 * 60 + 30);
+  });
+
+  it("la medianoche que acota lo corrido de hoy sale de la zona elegida", () => {
+    setZone("America/Santiago");
+    const enSantiago = startOfDayAt(instante);
+    setZone("Asia/Tokyo");
+    const enTokio = startOfDayAt(instante);
+    // Dos medianoches distintas para el mismo instante: es justo lo que hacía que
+    // el taxímetro y `seconds_today` pudieran hablar de días diferentes.
+    expect(enSantiago.getTime()).not.toBe(enTokio.getTime());
+  });
+
+  it("una zona que la plataforma no conoce no rompe nada", () => {
+    setZone("No/Existe");
+    // No se valida acá —eso lo hace `timezone()` al leer el ajuste—, pero tampoco
+    // debe tirar al formatear.
+    expect(() => todayISO()).not.toThrow();
   });
 });

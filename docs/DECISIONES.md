@@ -22,15 +22,50 @@ sirvió.
 sus horas.** Son dos preguntas distintas —cuándo lo planificaste y cuándo lo
 trabajaste— y la asimetría es correcta, no un bug.
 
+**Cruzar la frontera del día se hace en un solo lugar, y los tres casos importan.**
+`repo::local_midnight` es el único que convierte una medianoche local a UTC, y
+existe porque cada copia de ese cálculo se olvidaba de un caso distinto:
+
+| Caso | Cuándo | `single()` | `earliest()` |
+|---|---|---|---|
+| `Single` | el 99% de los días | ✅ | ✅ |
+| `Ambiguous` | salto de **otoño**: la medianoche ocurre dos veces (Santiago 2026-04-05, 2027-04-04) | ❌ `None` | ✅ la primera |
+| `None` | la medianoche **no existe** (Africa/Cairo, America/Asuncion…) | ❌ | ❌ |
+
+**`earliest()` no rescata el caso `None`**, y creer que sí es el error que estaba
+escrito en un comentario del código: sobre `None` no hay ninguna candidata que
+ordenar. `start_of_today` y `utc_range_of_day` usaban `.single()` pelado, y el día
+del salto de otoño la primera caía a `Utc::now()` —"hoy empezó ahora", el taxímetro
+en cero todo el día— y la segunda devolvía un rango vacío, con el rail en blanco.
+Medido sobre el código original: `utc_range_of_day("2026-04-05")` devolvía `("", "")`.
+
+Y una trampa aparte que salió al arreglarlo: **el cierre del rango es la medianoche
+del día siguiente, no `inicio + 24 h`.** Un día local con salto dura 23 o 25 horas.
+
+**Las dos fuentes de tzdata no coinciden, y eso importa al elegir el lente.** La del
+sistema (vía `chrono::Local`) y la que trae `chrono_tz` **discrepan sobre Chile, en
+los dos saltos y en direcciones opuestas**: para el sistema la medianoche del
+2026-04-05 es ambigua y la del 2026-09-06 es única; para `chrono_tz` es al revés.
+O sea que pasar de `Local` a `chrono_tz::Tz` cambia cuál es la autoritativa, y el
+caso `None` pasó de imposible a alcanzable. Es la razón por la que el helper cubre
+los tres casos y no solo los dos que hoy se ven en Santiago.
+
 **Un ajuste manual se acredita al día de la tarea, no al día en que lo escribes.**
 Si el lunes corriges las horas de una reunión del sábado, ese tiempo es del
 sábado. Tres decisiones adentro:
 
 - **Con la hora de la tarea si la tiene, mediodía si no.** Lo primero es por el
   caso que lo motiva —una reunión—: así el bloque cae en el rail donde ocurrió. Y
-  **mediodía y no medianoche** porque en Chile, en el salto de primavera, la
-  medianoche local **no existe** y la conversión se queda sin respuesta. El
-  mediodía existe todos los días del año.
+  **mediodía y no medianoche** porque la medianoche es justo la hora que los saltos
+  de horario ensucian: en Santiago la del salto de otoño ocurre **dos veces**, y en
+  otras zonas —alcanzables desde que la zona es un ajuste— directamente **no
+  existe**. El mediodía existe una sola vez todos los días del año.
+
+  *(Este bullet decía "en el salto de primavera la medianoche local no existe" a
+  secas, y medido resultó falso para Santiago: su salto de primavera ocurre
+  exactamente **a** las 00:00, así que 00:00:00 existe —es el instante del salto— y
+  lo que no existe es de 00:00:01 a 00:59:59. La elección del mediodía era correcta;
+  el motivo escrito, no.)*
 - **El mediodía sirve para contar el día, no para dibujar una hora**, y confundir
   las dos cosas costó un rail ilegible: cinco tareas corregidas el mismo día
   salían apiladas a las 12:00 en carriles de treinta píxeles, y una trabajada a
@@ -284,6 +319,81 @@ obstáculo** —una tarea puesta debajo de la de las 15:00 se proyecta después 
 ---
 
 ## 4. Datos y ajustes
+
+**La DB no se migra a UTC, porque los instantes ya están en UTC y las fechas
+civiles no deben estarlo.** La regla que hay que tener presente antes de "arreglar"
+esto: hay **tres** clases de columna temporal, no una.
+
+| Clase | Columnas | Formato | Por qué |
+|---|---|---|---|
+| **Instantes** | `created_at`, `updated_at`, `completed_at`, `task_events.at`, `time_entries.started_at/ended_at`, `day_entries.closed_at`, `last_synced_at`, `event_start/event_end` | RFC 3339 **UTC**, todas de `repo::now()` | Son puntos en la línea del tiempo. La zona solo cambia cómo se etiquetan |
+| **Fechas civiles** | `tasks.scheduled_date`, `day_entries.date`, `day_task_notes.date`, `task_events.from_date/to_date`, `objectives.iso_week` | texto, sin zona | "Esta tarea es para el 3 de septiembre" no tiene offset que aplicar |
+| **Horas de reloj** | `scheduled_time`, `work_start`, `work_end`, `notified_for`, `backup_time`, `planned_at` | `HH:MM` / `YYYY-MM-DDTHH:mm` local | "A las nueve de la mañana" es una intención, no un instante |
+
+Convertir las dos últimas a UTC es justo lo que hace saltar de día a una tarea:
+una puesta a las 09:00 del martes pasaría a mostrarse el martes a las 21:00 si
+alguien cambia de zona. Y al revés, `new Date('2026-08-21')` es medianoche **UTC**,
+o sea el 20 a las 20:00 en Santiago — por eso ninguna fecha civil pasa por
+`new Date()`.
+
+**La zona es un ajuste (`settings.timezone`), y el valor no es "viajar".** Es un
+usuario en una máquina, así que la ganancia de corrección en uso es chica. Lo que
+compra es el **punto de inyección**: antes, "local" se resolvía desde el sistema en
+~25 sitios independientes, y un test que afirmara algo sobre fechas solo podía
+pedir `TZ=` en el entorno —global al proceso, imposible de variar entre casos—. Por
+eso la suite tenía casos que pasaban por la zona de la máquina, y dos que fallaban
+en `Pacific/Kiritimati` sin que nadie pudiera arreglarlos sin renunciar a la
+fixture. Ahora cada test declara su zona.
+
+Tres cosas que se decidieron y no se derivan:
+
+- **Ausente = la del sistema, y no se siembra.** El ajuste arranca como un no-op y
+  no hay datos que convertir. Es lo contrario de `collapsed_weekdays` (migración 9),
+  que sí se siembra porque ahí ausente y vacío significan cosas distintas.
+- **Cambiar la zona reinterpreta el historial, y es correcto.** Las horas de reloj
+  no se mueven, pero **toda frontera de día sí**: `start_of_today`, `local_days`,
+  `utc_range_of_day`, `segments_by_local_day`. Los rollups de semanas pasadas
+  cambian. Los instantes están en UTC y la zona es solo el lente con que se agrupan
+  por día; lo que sería un bug es que **no** cambiaran.
+- **Solo nombres IANA, y `-04:00` se rechaza aunque `Intl` lo acepte.** `chrono_tz`
+  no parsea desplazamientos fijos, así que tomarlo dejaría al front leyendo el día
+  en −04:00 y a la base agrupándolo en la zona del sistema: dos "hoy" distintos en
+  la misma app. Los dos lados aceptan hoy exactamente el mismo conjunto, y hay
+  tests a los dos lados que lo fijan.
+
+**Un caché por proceso, no un parámetro enhebrado hasta cada lector.** `start_of_today()`
+no recibe `&Connection` y la llaman `bell.rs`, `seconds_today` desde dentro de un
+`query_row`, y media docena más: pasar la zona desde arriba obligaba a cambiar
+firmas en `bell.rs`, `notice.rs`, `backup.rs` y buena parte de `commands.rs` para
+transportar un valor que en esta app es global de hecho. La testeabilidad no se
+pierde porque **los helpers que hacen la aritmética la reciben por parámetro** y el
+caché solo alimenta a los llamadores públicos. Lo invalida `set_setting`, que es el
+único camino por el que puede cambiar. En el front la forma terminó siendo la misma
+(`date.ts` guarda la zona y `useSettingsRuntime` la empuja) pero por otra razón:
+preguntarle al store cerraría el ciclo `settings → ipc → mockDb → date`.
+
+**Las reuniones importadas son el caso mixto, y por eso cambiar la zona re-sincroniza
+los feeds.** Un evento del ICS **sí** tiene zona (su `TZID`), y el rail no lee su
+instante sino `scheduled_time`, la hora de pared derivada al importar (ver §3). O
+sea que al cambiar de zona una reunión de las 14:00 en Santiago debería mostrarse a
+las 03:00 en Tokio, y `scheduled_time` quedó congelado. Se fuerza el re-sync en vez
+de re-derivar a mano: reusa el camino que ya existe y ya está testeado, y el costo
+es una llamada de red al tocar el ajuste.
+
+**El `TZID` del evento manda sobre el ajuste, y el nombre de la variable importa.**
+Al enhebrar la zona por `ics.rs` quedaron dos zonas en la misma expresión: la del
+evento decide *qué instante* es, la del usuario *a qué hora de su reloj* se muestra.
+Llamar `tz` a las dos hacía que la primera tapara a la segunda por shadowing, y el
+evento salía con la hora de su propio calendario. Ahora la del evento se llama
+`del_evento`. Lo pilló el test que existe justamente para eso
+(`la_instancia_editada_calza_aunque_el_calendario_este_en_otra_zona`).
+
+**Un evento de día completo guarda su fecha civil y no pasa por ningún instante.**
+Un feriado no ocurre en un momento: ocurre el 10. Convertirlo obliga a inventarle
+una medianoche, y peor, la inventa `rrule` al parsear el `DTSTART` **en su propia
+zona** (`Tz::LOCAL`, la del sistema), que no se puede cambiar desde afuera. El
+feriado aparecía un día antes en cualquier zona que no fuera la de la máquina. Se
+guarda la fecha tal como viene.
 
 **El inicio automático no vive en `settings`, y esa es la decisión del ítem.** La
 verdad la tiene el sistema operativo, que lo puede apagar desde Ajustes sin pasar
@@ -717,6 +827,28 @@ Santiago pasaban por casualidad:
 
 La regla quedó en la skill de tests: **si tocas fechas, corre también
 `TZ=UTC pnpm test`.**
+
+**Pero `TZ=` era el único instrumento, y no alcanzaba.** Es global al proceso, así
+que no se puede variar entre casos: un archivo con fixtures en Santiago y otro que
+necesita Tokio no pueden convivir. Eso dejaba dos tests de ICS fallando en
+`Pacific/Kiritimati` **sin arreglo posible**, porque su fixture solo es cierta leída
+desde Chile. Desde que la zona viaja por parámetro, cada caso declara la suya:
+`ics.rs` fija `TZ_FIXTURES` para todo su módulo, y `repo.rs` y `date.ts` pasan la
+zona por argumento donde importa. La suite pasa hoy en `UTC`, `America/Santiago`,
+`Pacific/Kiritimati` (+14), `Pacific/Chatham` (+13:45), `Asia/Kathmandu` (+5:45),
+`Africa/Cairo`, `America/Havana`, `Asia/Tokyo` y `Europe/Madrid`.
+
+`TZ=UTC` sigue valiendo como canario —es lo que corre CI— pero ya no es lo único
+que hay. **La regla nueva: un test sobre fechas declara su zona; si depende de la
+del entorno, todavía no está terminado.**
+
+**Un barrido vale más que un caso elegido a dedo.** Para las fronteras de día el
+test que sirve no es "el 2026-04-05 funciona": es *toda medianoche de toda zona de
+tzdata entre 2020 y 2030 resuelve y avanza*. Son ~2.500 días × ~600 zonas, corre en
+menos de un segundo, y habría atrapado los dos bugs de `.single()` el día que se
+escribieron. El equivalente end-to-end es el que barre dos años de semanas de
+`local_days` exigiendo siete días y ventanas que se toquen sin huecos. Elegir la
+fecha del salto a mano requiere acertarla; barrer no.
 
 **El mock puede estar de acuerdo con el front y los dos equivocados.** Pasó dos
 veces con nombres de campo, y la segunda dejó dos vistas rotas **días** dentro de

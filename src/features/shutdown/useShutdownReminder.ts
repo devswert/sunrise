@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { api, isTauri } from "../../lib/ipc";
+import { nowHhmm } from "../../lib/date";
 import { useToday } from "../../lib/day";
 import { SettingKey, useSettingsStore, workHours } from "../../lib/settings";
 import { shouldRemindShutdown } from "./dailyLog";
@@ -20,12 +21,6 @@ export function markAfter(result: NotifyResult): boolean {
 
 /** Cada cuánto se mira el reloj. El aviso es de una vez al día, no al segundo. */
 const INTERVALO_MS = 60_000;
-
-/** `HH:mm` local. */
-function ahoraHhmm(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 /**
  * Avisa, una vez al día, que llegó la hora de cerrar.
@@ -64,7 +59,7 @@ export function useShutdownReminder() {
     let alive = true;
     const look = async () => {
       const { end } = workHours(values);
-      const ahora = ahoraHhmm();
+      const ahora = nowHhmm();
       // Los dos cortes baratos, antes de tocar la base.
       if (values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === today) return;
       if (ahora < end) return;

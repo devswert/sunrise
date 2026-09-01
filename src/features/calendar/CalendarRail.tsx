@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, X } from "lucide-react";
 import type { Category, Task, DayWork } from "../../lib/types";
-import { weekdayLabel } from "../../lib/date";
+import { nowMinutes, weekdayLabel } from "../../lib/date";
 import { buildRail, hourLabel, type BloqueRail } from "./railLayout";
 
 /** Alto de una hora de grilla, en px. La geometría se calcula en minutos. */
@@ -87,6 +87,10 @@ export function CalendarRail({
   // La grilla es de 24 h, así que al montar hay que llevarla a la jornada: si
   // no, el rail abre siempre en la medianoche y hay que bajar a mano.
   const scrollRef = useRef<HTMLDivElement>(null);
+  // `jornadaDesdeMin` queda fuera de las dependencias **a propósito**: con él en
+  // la lista, mover la hora de inicio en Configs le arrebataría el scroll a quien
+  // esté leyendo el rail. Se lee el valor del momento en que corre el efecto.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: solo al montar y al cambiar de día
   useEffect(() => {
     // En el frame siguiente: al correr el efecto el contenedor todavía puede no
     // tener alto —el flex de la vista no terminó de resolverse— y asignar
@@ -107,10 +111,10 @@ export function CalendarRail({
   return (
     <aside className={`rail${className ? ` ${className}` : ""}`} aria-label="Agenda del día">
       {/* Dos cabeceras y no una, y la condición es la misma que decide si el rail
-        * es un panel: montado fijo en Today la vista ya dice de qué día es y el
-        * rótulo de una línea alcanza. Como panel usa `panel-head`, la cabecera
-        * compartida con el backlog (`week.css`): los dos se abren en el mismo
-        * lugar y se alternan, así que tienen que verse iguales. */}
+       * es un panel: montado fijo en Today la vista ya dice de qué día es y el
+       * rótulo de una línea alcanza. Como panel usa `panel-head`, la cabecera
+       * compartida con el backlog (`week.css`): los dos se abren en el mismo
+       * lugar y se alternan, así que tienen que verse iguales. */}
       {onClose ? (
         <header className="panel-head">
           <div className="panel-head__row">
@@ -232,7 +236,6 @@ export function CalendarRail({
           </div>
         </div>
       </div>
-
     </aside>
   );
 }
@@ -280,15 +283,10 @@ function colorDe(t: Task, categoryMap: Map<number, Category>): React.CSSProperti
  * `checkDayChange` en `lib/day.ts`.
  */
 function useMinutoActual(): number {
-  const [min, setMin] = useState(minutoDelReloj);
+  const [min, setMin] = useState(nowMinutes);
   useEffect(() => {
-    const id = setInterval(() => setMin(minutoDelReloj()), 30_000);
+    const id = setInterval(() => setMin(nowMinutes()), 30_000);
     return () => clearInterval(id);
   }, []);
   return min;
-}
-
-function minutoDelReloj(): number {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
 }

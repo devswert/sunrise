@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   Download,
+  Globe,
   Plus,
   RotateCcw,
   Settings as SettingsIcon,
   Trash2,
 } from "lucide-react";
-import { api } from "../../lib/ipc";
+import { api, isTauri } from "../../lib/ipc";
 import { PALETTE } from "../../lib/palette";
 import type { AppUpdate, Category } from "../../lib/types";
 import { formatMinutes, parseDuration } from "../../lib/capacity";
@@ -23,12 +24,14 @@ import { TABS, type TabId, sectionIcon, visibleTabs } from "./secciones";
 import {
   SettingKey,
   prioritiesOn,
+  timezone,
   useCapacitySettings,
   useCollapsedWeekdays,
   useSettingsStore,
   useWorkHours,
 } from "../../lib/settings";
-import { isoWeekdayLabel } from "../../lib/date";
+import { isoWeekdayLabel, systemZone } from "../../lib/date";
+import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { announcementFor } from "../../lib/changelog";
 import { useUpdateStore } from "../updates/updateStore";
 import { minutesFromTime } from "../calendar/railLayout";
@@ -43,7 +46,6 @@ import {
   resolveShortcuts,
   shortcutKey,
 } from "../../lib/shortcuts";
-
 
 /** Cada sección es una card con su título y bajada. */
 function Card({
@@ -195,6 +197,7 @@ function GeneralCard() {
         </div>
       </div>
 
+      <ZonaField />
       <JornadaFields />
       <CollapsedDaysField />
       <Prioridades />
@@ -273,8 +276,8 @@ function CollapsedDaysField() {
       <div className="set-field__text">
         <span className="set-field__label">Días plegados</span>
         <span className="set-note">
-          Se dibujan como una tira angosta y no reciben tareas arrastradas; un click los
-          abre. <strong>Hoy nunca se pliega</strong>, aunque esté marcado.
+          Se dibujan como una tira angosta y no reciben tareas arrastradas; un click los abre.{" "}
+          <strong>Hoy nunca se pliega</strong>, aunque esté marcado.
         </span>
       </div>
       <div className="set-field__control">
@@ -345,7 +348,7 @@ function InicioAutomatico() {
           Abrir sunrise al iniciar sesión
         </label>
         {/* Solo el fallo. El ajuste se explica solo, y la nota que estaba acá
-          * hablaba del respaldo y del cierre del día, que son otras secciones. */}
+         * hablaba del respaldo y del cierre del día, que son otras secciones. */}
         {error && (
           <span className="set-note is-error">
             No se pudo cambiar el inicio automático: {error}
@@ -485,8 +488,8 @@ function Actualizaciones() {
           </span>
         </button>
         {/* Un link y no un tercer botón: el único que hace algo acá es "Buscar" —
-          * el resto es abrir un modal de lectura, y dos botones del mismo peso
-          * hacían dudar cuál era la acción de la sección. */}
+         * el resto es abrir un modal de lectura, y dos botones del mismo peso
+         * hacían dudar cuál era la acción de la sección. */}
         {hayAnuncio && (
           <button type="button" className="set-note__link" onClick={() => showWhatsNew(version)}>
             Ver lo nuevo de la {version}
@@ -494,8 +497,92 @@ function Actualizaciones() {
         )}
       </div>
       {/* Las notas del Release en crudo: es markdown escrito a mano y puede venir
-        * largo, así que va en un bloque aparte, a lo ancho del campo. */}
+       * largo, así que va en un bloque aparte, a lo ancho del campo. */}
       {hay?.notes && <p className="upd-notas">{hay.notes}</p>}
+    </div>
+  );
+}
+
+/**
+ * La zona en la que se vive el día.
+ *
+ * **Qué mueve y qué no.** Mueve toda frontera de día: dónde empieza "hoy" para el
+ * taxímetro, qué entra en el rail, cómo se reparte el rollup semanal y la bitácora.
+ * No mueve las horas de reloj que escribiste tú: una tarea puesta a las 09:00 sigue
+ * a las 09:00, porque "a las nueve de la mañana" es una intención y no un instante.
+ * Sí mueven las reuniones importadas, que son instantes reales y traen su propia
+ * zona en el feed — por eso al cambiar esto se vuelven a sincronizar los feeds.
+ *
+ * **Los rollups pasados cambian**, y es lo correcto: los instantes están guardados
+ * en UTC y la zona es solo el lente con el que se agrupan por día.
+ *
+ * Vacía = la del sistema, y por eso el ajuste arranca sin efecto.
+ */
+function ZonaField() {
+  const values = useSettingsStore((s) => s.values);
+  const setSetting = useSettingsStore((s) => s.set);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const elegida = timezone(values);
+  const delSistema = systemZone();
+
+  const options = useMemo<SearchOption[]>(() => {
+    // `supportedValuesOf` es lo que sabe la plataforma; si falta, queda al menos la
+    // del sistema para que el selector no aparezca vacío.
+    // El tipo se ensancha acá y no en `tsconfig`: `supportedValuesOf` no está en
+    // la lib de este target, y subir la lib entera por una función traería un
+    // montón de APIs que la app no puede asumir.
+    const conZonas = Intl as typeof Intl & { supportedValuesOf?: (k: string) => string[] };
+    let zonas: string[] = [];
+    try {
+      zonas = conZonas.supportedValuesOf?.("timeZone") ?? [];
+    } catch {
+      zonas = [];
+    }
+    if (!zonas.length) zonas = [delSistema];
+    return zonas.map((z) => ({ value: z, label: z.replace(/_/g, " "), hint: z.split("/")[0] }));
+  }, [delSistema]);
+
+  const guardar = async (v: string | null) => {
+    await setSetting(SettingKey.TIMEZONE, v ?? "");
+    setOpen(false);
+    // Las reuniones importadas quedaron con la hora de reloj de la zona vieja: se
+    // derivó al importar. Volver a sincronizar es lo que las corrige, y reusa el
+    // camino que ya existe en vez de duplicar la derivación de `ics.rs`.
+    if (isTauri()) void api.syncCalendarFeeds();
+  };
+
+  return (
+    <div className="set-field set-field--wide">
+      <div className="set-field__text">
+        <span className="set-field__label">Zona horaria</span>
+        <span className="set-note">
+          Dónde empieza y termina cada día. Las horas que escribiste tú no se mueven;{" "}
+          <strong>los totales por día sí se recalculan</strong>, incluidos los de semanas pasadas.
+        </span>
+      </div>
+      <div className="set-field__control">
+        <div className="chip-wrap" ref={ref}>
+          <button
+            type="button"
+            className={`chip${open ? " is-open" : ""}${elegida ? " is-set" : ""}`}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <Globe size={14} /> {(elegida ?? delSistema).replace(/_/g, " ")}
+          </button>
+          {open && (
+            <Popover anchorRef={ref} onClose={() => setOpen(false)}>
+              <SearchSelect
+                options={options}
+                value={elegida}
+                placeholder="Buscar zona…"
+                clearLabel={`La del sistema (${delSistema.replace(/_/g, " ")})`}
+                onSelect={(v) => void guardar(v)}
+              />
+            </Popover>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -625,15 +712,11 @@ function ShortcutsCard() {
   }, [capturing, resolved, setSetting]);
 
   return (
-    <Card
-      id="atajos"
-      title="Atajos"
-      hint="Requieren ⌘ (o Ctrl). Se ignoran mientras escribes."
-    >
+    <Card id="atajos" title="Atajos" hint="Requieren ⌘ (o Ctrl). Se ignoran mientras escribes.">
       {/* Cada atajo es un campo como los de General: nombre a la izquierda, su
-        * control a la derecha, separados por la misma divisoria. Antes eran cajas
-        * apiladas, y seis cajas dentro de una card es una lista dentro de una
-        * lista. */}
+       * control a la derecha, separados por la misma divisoria. Antes eran cajas
+       * apiladas, y seis cajas dentro de una card es una lista dentro de una
+       * lista. */}
       <ul className="set-list set-list--campos">
         {SHORTCUT_ACTIONS.map((a) => {
           const esDefault = resolved[a.id] === a.fallback;
@@ -643,25 +726,25 @@ function ShortcutsCard() {
                 <span className="set-field__label">{a.label}</span>
               </div>
               <div className="set-field__control set-field__control--fila hotkey-grupo">
-              <button
-                className={`hotkey${capturing === a.id ? " is-capturing" : ""}`}
-                aria-label={`Cambiar atajo de ${a.label}`}
-                onClick={() => {
-                  setError(null);
-                  setCapturing((c) => (c === a.id ? null : a.id));
-                }}
-              >
-                {capturing === a.id ? "Presiona…" : displayCombo(resolved[a.id])}
-              </button>
-              <button
-                className="set-row__icon"
-                aria-label={`Restaurar atajo de ${a.label}`}
-                disabled={esDefault}
-                title={esDefault ? "Ya es el de fábrica" : "Restaurar el de fábrica"}
-                onClick={() => void setSetting(shortcutKey(a.id) as SettingKey, "")}
-              >
-                <RotateCcw size={14} />
-              </button>
+                <button
+                  className={`hotkey${capturing === a.id ? " is-capturing" : ""}`}
+                  aria-label={`Cambiar atajo de ${a.label}`}
+                  onClick={() => {
+                    setError(null);
+                    setCapturing((c) => (c === a.id ? null : a.id));
+                  }}
+                >
+                  {capturing === a.id ? "Presiona…" : displayCombo(resolved[a.id])}
+                </button>
+                <button
+                  className="set-row__icon"
+                  aria-label={`Restaurar atajo de ${a.label}`}
+                  disabled={esDefault}
+                  title={esDefault ? "Ya es el de fábrica" : "Restaurar el de fábrica"}
+                  onClick={() => void setSetting(shortcutKey(a.id) as SettingKey, "")}
+                >
+                  <RotateCcw size={14} />
+                </button>
               </div>
             </li>
           );
@@ -867,113 +950,114 @@ function ChannelsCard() {
           const hijos = childrenOf(p.id);
           const abierto = abiertos.has(p.id);
           return (
-          <li key={p.id} className="set-group">
-            <ul className="set-list">
-              <li className="set-row set-row--contexto">
-                {/* El chevron y no la fila entera: la fila lleva un input que se
-                  * edita con un click, y ese click no puede además plegar.
-                  *
-                  * Sin canales no hay chevron —no hay nada que abrir—, pero el
-                  * hueco se conserva para que los nombres de todos los contextos
-                  * arranquen en la misma columna. */}
-                {hijos.length > 0 ? (
-                  <button
-                    className="set-row__chevron"
-                    aria-expanded={abierto}
-                    aria-label={`${abierto ? "Cerrar" : "Abrir"} ${p.name}`}
-                    onClick={() => toggle(p.id)}
-                  >
-                    <ChevronRight size={14} aria-hidden />
-                  </button>
-                ) : (
-                  <span className="set-row__chevron is-empty" aria-hidden />
-                )}
-                <ColorDot value={p.color} onChange={(color) => recolor(p, color)} />
-                <input
-                  className="set-row__input"
-                  /* El nombre lleva el color de su canal, como el chip `#tag` de
+            <li key={p.id} className="set-group">
+              <ul className="set-list">
+                <li className="set-row set-row--contexto">
+                  {/* El chevron y no la fila entera: la fila lleva un input que se
+                   * edita con un click, y ese click no puede además plegar.
+                   *
+                   * Sin canales no hay chevron —no hay nada que abrir—, pero el
+                   * hueco se conserva para que los nombres de todos los contextos
+                   * arranquen en la misma columna. */}
+                  {hijos.length > 0 ? (
+                    <button
+                      className="set-row__chevron"
+                      aria-expanded={abierto}
+                      aria-label={`${abierto ? "Cerrar" : "Abrir"} ${p.name}`}
+                      onClick={() => toggle(p.id)}
+                    >
+                      <ChevronRight size={14} aria-hidden />
+                    </button>
+                  ) : (
+                    <span className="set-row__chevron is-empty" aria-hidden />
+                  )}
+                  <ColorDot value={p.color} onChange={(color) => recolor(p, color)} />
+                  <input
+                    className="set-row__input"
+                    /* El nombre lleva el color de su canal, como el chip `#tag` de
                      las tarjetas: es la misma cosa nombrada en dos lugares, y con
                      el punto solo había que cruzar la vista para asociarlos. El
                      token `-ink` y no el plano — es el que tiene contraste medido
                      sobre el fondo de la fila. */
-                  style={{ color: `var(--${p.color}-ink)` }}
-                  defaultValue={p.name}
-                  onBlur={(e) => {
-                    if (e.target.value.trim() && e.target.value !== p.name) {
-                      rename(p, e.target.value.trim());
-                    }
-                  }}
-                  aria-label={`Nombre de ${p.name}`}
-                  {...PLAIN_INPUT}
-                />
-                {/* Cuántos canales tiene y cuánto se usan, sin abrirlo. Es lo que
-                  * hace útil el estado cerrado: sin esto, un contexto plegado no
-                  * dice nada y hay que abrirlo para saber qué hay dentro. */}
-                <span className="set-row__uso">
-                  {/* Un contexto sin canales no dice "0 canales": es la mitad de la
-                    * frase ocupada por un cero, y lo único que informa es cuánto se
-                    * usa él mismo. */}
-                  {hijos.length > 0 && `${hijos.length} ${hijos.length === 1 ? "canal" : "canales"} · `}
-                  {totalDe(p)} {totalDe(p) === 1 ? "tarea" : "tareas"}
-                </span>
-                <button
-                  className="set-row__icon"
-                  aria-label={`Agregar canal en ${p.name}`}
-                  title="Agregar canal dentro"
-                  onClick={() => addInto(p.id)}
-                >
-                  <Plus size={14} />
-                </button>
-                <button
-                  className="set-row__icon is-danger"
-                  aria-label={`Eliminar ${p.name}`}
-                  onClick={() => remove(p.id)}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </li>
-
-              {abierto && adding === p.id && (
-                <AddRow
-                  child
-                  placeholder={`Nombre del canal en ${p.name}`}
-                  onCreate={(n, c) => create(p.id, n, c)}
-                  onCancel={() => setAdding(null)}
-                />
-              )}
-
-              {abierto &&
-                hijos.map((ch) => (
-                <li className="set-row is-child" key={ch.id}>
-                  <ColorDot value={ch.color} onChange={(color) => recolor(ch, color)} />
-                  <input
-                    className="set-row__input"
-                    style={{ color: `var(--${ch.color}-ink)` }}
-                    defaultValue={ch.name}
+                    style={{ color: `var(--${p.color}-ink)` }}
+                    defaultValue={p.name}
                     onBlur={(e) => {
-                      if (e.target.value.trim() && e.target.value !== ch.name) {
-                        rename(ch, e.target.value.trim());
+                      if (e.target.value.trim() && e.target.value !== p.name) {
+                        rename(p, e.target.value.trim());
                       }
                     }}
-                    aria-label={`Nombre de ${ch.name}`}
+                    aria-label={`Nombre de ${p.name}`}
                     {...PLAIN_INPUT}
                   />
-                  {/* Sin tareas nunca: es lo que dice que se puede borrar sin
-                    * pensarlo, que es la pregunta que uno trae a esta sección. */}
+                  {/* Cuántos canales tiene y cuánto se usan, sin abrirlo. Es lo que
+                   * hace útil el estado cerrado: sin esto, un contexto plegado no
+                   * dice nada y hay que abrirlo para saber qué hay dentro. */}
                   <span className="set-row__uso">
-                    {usage.get(ch.id) ?? 0} {(usage.get(ch.id) ?? 0) === 1 ? "tarea" : "tareas"}
+                    {/* Un contexto sin canales no dice "0 canales": es la mitad de la
+                     * frase ocupada por un cero, y lo único que informa es cuánto se
+                     * usa él mismo. */}
+                    {hijos.length > 0 &&
+                      `${hijos.length} ${hijos.length === 1 ? "canal" : "canales"} · `}
+                    {totalDe(p)} {totalDe(p) === 1 ? "tarea" : "tareas"}
                   </span>
                   <button
+                    className="set-row__icon"
+                    aria-label={`Agregar canal en ${p.name}`}
+                    title="Agregar canal dentro"
+                    onClick={() => addInto(p.id)}
+                  >
+                    <Plus size={14} />
+                  </button>
+                  <button
                     className="set-row__icon is-danger"
-                    aria-label={`Eliminar ${ch.name}`}
-                    onClick={() => remove(ch.id)}
+                    aria-label={`Eliminar ${p.name}`}
+                    onClick={() => remove(p.id)}
                   >
                     <Trash2 size={14} />
                   </button>
                 </li>
-                ))}
-            </ul>
-          </li>
+
+                {abierto && adding === p.id && (
+                  <AddRow
+                    child
+                    placeholder={`Nombre del canal en ${p.name}`}
+                    onCreate={(n, c) => create(p.id, n, c)}
+                    onCancel={() => setAdding(null)}
+                  />
+                )}
+
+                {abierto &&
+                  hijos.map((ch) => (
+                    <li className="set-row is-child" key={ch.id}>
+                      <ColorDot value={ch.color} onChange={(color) => recolor(ch, color)} />
+                      <input
+                        className="set-row__input"
+                        style={{ color: `var(--${ch.color}-ink)` }}
+                        defaultValue={ch.name}
+                        onBlur={(e) => {
+                          if (e.target.value.trim() && e.target.value !== ch.name) {
+                            rename(ch, e.target.value.trim());
+                          }
+                        }}
+                        aria-label={`Nombre de ${ch.name}`}
+                        {...PLAIN_INPUT}
+                      />
+                      {/* Sin tareas nunca: es lo que dice que se puede borrar sin
+                       * pensarlo, que es la pregunta que uno trae a esta sección. */}
+                      <span className="set-row__uso">
+                        {usage.get(ch.id) ?? 0} {(usage.get(ch.id) ?? 0) === 1 ? "tarea" : "tareas"}
+                      </span>
+                      <button
+                        className="set-row__icon is-danger"
+                        aria-label={`Eliminar ${ch.name}`}
+                        onClick={() => remove(ch.id)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </li>
           );
         })}
       </ul>
@@ -1097,7 +1181,7 @@ function useActiveTab(): [TabId, (id: TabId) => void] {
       // pantalla, no cualquiera que asome por abajo.
       { rootMargin: "-10% 0px -70% 0px", threshold: 0 },
     );
-    secciones.forEach((s) => io.observe(s));
+    for (const s of secciones) io.observe(s);
     return () => io.disconnect();
   }, []);
 

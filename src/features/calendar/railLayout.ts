@@ -1,3 +1,4 @@
+import { minutesOfDay } from "../../lib/date";
 import type { Task, DayWork } from "../../lib/types";
 
 /**
@@ -121,11 +122,13 @@ export function hourLabel(min: number): string {
   return `${h12}:${String(m).padStart(2, "0")} ${sufijo}`;
 }
 
-/** Minutos desde la medianoche **local** de un timestamp RFC 3339 en UTC. */
+/**
+ * Minutos desde la medianoche de un timestamp RFC 3339 en UTC, leídos **en la zona
+ * del usuario**. `null` si no parsea.
+ */
 export function localMinutes(iso: string): number | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.getHours() * 60 + d.getMinutes();
+  if (Number.isNaN(new Date(iso).getTime())) return null;
+  return minutesOfDay(iso);
 }
 
 /**

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { api } from "../../lib/ipc";
 import type { ActiveTimer } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
-import { todayISO } from "../../lib/date";
+import { nowHhmm, startOfDayAt, todayISO } from "../../lib/date";
 
 /** Canal de sincronización entre ventanas (main ↔ taxímetro). */
 const CHANNEL = "sunrise-timer";
@@ -66,9 +66,11 @@ function persistLast(v: LastTask | null) {
  * que se lee.
  */
 async function nextPaused(exceptId: number): Promise<LastTask | null> {
-  const now = new Date();
-  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const next = (await api.focusQueue(todayISO(), hhmm)).find((t) => t.id !== exceptId);
+  // El día y la hora tienen que salir de la misma zona: `focus_queue` compara
+  // `scheduled_time <= ?2` dentro del día `?1`, así que si el corte viniera de la
+  // zona del sistema y el día de la del usuario, la cola se ordenaría contra un
+  // reloj que no es el que el usuario ve.
+  const next = (await api.focusQueue(todayISO(), nowHhmm())).find((t) => t.id !== exceptId);
   if (!next) return null;
   return {
     taskId: next.id,
@@ -147,9 +149,10 @@ export function runTotalSeconds(startedAt: string, ahora: number = Date.now()): 
 export function runSeconds(startedAt: string, ahora: number = Date.now()): number {
   const start = new Date(startedAt).getTime();
   if (Number.isNaN(start)) return 0;
-  const medianoche = new Date(ahora);
-  medianoche.setHours(0, 0, 0, 0);
-  const from = Math.max(start, medianoche.getTime());
+  // La medianoche **de la zona del usuario**, la misma que usa `seconds_today`
+  // en Rust. Con `setHours` sobre un `Date` pelado se usaba la del sistema, y las
+  // dos puntas del contador podían hablar de días distintos.
+  const from = Math.max(start, startOfDayAt(ahora).getTime());
   return Math.max(0, Math.round((ahora - from) / 1000));
 }
 

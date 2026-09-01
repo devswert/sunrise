@@ -29,6 +29,37 @@ Acá está lo que hay que saber para **editar** esto sin romperlo.
 
 ## Las reglas que no se deben romper
 
+**La frontera del día sale de `repo::local_midnight`, y de ningún otro lado.** Es
+lo único que convierte una medianoche local a UTC, y recibe la zona **por
+parámetro** (`chrono_tz::Tz`). No escribas `chrono::Local` ni
+`from_local_datetime(...).single()` en código nuevo:
+
+- `.single()` devuelve `None` cuando la medianoche es **ambigua** (salto de otoño:
+  ocurre dos veces). Eso ya rompió `start_of_today` —caía a `Utc::now()`, o sea el
+  taxímetro en cero todo el día— y `utc_range_of_day`, que devolvía un rango vacío
+  y dejaba el rail en blanco.
+- `.earliest()` **no** cubre el caso en que la medianoche **no existe**: sobre
+  `LocalResult::None` no hay ninguna candidata que ordenar. En Santiago no pasa,
+  pero sí en otras zonas, y la zona es un ajuste del usuario.
+- El cierre de un rango de día es **la medianoche del día siguiente**, nunca
+  `inicio + 24 h`: un día con salto dura 23 o 25 horas.
+
+**La zona es un ajuste (`settings.timezone`) y viaja distinto según quién la
+necesite.** Los helpers que hacen aritmética la reciben por parámetro —para poder
+testearlos con una zona fijada, que es la razón de ser del ajuste—; los llamadores
+que no tienen `&Connection` (`bell.rs`, `start_of_today`) leen el caché de proceso
+con `repo::zone_cached()`, que invalida `set_setting`. En el front la zona vive en
+`src/lib/date.ts` y la empuja `useSettingsRuntime` con `setZone`; **nada en el front
+lee `new Date().getHours()` directo** — para eso están `nowHhmm`, `nowMinutes`,
+`minutesOfDay`, `dayInZone`, `startOfDayAt` y `todayISO`, que ya aplican la zona.
+
+**Si tocas fechas, el test declara su zona.** `TZ=` en el entorno es global al
+proceso y no se puede variar entre casos; por eso hubo tests que solo pasaban en
+Santiago. Fija la zona por parámetro (o `TZ_FIXTURES` en `ics.rs`) y, cuando la
+propiedad lo permita, **barre** en vez de elegir una fecha: el test que cubre las
+fronteras de día recorre toda medianoche de toda zona de tzdata entre 2020 y 2030 y
+tarda menos de un segundo.
+
 **`actual_seconds` acumula; nunca se recalcula desde `time_entries`.**
 `stop_timer` hace `actual_seconds = actual_seconds + seconds`. Se ve tentador
 derivar el total con un `SUM(seconds)` sobre las entradas —es más "limpio"— pero

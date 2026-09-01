@@ -17,7 +17,7 @@ tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
 rodio = "0.19"  # con decodificadores por defecto (wav/mp3/flac/vorbis)
@@ -25,6 +25,10 @@ thiserror = "2"
 icalendar = { version = "0.17.13", features = ["chrono-tz", "recurrence"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "charset", "http2", "system-proxy", "gzip"] }
 chrono-tz = "0.10.4"
+# El nombre IANA de la zona del sistema (`America/Santiago`), que `chrono::Local` no
+# expone. Ya venía en el árbol como dependencia de chrono; se declara para poder
+# usarlo desde `repo::zone` cuando el ajuste de zona está vacío.
+iana-time-zone = "0.1"
 # `macros` es por el `select!` del vigilante de la campana (`bell.rs`), que espera
 # el momento de sonar o el timbre de "arrancó un timer", lo que llegue primero.
 tokio = { version = "1.53.1", features = ["time", "macros", "sync"] }

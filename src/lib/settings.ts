@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { api } from "./ipc";
 import { FontChoice, SUNRISE_BELL } from "./enums";
 import { useAppStore } from "./store";
+import { setZone } from "./date";
 
 /**
  * Ajustes de la app, respaldados en la tabla `settings`.
@@ -44,6 +45,12 @@ export const SettingKey = {
   FONT_BODY: "font_body",
   /** El interruptor general de prioridades. Solo lo lee el front. */
   PRIORITIES_ENABLED: "priorities_enabled",
+  /**
+   * La zona en la que se vive el día, como nombre IANA (`America/Santiago`).
+   * **La lee también Rust** (`repo::zone`), que es quien decide dónde empieza y
+   * termina cada día en la base. Vacía o ausente = la del sistema.
+   */
+  TIMEZONE: "timezone",
 } as const;
 export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
 
@@ -79,6 +86,33 @@ export const SETTING_DEFAULTS = {
 } as const;
 
 export type SettingsMap = Record<string, string>;
+
+/**
+ * La zona elegida, o `null` si no hay ninguna y manda la del sistema.
+ *
+ * **No la siembra ninguna migración, y es a propósito**: ausente significa "la del
+ * sistema", así que el ajuste arranca siendo un no-op y no hay datos que convertir.
+ * Un valor que `Intl` no reconoce también cae a `null` en vez de romper: un ajuste
+ * corrupto no debe dejar la app sin "hoy".
+ */
+export function timezone(values: SettingsMap): string | null {
+  const raw = values[SettingKey.TIMEZONE]?.trim();
+  if (!raw) return null;
+  // **Solo nombres IANA, y el motivo es la otra punta del puente.** `Intl` acepta
+  // también un desplazamiento fijo (`-04:00`), pero `chrono_tz` en Rust no lo
+  // parsea: aceptarlo acá dejaría al front leyendo el día en −04:00 y a la base
+  // agrupándolo en la zona del sistema. Dos "hoy" distintos en la misma app es
+  // exactamente el problema que este ajuste viene a cerrar.
+  if (raw !== "UTC" && !raw.includes("/")) return null;
+  try {
+    // La forma barata de preguntarle a la plataforma si conoce la zona: construir
+    // el formateador tira `RangeError` con un nombre inválido.
+    new Intl.DateTimeFormat("en-US", { timeZone: raw });
+    return raw;
+  } catch {
+    return null;
+  }
+}
 
 /** Número finito, o el default. Cubre clave ausente, vacía o no numérica. */
 function num(values: SettingsMap, key: string, fallback: number): number {
@@ -209,9 +243,7 @@ export interface AjustesDeRespaldo {
  */
 export function backupSettings(values: SettingsMap): AjustesDeRespaldo {
   const dir = values[SettingKey.BACKUP_DIR]?.trim() ?? "";
-  const keep = Math.floor(
-    num(values, SettingKey.BACKUP_KEEP, SETTING_DEFAULTS.backupKeep),
-  );
+  const keep = Math.floor(num(values, SettingKey.BACKUP_KEEP, SETTING_DEFAULTS.backupKeep));
   return {
     dir,
     hour: hour(values, SettingKey.BACKUP_TIME, SETTING_DEFAULTS.backupTime),
@@ -344,9 +376,17 @@ export const useSettingsStore = create<SettingsState>((set) => ({
  */
 export function useSettingsRuntime() {
   const dataVersion = useAppStore((s) => s.dataVersion);
+  const values = useSettingsStore((st) => st.values);
   useEffect(() => {
     void useSettingsStore.getState().load();
   }, [dataVersion]);
+  // La zona se **empuja** a `date.ts`, que no puede preguntarla sin cerrar un ciclo
+  // de imports (ver la nota de `setZone`). Va en un efecto y no dentro de `load`
+  // para que valga igual cuando el cambio viene de la otra ventana, que llega como
+  // un `dataVersion` nuevo y no como una escritura de esta pestaña.
+  useEffect(() => {
+    setZone(timezone(values));
+  }, [values]);
 }
 
 /** Atajo para el rail: la jornada ya interpretada. */

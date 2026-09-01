@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronDown, Clock, Lock, PenLine, PieChart, Timer } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, LogDay, Objective, Task } from "../../lib/types";
-import { dateLabel, isToday, isoWeekId, parseISODate, shiftWeeks, weekdayLabel } from "../../lib/date";
+import {
+  dateLabel,
+  hhmmInZone,
+  isToday,
+  isoWeekId,
+  parseISODate,
+  shiftWeeks,
+  weekdayLabel,
+} from "../../lib/date";
 import { formatMinutes } from "../../lib/capacity";
 import { groupBy } from "../../lib/segmentos";
 import { useAppStore } from "../../lib/store";
@@ -15,13 +23,6 @@ import "./shutdown.css";
 
 /** Cuántos días se piden de una. Alcanza para un mes de bitácora. */
 const VENTANA = 30;
-
-/** `'2026-08-14T21:05:00Z'` → `'18:05'` en hora local. */
-function horaLocal(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 /** `5400` → `'1:30'`. Mismo formato de contador que las cards del tablero. */
 function reloj(seconds: number): string {
@@ -122,7 +123,7 @@ export function DailyHighlightsView() {
                   <span className="dia__estado">
                     {d.closedAt != null ? (
                       <>
-                        <Lock size={10} aria-hidden /> Cerrado {horaLocal(d.closedAt)}
+                        <Lock size={10} aria-hidden /> Cerrado {hhmmInZone(d.closedAt)}
                       </>
                     ) : (
                       <>

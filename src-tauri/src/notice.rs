@@ -29,7 +29,7 @@
 
 use std::time::Duration;
 
-use chrono::Local;
+use chrono::Utc;
 use tauri::{AppHandle, Manager};
 
 use crate::db::Db;
@@ -235,7 +235,7 @@ pub fn start_watcher(app: AppHandle) {
         // vuelta. Es la misma forma que `rung` en `bell.rs`.
         let mut avisado: Option<(i64, String)> = None;
         loop {
-            let ahora = Local::now();
+            let ahora = Utc::now().with_timezone(&crate::repo::zone_cached());
             let hoy = ahora.format("%Y-%m-%d").to_string();
             let hhmm = ahora.format("%H:%M").to_string();
 
@@ -247,7 +247,7 @@ pub fn start_watcher(app: AppHandle) {
 
             // Se relee después de dormir: lo que se leyó para calcular la espera
             // ya puede ser viejo, y esta es la lectura que decide.
-            let ahora = Local::now();
+            let ahora = Utc::now().with_timezone(&crate::repo::zone_cached());
             let hoy = ahora.format("%Y-%m-%d").to_string();
             let hhmm = ahora.format("%H:%M").to_string();
             let Some((agenda, lead)) = read(&app, &hoy) else {

@@ -10,6 +10,7 @@ import {
   noticeOn,
   planMark,
   workHours,
+  timezone,
 } from "./settings";
 import { computeCapacityLevel } from "./capacity";
 import { CapacityLevel } from "./enums";
@@ -243,7 +244,9 @@ describe("avisos", () => {
     // Con basura, inventar una decisión es peor que quedarse en lo de fábrica — y
     // "lo de fábrica" no es lo mismo para los dos.
     for (const raw of ["", "sí", "true"]) {
-      expect(noticeOn({ [SettingKey.NOTICE_SHUTDOWN]: raw }, SettingKey.NOTICE_SHUTDOWN)).toBe(true);
+      expect(noticeOn({ [SettingKey.NOTICE_SHUTDOWN]: raw }, SettingKey.NOTICE_SHUTDOWN)).toBe(
+        true,
+      );
       expect(noticeOn({ [SettingKey.NOTICE_BELL]: raw }, SettingKey.NOTICE_BELL)).toBe(false);
     }
   });
@@ -264,5 +267,32 @@ describe("avisos", () => {
     expect(noticeSound({ [SettingKey.NOTICE_SOUND]: "" })).toBe("Blow");
     expect(noticeSound({ [SettingKey.NOTICE_SOUND]: "   " })).toBe("Blow");
     expect(noticeSound({ [SettingKey.NOTICE_SOUND]: " Submarine " })).toBe("Submarine");
+  });
+});
+
+describe("la zona horaria", () => {
+  const leer = (raw: string) => timezone({ [SettingKey.TIMEZONE]: raw });
+
+  it("acepta un nombre IANA que la plataforma conoce", () => {
+    expect(leer("America/Santiago")).toBe("America/Santiago");
+    expect(leer("  Asia/Tokyo  ")).toBe("Asia/Tokyo");
+  });
+
+  it("la clave ausente o vacía significa «la del sistema»", () => {
+    expect(timezone({})).toBeNull();
+    expect(leer("")).toBeNull();
+    expect(leer("   ")).toBeNull();
+  });
+
+  it("un valor que no es una zona cae a la del sistema en vez de romper", () => {
+    // El ajuste se puede editar a mano (es una fila de `settings`), y una zona
+    // ilegible no debe dejar la app sin «hoy».
+    expect(leer("No/Existe")).toBeNull();
+    expect(leer("<script>")).toBeNull();
+    // Un desplazamiento fijo lo acepta `Intl` pero **no** `chrono_tz`, y si el
+    // front lo tomara los dos lados agruparían el día distinto. Se rechaza acá.
+    expect(leer("-04:00")).toBeNull();
+    // `UTC` es la única sin barra que sí vale, y vale en los dos lados.
+    expect(leer("UTC")).toBe("UTC");
   });
 });

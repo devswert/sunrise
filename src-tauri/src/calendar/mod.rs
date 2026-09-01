@@ -70,8 +70,16 @@ async fn try_sync(app: &AppHandle, feed: &CalendarFeed) -> Result<usize, String>
         return Ok(0);
     }
 
-    let (from_date, to_date) = ics::window(ics::today_local());
-    let events = ics::parse_events(&text, from_date, to_date)?;
+    // La zona del usuario, resuelta acá y pasada al parser. El bloque acota el
+    // `MutexGuard` para no cargarlo durante el parseo, que no lo necesita.
+    let tz = {
+        let db = app.state::<Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        repo::zone(&conn)
+    };
+
+    let (from_date, to_date) = ics::window(ics::today_in(tz));
+    let events = ics::parse_events(tz, &text, from_date, to_date)?;
     let importable: Vec<ImportableEvent> = events
         .into_iter()
         .map(|e| ImportableEvent {
@@ -96,7 +104,7 @@ async fn try_sync(app: &AppHandle, feed: &CalendarFeed) -> Result<usize, String>
     // Lo que dejó de venir en el feed. Va después del import y con los UIDs que
     // este acaba de ver, para que un evento movido dentro de la ventana no
     // parezca borrado.
-    let today = ics::today_local().format("%Y-%m-%d").to_string();
+    let today = ics::today_in(tz).format("%Y-%m-%d").to_string();
     let hecho = repo::reconcile_feed(&conn, feed.id, &seen, &today).map_err(|e| e.to_string())?;
 
     // **Con nombres, no solo cuántas.** Un "3 borradas" a secas no se puede

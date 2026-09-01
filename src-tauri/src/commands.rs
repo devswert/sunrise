@@ -623,7 +623,8 @@ pub fn create_backup(db: State<'_, Db>) -> Result<BackupFile, String> {
     let conn = db.0.lock().map_err(e)?;
     let dir = backup_dir_setting(&conn)?;
     let keep = how_many_to_keep(&conn)?;
-    backup::create_and_prune(&conn, &dir, keep, chrono::Local::now(), crate::db::is_dev()).map_err(e)
+    let ahora = chrono::Utc::now().with_timezone(&repo::zone(&conn));
+    backup::create_and_prune(&conn, &dir, keep, ahora, crate::db::is_dev()).map_err(e)
 }
 
 /// Prueba que la carpeta elegida sirva, antes de guardarla como ajuste.
@@ -668,7 +669,7 @@ pub fn restore_backup(
     let mut guard = db.0.lock().map_err(e)?;
     let db_path = app.path().app_data_dir().map_err(e)?.join(crate::db::file_name());
     let zip = std::path::Path::new(&zip_path);
-    let now = chrono::Local::now();
+    let now = chrono::Utc::now().with_timezone(&repo::zone_cached());
 
     // Los ajustes de respaldo describen **esta máquina**, no los datos: sin
     // esto, restaurar un zip hecho antes de configurar la carpeta dejaría

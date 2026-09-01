@@ -555,6 +555,132 @@ pub fn list_backlog(conn: &Connection) -> Result<Vec<Task>> {
 // time_entries (timer / taxímetro)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// La zona en la que el usuario vive el día
+// ---------------------------------------------------------------------------
+
+/// La zona resuelta, cacheada por proceso.
+///
+/// **Por qué un caché y no un parámetro enhebrado.** `start_of_today()` no recibe
+/// `&Connection` y la llaman `bell.rs`, `seconds_today` (desde dentro de un
+/// `query_row`) y media docena de sitios más: pasar la zona desde arriba obligaba a
+/// cambiar firmas en `bell.rs`, `notice.rs`, `backup.rs` y buena parte de
+/// `commands.rs` para transportar un valor que en esta app —un usuario, una
+/// máquina— es global de hecho.
+///
+/// La testeabilidad, que es el objetivo del ejercicio, no se pierde: los helpers
+/// que hacen la aritmética (`local_midnight`) siguen recibiendo la zona **por
+/// parámetro**, y el caché solo alimenta a los llamadores públicos.
+///
+/// `None` = todavía no se leyó. Lo invalida `set_setting`, que es el único camino
+/// por el que el ajuste puede cambiar.
+static ZONE: std::sync::RwLock<Option<chrono_tz::Tz>> = std::sync::RwLock::new(None);
+
+/// El nombre IANA de la zona del sistema (`America/Santiago`), o UTC si el sistema
+/// no sabe decirlo. `chrono::Local` no lo expone, y sin el nombre no se puede
+/// construir un `chrono_tz::Tz`.
+fn system_zone() -> chrono_tz::Tz {
+    iana_time_zone::get_timezone()
+        .ok()
+        .and_then(|name| name.parse().ok())
+        .unwrap_or(chrono_tz::UTC)
+}
+
+/// La zona en la que el usuario vive el día: `settings.timezone` si está y es
+/// legible, la del sistema si no.
+///
+/// **La clave no la siembra ninguna migración, y está bien**: ausente significa "la
+/// del sistema", así que el ajuste arranca como un no-op y no hay datos que migrar.
+/// Un valor ilegible (una zona que tzdata no conoce, o basura) también cae a la del
+/// sistema en vez de fallar: un ajuste corrupto no debe dejar la app sin "hoy".
+pub fn zone(conn: &Connection) -> chrono_tz::Tz {
+    if let Ok(cache) = ZONE.read() {
+        if let Some(tz) = *cache {
+            return tz;
+        }
+    }
+    let resolved = get_setting(conn, "timezone")
+        .ok()
+        .flatten()
+        .and_then(|name| name.trim().parse::<chrono_tz::Tz>().ok())
+        .unwrap_or_else(system_zone);
+    if let Ok(mut cache) = ZONE.write() {
+        *cache = Some(resolved);
+    }
+    resolved
+}
+
+/// La zona sin `&Connection` a mano, para los llamadores que no lo tienen
+/// (`bell.rs` y `start_of_today`).
+///
+/// Si el caché todavía está frío devuelve la del sistema en vez de bloquear o
+/// inventar UTC. En la app no pasa: `lib.rs` lo calienta al abrir la base, antes de
+/// que arranque cualquier vigilante. En los tests sí pasa, y es el comportamiento
+/// que se quiere — el que necesita otra zona la pasa por parámetro.
+pub(crate) fn zone_cached() -> chrono_tz::Tz {
+    ZONE.read()
+        .ok()
+        .and_then(|c| *c)
+        .unwrap_or_else(system_zone)
+}
+
+/// Olvida la zona cacheada. La llama `set_setting`, y los tests entre casos.
+pub(crate) fn forget_zone() {
+    if let Ok(mut cache) = ZONE.write() {
+        *cache = None;
+    }
+}
+
+/// Fija la zona a mano. **Solo para tests**, y es la razón de ser de todo este
+/// módulo: sin un punto de inyección, un test que afirme algo sobre fechas o horas
+/// solo puede pedir `TZ=` en el entorno, que es global al proceso y no se puede
+/// variar entre casos. Con esto, un test declara la zona que necesita y afirma algo
+/// verdadero en cualquier máquina.
+#[cfg(test)]
+pub(crate) fn force_zone(tz: chrono_tz::Tz) {
+    if let Ok(mut cache) = ZONE.write() {
+        *cache = Some(tz);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fronteras de día (medianoche local → UTC)
+// ---------------------------------------------------------------------------
+
+/// Medianoche local de `d` en UTC. **El único lugar donde se cruza esa frontera**,
+/// porque los tres casos que devuelve `from_local_datetime` importan y cada copia
+/// de este cálculo se olvidaba de alguno:
+///
+/// - `Single`: el 99% de los días.
+/// - `Ambiguous`: el salto de **otoño**, donde la medianoche ocurre dos veces (en
+///   Santiago, el 2026-04-05 y el 2027-04-04). Va la primera, que es la que
+///   empieza el día. `single()` acá devuelve `None`, y eso es lo que rompía
+///   `start_of_today` y `utc_range_of_day`: caían al fallback y el taxímetro
+///   marcaba cero todo ese día.
+/// - `None`: la medianoche **no existe**. En Santiago no pasa nunca —el salto de
+///   primavera es exactamente *a* las 00:00, así que 00:00:00 es el instante del
+///   salto y sí existe; lo que no existe es de 00:00:01 a 00:59:59— pero sí pasa
+///   en otras zonas (Africa/Cairo, America/Asuncion y unas cuantas más), y desde
+///   que la zona es un ajuste del usuario esas zonas son alcanzables. Ahí el día
+///   arranca en el primer instante que existe, y `earliest()` **no** sirve: sobre
+///   `None` no hay ninguna candidata que ordenar.
+///
+/// Genérica sobre `TimeZone` para servir igual a `chrono::Local` y a un
+/// `chrono_tz::Tz` elegido en los ajustes.
+pub(crate) fn local_midnight<Z: chrono::TimeZone>(
+    tz: &Z,
+    d: chrono::NaiveDate,
+) -> Option<DateTime<Utc>> {
+    use chrono::LocalResult;
+    let resolver = |h: u32| tz.from_local_datetime(&d.and_hms_opt(h, 0, 0)?).earliest();
+    match tz.from_local_datetime(&d.and_hms_opt(0, 0, 0)?) {
+        LocalResult::Single(dt) => Some(dt.with_timezone(&Utc)),
+        LocalResult::Ambiguous(primera, _) => Some(primera.with_timezone(&Utc)),
+        // El sondeo cubre cualquier salto real: el mayor de la base tz son 2 horas.
+        LocalResult::None => (1..=3).find_map(resolver).map(|dt| dt.with_timezone(&Utc)),
+    }
+}
+
 /// Medianoche local de hoy, en UTC (para comparar con `started_at`).
 ///
 /// La usan dos cosas que **tienen que coincidir**: el `SUM` de los segundos ya
@@ -562,12 +688,14 @@ pub fn list_backlog(conn: &Connection) -> Result<Vec<Task>> {
 /// (`bell::elapsed_today`). Si cada una calculara su propio "hoy", el contador y
 /// la campana hablarían de días distintos.
 pub(crate) fn start_of_today() -> DateTime<Utc> {
-    let now = chrono::Local::now();
-    now.date_naive()
-        .and_hms_opt(0, 0, 0)
-        .and_then(|naive| now.timezone().from_local_datetime(&naive).single())
-        .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or_else(Utc::now)
+    start_of_today_in(zone_cached())
+}
+
+/// La parte pura: medianoche de hoy **en `tz`**, en UTC. Separada para poder
+/// afirmar algo sobre una zona concreta sin depender de la del entorno.
+pub(crate) fn start_of_today_in(tz: chrono_tz::Tz) -> DateTime<Utc> {
+    let hoy = Utc::now().with_timezone(&tz).date_naive();
+    local_midnight(&tz, hoy).unwrap_or_else(Utc::now)
 }
 
 /// Segundos ya registrados **hoy** para una tarea (entradas cerradas).
@@ -667,7 +795,7 @@ pub fn stop_timer(conn: &Connection) -> Result<Option<(i64, i64)>> {
         chrono::DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))
     };
     let segments = match (rfc(&active.started_at), rfc(&ended)) {
-        (Some(a), Some(b)) => segments_by_local_day(a, b),
+        (Some(a), Some(b)) => segments_by_local_day(zone(conn), a, b),
         _ => Vec::new(),
     };
 
@@ -727,6 +855,7 @@ pub fn stop_timer(conn: &Connection) -> Result<Option<(i64, i64)>> {
 /// `GROUP BY date(started_at)`, sin que quien lo escriba tenga que saber nada de
 /// esto.
 fn segments_by_local_day(
+    tz: chrono_tz::Tz,
     start: chrono::DateTime<Utc>,
     end: chrono::DateTime<Utc>,
 ) -> Vec<(chrono::DateTime<Utc>, chrono::DateTime<Utc>)> {
@@ -738,7 +867,7 @@ fn segments_by_local_day(
     let mut cursor = start;
     // Tope de seguridad: un timer olvidado un año no debe colgar el cierre.
     for _ in 0..400 {
-        match next_local_midnight(cursor) {
+        match next_local_midnight(tz, cursor) {
             Some(cutoff) if cutoff < end => {
                 segments.push((cursor, cutoff));
                 cursor = cutoff;
@@ -751,17 +880,11 @@ fn segments_by_local_day(
 }
 
 /// Primera medianoche local **estrictamente posterior** a `t`.
-fn next_local_midnight(t: chrono::DateTime<Utc>) -> Option<chrono::DateTime<Utc>> {
-    let local = t.with_timezone(&chrono::Local);
-    let tomorrow = local.date_naive().succ_opt()?.and_hms_opt(0, 0, 0)?;
-    // `single()` no alcanza: en el salto de horario de verano la medianoche local
-    // puede no existir o existir dos veces, y ahí `earliest()` da un corte
-    // válido en vez de abandonar el partido.
-    let split = chrono::Local
-        .from_local_datetime(&tomorrow)
-        .single()
-        .or_else(|| chrono::Local.from_local_datetime(&tomorrow).earliest())?;
-    Some(split.with_timezone(&Utc))
+fn next_local_midnight(
+    tz: chrono_tz::Tz,
+    t: chrono::DateTime<Utc>,
+) -> Option<chrono::DateTime<Utc>> {
+    local_midnight(&tz, t.with_timezone(&tz).date_naive().succ_opt()?)
 }
 
 /// Segundos entre dos timestamps RFC3339 (0 si no parsean o el orden es inverso).
@@ -794,7 +917,7 @@ pub fn set_actual_seconds(conn: &Connection, task_id: i64, seconds: i64) -> Resu
     let (current, date, time) = fila.unwrap_or((0, None, None));
 
     let delta = seconds - current;
-    let stamp = adjustment_stamp(date.as_deref(), time.as_deref());
+    let stamp = adjustment_stamp(zone(conn), date.as_deref(), time.as_deref());
     let filas: Vec<(String, i64)> = match delta {
         0 => Vec::new(),
         d if d > 0 => vec![(stamp, d)],
@@ -854,9 +977,10 @@ pub fn set_actual_seconds(conn: &Connection, task_id: i64, seconds: i64) -> Resu
 fn spread_cut(conn: &Connection, task_id: i64, cut: i64, stamp: &str) -> Result<Vec<(String, i64)>> {
     use std::collections::HashMap;
 
-    /// El día local de un timestamp UTC, o `None` si no parsea.
-    fn local_day(s: &str) -> Option<String> {
-        to_utc(s).map(|t| t.with_timezone(&chrono::Local).date_naive().to_string())
+    let tz = zone(conn);
+    /// El día de un timestamp UTC **en la zona del usuario**, o `None` si no parsea.
+    fn local_day(tz: chrono_tz::Tz, s: &str) -> Option<String> {
+        to_utc(s).map(|t| t.with_timezone(&tz).date_naive().to_string())
     }
 
     // Saldo por día local, y con qué timestamp sellar el recorte de ese día: el
@@ -873,13 +997,13 @@ fn spread_cut(conn: &Connection, task_id: i64, cut: i64, stamp: &str) -> Result<
     let mut balances: HashMap<String, (String, i64)> = HashMap::new();
     for row in rows {
         let (started_at, seconds) = row?;
-        let Some(day) = local_day(&started_at) else { continue };
+        let Some(day) = local_day(tz, &started_at) else { continue };
         let cell = balances.entry(day).or_insert((started_at.clone(), 0));
         cell.0 = started_at;
         cell.1 += seconds;
     }
 
-    let target = local_day(stamp);
+    let target = local_day(tz, stamp);
     let mut order: Vec<String> = balances
         .keys()
         .filter(|d| Some(*d) != target.as_ref())
@@ -920,9 +1044,13 @@ fn spread_cut(conn: &Connection, task_id: i64, cut: i64, stamp: &str) -> Result<
 ///
 /// Tres detalles que no son adorno:
 ///
-/// - **Mediodía y no medianoche.** Chile cambia la hora, y en el salto de
-///   primavera la medianoche local **no existe**: la conversión devuelve `None` y
-///   habría que decidir algo ahí. El mediodía existe todos los días del año.
+/// - **Mediodía y no medianoche.** La medianoche es justo la hora que los saltos
+///   de horario ensucian: en Santiago la del salto de otoño ocurre **dos veces**
+///   (2026-04-05, 2027-04-04), y en otras zonas —alcanzables desde que la zona es
+///   un ajuste— directamente **no existe** (Africa/Cairo, America/Asuncion). Acá
+///   no hace falta resolver nada de eso: el mediodía existe una sola vez todos los
+///   días del año. Donde sí hay que resolverlo es en `local_midnight`, que es el
+///   único lugar que cruza esa frontera.
 /// - **Si la tarea tiene hora, se usa esa.** Es el caso que motiva la corrección
 ///   —una reunión— y así el bloque del rail cae donde ocurrió en vez de a
 ///   mediodía. Cuando la tarea ya tiene entradas reales de ese día no cambia
@@ -933,11 +1061,11 @@ fn spread_cut(conn: &Connection, task_id: i64, cut: i64, stamp: &str) -> Result<
 /// Consecuencia asumida: un ajuste sobre una tarea de otro día **ya no cuenta en
 /// el contador del taxímetro**, que mide `started_at >= start_of_today()`. Es lo
 /// correcto —ese contador es el de la sesión de hoy— pero antes sí aparecía ahí.
-fn adjustment_stamp(date: Option<&str>, time: Option<&str>) -> String {
+fn adjustment_stamp(tz: chrono_tz::Tz, date: Option<&str>, time: Option<&str>) -> String {
     let Some(day) = date.and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()) else {
         return now();
     };
-    if day > chrono::Local::now().date_naive() {
+    if day > Utc::now().with_timezone(&tz).date_naive() {
         return now();
     }
 
@@ -949,10 +1077,10 @@ fn adjustment_stamp(date: Option<&str>, time: Option<&str>) -> String {
     // esa fecha no tuvo (el salto de DST se come una hora entera).
     let local = hhmm
         .and_then(|(h, m)| day.and_hms_opt(h, m, 0))
-        .and_then(|naive| chrono::Local.from_local_datetime(&naive).earliest())
+        .and_then(|naive| tz.from_local_datetime(&naive).earliest())
         .or_else(|| {
             day.and_hms_opt(12, 0, 0)
-                .and_then(|naive| chrono::Local.from_local_datetime(&naive).earliest())
+                .and_then(|naive| tz.from_local_datetime(&naive).earliest())
         });
 
     match local {
@@ -994,7 +1122,7 @@ pub fn list_time_entries(conn: &Connection, task_id: i64) -> Result<Vec<TimeEntr
 /// hora inventada. `seconds` sí suma los ajustes: el total es correcto, lo que no
 /// se sabe es a qué hora ocurrió.
 pub fn day_work(conn: &Connection, date: &str) -> Result<Vec<DayWork>> {
-    let (from_date, to_date) = utc_range_of_day(date);
+    let (from_date, to_date) = utc_range_of_day(zone(conn), date);
     let mut stmt = conn.prepare(
         "SELECT task_id,
                 MIN(CASE WHEN ended_at IS NULL OR ended_at <> started_at
@@ -1020,19 +1148,18 @@ pub fn day_work(conn: &Connection, date: &str) -> Result<Vec<DayWork>> {
 }
 
 /// `'2026-08-15'` → el par `[00:00, 24:00)` de ese día **local**, en UTC.
-fn utc_range_of_day(date: &str) -> (String, String) {
+fn utc_range_of_day(tz: chrono_tz::Tz, date: &str) -> (String, String) {
     let day = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d");
-    let midnight = day.ok().and_then(|d| {
-        let naive = d.and_hms_opt(0, 0, 0)?;
-        chrono::Local.from_local_datetime(&naive).single()
+    // El cierre es la medianoche del día **siguiente**, no `start + 24 h`: en el
+    // salto de horario el día local dura 23 o 25 horas.
+    let rango = day.ok().and_then(|d| {
+        Some((
+            local_midnight(&tz, d)?,
+            local_midnight(&tz, d.succ_opt()?)?,
+        ))
     });
-    match midnight {
-        Some(start) => (
-            start.with_timezone(&Utc).to_rfc3339(),
-            (start + chrono::Duration::days(1))
-                .with_timezone(&Utc)
-                .to_rfc3339(),
-        ),
+    match rango {
+        Some((start, end)) => (start.to_rfc3339(), end.to_rfc3339()),
         // Fecha ilegible: un rango vacío devuelve cero filas en vez de todas.
         None => (String::new(), String::new()),
     }
@@ -1057,21 +1184,14 @@ fn to_utc(s: &str) -> Option<chrono::DateTime<Utc>> {
 /// trabajado después de las 20:00 en Chile. La misma trampa que ya se pagó en
 /// `day_work`, `completeAndAdvance` y `timeByDay`.
 fn local_days(
+    tz: chrono_tz::Tz,
     from_date: &str,
     n: i64,
 ) -> Vec<(String, chrono::DateTime<Utc>, chrono::DateTime<Utc>)> {
     let Ok(first) = chrono::NaiveDate::parse_from_str(from_date, "%Y-%m-%d") else {
         return Vec::new();
     };
-    let midnight = |d: chrono::NaiveDate| -> Option<chrono::DateTime<Utc>> {
-        let naive = d.and_hms_opt(0, 0, 0)?;
-        // `single()` no alcanza en el salto de horario: ver `next_local_midnight`.
-        chrono::Local
-            .from_local_datetime(&naive)
-            .single()
-            .or_else(|| chrono::Local.from_local_datetime(&naive).earliest())
-            .map(|dt| dt.with_timezone(&Utc))
-    };
+    let midnight = |d: chrono::NaiveDate| local_midnight(&tz, d);
 
     (0..n)
         .filter_map(|i| {
@@ -1327,7 +1447,7 @@ fn plan_by_day(conn: &Connection, days: &Semana) -> Result<Vec<(i64, i64)>> {
 pub fn weekly_rollup(conn: &Connection, week_start: &str) -> Result<WeeklyRollup> {
     use std::collections::HashMap;
 
-    let week = local_days(week_start, 7);
+    let week = local_days(zone(conn), week_start, 7);
     if week.is_empty() {
         return Ok(WeeklyRollup {
             week_start: week_start.to_string(),
@@ -1467,7 +1587,7 @@ pub fn daily_log(conn: &Connection, to_date: &str, days: i64) -> Result<Vec<LogD
     let Some(start) = end.checked_sub_signed(chrono::Duration::days(days - 1)) else {
         return Ok(Vec::new());
     };
-    let range = local_days(&start.format("%Y-%m-%d").to_string(), days);
+    let range = local_days(zone(conn), &start.format("%Y-%m-%d").to_string(), days);
     if range.is_empty() {
         return Ok(Vec::new());
     }
@@ -1939,6 +2059,11 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![key, value],
     )?;
+    // El único camino por el que la zona puede cambiar, así que el único lugar
+    // donde hace falta tirar el caché. Se invalida sin mirar la clave: comparar
+    // strings acá sería una segunda fuente de verdad que se puede desincronizar,
+    // y releer la zona cuesta un `SELECT` por clave escrita.
+    forget_zone();
     Ok(())
 }
 
@@ -2979,7 +3104,7 @@ mod tests {
             .with_timezone(&Utc);
         let b = a + chrono::Duration::hours(3);
 
-        let segments = segments_by_local_day(a, b);
+        let segments = segments_by_local_day(zone_cached(), a, b);
         assert_eq!(segments.len(), 1, "el caso normal no debe tocarse");
         assert_eq!(segments[0], (a, b));
     }
@@ -2996,7 +3121,7 @@ mod tests {
             .unwrap()
             .with_timezone(&Utc);
 
-        let segments = segments_by_local_day(a, b);
+        let segments = segments_by_local_day(zone_cached(), a, b);
         assert_eq!(segments.len(), 3);
         // Encadenados y sin huecos: el fin de uno es el inicio del siguiente.
         assert_eq!(segments[0].0, a);
@@ -5055,8 +5180,8 @@ mod tests {
 
     #[test]
     fn sin_hora_el_ajuste_cae_al_mediodia_de_ese_dia() {
-        // Mediodía y no medianoche: en el salto de primavera la medianoche local
-        // no existe y la conversión se queda sin respuesta.
+        // Mediodía y no medianoche: la medianoche es la hora que los saltos de
+        // horario ensucian (ocurre dos veces, o en otras zonas ninguna).
         let c = conn();
         let dia = hace(4);
         let t = create_task(&c, new_task("sin hora", Some(&dia))).unwrap();
@@ -5171,7 +5296,7 @@ mod tests {
     /// `day_work`: es el único modo de ver si quedó en negativo.
     fn saldo(c: &Connection, task_id: i64, dia: &str) -> i64 {
         let (start, end) = {
-            let d = local_days(dia, 1);
+            let d = local_days(zone_cached(), dia, 1);
             (d[0].1.to_rfc3339(), d[0].2.to_rfc3339())
         };
         c.query_row(
@@ -5274,4 +5399,101 @@ mod tests {
         // Pero el total de la tarea sí lo tiene: no se perdió, cambió de día.
         assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 900);
     }
+
+    // -----------------------------------------------------------------------
+    // Fronteras de día (`local_midnight`)
+    // -----------------------------------------------------------------------
+    //
+    // Estos van con la zona **fijada por parámetro**, no con la del entorno: son
+    // los únicos tests del archivo que pueden afirmar algo sobre un salto de
+    // horario sin depender de cómo esté configurada la máquina que los corre.
+
+    #[test]
+    fn la_medianoche_que_ocurre_dos_veces_arranca_el_dia_en_la_primera() {
+        // La Habana atrasa el reloj a las 00:00, así que esa medianoche pasa dos
+        // veces. `single()` devuelve `None` ahí, y era eso lo que hacía caer a
+        // `start_of_today` en su fallback `Utc::now()` ("hoy empezó ahora": el
+        // taxímetro en cero todo el día) y a `utc_range_of_day` en un rango vacío
+        // (el rail del día en blanco).
+        let tz = chrono_tz::America::Havana;
+        let dia = chrono::NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
+
+        let inicio = local_midnight(&tz, dia).expect("la medianoche ambigua sí resuelve");
+
+        // La primera de las dos, que es la que empieza el día.
+        assert_eq!(inicio.to_rfc3339(), "2026-11-01T04:00:00+00:00");
+        // Y ese día dura 25 horas, que es justo lo que se perdía calculando el
+        // cierre como `inicio + 24 h` en vez de como la medianoche del día
+        // siguiente: la última hora quedaba afuera del rango.
+        let fin = local_midnight(&tz, dia.succ_opt().unwrap()).unwrap();
+        assert_eq!((fin - inicio).num_hours(), 25);
+    }
+
+    #[test]
+    fn una_medianoche_que_no_existe_arranca_en_el_primer_instante_del_dia() {
+        // Santiago adelanta el reloj exactamente *a* las 00:00 del 2026-09-06, así
+        // que esa medianoche local no ocurre: se salta de 23:59:59 a 01:00. Acá
+        // `earliest()` **no** sirve —sobre `None` no hay ninguna candidata que
+        // ordenar— y el día tiene que arrancar en el primer instante que existe.
+        //
+        // Ojo que este caso llega con la Parte B: hoy `local_midnight` se llama con
+        // `chrono::Local`, y la tzdata del sistema lee ese mismo borde como
+        // `Single`. Las dos fuentes discrepan sobre Chile, y el helper cubre las
+        // dos lecturas.
+        let tz = chrono_tz::America::Santiago;
+        let dia = chrono::NaiveDate::from_ymd_opt(2026, 9, 6).unwrap();
+
+        let inicio = local_midnight(&tz, dia).expect("el día arranca cuando puede");
+
+        assert_eq!(inicio.with_timezone(&tz).format("%H:%M").to_string(), "01:00");
+        assert_eq!(inicio.with_timezone(&tz).date_naive(), dia);
+        // Y ese día dura 23 horas.
+        let fin = local_midnight(&tz, dia.succ_opt().unwrap()).unwrap();
+        assert_eq!((fin - inicio).num_hours(), 23);
+    }
+
+    #[test]
+    fn ninguna_zona_deja_un_dia_sin_frontera() {
+        // El barrido que faltaba. `local_midnight` tiene que responder para toda
+        // medianoche de toda zona: si devolviera `None` en alguna, `local_days` la
+        // descartaría con su `filter_map` —**y también el día anterior**, porque
+        // cada tupla necesita la medianoche del día siguiente— y una semana
+        // perdería dos días en silencio.
+        for tz in chrono_tz::TZ_VARIANTS.iter() {
+            let mut d = chrono::NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+            let fin = chrono::NaiveDate::from_ymd_opt(2030, 12, 31).unwrap();
+            while d <= fin {
+                let Some(inicio) = local_midnight(tz, d) else {
+                    panic!("{tz} se quedó sin medianoche el {d}");
+                };
+                let siguiente = local_midnight(tz, d.succ_opt().unwrap()).unwrap();
+                assert!(siguiente > inicio, "{tz} no avanza el {d}");
+                d = d.succ_opt().unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn una_semana_con_salto_de_horario_sigue_teniendo_siete_dias() {
+        // Lo mismo pero de punta a punta y en la zona del entorno, que es la que
+        // usa `local_days` hoy. Barre dos años de lunes para no depender de que
+        // alguien acierte la fecha del salto.
+        let mut lunes = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        let fin = chrono::NaiveDate::from_ymd_opt(2027, 12, 27).unwrap();
+        while lunes <= fin {
+            let etiqueta = lunes.format("%Y-%m-%d").to_string();
+            let dias = local_days(zone_cached(), &etiqueta, 7);
+            assert_eq!(dias.len(), 7, "la semana del {etiqueta} tiene que traer 7 días");
+            for (fecha, inicio, cierre) in &dias {
+                assert!(cierre > inicio, "la ventana del {fecha} tiene que avanzar");
+            }
+            // Y las ventanas se tocan sin huecos ni solapes: el cierre de un día es
+            // el arranque del siguiente. Un hueco perdería tiempo trackeado.
+            for par in dias.windows(2) {
+                assert_eq!(par[0].2, par[1].1, "hueco entre {} y {}", par[0].0, par[1].0);
+            }
+            lunes = lunes.checked_add_signed(chrono::Duration::days(7)).unwrap();
+        }
+    }
+
 }
