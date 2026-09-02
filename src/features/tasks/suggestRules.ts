@@ -107,9 +107,9 @@ export function parseTimeRules(raw: string | undefined): TimeRule[] {
     const { minutes, words } = it as { minutes?: unknown; words?: unknown };
     if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes <= 0) continue;
     if (!Array.isArray(words)) continue;
-    const limpias = cleanWords(words.filter((w): w is string => typeof w === "string"));
-    if (limpias.length === 0) continue;
-    out.push({ minutes: Math.round(minutes), words: limpias });
+    const clean = cleanWords(words.filter((w): w is string => typeof w === "string"));
+    if (clean.length === 0) continue;
+    out.push({ minutes: Math.round(minutes), words: clean });
   }
   return out;
 }
@@ -126,9 +126,9 @@ export function parseChannelRules(raw: string | undefined): ChannelRule[] {
     const { categoryId, words } = it as { categoryId?: unknown; words?: unknown };
     if (typeof categoryId !== "number" || !Number.isInteger(categoryId)) continue;
     if (!Array.isArray(words)) continue;
-    const limpias = cleanWords(words.filter((w): w is string => typeof w === "string"));
-    if (limpias.length === 0) continue;
-    out.push({ categoryId, words: limpias });
+    const clean = cleanWords(words.filter((w): w is string => typeof w === "string"));
+    if (clean.length === 0) continue;
+    out.push({ categoryId, words: clean });
   }
   return out;
 }

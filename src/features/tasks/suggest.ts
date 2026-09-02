@@ -1,6 +1,6 @@
 import { TIME_PRESETS } from "../../lib/capacity";
 import type { Category, Objective } from "../../lib/types";
-import { algunaEs, mismaPalabra, normalize } from "./matching";
+import { anyMatches, sameWord, normalize } from "./matching";
 import {
   DEFAULT_TIME_RULES,
   type ChannelRule,
@@ -83,13 +83,13 @@ function tokens(text: string): string[] {
  *
  * Lo que deja afuera es lo importante: un compuesto con guion —`#docs-api`— no
  * entra, y por eso no puede terminar sugiriendo el canal `docs`. Un nombre
- * compuesto es un nombre propio y se compara literal (`calzaNombre`); parecerse
+ * compuesto es un nombre propio y se compara literal (`nameAppears`); parecerse
  * a un pedazo de él no dice nada.
  */
-function palabrasComparables(text: string): string[] {
+function comparableWords(text: string): string[] {
   const out: string[] = [];
-  for (const crudo of normalize(text).split(/\s+/)) {
-    const w = crudo.replace(/^[^a-z0-9#]+/, "").replace(/[^a-z0-9]+$/, "");
+  for (const raw of normalize(text).split(/\s+/)) {
+    const w = raw.replace(/^[^a-z0-9#]+/, "").replace(/[^a-z0-9]+$/, "");
     if (!/^#?[a-z0-9]+$/.test(w)) continue;
     out.push(w.startsWith("#") ? w.slice(1) : w);
   }
@@ -120,35 +120,35 @@ export function suggestMinutes(
 ): number | undefined {
   const t = normalize(title);
 
-  const horaYMedia = /\b(?:1|una)\s*h(?:ora)?\s*y\s*media\b/.test(t);
-  if (horaYMedia) return 90;
+  const hourAndAHalf = /\b(?:1|una)\s*h(?:ora)?\s*y\s*media\b/.test(t);
+  if (hourAndAHalf) return 90;
   if (/\bmedia\s+hora\b/.test(t)) return 30;
   if (/\b(?:un\s+)?cuarto\s+de\s+hora\b/.test(t)) return 15;
 
-  const horas = t.match(/\b(\d+(?:[.,]\d+)?)\s*(?:h|hs|hr|hrs|horas?)\b/);
-  if (horas) {
-    const n = Number(horas[1].replace(",", "."));
+  const hours = t.match(/\b(\d+(?:[.,]\d+)?)\s*(?:h|hs|hr|hrs|horas?)\b/);
+  if (hours) {
+    const n = Number(hours[1].replace(",", "."));
     if (n > 0 && n <= 12) return snapToPreset(Math.round(n * 60));
   }
 
-  const mins = t.match(/\b(\d+)\s*(?:m|min|mins|minutos?)\b/);
-  if (mins) {
-    const n = Number(mins[1]);
+  const minutes = t.match(/\b(\d+)\s*(?:m|min|mins|minutos?)\b/);
+  if (minutes) {
+    const n = Number(minutes[1]);
     if (n > 0 && n <= 600) return snapToPreset(n);
   }
 
-  // Las palabras clave se comparan con tolerancia (`mismaPalabra`): `issues` y
+  // Las palabras clave se comparan con tolerancia (`sameWord`): `issues` y
   // `reviwe` tienen que valer lo mismo que `issue` y `review`, o la lista de
   // Configs habría que llenarla con cada variante. Gana la regla de **menos
   // minutos** entre las que calzan, por lo mismo que el default se equivoca a la
   // baja: subir un estimado es un click, y una agenda inflada deja de mirarse.
-  const palabras = palabrasComparables(title);
-  let elegido: number | undefined;
-  for (const regla of rules) {
-    if (!regla.words.some((k) => algunaEs(palabras, k))) continue;
-    if (elegido === undefined || regla.minutes < elegido) elegido = regla.minutes;
+  const words = comparableWords(title);
+  let chosen: number | undefined;
+  for (const rule of rules) {
+    if (!rule.words.some((k) => anyMatches(words, k))) continue;
+    if (chosen === undefined || rule.minutes < chosen) chosen = rule.minutes;
   }
-  return elegido;
+  return chosen;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,28 +174,28 @@ export function suggestCategoryId(
 ): number | undefined {
   const t = normalize(title);
 
-  const etiquetado = categories.find((c) => calzaNombre(t, normalize(c.name), true));
-  if (etiquetado) return etiquetado.id;
+  const tagged = categories.find((c) => nameAppears(t, normalize(c.name), true));
+  if (tagged) return tagged.id;
 
-  const palabras = palabrasComparables(title);
-  for (const regla of rules) {
-    if (!categories.some((c) => c.id === regla.categoryId)) continue;
-    if (regla.words.some((w) => algunaEs(palabras, w))) return regla.categoryId;
+  const words = comparableWords(title);
+  for (const rule of rules) {
+    if (!categories.some((c) => c.id === rule.categoryId)) continue;
+    if (rule.words.some((w) => anyMatches(words, w))) return rule.categoryId;
   }
 
-  let mejor: Category | undefined;
+  let best: Category | undefined;
   for (const c of categories) {
-    const nombre = normalize(c.name);
-    if (nombre.length < 3) continue;
+    const name = normalize(c.name);
+    if (name.length < 3) continue;
     // Un nombre de una sola palabra se compara con tolerancia, igual que las
     // reglas; uno compuesto (`docs-api`, `Weekly review`) se busca literal, que
     // es donde los bordes importan y la tolerancia solo agregaría falsos.
-    const calza = /^[a-z0-9]+$/.test(nombre)
-      ? palabras.some((w) => mismaPalabra(w, nombre))
-      : calzaNombre(t, nombre);
-    if (calza && (!mejor || nombre.length > normalize(mejor.name).length)) mejor = c;
+    const hit = /^[a-z0-9]+$/.test(name)
+      ? words.some((w) => sameWord(w, name))
+      : nameAppears(t, name);
+    if (hit && (!best || name.length > normalize(best.name).length)) best = c;
   }
-  return mejor?.id;
+  return best?.id;
 }
 
 /**
@@ -203,12 +203,12 @@ export function suggestCategoryId(
  * sin ellos el canal `Docs` se activaría dentro de "documentación", que no habla
  * de él. Con `conNumeral`, solo cuenta si viene escrito como `#docs`.
  */
-function calzaNombre(tituloNorm: string, nombre: string, conNumeral = false): boolean {
-  const esc = nombre.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const antes = conNumeral ? "#" : "#?";
+function nameAppears(titleNorm: string, name: string, requireTag = false): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const prefix = requireTag ? "#" : "#?";
   // El guion cuenta como parte del nombre en los dos bordes: `#docs-api` no es
   // el canal `docs`, y `sub-docs` tampoco.
-  return new RegExp(`(?:^|[^a-z0-9_-])${antes}${esc}(?![a-z0-9_-])`).test(tituloNorm);
+  return new RegExp(`(?:^|[^a-z0-9_-])${prefix}${escaped}(?![a-z0-9_-])`).test(titleNorm);
 }
 
 /**
@@ -226,10 +226,10 @@ function calzaNombre(tituloNorm: string, nombre: string, conNumeral = false): bo
  */
 export function stripChannelTag(title: string, category: Category | null | undefined): string {
   if (!category) return title;
-  const esc = category.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = category.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Sobre el título crudo y no sobre el normalizado: lo que se devuelve es el
   // texto tal cual lo escribió el usuario, menos la etiqueta.
-  const re = new RegExp(`(?:^|\\s)#${esc}(?![\\p{L}\\p{N}_-])`, "iu");
+  const re = new RegExp(`(?:^|\\s)#${escaped}(?![\\p{L}\\p{N}_-])`, "iu");
   return title
     .replace(re, " ")
     .replace(/\s{2,}/g, " ")
@@ -249,27 +249,29 @@ export function stripChannelTag(title: string, category: Category | null | undef
  * guarda igual y nadie lo revisa.
  */
 export function suggestObjectiveId(title: string, objectives: Objective[]): number | undefined {
-  const propios = new Set(tokens(title).filter((w) => w.length >= 4 && !STOPWORDS.has(w)));
-  if (propios.size === 0) return undefined;
+  const titleWords = new Set(tokens(title).filter((w) => w.length >= 4 && !STOPWORDS.has(w)));
+  if (titleWords.size === 0) return undefined;
 
-  let mejor: { id: number; score: number; largo: number } | undefined;
+  let best: { id: number; score: number; longest: number } | undefined;
   for (const o of objectives) {
-    const suyos = tokens(o.title).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+    const objectiveWords = tokens(o.title).filter((w) => w.length >= 4 && !STOPWORDS.has(w));
     // La misma tolerancia que las palabras clave: "importadores" y "importador"
     // son la misma palabra, y quien escribe rápido no elige cuál le sale.
-    const comunes = [...new Set(suyos)].filter((w) => [...propios].some((p) => mismaPalabra(p, w)));
-    if (comunes.length === 0) continue;
-    const largo = Math.max(...comunes.map((w) => w.length));
-    if (comunes.length < 2 && largo < 6) continue;
+    const shared = [...new Set(objectiveWords)].filter((w) =>
+      [...titleWords].some((p) => sameWord(p, w)),
+    );
+    if (shared.length === 0) continue;
+    const longest = Math.max(...shared.map((w) => w.length));
+    if (shared.length < 2 && longest < 6) continue;
     if (
-      !mejor ||
-      comunes.length > mejor.score ||
-      (comunes.length === mejor.score && largo > mejor.largo)
+      !best ||
+      shared.length > best.score ||
+      (shared.length === best.score && longest > best.longest)
     ) {
-      mejor = { id: o.id, score: comunes.length, largo };
+      best = { id: o.id, score: shared.length, longest };
     }
   }
-  return mejor?.id;
+  return best?.id;
 }
 
 /**

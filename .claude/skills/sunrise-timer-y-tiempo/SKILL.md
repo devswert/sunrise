@@ -183,19 +183,28 @@ Dos reglas que salen de la tabla:
   viejos. No hace falta un número de gracia arbitrario.
 
 Y la que se paga dos veces si se olvida: **lo que recuerda "ya avisé" guarda la
-promesa, no un booleano.** La campana usa `(entrada, estimado)`; el aviso de reunión
-guarda `tasks.notified_for` con **la hora**. Con un flag, cambiar el estimado o
-mover la reunión deja eso mudo para siempre y sin ningún síntoma.
+promesa, no un booleano, y la guarda en la base.** La campana usa
+`tasks.bell_rung_for` (`día local|estimado`); el aviso de reunión, `tasks.notified_for`
+con **la hora**. Dos formas de equivocarse, y las dos ya se pagaron:
+
+- **Con un flag**, cambiar el estimado o mover la reunión deja eso mudo para
+  siempre y sin ningún síntoma.
+- **En memoria del proceso**, se pierde al reiniciar — y el timer **no** se
+  pierde, porque sobrevive al cierre a propósito. La campana vivía así: al
+  arrancar sonaba de inmediato sobre cualquier timer ya pasado de su estimado.
+  En dev, una campanada por recompilación.
 
 ## Semántica de la campana y del estimado
 
 - `isOverEstimate(elapsed, planned)`: con `planned` `null` o `<= 0` **nunca** se
   considera excedido. Sin estimado no hay campana ni aviso.
-- Suena **una sola vez por (entrada, estimado)**, no una vez por tarea: el
-  vigilante recuerda ese par en una variable de su loop. Si se pausa y se reanuda
-  hay entrada nueva, y **si se le sube el estimado la promesa es otra**, así que
-  vuelve a armarse. Con la entrada como única llave —como estaba— subir el
-  estimado dejaba esa entrada muda para siempre.
+- Suena **una sola vez por (tarea, día local, estimado)**, y eso vive en
+  `tasks.bell_rung_for`. Los tres datos están por algo: **subirle el estimado** es
+  otra promesa y la rearma (con la tarea sola quedaría muda para siempre), y **el
+  día** la rearma mañana, porque el contador del taxímetro es de hoy (I3) y sin
+  esa parte la tarea nunca volvería a sonar. **Pausar y reanudar ya no la
+  rearma**: la llave era la entrada, y sobre una tarea pasada de su estimado eso
+  daba una campanada en cada play.
 - **La espera y el timbre son optimizaciones, no la decisión.** Duerme hasta el
   momento en que tiene que sonar (`next_wake`, techo 30 s); sin timer espera el
   timbre `Armed` —que toca `start_timer`— con un techo de 5 min; y **cada vuelta

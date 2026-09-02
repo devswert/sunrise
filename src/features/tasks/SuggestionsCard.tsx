@@ -49,14 +49,14 @@ function draft<T>(words: string[], value: T): Draft<T> {
 }
 
 export function SuggestionsCard() {
-  const Icono = sectionIcon("sugerencias");
+  const Icon = sectionIcon("sugerencias");
   const loaded = useSettingsStore((s) => s.loaded);
   const values = useSettingsStore((s) => s.values);
   const setSetting = useSettingsStore((s) => s.set);
 
   const [categories, setCategories] = useState<Category[]>([]);
-  const [tiempos, setTiempos] = useState<Draft<number>[] | null>(null);
-  const [canales, setCanales] = useState<Draft<number | null>[] | null>(null);
+  const [timeRows, setTiempos] = useState<Draft<number>[] | null>(null);
+  const [channelRows, setCanales] = useState<Draft<number | null>[] | null>(null);
   /**
    * La fila recién agregada, que **se enfoca sola**: el botón dice "Agregar
    * palabras", y dejar una fila vacía en la que hay que volver a hacer click no es
@@ -66,7 +66,7 @@ export function SuggestionsCard() {
    * una regla que ya existe la volvería la última vacía, y el foco saltaría solo
    * mientras se está editando otra cosa.
    */
-  const [nueva, setNueva] = useState<number | null>(null);
+  const [newRow, setNewRow] = useState<number | null>(null);
 
   useEffect(() => {
     api.listCategories().then(setCategories);
@@ -74,11 +74,11 @@ export function SuggestionsCard() {
 
   // Se siembra **una vez**, cuando los ajustes terminaron de cargar. De ahí en
   // más la verdad es lo que está en pantalla: releer el ajuste en cada cambio
-  // borraría lo que se está escribiendo, porque cada guardado vuelve por acá.
+  // borraría lo que se está typing, porque cada guardado vuelve por acá.
   // El precio, asumido: un cambio hecho desde otra ventana no se refleja hasta
   // volver a entrar. Es un editor de ajustes, no una vista de datos vivos.
   useEffect(() => {
-    if (!loaded || tiempos !== null) return;
+    if (!loaded || timeRows !== null) return;
     setTiempos(
       parseTimeRules(values[SettingKey.SUGGEST_TIME_RULES]).map((r) => draft(r.words, r.minutes)),
     );
@@ -87,26 +87,26 @@ export function SuggestionsCard() {
         draft(r.words, r.categoryId as number | null),
       ),
     );
-  }, [loaded, values, tiempos]);
+  }, [loaded, values, timeRows]);
 
-  function guardarTiempos(filas: Draft<number>[]) {
-    setTiempos(filas);
-    const reglas: TimeRule[] = filas.map((f) => ({ minutes: f.value, words: f.words }));
-    void setSetting(SettingKey.SUGGEST_TIME_RULES, serializeRules(reglas));
+  function saveTimeRules(rows: Draft<number>[]) {
+    setTiempos(rows);
+    const rules: TimeRule[] = rows.map((f) => ({ minutes: f.value, words: f.words }));
+    void setSetting(SettingKey.SUGGEST_TIME_RULES, serializeRules(rules));
   }
 
-  function guardarCanales(filas: Draft<number | null>[]) {
-    setCanales(filas);
-    const reglas: ChannelRule[] = filas
+  function saveChannelRules(rows: Draft<number | null>[]) {
+    setCanales(rows);
+    const rules: ChannelRule[] = rows
       .filter((f): f is Draft<number> => f.value != null)
       .map((f) => ({ categoryId: f.value, words: f.words }));
-    void setSetting(SettingKey.SUGGEST_CHANNEL_RULES, serializeRules(reglas));
+    void setSetting(SettingKey.SUGGEST_CHANNEL_RULES, serializeRules(rules));
   }
 
   return (
     <section className="set-card" id="set-sugerencias" data-section="sugerencias">
       <header className="set-card__head">
-        <Icono size={16} aria-hidden className="set-card__icon" />
+        <Icon size={16} aria-hidden className="set-card__icon" />
         <div className="set-card__head-text">
           <h2>Sugerencias</h2>
           <p>Al crear una tarea, los chips se llenan solos con lo que dice el título.</p>
@@ -120,10 +120,10 @@ export function SuggestionsCard() {
       <div className="set-field set-field--ancho">
         <div className="set-field__text">
           <span className="set-note">
-            Cada fila junta las palabras que significan lo mismo. <b>Una por idea alcanza</b>: el
+            Cada row junta las palabras que significan lo mismo. <b>Una por idea alcanza</b>: el
             plural y los typos se toman solos. Un número escrito en el título («30 min», «2h») o un
-            «#canal» le ganan a todo. Si calzan varias filas, en tiempo gana la de menos minutos y
-            en canales la primera de la lista.
+            «#canal» le ganan a todo. Si calzan varias rows, en tiempo gana la de menos minutos y en
+            channelRows la primera de la lista.
           </span>
         </div>
       </div>
@@ -131,21 +131,21 @@ export function SuggestionsCard() {
       <span className="set-field__label">Tiempo</span>
 
       <ul className="set-list">
-        {(tiempos ?? []).map((fila, i) => (
-          <ReglaRow
-            key={fila.key}
-            words={fila.words}
-            autoFocus={fila.key === nueva}
+        {(timeRows ?? []).map((row, i) => (
+          <RuleRow
+            key={row.key}
+            words={row.words}
+            autoFocus={row.key === newRow}
             placeholder="revisar"
             onWords={(w) =>
-              guardarTiempos((tiempos ?? []).map((f, j) => (i === j ? { ...f, words: w } : f)))
+              saveTimeRules((timeRows ?? []).map((f, j) => (i === j ? { ...f, words: w } : f)))
             }
-            onDelete={() => guardarTiempos((tiempos ?? []).filter((_, j) => j !== i))}
+            onDelete={() => saveTimeRules((timeRows ?? []).filter((_, j) => j !== i))}
             control={
-              <MinutosPicker
-                value={fila.value}
+              <MinutesPicker
+                value={row.value}
                 onSelect={(m) =>
-                  guardarTiempos((tiempos ?? []).map((f, j) => (i === j ? { ...f, value: m } : f)))
+                  saveTimeRules((timeRows ?? []).map((f, j) => (i === j ? { ...f, value: m } : f)))
                 }
               />
             }
@@ -156,9 +156,9 @@ export function SuggestionsCard() {
             type="button"
             className="set-add-btn"
             onClick={() => {
-              const fila = draft([], 30);
-              setNueva(fila.key);
-              guardarTiempos([...(tiempos ?? []), fila]);
+              const row = draft([], 30);
+              setNewRow(row.key);
+              saveTimeRules([...(timeRows ?? []), row]);
             }}
           >
             <Plus size={14} aria-hidden /> Agregar palabras
@@ -169,22 +169,26 @@ export function SuggestionsCard() {
       <span className="set-field__label">Canal</span>
 
       <ul className="set-list">
-        {(canales ?? []).map((fila, i) => (
-          <ReglaRow
-            key={fila.key}
-            words={fila.words}
-            autoFocus={fila.key === nueva}
+        {(channelRows ?? []).map((row, i) => (
+          <RuleRow
+            key={row.key}
+            words={row.words}
+            autoFocus={row.key === newRow}
             placeholder="issues"
             onWords={(w) =>
-              guardarCanales((canales ?? []).map((f, j) => (i === j ? { ...f, words: w } : f)))
+              saveChannelRules(
+                (channelRows ?? []).map((f, j) => (i === j ? { ...f, words: w } : f)),
+              )
             }
-            onDelete={() => guardarCanales((canales ?? []).filter((_, j) => j !== i))}
+            onDelete={() => saveChannelRules((channelRows ?? []).filter((_, j) => j !== i))}
             control={
-              <CanalPicker
+              <ChannelPicker
                 categories={categories}
-                value={fila.value}
+                value={row.value}
                 onSelect={(id) =>
-                  guardarCanales((canales ?? []).map((f, j) => (i === j ? { ...f, value: id } : f)))
+                  saveChannelRules(
+                    (channelRows ?? []).map((f, j) => (i === j ? { ...f, value: id } : f)),
+                  )
                 }
               />
             }
@@ -195,9 +199,9 @@ export function SuggestionsCard() {
             type="button"
             className="set-add-btn"
             onClick={() => {
-              const fila = draft([], null);
-              setNueva(fila.key);
-              guardarCanales([...(canales ?? []), fila]);
+              const row = draft([], null);
+              setNewRow(row.key);
+              saveChannelRules([...(channelRows ?? []), row]);
             }}
           >
             <Plus size={14} aria-hidden /> Agregar palabras
@@ -221,7 +225,7 @@ export function SuggestionsCard() {
  * confirman**, y ahí recién se guarda: guardar por tecla mandaría un `setSetting`
  * por letra. Pegar `issues, soporte` de una vez deja dos pills, no una.
  */
-function ReglaRow({
+function RuleRow({
   words,
   placeholder,
   control,
@@ -236,7 +240,7 @@ function ReglaRow({
   onWords: (w: string[]) => void;
   onDelete: () => void;
 }) {
-  const [escribiendo, setEscribiendo] = useState("");
+  const [typing, setTyping] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   // Solo al montar: reenfocar en cada render le robaría el foco a quien esté
   // eligiendo el canal de la fila.
@@ -245,11 +249,11 @@ function ReglaRow({
   }, [autoFocus]);
 
   /** Lo tecleado pasa a ser pills. Las repetidas las descarta `cleanWords`. */
-  function confirmar() {
-    const nuevas = textToWords(escribiendo);
-    setEscribiendo("");
-    if (nuevas.length === 0) return;
-    onWords(cleanWords([...words, ...nuevas]));
+  function commit() {
+    const added = textToWords(typing);
+    setTyping("");
+    if (added.length === 0) return;
+    onWords(cleanWords([...words, ...added]));
   }
 
   return (
@@ -273,24 +277,24 @@ function ReglaRow({
           className="set-pills__input"
           aria-label={`Agregar palabra (ej. ${placeholder})`}
           placeholder={words.length === 0 ? placeholder : "+ palabra"}
-          value={escribiendo}
+          value={typing}
           {...PLAIN_INPUT}
-          onChange={(e) => setEscribiendo(e.target.value)}
+          onChange={(e) => setTyping(e.target.value)}
           // Al salir del campo también: lo tecleado y no confirmado se perdería
           // en silencio, que es el modo de falla que más cuesta descubrir.
-          onBlur={confirmar}
+          onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === ",") {
               e.preventDefault();
-              confirmar();
+              commit();
             }
             // Con el campo vacío, borrar saca la última pill: es lo que hace
             // cualquier campo de etiquetas y evita ir hasta su × con el mouse.
-            if (e.key === "Backspace" && escribiendo === "" && words.length > 0) {
+            if (e.key === "Backspace" && typing === "" && words.length > 0) {
               e.preventDefault();
               onWords(words.slice(0, -1));
             }
-            if (e.key === "Escape") setEscribiendo("");
+            if (e.key === "Escape") setTyping("");
           }}
         />
       </div>
@@ -307,7 +311,7 @@ function ReglaRow({
   );
 }
 
-function MinutosPicker({ value, onSelect }: { value: number; onSelect: (m: number) => void }) {
+function MinutesPicker({ value, onSelect }: { value: number; onSelect: (m: number) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   return (
@@ -336,7 +340,7 @@ function MinutosPicker({ value, onSelect }: { value: number; onSelect: (m: numbe
   );
 }
 
-function CanalPicker({
+function ChannelPicker({
   categories,
   value,
   onSelect,

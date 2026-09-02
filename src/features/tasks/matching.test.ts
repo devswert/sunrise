@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { jaroWinkler, mismaPalabra } from "./matching";
+import { jaroWinkler, sameWord } from "./matching";
 
 describe("jaroWinkler · la métrica, contra sus valores conocidos", () => {
   // Los dos ejemplos canónicos de la definición de Winkler, que es lo que hace
@@ -15,10 +15,10 @@ describe("jaroWinkler · la métrica, contra sus valores conocidos", () => {
   });
 });
 
-describe("mismaPalabra · los dos casos que pidió el usuario", () => {
+describe("sameWord · los dos casos que pidió el usuario", () => {
   it("singular y plural son la misma", () => {
-    expect(mismaPalabra("issue", "issues")).toBe(true);
-    expect(mismaPalabra("tickets", "ticket")).toBe(true);
+    expect(sameWord("issue", "issues")).toBe(true);
+    expect(sameWord("tickets", "ticket")).toBe(true);
   });
 
   // Así llegan de verdad: el plural y el typo juntos. Medidos enteros están a
@@ -27,36 +27,36 @@ describe("mismaPalabra · los dos casos que pidió el usuario", () => {
   // Así llegan de verdad, los dos juntos, y sin ayuda de ninguna regla nuestra:
   // la métrica sola los da por la misma palabra.
   it("el plural y el typo pueden venir juntos", () => {
-    expect(mismaPalabra("tikcet", "tickets")).toBe(true);
-    expect(mismaPalabra("reviwes", "review")).toBe(true);
+    expect(sameWord("tikcet", "tickets")).toBe(true);
+    expect(sameWord("reviwes", "review")).toBe(true);
   });
 
   it("un typo de teclado también", () => {
-    expect(mismaPalabra("reviwe", "review")).toBe(true);
-    expect(mismaPalabra("reunino", "reunion")).toBe(true);
-    expect(mismaPalabra("sporte", "soporte")).toBe(true);
+    expect(sameWord("reviwe", "review")).toBe(true);
+    expect(sameWord("reunino", "reunion")).toBe(true);
+    expect(sameWord("sporte", "soporte")).toBe(true);
   });
 
   // El plural no se le deja a la métrica: es una certeza, y así no queda sujeto a
   // que dos letras sobre cinco pasen o no pasen el umbral.
   it("el plural calza siempre, sin depender del umbral", () => {
-    expect(mismaPalabra("issue", "issues")).toBe(true);
-    expect(mismaPalabra("incidencia", "incidencias")).toBe(true);
-    expect(mismaPalabra("canal", "canales")).toBe(true);
+    expect(sameWord("issue", "issues")).toBe(true);
+    expect(sameWord("incidencia", "incidencias")).toBe(true);
+    expect(sameWord("canal", "canales")).toBe(true);
   });
 
   // Los pares que el umbral tiene que dejar afuera: palabras cortas que se
   // parecen pero no son. Son las que pondrían un chip de casualidad.
   it("parecerse no alcanza", () => {
-    expect(mismaPalabra("mail", "mall")).toBe(false);
-    expect(mismaPalabra("docs", "dock")).toBe(false);
-    expect(mismaPalabra("leer", "ver")).toBe(false);
-    expect(mismaPalabra("casa", "caso")).toBe(false);
+    expect(sameWord("mail", "mall")).toBe(false);
+    expect(sameWord("docs", "dock")).toBe(false);
+    expect(sameWord("leer", "ver")).toBe(false);
+    expect(sameWord("casa", "caso")).toBe(false);
   });
 
   // Jaro normaliza por el largo de las dos, así que una palabra corta no se
   // vuelve el comodín de una larga que empieza igual.
   it("una palabra corta no calza dentro de una larga", () => {
-    expect(mismaPalabra("doc", "docente")).toBe(false);
+    expect(sameWord("doc", "docente")).toBe(false);
   });
 });

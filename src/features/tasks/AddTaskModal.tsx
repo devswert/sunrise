@@ -26,7 +26,7 @@ type Picker = "date" | "planned" | "channel" | "objective" | "priority" | null;
  * el usuario lo elige a mano — y no se destraba: una sugerencia que pisa lo que
  * acabás de elegir convierte la ayuda en algo contra lo que hay que pelear.
  */
-type Campo = "planned" | "channel" | "objective";
+type Field = "planned" | "channel" | "objective";
 
 export function AddTaskModal() {
   const { composeDefaults, closeCompose, bumpData } = useAppStore();
@@ -47,18 +47,18 @@ export function AddTaskModal() {
    * defaults con los que abre el modal cuentan como elegidos: quien lo abrió
    * desde una columna de canal ya dijo cuál, y adivinarle encima sería pisarlo.
    */
-  const trabado = useRef<Record<Campo, boolean>>({
+  const locked = useRef<Record<Field, boolean>>({
     planned: false,
     channel: composeDefaults.categoryId != null,
     objective: composeDefaults.objectiveId != null,
   });
   /**
-   * Un `ref` y no estado: trabar un campo no cambia nada de lo que se dibuja, y
+   * Un `ref` y no estado: lock un campo no cambia nada de lo que se dibuja, y
    * como estado entraría en las dependencias del efecto de sugerencia — donde
    * solo serviría para recalcular los otros dos chips de gusto.
    */
-  const trabar = (c: Campo) => {
-    trabado.current[c] = true;
+  const lock = (c: Field) => {
+    locked.current[c] = true;
   };
   /** Los links que se cosecharon del título. Se guardan en las notas al crear. */
   const [resources, setResources] = useState<string[]>([]);
@@ -71,8 +71,8 @@ export function AddTaskModal() {
   const chanRef = useRef<HTMLDivElement>(null);
   const objRef = useRef<HTMLDivElement>(null);
   const prioRef = useRef<HTMLDivElement>(null);
-  const prioridades = usePrioritiesOn();
-  const reglas = useSuggestRules();
+  const prioritiesOn = usePrioritiesOn();
+  const rules = useSuggestRules();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -137,11 +137,11 @@ export function AddTaskModal() {
    * lo haya elegido a mano, el chip dice lo que dice el título y nada más.
    */
   useEffect(() => {
-    const sugerido = suggestFromTitle(title, categories, objectives, reglas);
-    if (!trabado.current.planned) setPlanned(sugerido.minutes ?? null);
-    if (!trabado.current.channel) setCategoryId(sugerido.categoryId ?? null);
-    if (!trabado.current.objective) setObjectiveId(sugerido.objectiveId ?? null);
-  }, [title, categories, objectives, reglas]);
+    const suggested = suggestFromTitle(title, categories, objectives, rules);
+    if (!locked.current.planned) setPlanned(suggested.minutes ?? null);
+    if (!locked.current.channel) setCategoryId(suggested.categoryId ?? null);
+    if (!locked.current.objective) setObjectiveId(suggested.objectiveId ?? null);
+  }, [title, categories, objectives, rules]);
 
   /**
    * Cosecha los links de un texto y los suma a la lista de recursos.
@@ -340,7 +340,7 @@ export function AddTaskModal() {
                   clearLabel="Sin estimar"
                   onSelect={(v) => {
                     setPlanned(v ? Number(v) : null);
-                    trabar("planned");
+                    lock("planned");
                     setPicker(null);
                   }}
                 />
@@ -378,7 +378,7 @@ export function AddTaskModal() {
                   clearLabel="Sin canal"
                   onSelect={(v) => {
                     setCategoryId(v ? Number(v) : null);
-                    trabar("channel");
+                    lock("channel");
                     setPicker(null);
                   }}
                 />
@@ -403,7 +403,7 @@ export function AddTaskModal() {
                   emptyLabel="No hay objetivos esta semana"
                   onSelect={(v) => {
                     setObjectiveId(v ? Number(v) : null);
-                    trabar("objective");
+                    lock("objective");
                     setPicker(null);
                   }}
                 />
@@ -412,12 +412,12 @@ export function AddTaskModal() {
           </div>
 
           {/* La prioridad solo si el interruptor está encendido (§ ajustes): con
-           * las prioridades apagadas no hay nada que elegir, y un chip que no
+           * las prioritiesOn apagadas no hay nada que elegir, y un chip que no
            * lleva a ningún lado es peor que la ausencia.
            *
            * Sin buscador, igual que en el detalle: son cinco opciones fijas que
            * caben enteras en el popover. */}
-          {prioridades && (
+          {prioritiesOn && (
             <div className="chip-wrap" ref={prioRef}>
               <button
                 className={`chip${picker === "priority" ? " is-open" : ""}${

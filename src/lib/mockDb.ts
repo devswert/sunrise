@@ -598,6 +598,9 @@ export const mock = {
       startedAt: open.startedAt,
       baseSeconds: secondsToday(t.id),
       estimatedMinutes: t.estimatedMinutes,
+      // Fuera de Tauri no hay campana (la toca Rust), así que la promesa no se
+      // simula: el campo existe para que el tipo sea el mismo de los dos lados.
+      bellRungFor: null,
     };
   },
 

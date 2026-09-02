@@ -52,6 +52,7 @@ describe("QuitConfirm", () => {
         startedAt: "2026-08-11T10:00:00Z",
         baseSeconds: 0,
         estimatedMinutes: 30,
+        bellRungFor: null,
       },
       elapsed: 754,
     });

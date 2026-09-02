@@ -246,6 +246,12 @@ export interface ActiveTimer {
   /** Segundos acumulados en entradas cerradas (sin la actual). */
   baseSeconds: number;
   estimatedMinutes: number | null;
+  /**
+   * La promesa por la que ya sonó la campana (`día local|estimado`), o `null`.
+   * **Solo la lee Rust** (`bell.rs`): acá está para espejar el modelo, porque el
+   * front no decide cuándo suena desde M2 (I6).
+   */
+  bellRungFor: string | null;
 }
 
 /** Input para crear una tarea (espeja repo::NewTask en Rust). */

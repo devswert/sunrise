@@ -721,7 +721,8 @@ pub fn seconds_today(conn: &Connection, task_id: i64) -> Result<i64> {
 pub fn get_active_timer(conn: &Connection) -> Result<Option<ActiveTimer>> {
     let row = conn
         .query_row(
-            "SELECT e.id AS entry_id, e.task_id, e.started_at, t.title, t.estimated_minutes
+            "SELECT e.id AS entry_id, e.task_id, e.started_at, t.title, t.estimated_minutes,
+                    t.bell_rung_for
              FROM time_entries e
              JOIN tasks t ON t.id = e.task_id
              WHERE e.ended_at IS NULL
@@ -734,12 +735,13 @@ pub fn get_active_timer(conn: &Connection) -> Result<Option<ActiveTimer>> {
                     r.get::<_, String>("title")?,
                     r.get::<_, String>("started_at")?,
                     r.get::<_, Option<i64>>("estimated_minutes")?,
+                    r.get::<_, Option<String>>("bell_rung_for")?,
                 ))
             },
         )
         .optional()?;
 
-    let Some((entry_id, task_id, title, started_at, estimated_minutes)) = row else {
+    let Some((entry_id, task_id, title, started_at, estimated_minutes, bell_rung_for)) = row else {
         return Ok(None);
     };
 
@@ -750,7 +752,22 @@ pub fn get_active_timer(conn: &Connection) -> Result<Option<ActiveTimer>> {
         started_at,
         base_seconds: seconds_today(conn, task_id)?,
         estimated_minutes,
+        bell_rung_for,
     }))
+}
+
+/// Anota por qué promesa sonó la campana de una tarea (migración 17).
+///
+/// La escribe `bell.rs` justo después de tocar, y se lee en la vuelta siguiente
+/// para no repetirla. **Es lo único que hace que el reinicio del proceso no
+/// vuelva a sonar**: hasta la 0.8.0 la promesa vivía en memoria y el timer no,
+/// así que reabrir la app con un timer pasado de su estimado sonaba de nuevo.
+pub fn mark_bell_rung(conn: &Connection, task_id: i64, promise: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET bell_rung_for = ?2 WHERE id = ?1",
+        params![task_id, promise],
+    )?;
+    Ok(())
 }
 
 /// Inicia el timer en `task_id`. Solo puede haber uno activo: si había otro
@@ -2717,6 +2734,25 @@ mod tests {
         }
     }
 
+    /// La promesa de la campana **va y vuelve de la base**, que es lo que la hace
+    /// sobrevivir al reinicio del proceso. Vivía en una variable del loop de
+    /// `bell.rs`, y como el timer sí sobrevive al cierre, al arrancar la campana
+    /// volvía a sonar sobre un timer que ya venía pasado de su estimado.
+    #[test]
+    fn la_promesa_de_la_campana_viaja_con_el_timer_activo() {
+        let c = conn();
+        let t = create_task(&c, new_task("escribir", Some("2026-08-10"))).unwrap();
+        start_timer(&c, t.id).unwrap();
+
+        let antes = get_active_timer(&c).unwrap().unwrap();
+        assert_eq!(antes.bell_rung_for, None, "una tarea nueva no tiene promesa");
+
+        mark_bell_rung(&c, t.id, "2026-08-10|30").unwrap();
+
+        let despues = get_active_timer(&c).unwrap().unwrap();
+        assert_eq!(despues.bell_rung_for.as_deref(), Some("2026-08-10|30"));
+    }
+
     #[test]
     fn crear_tarea_agendada_registra_created_y_start_date() {
         let c = conn();
@@ -4030,6 +4066,29 @@ mod tests {
         let c = conn();
         let t = create_task(&c, new_task("a mano", Some("2026-08-10"))).unwrap();
         assert!(set_series_rail_only(&c, t.id, true).is_err());
+    }
+
+    /// La sincronización reescribe la tarea entera en cada pasada, así que lo
+    /// nuestro tiene que quedar afuera de esa lista de columnas. La promesa de la
+    /// campana es de las nuestras: si el sync la borrara, cada pasada del poller
+    /// rearmaría la campana de una reunión que ya sonó.
+    #[test]
+    fn la_sincronizacion_no_pisa_la_promesa_de_la_campana() {
+        let c = conn();
+        let f = feed(&c);
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], None).unwrap();
+        let id: i64 = c
+            .query_row("SELECT id FROM tasks WHERE calendar_uid = 'a@x'", [], |r| r.get(0))
+            .unwrap();
+        mark_bell_rung(&c, id, "2026-08-10|30").unwrap();
+
+        // El poller vuelve a pasar con el mismo evento.
+        import_events(&c, f.id, &[event("a@x", "Daily", "2026-08-10")], None).unwrap();
+
+        let promise: Option<String> = c
+            .query_row("SELECT bell_rung_for FROM tasks WHERE id = ?1", [id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(promise.as_deref(), Some("2026-08-10|30"));
     }
 
     #[test]

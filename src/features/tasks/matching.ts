@@ -44,7 +44,7 @@ export function normalize(text: string): string {
  * palabras que se escriben acá son verbos y sustantivos de trabajo, y estirarlo
  * más solo agrega formas de calzar de casualidad.
  */
-function esPluralDe(a: string, b: string): boolean {
+function isPluralOf(a: string, b: string): boolean {
   return a === `${b}s` || a === `${b}es`;
 }
 
@@ -61,44 +61,44 @@ function jaro(a: string, b: string): number {
   if (a === b) return 1;
   if (a.length === 0 || b.length === 0) return 0;
 
-  const ventana = Math.max(0, Math.floor(Math.max(a.length, b.length) / 2) - 1);
-  const usadasA = new Array<boolean>(a.length).fill(false);
-  const usadasB = new Array<boolean>(b.length).fill(false);
+  const window = Math.max(0, Math.floor(Math.max(a.length, b.length) / 2) - 1);
+  const usedA = new Array<boolean>(a.length).fill(false);
+  const usedB = new Array<boolean>(b.length).fill(false);
 
-  let comunes = 0;
+  let matches = 0;
   for (let i = 0; i < a.length; i++) {
-    const desde = Math.max(0, i - ventana);
-    const hasta = Math.min(i + ventana + 1, b.length);
+    const desde = Math.max(0, i - window);
+    const hasta = Math.min(i + window + 1, b.length);
     for (let j = desde; j < hasta; j++) {
-      if (usadasB[j] || a[i] !== b[j]) continue;
-      usadasA[i] = true;
-      usadasB[j] = true;
-      comunes++;
+      if (usedB[j] || a[i] !== b[j]) continue;
+      usedA[i] = true;
+      usedB[j] = true;
+      matches++;
       break;
     }
   }
-  if (comunes === 0) return 0;
+  if (matches === 0) return 0;
 
   // Las comunes que no salieron en el mismo orden. Se cuentan de a media, que es
   // como está definida la métrica: una transposición son dos letras.
-  let traspuestas = 0;
+  let transposed = 0;
   let k = 0;
   for (let i = 0; i < a.length; i++) {
-    if (!usadasA[i]) continue;
-    while (!usadasB[k]) k++;
-    if (a[i] !== b[k]) traspuestas++;
+    if (!usedA[i]) continue;
+    while (!usedB[k]) k++;
+    if (a[i] !== b[k]) transposed++;
     k++;
   }
-  traspuestas /= 2;
+  transposed /= 2;
 
-  return (comunes / a.length + comunes / b.length + (comunes - traspuestas) / comunes) / 3;
+  return (matches / a.length + matches / b.length + (matches - transposed) / matches) / 3;
 }
 
 /** Hasta cuántas letras de prefijo compartido premia Winkler, y cuánto. */
-const PREFIJO_MAX = 4;
-const PESO_PREFIJO = 0.1;
+const MAX_PREFIX = 4;
+const PREFIX_WEIGHT = 0.1;
 /** Winkler solo premia a las que ya se parecen; debajo de esto no toca nada. */
-const PISO_PREMIO = 0.7;
+const BOOST_FLOOR = 0.7;
 
 /**
  * **Jaro-Winkler**: la similitud de Jaro con el premio por prefijo común.
@@ -108,10 +108,10 @@ const PISO_PREMIO = 0.7;
  */
 export function jaroWinkler(a: string, b: string): number {
   const j = jaro(a, b);
-  if (j < PISO_PREMIO) return j;
-  let prefijo = 0;
-  while (prefijo < PREFIJO_MAX && a[prefijo] !== undefined && a[prefijo] === b[prefijo]) prefijo++;
-  return j + prefijo * PESO_PREFIJO * (1 - j);
+  if (j < BOOST_FLOOR) return j;
+  let prefix = 0;
+  while (prefix < MAX_PREFIX && a[prefix] !== undefined && a[prefix] === b[prefix]) prefix++;
+  return j + prefix * PREFIX_WEIGHT * (1 - j);
 }
 
 /**
@@ -133,21 +133,21 @@ export function jaroWinkler(a: string, b: string): number {
  * prellenado que se corrige con un click, contra una función que deja de servir
  * apenas escribes rápido, que es cuando se usa.
  */
-const UMBRAL = 0.9;
+const THRESHOLD = 0.9;
 
 /**
  * Si las dos palabras son la misma: igual, el mismo singular, o a un typo de
  * distancia. Es la única puerta de entrada; el resto del módulo es su mecánica.
  */
-export function mismaPalabra(a: string, b: string): boolean {
+export function sameWord(a: string, b: string): boolean {
   const x = normalize(a);
   const y = normalize(b);
   if (x === y) return true;
-  if (esPluralDe(x, y) || esPluralDe(y, x)) return true;
-  return jaroWinkler(x, y) >= UMBRAL;
+  if (isPluralOf(x, y) || isPluralOf(y, x)) return true;
+  return jaroWinkler(x, y) >= THRESHOLD;
 }
 
 /** Si alguna palabra del texto es la misma que `palabra`. */
-export function algunaEs(tokens: readonly string[], palabra: string): boolean {
-  return tokens.some((t) => mismaPalabra(t, palabra));
+export function anyMatches(tokens: readonly string[], palabra: string): boolean {
+  return tokens.some((t) => sameWord(t, palabra));
 }

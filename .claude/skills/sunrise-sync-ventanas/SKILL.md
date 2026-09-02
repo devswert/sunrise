@@ -58,6 +58,17 @@ la medianoche no vuelve a correr.
 suspende a las 19:00 y despierta a las 9:00— y sin un cambio de estado la vista no
 se vuelve a renderizar: Today mostraba ayer, con título y todo.
 
+**Un store recién montado no sabe nada todavía, y "no sé" no es "no".** El
+taxímetro decide si mostrarse a partir de `active || last`, y ahí hay una asimetría
+que muerde: `last` sale de `localStorage` en el acto, pero **`active` vive en la
+base** y llega asincrónico. Con el timer *corriendo* —que no deja `last`— el primer
+render se ve idéntico a "no hay nada que mostrar", y la ventana **se escondía a sí
+misma** antes de saber que sí había algo; después ya era tarde, porque un webview
+oculto en macOS se estrangula y el `show()` posterior podía no correr nunca. Por eso
+`timerStore.loaded`: mientras sea false **no se llama ni a mostrar ni a esconder**.
+Si agregas otro controlador de visibilidad, dale el mismo guard — y si tu estado
+inicial se puede confundir con una respuesta legítima, ponle su propia bandera.
+
 **Una API de ventana nueva necesita su permiso** en
 `src-tauri/capabilities/default.json`, **en el mismo cambio**. Si falta, falla en
 runtime y no al compilar, y el síntoma es una ventana que no aparece sin ningún

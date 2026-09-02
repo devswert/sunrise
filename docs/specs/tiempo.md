@@ -74,8 +74,21 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   Focus (§4.7).
 - **Campana** al alcanzar el estimado, **decidida y tocada en Rust**
   (`bell.rs`): sin estimado —`null` o `<= 0`— nunca suena, suena al **alcanzar**
-  el estimado y **una sola vez por (entrada, estimado)**, así que pausar y
-  reanudar la vuelve a armar — y también **subirle el estimado**. El sonido se sintetiza con `rodio` (`sound.rs`). **Sin notificación
+  el estimado y **una sola vez por (tarea, día local, estimado)**. Subirle el
+  estimado la vuelve a armar —es otra promesa—, y al día siguiente también,
+  porque el contador es de hoy (I3). Pausar y reanudar dentro del mismo día ya
+  **no**: la llave era la entrada, y con una tarea pasada de su estimado eso era
+  una campanada en cada play. El sonido se sintetiza con `rodio` (`sound.rs`).
+
+  > **La promesa vive en la base** (`tasks.bell_rung_for`, migración 17), no en
+  > una variable del proceso, y el bug que lo obligó es la otra cara de una
+  > decisión buena: **el timer sobrevive al cierre de la app** a propósito. La
+  > promesa no lo hacía, así que al arrancar el vigilante no recordaba nada, veía
+  > un timer que ya venía pasado y **sonaba de inmediato** sin que hubieras
+  > alcanzado nada. En dev se cobraba en cada recompilación, y como al arrancar
+  > también corre el sync inicial del calendario, las dos líneas aparecían juntas
+  > en el log y el calendario parecía la causa. Formato `día|estimado`, por lo
+  > mismo que `notified_for` guarda la hora: guarda **la promesa**, no un flag. **Sin notificación
   nativa a propósito**: bastan el sonido y el taxímetro cambiando de color; una
   notificación del sistema hay que ir a descartarla y se apila si se pasan
   varias tareas.

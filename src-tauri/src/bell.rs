@@ -95,31 +95,54 @@ pub fn elapsed_today(
     base_seconds + (now - from).num_seconds().max(0)
 }
 
-/// Por qué promesa ya sonó la campana: la entrada **y el estimado** que tenía.
+/// Por qué promesa ya sonó la campana: **el día local y el estimado**.
 ///
-/// El par y no solo el id, porque el estimado se edita con el timer corriendo.
-/// Guardando solo el id, subir el estimado de 1 h a 2 h dejaba esa entrada muda
-/// para siempre —ya había sonado—, que es justo lo que reportó el dev. Y la
-/// campana no promete "avisé una vez por esta tarea" sino "avisé que alcanzaste
-/// **este** tiempo": si el tiempo cambia, la promesa es otra.
-pub type Rung = (i64, i64);
+/// Se guarda en `tasks.bell_rung_for` (migración 17) y no en una variable del
+/// proceso, y eso es un arreglo, no un detalle: **el timer sobrevive al cierre de
+/// la app a propósito** y la promesa no lo hacía, así que al arrancar el
+/// vigilante no recordaba nada, veía un timer ya pasado de su estimado y sonaba
+/// de inmediato. En dev se cobraba en cada recompilación.
+///
+/// Los dos datos hacen falta, por razones distintas:
+///
+/// - **El estimado**, porque se edita con el timer corriendo: subirlo de 1 h a
+///   2 h es otra promesa y tiene que volver a sonar. Con un booleano, esa tarea
+///   quedaría muda para siempre.
+/// - **El día local**, porque el contador es de HOY (I3): mañana la misma tarea
+///   arranca de cero y su campana tiene que volver a armarse.
+///
+/// **La llave es la tarea y ya no la entrada.** Antes pausar y reanudar rearmaba
+/// la campana, y con una tarea ya excedida eso era una campanada en cada play
+/// —otra forma de "suena de la nada"—. Ahora, dentro del mismo día y con el mismo
+/// estimado, suena **una sola vez**.
+pub fn promise(dia: &str, estimated: i64) -> String {
+    format!("{dia}|{estimated}")
+}
+
+/// El día local de hoy (`YYYY-MM-DD`), en la zona del usuario.
+///
+/// Sale del caché de proceso porque acá no hay `&Connection` a mano — el mismo
+/// camino que usa `repo::start_of_today`.
+pub fn today_local() -> String {
+    Utc::now()
+        .with_timezone(&repo::zone_cached())
+        .format("%Y-%m-%d")
+        .to_string()
+}
 
 /// ¿Le toca campana a este timer?
 ///
-/// Las reglas de producto son las que tenía el front (SPECS §4.6): sin estimado
-/// —`None` o `<= 0`— **nunca** suena; suena al **alcanzar** el estimado, no al
-/// pasarlo; y suena **una sola vez por entrada**, no por tarea, así que pausar y
-/// reanudar la vuelve a armar — igual que cambiarle el estimado.
-pub fn is_due(
-    active: &ActiveTimer,
-    midnight: DateTime<Utc>,
-    now: DateTime<Utc>,
-    rung: Option<Rung>,
-) -> bool {
+/// Las reglas de producto: sin estimado —`None` o `<= 0`— **nunca** suena; suena
+/// al **alcanzar** el estimado, no al pasarlo; y suena **una sola vez por
+/// (tarea, día, estimado)**, que es lo que guarda `bell_rung_for`. Cambiarle el
+/// estimado la vuelve a armar; pausar y reanudar dentro del mismo día ya no.
+pub fn is_due(active: &ActiveTimer, midnight: DateTime<Utc>, now: DateTime<Utc>, today: &str) -> bool {
     let Some(estimated) = active.estimated_minutes.filter(|m| *m > 0) else {
         return false;
     };
-    if rung == Some((active.entry_id, estimated)) {
+    // Lo que ya prometimos, leído de la tarea. Sobrevive al reinicio, que es
+    // justamente lo que la variable de antes no hacía.
+    if active.bell_rung_for.as_deref() == Some(promise(today, estimated).as_str()) {
         return false;
     }
     elapsed_today(active.base_seconds, &active.started_at, midnight, now) >= estimated * 60
@@ -215,6 +238,14 @@ fn notice_on(app: &AppHandle) -> bool {
     notice_enabled(&conn)
 }
 
+/// Anota la promesa cumplida. Lock corto y aparte, como el resto.
+fn mark_rung(app: &AppHandle, task_id: i64, promise: &str) -> anyhow::Result<()> {
+    let db = app.state::<Db>();
+    let conn = db.0.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+    repo::mark_bell_rung(&conn, task_id, promise)?;
+    Ok(())
+}
+
 fn read_active(app: &AppHandle) -> Option<ActiveTimer> {
     let db = app.state::<Db>();
     let conn = match db.0.lock() {
@@ -239,14 +270,16 @@ fn read_active(app: &AppHandle) -> Option<ActiveTimer> {
 /// lugares donde olvidarse deja la campana muda **sin ningún síntoma**, que es
 /// exactamente el bug que este módulo vino a arreglar.
 ///
-/// Lo que ya sonó se recuerda en una variable **del loop** y no en un estado
-/// compartido: nadie más necesita ese dato. Se olvida cuando no hay timer, que es
-/// lo que deja el caso raro —restaurar un respaldo y toparse con un id ya visto—
-/// del lado de sonar.
+/// **Lo que ya sonó se recuerda en la base** (`tasks.bell_rung_for`), no en una
+/// variable del loop. Vivía en el proceso, y el timer no: al arrancar, el
+/// vigilante no recordaba nada, veía un timer ya pasado de su estimado y sonaba
+/// de inmediato sin que hubieras alcanzado nada. En dev eso se cobraba en cada
+/// recompilación —el sync inicial del calendario aparecía en el log al mismo
+/// tiempo, lo que hacía parecer que la causa era el calendario— y en producción,
+/// cada vez que reabrías la app con el timer corriendo.
 pub fn start_watcher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let armed = app.state::<Armed>().0.clone();
-        let mut rung: Option<Rung> = None;
         loop {
             let activo = read_active(&app);
             let espera = match activo {
@@ -263,17 +296,24 @@ pub fn start_watcher(app: AppHandle) {
             // Se relee después de dormir: lo que se leyó para calcular la espera
             // ya puede ser viejo, y esta es la lectura que decide.
             let Some(active) = read_active(&app) else {
-                rung = None;
                 continue;
             };
             let Some(estimated) = active.estimated_minutes.filter(|m| *m > 0) else {
                 continue;
             };
-            if !is_due(&active, repo::start_of_today(), Utc::now(), rung) {
+            let today = today_local();
+            if !is_due(&active, repo::start_of_today(), Utc::now(), &today) {
                 continue;
             }
 
-            rung = Some((active.entry_id, estimated));
+            // **La promesa se anota antes de sonar**, igual que el aviso de
+            // reunión: si se anotara después, una campanada que tarda —o un
+            // cierre en el medio— dejaría la vuelta siguiente sonando de nuevo.
+            if let Err(e) = mark_rung(&app, active.task_id, &promise(&today, estimated)) {
+                // Se sigue igual: no poder anotar es un problema de la base, y
+                // callar la campana por eso sería cambiar un bug por otro peor.
+                eprintln!("[sunrise] campana: no pude anotar que sonó: {e}");
+            }
             // Se deja rastro, como el poller de calendario: es lo único que
             // permite saber después si sonó, y una campana que no suena no deja
             // ningún síntoma en pantalla.
@@ -322,40 +362,78 @@ mod tests {
             started_at: started_at.into(),
             base_seconds,
             estimated_minutes,
+            bell_rung_for: None,
         }
     }
 
+    /// El mismo timer, con la campana ya rung_for por esa promesa.
+    fn rung_for(mut t: ActiveTimer, dia: &str, estimated: i64) -> ActiveTimer {
+        t.bell_rung_for = Some(promise(dia, estimated));
+        t
+    }
+
     const MEDIANOCHE: &str = "2026-08-21T04:00:00+00:00";
+    const HOY: &str = "2026-08-21";
 
     #[test]
     fn suena_al_alcanzar_el_estimado_y_no_antes() {
         let t = timer("2026-08-21T13:00:00+00:00", 0, Some(30));
         let medianoche = instante(MEDIANOCHE);
 
-        assert!(!is_due(&t, medianoche, instante("2026-08-21T13:29:59+00:00"), None));
-        assert!(is_due(&t, medianoche, instante("2026-08-21T13:30:00+00:00"), None));
+        assert!(!is_due(&t, medianoche, instante("2026-08-21T13:29:59+00:00"), HOY));
+        assert!(is_due(&t, medianoche, instante("2026-08-21T13:30:00+00:00"), HOY));
     }
 
     #[test]
     fn el_tiempo_ya_registrado_hoy_cuenta() {
         // 25 minutos cerrados antes + 5 corriendo = el estimado de 30.
         let t = timer("2026-08-21T13:00:00+00:00", 25 * 60, Some(30));
-        assert!(is_due(
-            &t,
-            instante(MEDIANOCHE),
-            instante("2026-08-21T13:05:00+00:00"),
-            None
-        ));
+        assert!(is_due(&t, instante(MEDIANOCHE), instante("2026-08-21T13:05:00+00:00"), HOY));
     }
 
     #[test]
-    fn no_suena_dos_veces_por_la_misma_entrada() {
+    fn no_suena_dos_veces_por_la_misma_promesa() {
         let t = timer("2026-08-21T13:00:00+00:00", 0, Some(30));
         let ahora = instante("2026-08-21T14:00:00+00:00");
-        assert!(is_due(&t, instante(MEDIANOCHE), ahora, None));
-        assert!(!is_due(&t, instante(MEDIANOCHE), ahora, Some((t.entry_id, 30))));
-        // Otra entrada de la misma tarea sí: pausar y reanudar vuelve a armarla.
-        assert!(is_due(&t, instante(MEDIANOCHE), ahora, Some((999, 30))));
+        assert!(is_due(&t, instante(MEDIANOCHE), ahora, HOY));
+        assert!(!is_due(&rung_for(t, HOY, 30), instante(MEDIANOCHE), ahora, HOY));
+    }
+
+    /// **El bug que trajo la promesa a la base.** El timer sobrevive al cierre de
+    /// la app a propósito; la promesa vivía en una variable del proceso. Al
+    /// arrancar, el vigilante no recordaba nada y sonaba de inmediato sobre un
+    /// timer que ya venía pasado — en dev, una campanada por recompilación.
+    #[test]
+    fn reiniciar_el_proceso_no_la_hace_sonar_de_nuevo() {
+        // Una hora corrida sobre un estimado de 30: ya sonó, y está anotado.
+        let t = rung_for(timer("2026-08-21T13:00:00+00:00", 0, Some(30)), HOY, 30);
+        let ahora = instante("2026-08-21T14:00:00+00:00");
+        // Sin ninguna memoria en el proceso —como después de arrancar—, calla.
+        assert!(!is_due(&t, instante(MEDIANOCHE), ahora, HOY));
+    }
+
+    /// Pausar y reanudar ya **no** la rearma: con una tarea pasada de su estimado
+    /// eso era una campanada en cada play, que es otra forma de "suena sola". La
+    /// llave es la tarea y el día, no la entrada.
+    #[test]
+    fn reanudar_la_misma_tarea_no_vuelve_a_sonar_hoy() {
+        let mut t = rung_for(timer("2026-08-21T14:05:00+00:00", 60 * 60, Some(30)), HOY, 30);
+        t.entry_id = 999; // entrada nueva: pausó y volvió a darle play
+        assert!(!is_due(&t, instante(MEDIANOCHE), instante("2026-08-21T14:06:00+00:00"), HOY));
+    }
+
+    /// Pero mañana sí: el contador del taxímetro es de HOY (I3), así que la misma
+    /// tarea arranca de cero y su campana tiene que volver a armarse. Con la
+    /// promesa guardando solo el estimado, quedaría muda para siempre.
+    #[test]
+    fn al_dia_siguiente_la_campana_vuelve_a_armarse() {
+        let t = rung_for(timer("2026-08-22T13:00:00+00:00", 0, Some(30)), HOY, 30);
+        assert!(is_due(
+            &t,
+            instante("2026-08-22T04:00:00+00:00"),
+            instante("2026-08-22T13:30:00+00:00"),
+            "2026-08-22"
+        ));
     }
 
     #[test]
@@ -363,23 +441,12 @@ mod tests {
         // Lo reportó el dev: sonó a la hora, le sumó tiempo, y no volvió a sonar
         // nunca. Con la entrada como única llave, esa entrada quedaba muda para
         // siempre; la promesa es "alcanzaste ESTE tiempo", no "ya te avisé una vez".
-        let t = timer("2026-08-21T13:00:00+00:00", 0, Some(120));
-        let sono_a_los_60 = Some((t.entry_id, 60));
+        let t = rung_for(timer("2026-08-21T13:00:00+00:00", 0, Some(120)), HOY, 60);
 
         // A las dos horas justas, con el estimado nuevo, suena de nuevo.
-        assert!(is_due(
-            &t,
-            instante(MEDIANOCHE),
-            instante("2026-08-21T15:00:00+00:00"),
-            sono_a_los_60
-        ));
+        assert!(is_due(&t, instante(MEDIANOCHE), instante("2026-08-21T15:00:00+00:00"), HOY));
         // Y antes de alcanzarlo, no.
-        assert!(!is_due(
-            &t,
-            instante(MEDIANOCHE),
-            instante("2026-08-21T14:30:00+00:00"),
-            sono_a_los_60
-        ));
+        assert!(!is_due(&t, instante(MEDIANOCHE), instante("2026-08-21T14:30:00+00:00"), HOY));
     }
 
     #[test]
@@ -420,7 +487,7 @@ mod tests {
         let ahora = instante("2026-08-22T13:00:00+00:00");
         for estimado in [None, Some(0), Some(-5)] {
             let t = timer("2026-08-21T13:00:00+00:00", 0, estimado);
-            assert!(!is_due(&t, instante(MEDIANOCHE), ahora, None));
+            assert!(!is_due(&t, instante(MEDIANOCHE), ahora, HOY));
         }
     }
 
@@ -431,8 +498,8 @@ mod tests {
         let t = timer("2026-08-20T18:00:00+00:00", 0, Some(30));
         let medianoche = instante(MEDIANOCHE);
 
-        assert!(!is_due(&t, medianoche, instante("2026-08-21T04:10:00+00:00"), None));
-        assert!(is_due(&t, medianoche, instante("2026-08-21T04:30:00+00:00"), None));
+        assert!(!is_due(&t, medianoche, instante("2026-08-21T04:10:00+00:00"), HOY));
+        assert!(is_due(&t, medianoche, instante("2026-08-21T04:30:00+00:00"), HOY));
     }
 
     #[test]
@@ -440,7 +507,7 @@ mod tests {
         let medianoche = instante(MEDIANOCHE);
         let ahora = instante("2026-08-21T13:00:00+00:00");
         assert_eq!(elapsed_today(600, "ayer por la tarde", medianoche, ahora), 600);
-        assert!(!is_due(&timer("ayer", 600, Some(30)), medianoche, ahora, None));
+        assert!(!is_due(&timer("ayer", 600, Some(30)), medianoche, ahora, HOY));
     }
 
     #[test]

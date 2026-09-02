@@ -255,6 +255,9 @@ pub struct ActiveTimer {
     /// Segundos ya acumulados en entradas cerradas (sin contar la actual).
     pub base_seconds: i64,
     pub estimated_minutes: Option<i64>,
+    /// La promesa por la que **ya sonó la campana** (`día local|estimado`), o
+    /// `None` si todavía no sonó para esta tarea. Ver `bell::promesa`.
+    pub bell_rung_for: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -160,6 +160,16 @@ interface TimerState {
   active: ActiveTimer | null;
   elapsed: number;
   last: LastTask | null;
+  /**
+   * Si ya se leyó el timer de la base **al menos una vez** en esta ventana.
+   *
+   * Existe para una sola cosa, y es de peso: **`active` arranca en `null` porque
+   * vive en la base**, mientras que `last` sí se lee de `localStorage` de forma
+   * síncrona. Sin esta bandera, un timer *corriendo* se ve como "no hay nada que
+   * mostrar" durante el primer render, y quien decide la visibilidad del
+   * taxímetro lo esconde antes de saber que había algo. Ver `useSelfVisibility`.
+   */
+  loaded: boolean;
 
   refresh: () => Promise<void>;
   start: (taskId: number) => Promise<void>;
@@ -182,6 +192,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   active: null,
   elapsed: 0,
   last: readLast(),
+  loaded: false,
 
   refresh: async () => {
     const active = await api.getActiveTimer();
@@ -214,9 +225,14 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     }
 
     if (active) {
-      set({ active, last, elapsed: active.baseSeconds + runSeconds(active.startedAt) });
+      set({
+        active,
+        last,
+        elapsed: active.baseSeconds + runSeconds(active.startedAt),
+        loaded: true,
+      });
     } else {
-      set({ active: null, last, elapsed: 0 });
+      set({ active: null, last, elapsed: 0, loaded: true });
     }
   },
 

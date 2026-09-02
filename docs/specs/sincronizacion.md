@@ -92,7 +92,19 @@ En `useFloatingWindow.ts`, ya pagadas:
 3. **Dos controladores para la misma ventana**: `useFloatingWindow` en `Shell` y
    `useSelfVisibility` en `FloatingTimer`. Redundancia deliberada, pero si tocas
    una considera la otra.
-4. **Todo lo que se superponga a la tarjeta cuenta como control para
+4. **Ninguno de los dos decide hasta que el timer se leyó de la base**
+   (`timerStore.loaded`). `active` empieza en `null` porque vive en la base y se
+   lee asincrónico, mientras que `last` sale de `localStorage` en el acto: con el
+   timer **corriendo** —que no deja `last`— el primer render se veía como "no hay
+   nada que mostrar" y el taxímetro **se escondía a sí mismo** antes de saber que
+   sí había algo. Después ya era tarde: un webview oculto en macOS se estrangula
+   (I6), así que el `show()` que venía cuando la lectura resolvía podía no
+   ejecutarse nunca — y el widget no volvía hasta reabrir la app. El guard es
+   "todavía no sé", **no** "no mostrar": con `loaded` en false no se llama ni a
+   mostrar ni a esconder, porque un `false` mientras se carga es una respuesta
+   inventada. Los dos controladores lo llevan: con uno solo, la otra ventana
+   seguiría mandando esconder mientras esta muestra.
+5. **Todo lo que se superponga a la tarjeta cuenta como control para
    `useDragOrClick`.** El hook decide click-vs-arrastre y descarta los eventos que
    caen en `button, .tax__opts`. El panel de opciones aparece deslizándose *bajo el
    cursor*, así que un click que empieza en el título puede soltarse encima de él:

@@ -151,6 +151,19 @@ describe("completeAndAdvance", () => {
   });
 });
 
+// El taxímetro decide si mostrarse a partir de esto: hasta que la lectura de la
+// base vuelva, "no hay nada" no es una respuesta.
+describe("loaded · si ya se leyó el timer de la base", () => {
+  it("arranca en false y lo pone la primera lectura", async () => {
+    useTimerStore.setState({ active: null, elapsed: 0, last: null, loaded: false });
+    expect(useTimerStore.getState().loaded).toBe(false);
+
+    await useTimerStore.getState().refresh();
+
+    expect(useTimerStore.getState().loaded).toBe(true);
+  });
+});
+
 describe("refresh cuando la tarea del taxímetro se completó desde otro lado", () => {
   beforeEach(() => {
     localStorage.clear();

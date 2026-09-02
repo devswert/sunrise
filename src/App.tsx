@@ -55,7 +55,11 @@ function Shell({ children }: { children: React.ReactNode }) {
   // identidad cambia con cada tick del reloj y el efecto llamaría a `show()`
   // una vez por segundo, robando el foco continuamente.
   const taximeterVisible = useTimerStore((s) => !!(s.active || s.last));
-  useFloatingWindow(taximeterVisible);
+  // Y hasta que el timer se haya leído de la base, esta ventana no opina: un
+  // timer corriendo no deja rastro en `localStorage`, así que antes de esa
+  // lectura "no hay nada" es una respuesta inventada.
+  const timerLoaded = useTimerStore((s) => s.loaded);
+  useFloatingWindow(taximeterVisible, timerLoaded);
   useGotoListener();
   // El poller de calendario corre en Rust y avisa por evento de Tauri.
   useCalendarListener();

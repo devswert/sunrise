@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Check, EyeOff, Pause, Play } from "lucide-react";
 import { useTimer, useTimerRuntime, hms } from "./useTimer";
+import { useTimerStore } from "./timerStore";
 import { useDragOrClick } from "./useDragOrClick";
 import { useCursorHover } from "./useCursorHover";
 import { formatMinutes } from "../../lib/capacity";
@@ -29,10 +30,13 @@ export function FloatingTimer() {
   useTimerRuntime();
   const { active, display, overEstimate, stop, start, dismissLast, completeAndAdvance } =
     useTimer();
+  // Si ya se leyó el timer de la base. Hasta entonces esta ventana no decide
+  // nada sobre su propia visibilidad — ver `useSelfVisibility`.
+  const loaded = useTimerStore((s) => s.loaded);
   useKeepOnTop();
   // La ventana se muestra/oculta a sí misma según su contenido. Es más fiable
   // que depender de que la ventana principal la muestre.
-  useSelfVisibility(!!display);
+  useSelfVisibility(!!display, loaded);
 
   async function openFocus() {
     if (!isTauri()) return;
@@ -131,10 +135,26 @@ export function FloatingTimer() {
   );
 }
 
-/** Se muestra u oculta según tenga algo que mostrar. */
-function useSelfVisibility(shouldShow: boolean) {
+/**
+ * Se muestra u oculta según tenga algo que mostrar.
+ *
+ * **No hace nada hasta haber leído el timer de la base** (`loaded`), y esa
+ * espera es el arreglo de un bug que se veía como "el taxímetro no aparece".
+ * `active` empieza en `null` porque vive en la base y se lee asincrónico,
+ * mientras que `last` sale de `localStorage` en el acto: con el timer
+ * **corriendo** —que no deja `last`— el primer render se veía como "no hay nada
+ * que mostrar" y esta ventana **se escondía a sí misma** antes de saber que sí
+ * había. Después ya era tarde: un webview oculto en macOS se estrangula (es la
+ * razón por la que la campana vive en Rust, I6), así que el `show()` que venía
+ * cuando la lectura resolvía podía no ejecutarse nunca.
+ *
+ * Por eso el guard es "todavía no sé", no "no mostrar": con `loaded` en false
+ * no se llama **ni a mostrar ni a esconder**. Un `shouldShow` en falso mientras
+ * se carga es una respuesta inventada, no una respuesta.
+ */
+function useSelfVisibility(shouldShow: boolean, loaded: boolean) {
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!isTauri() || !loaded) return;
     let cancelled = false;
 
     (async () => {
@@ -155,7 +175,7 @@ function useSelfVisibility(shouldShow: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [shouldShow]);
+  }, [shouldShow, loaded]);
 }
 
 /**

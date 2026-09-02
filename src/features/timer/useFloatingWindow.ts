@@ -30,13 +30,18 @@ async function attempt(fn: () => Promise<unknown>) {
  *  2. El valor de `visible` tiene que ser **estable**: si cambia en cada tick
  *     del reloj, `show()` se ejecuta una vez por segundo y la ventana roba el
  *     foco continuamente.
+ *  3. **No decide nada hasta que `loaded`.** El timer activo vive en la base y
+ *     se lee asincrónico, así que en el primer render un timer corriendo se ve
+ *     igual que no tener nada: sin el guard, esta ventana manda esconder el
+ *     taxímetro justo mientras la otra lo está mostrando. Es el mismo arreglo
+ *     que en `useSelfVisibility`, y va en las dos porque las dos deciden.
  *
  * Además verifica que realmente quedó visible y reintenta, porque algunos
  * ajustes de ventana (como marcarla no enfocable) pueden dejarla oculta.
  */
-export function useFloatingWindow(visible: unknown) {
+export function useFloatingWindow(visible: unknown, loaded = true) {
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!isTauri() || !loaded) return;
     let cancelled = false;
 
     (async () => {
@@ -61,7 +66,7 @@ export function useFloatingWindow(visible: unknown) {
     return () => {
       cancelled = true;
     };
-  }, [visible]);
+  }, [visible, loaded]);
 }
 
 /** Escucha `sunrise://goto` (emitido por el taxímetro) y navega. */

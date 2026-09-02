@@ -483,6 +483,34 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         ALTER TABLE tasks ADD COLUMN priority TEXT;
         "#,
     ),
+    (
+        17,
+        r#"
+        -- La campana del estimado necesita recordar que ya sonó, y tiene que
+        -- **sobrevivir al reinicio del proceso**.
+        --
+        -- Hasta acá la promesa vivía en una variable del loop de `bell.rs`. El
+        -- timer, en cambio, sobrevive al cierre de la app a propósito: la entrada
+        -- queda abierta y sigue contando. Las dos cosas juntas dan el bug: al
+        -- arrancar, el vigilante no recuerda nada, ve un timer que ya pasó su
+        -- estimado y **suena de inmediato**, sin que hayas alcanzado nada. En dev
+        -- se cobra en cada recompilación, y en producción cada vez que reabrís la
+        -- app con el timer corriendo.
+        --
+        -- **Guarda la promesa, no un booleano**, igual que `notified_for`: el día
+        -- local y el estimado por el que sonó (`2026-09-02|60`). Los dos importan
+        -- y por razones distintas. El estimado, porque subirlo de 1 h a 2 h es
+        -- otra promesa y tiene que volver a sonar — con un flag esa tarea quedaría
+        -- muda para siempre. El día, porque el contador del taxímetro es de HOY
+        -- (I3): mañana la misma tarea vuelve a arrancar de cero y su campana tiene
+        -- que volver a armarse.
+        --
+        -- Va en `tasks` por lo mismo que `notified_for`: es un hecho de la tarea,
+        -- se lee sin join y se va con ella al borrarla. Y es dato nuestro: la
+        -- sincronización del calendario NO lo pisa.
+        ALTER TABLE tasks ADD COLUMN bell_rung_for TEXT;
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.
