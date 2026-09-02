@@ -15,6 +15,52 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.8.0 — 2026-09-02
+
+Agregar una tarea es ahora escribir la frase y darle Enter: el tiempo estimado, el
+canal y el objetivo se completan solos con lo que dice el título, y las palabras
+que los disparan se configuran en Configs → Sugerencias. El clic afuera dejó de
+cerrar el modal —ya no se pierde lo escrito—, y la prioridad se elige ahí mismo. La
+zona horaria también pasó a ser un ajuste, así el día deja de correrse solo.
+
+### Detalle
+
+- **Los chips del modal de crear se llenan solos** con lo que dice el título:
+  tiempo estimado, canal y objetivo de la semana. Se recalculan mientras se escribe
+  —borrar la palabra que los justificaba los saca— y **nunca pisan lo que se eligió
+  a mano**.
+- **Nueva sección Configs → Sugerencias**: qué palabras valen cuántos minutos y qué
+  palabras apuntan a qué canal, por ejemplo «issues», «soporte» y «tickets» a
+  #incidencias. Vienen 21 palabras de fábrica; la lista de canales arranca vacía.
+- **El plural y los typos se toman solos**: «issues» vale por «issue» y «reviwe»
+  por «review», así que alcanza con anotar una palabra por idea en vez de todas sus
+  variantes.
+- Un número escrito en el título gana siempre («30 min», «2h», «media hora»), y un
+  «#canal» escrito a mano sale del título y queda guardado en su campo, igual que
+  ya pasaba con los links.
+- **El clic afuera ya no cierra el modal de crear**: es el único de la app donde lo
+  que se pierde no está guardado en ningún otro lado. Se cierra con Escape.
+- La **prioridad** se puede elegir al crear la tarea, si el interruptor está
+  encendido.
+- Los chips del modal se leen como etiquetas y no como botones rellenos; el de
+  canal va teñido con el color de su canal, igual que el `#tag` de las tarjetas.
+- El atajo del calendario dice **"Al backlog"** en vez de "Sin fecha".
+- **Las duraciones son la misma lista en toda la app** —el modal de crear, el
+  detalle, la card, Focus y el reparto por día de un objetivo—, sin 10 ni 25
+  minutos.
+- **La zona horaria es un ajuste** (Configs → General, vacío = la del sistema).
+  Cambiarla vuelve a sincronizar los calendarios: las reuniones importadas son
+  instantes reales, mientras que las horas escritas a mano no se mueven, porque son
+  intenciones.
+- **Arreglado: el día se rompía en el cambio de hora.** En el salto de otoño la
+  medianoche local ocurre dos veces, y el taxímetro se quedaba en cero todo el día
+  o el rail salía en blanco.
+- **Arreglado: un feriado de día completo aparecía un día antes** en cualquier zona
+  que no fuera la de la máquina.
+- Interno: el test que vigila el puente entre el front y Rust no veía los comandos
+  con genéricos anidados ni exigía el gemelo en el mock; Biome pasó a hacer lint y
+  formato, `tsc` corre en cada PR, y las acciones de GitHub subieron de major.
+
 ## v0.7.0 — 2026-08-31
 
 Configs se rediseñó entera. Cada ajuste ahora muestra a la izquierda qué es y para
