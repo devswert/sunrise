@@ -84,6 +84,7 @@ export function useDevFake() {
         updatedTo: null,
         bannerVisible: false,
         whatsNewOpen: false,
+        errorOpen: false,
       });
       return "limpio";
     };
@@ -94,15 +95,61 @@ export function useDevFake() {
       return "aprieta la franja: finge la instalación y termina en 'Estás al día'";
     };
 
+    /**
+     * Los fallos **tal como los manda Rust**, con su cadena de causas (`chain` en
+     * `commands.rs`). Escribir a mano "Permission denied" mostraba un modal más
+     * limpio que el real, y lo que hay que poder mirar acá es exactamente lo que
+     * va a copiar y pegar la otra persona — incluido lo feo.
+     *
+     * Los cuatro son los que de verdad ocurren, en orden de probabilidad: la app
+     * corriendo desde el `.dmg` montado o desde Descargas, `/Applications` sin
+     * permiso de escritura, la red de una oficina, y la firma.
+     */
+    const FALLOS: Record<string, string> = {
+      permiso: "Io error → failed to move the new app into place → Permission denied (os error 13)",
+      solo_lectura:
+        "Io error → failed to replace /Volumes/sunrise/sunrise.app → Read-only file system (os error 30)",
+      red: "Network error → error sending request for url (https://github.com/devswert/sunrise/releases/download/v0.9.0/sunrise_aarch64.app.tar.gz) → error trying to connect → tcp connect error → Operation timed out (os error 60)",
+      firma: "Signature error → the signature of the update could not be verified",
+    };
+
+    /**
+     * El estado que **no se puede provocar a mano**: para verlo de verdad habría
+     * que romper el updater. Es justo el que hay que poder mirar, porque es el que
+     * le llega a alguien más y no a uno.
+     *
+     * Acepta la clave de un fallo conocido (`fallo("red")`) o un texto propio.
+     */
+    const fallo = (cual: keyof typeof FALLOS | string = "permiso") => {
+      const mensaje = FALLOS[cual] ?? cual;
+      void conAnuncio().then((actual) =>
+        st.setState({
+          available: {
+            version: "0.9.0",
+            currentVersion: actual,
+            notes: null,
+            date: null,
+          },
+          fake: true,
+          installing: false,
+          error: mensaje,
+          errorOpen: false,
+          bannerVisible: false,
+        }),
+      );
+      return `franja en error (${Object.keys(FALLOS).join(" · ")}): apriétala para ver el detalle`;
+    };
+
     (window as unknown as Record<string, unknown>).sunriseDev = {
       hayUpdate,
       alDia,
+      fallo,
       flujoCompleto,
       limpiar,
     };
     // eslint-disable-next-line no-console
     console.info(
-      "[sunrise] banco de pruebas del updater: sunriseDev.flujoCompleto() · .hayUpdate() · .alDia() · .limpiar()",
+      "[sunrise] banco de pruebas del updater: sunriseDev.flujoCompleto() · .hayUpdate() · .alDia() · .fallo() · .limpiar()",
     );
 
     return () => {

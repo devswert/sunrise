@@ -38,6 +38,16 @@ interface UpdateState {
   bannerVisible: boolean;
   /** El modal "Lo nuevo". Se abre desde el banner, nunca solo. */
   whatsNewOpen: boolean;
+  /**
+   * El modal con el detalle de una instalación fallida.
+   *
+   * Existe porque **no hay telemetría**: cuando a alguien le falla un update, lo
+   * único que puede llegar de vuelta es lo que esa persona logre copiar y pegar.
+   * El mensaje del updater ya estaba en `error`, pero solo se veía dejando el
+   * mouse quieto sobre el aviso, así que en la práctica el reporte que llegaba era
+   * "me dio error" — que no distingue un permiso de escritura de un proxy.
+   */
+  errorOpen: boolean;
 
   setAvailable: (u: AppUpdate | null) => void;
   /** Prender la instalación **limpia el progreso viejo**: cada intento cuenta de cero. */
@@ -48,6 +58,7 @@ interface UpdateState {
   arrivedFromUpdate: (version: string) => void;
   hideBanner: () => void;
   setWhatsNewOpen: (v: boolean) => void;
+  setErrorOpen: (v: boolean) => void;
   /**
    * Abre el anuncio de una versión sin pasar por el aviso del sidebar.
    *
@@ -59,6 +70,32 @@ interface UpdateState {
   showWhatsNew: (version: string) => void;
 }
 
+/**
+ * El error del updater, como texto legible, venga como venga.
+ *
+ * `String(err)` alcanza para el camino normal —`invoke` rechaza con el `String`
+ * que devolvió Rust— pero tiene un agujero que se paga justo donde más duele: un
+ * objeto plano se convierte en `"[object Object]"`, y **sin telemetría eso es todo
+ * lo que vuelve** de la máquina de otra persona. Un reporte inútil se ve igual que
+ * uno bueno hasta que lo abrís.
+ *
+ * El orden importa: `Error` antes que objeto —un `Error` serializado a JSON sale
+ * como `{}`, porque `message` no es enumerable— y `JSON.stringify` antes que
+ * `String`, que es el que produce el `[object Object]`.
+ */
+export function errorText(err: unknown): string {
+  if (typeof err === "string") return err;
+  if (err instanceof Error) return err.message || String(err);
+  if (err !== null && typeof err === "object") {
+    try {
+      return JSON.stringify(err);
+    } catch {
+      // Referencias circulares: queda el `String`, que al menos dice el tipo.
+    }
+  }
+  return String(err);
+}
+
 export const useUpdateStore = create<UpdateState>((set) => ({
   available: null,
   installing: false,
@@ -68,13 +105,18 @@ export const useUpdateStore = create<UpdateState>((set) => ({
   updatedTo: null,
   bannerVisible: false,
   whatsNewOpen: false,
+  errorOpen: false,
 
   setAvailable: (available) => set({ available }),
   setInstalling: (installing) => set({ installing, progress: null }),
   setProgress: (progress) => set({ progress }),
-  setError: (error) => set({ error }),
+  // Un error nuevo **cierra el modal viejo**: si quedara abierto mostrando el
+  // texto del intento anterior, el detalle que la persona copia no sería el del
+  // problema que acaba de tener.
+  setError: (error) => set({ error, errorOpen: false }),
   arrivedFromUpdate: (version) => set({ updatedTo: version, bannerVisible: true }),
   hideBanner: () => set({ bannerVisible: false }),
   setWhatsNewOpen: (whatsNewOpen) => set({ whatsNewOpen }),
+  setErrorOpen: (errorOpen) => set({ errorOpen }),
   showWhatsNew: (version) => set({ updatedTo: version, whatsNewOpen: true }),
 }));

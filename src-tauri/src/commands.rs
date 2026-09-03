@@ -14,6 +14,38 @@ fn e<E: std::fmt::Display>(err: E) -> String {
     err.to_string()
 }
 
+/// El error **con su cadena de causas**, unidas por ` → `.
+///
+/// `to_string()` imprime solo la capa de arriba, y eso alcanza para casi todo esta
+/// app: el que lo lee está mirando la pantalla y puede reintentar. Donde no alcanza
+/// es en el updater (§4.21): **no hay telemetría**, así que lo único que vuelve de
+/// la máquina de otra persona es el texto que esa persona copia, y ahí la diferencia
+/// entre `"Io error"` y `"Io error → Permission denied (os error 13)"` es la
+/// diferencia entre saber qué pasó y no saberlo.
+///
+/// Tope de cinco capas: una cadena más larga que eso no agrega información y sí
+/// convierte el mensaje en un párrafo que nadie pega entero.
+fn chain<E: std::error::Error>(err: E) -> String {
+    let mut out = err.to_string();
+    let mut causa = err.source();
+    let mut capas = 0;
+    while let Some(c) = causa {
+        let texto = c.to_string();
+        // Los enum con `#[error(transparent)]` repiten el mensaje de su fuente:
+        // encadenarlo dos veces se lee como un tartamudeo, no como una causa.
+        if !out.contains(&texto) {
+            out.push_str(" → ");
+            out.push_str(&texto);
+        }
+        capas += 1;
+        if capas >= 5 {
+            break;
+        }
+        causa = c.source();
+    }
+    out
+}
+
 #[tauri::command]
 pub fn ping() -> String {
     "pong".into()
@@ -1236,7 +1268,7 @@ pub async fn check_for_update(app: tauri::AppHandle) -> Result<Option<AppUpdate>
 #[tauri::command]
 pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_updater::UpdaterExt;
-    let update = app.updater().map_err(e)?.check().await.map_err(e)?;
+    let update = app.updater().map_err(chain)?.check().await.map_err(chain)?;
     let Some(update) = update else {
         // Alguien publicó y despublicó entremedio, o la app ya se actualizó en
         // otra ventana. No hay nada que instalar y tampoco nada roto.
@@ -1272,7 +1304,7 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
             },
         )
         .await
-        .map_err(e)?;
+        .map_err(chain)?;
     // La marca va acá, con la instalación ya hecha: una descarga que falla no
     // reinicia nada, y dejarla armada le robaría el foco al arranque siguiente.
     crate::update::arm_focus_after_restart(&app);
@@ -1282,6 +1314,67 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sin telemetría, el texto que la persona copia es todo lo que vuelve, y
+    /// `to_string()` pelado deja fuera la capa que dice qué pasó de verdad.
+    #[test]
+    fn el_error_del_updater_arrastra_su_causa() {
+        #[derive(Debug)]
+        struct Fondo;
+        impl std::fmt::Display for Fondo {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Permission denied (os error 13)")
+            }
+        }
+        impl std::error::Error for Fondo {}
+
+        #[derive(Debug)]
+        struct Arriba(Fondo);
+        impl std::fmt::Display for Arriba {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Io error")
+            }
+        }
+        impl std::error::Error for Arriba {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        assert_eq!(
+            chain(Arriba(Fondo)),
+            "Io error → Permission denied (os error 13)"
+        );
+    }
+
+    /// Un `transparent` repite el mensaje de su fuente. Encadenarlo dos veces se
+    /// lee como un tartamudeo y no como una causa.
+    #[test]
+    fn una_causa_que_repite_el_mismo_texto_no_se_encadena() {
+        #[derive(Debug)]
+        struct Fondo;
+        impl std::fmt::Display for Fondo {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "no route to host")
+            }
+        }
+        impl std::error::Error for Fondo {}
+
+        #[derive(Debug)]
+        struct Transparente(Fondo);
+        impl std::fmt::Display for Transparente {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "no route to host")
+            }
+        }
+        impl std::error::Error for Transparente {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        assert_eq!(chain(Transparente(Fondo)), "no route to host");
+    }
 
     /// Un nombre que no existe **no suena y no falla**, así que el valor de
     /// `settings` —que es TEXT y puede traer cualquier cosa— no se pasa tal cual.

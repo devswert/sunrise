@@ -59,7 +59,7 @@ describe("UpdateBanner · hay versión nueva", () => {
    * así que dejarlo en "Instalando…" para siempre es mentirle a alguien que está
    * mirando el sidebar esperando que algo pase.
    */
-  it("si la instalación falla, lo dice y deja reintentar", async () => {
+  it("si la instalación falla, lo dice y queda apretable", async () => {
     vi.spyOn(api, "installUpdate").mockRejectedValue(new Error("no route to host"));
     useUpdateStore.setState({
       available: { version: "0.2.0", currentVersion: "0.1.0", notes: null, date: null },
@@ -67,9 +67,33 @@ describe("UpdateBanner · hay versión nueva", () => {
     render(<UpdateBanner />);
 
     await userEvent.click(screen.getByRole("button", { name: /Versión 0\.2\.0/ }));
-    const b = await screen.findByRole("button", { name: /No se pudo\. Reintenta\./ });
-    expect(b).toHaveTextContent("No se pudo. Reintenta.");
+    const b = await screen.findByRole("button", { name: /No se pudo\. Mira el detalle\./ });
     expect(b).toBeEnabled();
+  });
+
+  /**
+   * **Sin telemetría, el texto del updater es lo único que puede volver de una
+   * máquina ajena.** Vivía en el `title` del aviso, así que había que dejar el
+   * mouse quieto encima para verlo y el reporte que llegaba era "me dio error".
+   * Ahora el click abre el detalle en vez de reintentar: reintentar vive adentro.
+   */
+  it("apretarlo con error abre el detalle en vez de reintentar", async () => {
+    const install = vi
+      .spyOn(api, "installUpdate")
+      .mockRejectedValue(new Error("Permission denied (os error 13)"));
+    useUpdateStore.setState({
+      available: { version: "0.2.0", currentVersion: "0.1.0", notes: null, date: null },
+    });
+    render(<UpdateBanner />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Versión 0\.2\.0/ }));
+    await screen.findByRole("button", { name: /No se pudo/ });
+    install.mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: /No se pudo/ }));
+
+    expect(useUpdateStore.getState().errorOpen).toBe(true);
+    expect(install).not.toHaveBeenCalled();
   });
 });
 

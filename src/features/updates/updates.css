@@ -521,3 +521,155 @@
     opacity: 1;
   }
 }
+
+/* --- El modal del update que falló ------------------------------------------
+ *
+ * Misma cabecera que "Lo nuevo" y **el mismo lugar**: los mismos cerros, con el
+ * cielo cerrado y sin sol. Que un error se vea cuidado no es decoración: lo que se
+ * le está pidiendo a la persona es un favor —copiar esto y mandarlo—, y una ventana
+ * de sistema no invita a eso. Además lo emparenta con el otro modal del updater:
+ * son dos momentos de la misma cosa.
+ *
+ * Doble clase por lo mismo que `announcement`: `updates.css` se importa antes que
+ * `dialog.css`, así que con una sola gana el `padding` de allá y reaparece la franja
+ * sobre la cabecera. */
+.dialog.dialog--failure {
+  width: min(440px, calc(100vw - 32px));
+  padding-top: 0;
+  overflow: hidden;
+  gap: var(--space-2);
+
+  /* Los mismos tres cerros, **sin la cara al sol**: acá no hay sol que la
+   * justifique, y dejarla puesta se leería como una luz que no está en el cielo.
+   * Los tres bajan su carga de malva contra la superficie, para que el conjunto
+   * se lea nublado y no de noche. */
+  --nuevo-cerro-lejos: color-mix(in srgb, var(--mauve) 24%, var(--surface-raised));
+  --nuevo-cerro-luz: color-mix(in srgb, var(--mauve) 40%, var(--surface-raised));
+  --nuevo-cerro-cerca: color-mix(in srgb, var(--mauve) 62%, var(--surface-raised));
+}
+.dialog--failure .dialog__title {
+  font-size: 20px;
+  margin-top: -24px;
+  position: relative;
+  z-index: 1;
+}
+
+/* El cielo cerrado. Mismo alto y mismos márgenes a sangre que el amanecer —es la
+ * misma cabecera— pero gris azulado y plano: sin el degradado cálido del horizonte,
+ * que es lo único que hacía "amanecer" a ese otro. */
+.upd-fail__cielo {
+  order: -1;
+  position: relative;
+  height: 176px;
+  margin: 0 calc(-1 * var(--space-4));
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--mauve) 46%, var(--surface-sunken)) 0%,
+    color-mix(in srgb, var(--mauve) 26%, var(--surface-sunken)) 70%,
+    var(--surface-sunken) 100%
+  );
+}
+
+/* Dos nubes, y **pasan lento de izquierda a derecha**. Es el único movimiento del
+ * modal: un cielo quieto se lee como una imagen, y lo que se quiere decir es que
+ * esto pasa y se va. Son elipses con `border-radius`, no un SVG: una nube de
+ * contorno definido pediría dibujarla bien, y borrosa dice lo mismo con dos líneas. */
+.upd-fail__nube {
+  position: absolute;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
+  filter: blur(9px);
+}
+.upd-fail__nube--alta {
+  width: 210px;
+  height: 46px;
+  top: 26px;
+  left: -60px;
+  animation: upd-fail-pasa 26s linear infinite;
+}
+.upd-fail__nube--baja {
+  width: 150px;
+  height: 32px;
+  top: 74px;
+  left: -40px;
+  opacity: 0.7;
+  animation: upd-fail-pasa 38s linear 3s infinite;
+}
+@keyframes upd-fail-pasa {
+  to {
+    transform: translateX(560px);
+  }
+}
+/* Quieto para quien pidió no ver animaciones, con las nubes ya puestas en el cielo
+   —no fuera de cuadro, o la cabecera quedaría vacía. */
+@media (prefers-reduced-motion: reduce) {
+  .upd-fail__nube {
+    animation: none;
+    transform: translateX(140px);
+  }
+}
+
+.upd-fail__texto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.upd-fail__que {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* El mensaje crudo del updater. Monoespaciado y seleccionable a propósito: es un
+   dato para pegar en un chat, no prosa. Con scroll, porque un stack largo no puede
+   estirar el modal fuera de la pantalla. */
+.upd-fail__crudo {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 168px;
+  overflow-y: auto;
+  user-select: text;
+}
+.upd-fail__datos {
+  margin: 0;
+  display: flex;
+  gap: var(--space-4);
+  font-size: 12.5px;
+}
+.upd-fail__datos dt {
+  color: var(--faint);
+  font-size: 11.5px;
+}
+.upd-fail__datos dd {
+  margin: 0;
+  color: var(--ink);
+}
+/* Reintentar es secundario y se ve secundario: la acción de este modal es copiar.
+   Va en el cuerpo y no entre los botones para no competir con ella. */
+.upd-fail__reintentar {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.upd-fail__reintentar:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}

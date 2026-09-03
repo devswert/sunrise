@@ -778,9 +778,45 @@ campo, el click se llevaría el dato junto con el aviso.
 
 **Si la instalación falla, el botón vuelve.** La app no se reinició, así que dejarlo
 en "Instalando…" para siempre es mentirle a alguien que está mirando el sidebar
-esperando que algo pase. El fallo se ve en la tarjeta —"No se pudo. Reintenta."— y
-el error completo va en el `title`; **no se pone roja**, por lo mismo que el fallo de
-la búsqueda se dice en gris (§4.21). Un intento nuevo parte el progreso de cero.
+esperando que algo pase. El fallo se ve en la tarjeta —"No se pudo. Mira el
+detalle."—; **no se pone roja**, por lo mismo que el fallo de la búsqueda se dice en
+gris (§4.21). Un intento nuevo parte el progreso de cero.
+
+**Y apretarla abre el detalle** (`UpdateError.tsx`), que existe por una razón
+concreta: **esta app no tiene telemetría**. Cuando a alguien del equipo le falla un
+update, lo único que puede volver es lo que esa persona logre copiar y pegar. El
+mensaje del updater ya se guardaba, pero vivía en el `title` de la tarjeta —había
+que dejar el mouse quieto encima—, así que el reporte que llegaba era "me dio
+error", que no distingue un permiso de escritura de un proxy corporativo. Tres
+decisiones:
+
+- **El mensaje va crudo, sin interpretar.** Traducirlo a "algo salió mal" borra el
+  único dato que sirve. Va en monoespaciado y seleccionable, porque es para pegar en
+  un chat y no para leer.
+- **Y va con su cadena de causas**, unidas por ` → ` (`chain` en `commands.rs`, solo
+  para este comando). `to_string()` imprime la capa de arriba y nada más: la
+  diferencia entre `"Io error"` y `"Io error → Permission denied (os error 13)"` es
+  la diferencia entre saber qué pasó y no saberlo. Una causa que repite el texto de
+  su padre —los `#[error(transparent)]`— no se encadena, o el mensaje tartamudea.
+  Del lado del front, `errorText` cubre el otro agujero: `String(err)` sobre un
+  objeto plano da `"[object Object]"`, y un reporte inútil se ve igual que uno bueno
+  hasta que lo abrís.
+- **El botón de copiar lleva también las dos versiones y el sistema**, que es lo que
+  permite saber si el problema es de esa máquina o de la versión publicada. Si el
+  portapapeles falla, el texto igual está en pantalla.
+- **Reintentar vive dentro del modal**, no en la tarjeta: un control que a veces
+  reintenta y a veces explica es impredecible. Con error, la tarjeta hace una sola
+  cosa.
+
+La cabecera es la misma cordillera del modal "Lo nuevo" (`Cordillera.tsx`, compartido
+por los dos) con el cielo cerrado y sin sol. Que un error se vea cuidado no es
+decoración: lo que se le está pidiendo a la persona es un favor —copiar esto y
+mandarlo—, y una ventana de sistema no invita a eso. El estado se prueba con
+`sunriseDev.fallo()`, porque provocarlo de verdad pide romper el updater — y sus
+mensajes son **los cuatro fallos reales con el formato que manda Rust**
+(`fallo("permiso" | "solo_lectura" | "red" | "firma")`), no un texto inventado:
+un ejemplo más limpio que el real deja el modal probado contra algo que nunca
+llega.
 
 > **I** — **Instalar desde Configs tiene que avisarle al store.** Los dos caminos
 > —el aviso del sidebar y el botón de Configs— llaman al mismo comando, pero el

@@ -36,7 +36,7 @@ interface DialogProps {
    * entrar en esa trampa. Los estilos de la variante los pone la feature que la
    * pide, no `dialog.css`.
    */
-  variant?: "announcement";
+  variant?: "announcement" | "failure";
 }
 
 /**

@@ -1,5 +1,5 @@
 import { ArrowUp, Check, ChevronRight, Sparkles } from "lucide-react";
-import { useUpdateStore } from "./updateStore";
+import { errorText, useUpdateStore } from "./updateStore";
 import { api } from "../../lib/ipc";
 import type { UpdateProgress } from "../../lib/types";
 import { shortDate } from "../../lib/date";
@@ -33,6 +33,7 @@ export function UpdateBanner() {
   const bannerVisible = useUpdateStore((s) => s.bannerVisible);
   const setInstalling = useUpdateStore((s) => s.setInstalling);
   const setError = useUpdateStore((s) => s.setError);
+  const setErrorOpen = useUpdateStore((s) => s.setErrorOpen);
   const setProgress = useUpdateStore((s) => s.setProgress);
   const hideBanner = useUpdateStore((s) => s.hideBanner);
   const setWhatsNewOpen = useUpdateStore((s) => s.setWhatsNewOpen);
@@ -101,7 +102,7 @@ export function UpdateBanner() {
       // Si sale bien no vuelve: la app se reinicia sola en la versión nueva.
       await api.installUpdate();
     } catch (err) {
-      setError(String(err));
+      setError(errorText(err));
       setInstalling(false);
     }
   }
@@ -114,11 +115,13 @@ export function UpdateBanner() {
       className={`upd-banner upd-banner--nueva${installing ? " is-installing" : ""}${
         error ? " is-error" : ""
       }`}
-      onClick={() => void instalar()}
+      // Con error el click **abre el detalle**, no reintenta: sin telemetría, ese
+      // texto es lo único que puede volver de una máquina ajena, y un aviso que a
+      // veces reintenta y a veces explica es un control impredecible. Reintentar
+      // vive dentro del modal.
+      onClick={() => (error ? setErrorOpen(true) : void instalar())}
       disabled={installing}
-      title={
-        error ? `No se pudo instalar: ${error}` : `Instalar la ${available.version} y reiniciar`
-      }
+      title={error ? "Ver el detalle del error" : `Instalar la ${available.version} y reiniciar`}
     >
       <span className="upd-banner__fila">
         <span className="upd-banner__icono">
@@ -162,7 +165,7 @@ function porcentaje(p: UpdateProgress | null): number | null {
 
 /** La línea de abajo: qué está pasando, en palabras. */
 function bajada(installing: boolean, error: string | null, p: UpdateProgress | null): string {
-  if (error) return "No se pudo. Reintenta.";
+  if (error) return "No se pudo. Mira el detalle.";
   if (!installing) return "Actualizar ahora";
   if (p?.installing) return "Instalando y reiniciando…";
   if (!p) return "Preparando la descarga…";

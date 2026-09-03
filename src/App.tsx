@@ -13,6 +13,7 @@ import { SettingsView } from "./features/settings/SettingsView";
 import { AddTaskModal } from "./features/tasks/AddTaskModal";
 import { QuitConfirm, useQuitListener } from "./components/QuitConfirm";
 import { WhatsNew } from "./features/updates/WhatsNew";
+import { UpdateError } from "./features/updates/UpdateError";
 import { useUpdateRuntime } from "./features/updates/useUpdateRuntime";
 import { useDevFake } from "./features/updates/devFake";
 import { useAppStore, useDataSync } from "./lib/store";
@@ -117,6 +118,7 @@ export default function App() {
         {composeOpen && <AddTaskModal />}
         <QuitConfirm />
         <WhatsNew />
+        <UpdateError />
       </Shell>
     </HashRouter>
   );
