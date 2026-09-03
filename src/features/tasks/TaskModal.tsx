@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Check, Flag, Hash, Link2, Pause, Play, Trash2, X } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, Objective, Task, TaskEvent, TaskPatch, TimeEntry } from "../../lib/types";
+import { Markdown } from "../../components/Markdown";
 import { extractLinks, taskEventLine } from "./history";
 import { chipVars } from "./chipVars";
 import { abrirExterno } from "../calendar/MeetingLink";
@@ -621,7 +620,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                 }}
               >
                 {notes.trim() ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{notes}</ReactMarkdown>
+                  <Markdown>{notes}</Markdown>
                 ) : (
                   <span className="tmodal__notes-placeholder">Notas…</span>
                 )}

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Markdown } from "../../components/Markdown";
 
 /**
  * Notas de una tarea: markdown renderizado que se vuelve editable al hacer click.
@@ -67,7 +66,7 @@ export function NotesEditor({
       }}
     >
       {text.trim() ? (
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+        <Markdown>{text}</Markdown>
       ) : (
         <span className="tmodal__notes-placeholder">{placeholder}</span>
       )}

@@ -202,6 +202,22 @@ lee como texto raro.
 
 ## Componentes y patrones
 
+**Los links salen al navegador del sistema, siempre.** Dentro del webview un
+`<a href>` **navega la propia ventana de la app**: sunrise se convierte en una
+pestaña de Google sin barra de direcciones ni botón de volver, y la única salida es
+cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcional:
+
+- **`components/Markdown.tsx`** dibuja todo el markdown de la app —notas de una
+  tarea, anuncio de una versión—. Conserva el `href` (menú contextual, copiar
+  dirección, lectores de pantalla) y le pone al click un `preventDefault` +
+  `abrirExterno`. También `stopPropagation`, porque las notas viven dentro de un
+  contenedor que abre el editor al click: sin eso, entrar a un link te devolvía del
+  navegador a un textarea abierto.
+- **`abrirExterno`** (`features/calendar/MeetingLink.tsx`) es el único camino de
+  salida: plugin `opener` dentro de Tauri, `window.open` fuera. Un link que no está
+  en markdown se dibuja como `<button>` que lo llama —`MeetingLink`, los recursos
+  del detalle—, no como anchor.
+
 - **La distribución no se rediseña sobre la marcha.** Ante una duda de layout, la
   respuesta sale de lo que ya existe —la vista hermana, la card equivalente, el modal que
   resuelve el mismo problema— y no de una variante inventada para el caso. Es una app de

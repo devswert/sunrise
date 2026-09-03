@@ -195,6 +195,16 @@ mide **Jaro-Winkler con su corte convencional de 0.9** — si tocas ese número,
 tené a mano por qué: lo que había antes eran tramos elegidos a ojo, y volver a eso
 es volver a un umbral que solo se justifica por nuestros tests.
 
+**Un `<a href>` dentro del webview se lleva la ventana de la app.** No navega "mal":
+sunrise se convierte en una pestaña de Google, sin barra de direcciones, sin botón de
+volver y sin forma de salir salvo cerrar. Por eso **todo markdown pasa por
+`components/Markdown.tsx`**, que conserva el `href` —menú contextual, copiar
+dirección, lectores de pantalla— pero intercepta el click y lo manda a
+`abrirExterno` (plugin `opener`, con su permiso en `capabilities/default.json`). Si
+escribís una vista que muestre texto de otra persona, esa es la que la dibuja. Y si
+necesitás un link suelto fuera de markdown, es un `<button>` que llama a
+`abrirExterno`, como `MeetingLink`.
+
 **Una lista de palabras se dibuja en pills, no en un campo con comas.** Es la
 fila de reglas del sugeridor (`SuggestionsCard`, `.set-pills`): cada palabra es su
 propia cosa —se cuenta de un vistazo y se borra sola— y el campo del final agrega

@@ -1,4 +1,4 @@
-import ReactMarkdown from "react-markdown";
+import { Markdown } from "../../components/Markdown";
 import { Dialog } from "../../components/Dialog";
 import { announcementFor, releaseDateFor } from "../../lib/changelog";
 import { dateLabel } from "../../lib/date";
@@ -58,7 +58,7 @@ export function WhatsNew() {
         <Cordillera />
       </div>
       <div className="dialog__body nuevo__texto">
-        <ReactMarkdown>{anuncio}</ReactMarkdown>
+        <Markdown gfm={false}>{anuncio}</Markdown>
       </div>
     </Dialog>
   );
