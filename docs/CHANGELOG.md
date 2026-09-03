@@ -15,6 +15,28 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.9.0 — 2026-09-03
+
+Tres arreglos de cosas que molestaban a diario: el taxímetro vuelve a aparecer solo
+cuando reabres la app con un timer corriendo, la campana dejó de sonar al arrancar
+sin motivo, y un link en las notas ya no se lleva la ventana de la app. Además, si
+una actualización falla, ahora puedes ver y copiar el detalle para pasarlo.
+
+### Detalle
+
+- **Arreglado: el taxímetro no aparecía** al abrir la app con una tarea corriendo.
+  Se escondía a sí mismo antes de alcanzar a leer que había un timer, y ya no volvía
+  hasta reiniciar.
+- **Arreglado: la campana sonaba sola al arrancar.** Si cerrabas la app con un timer
+  pasado de su estimado, al abrirla volvía a sonar. Ahora recuerda que ya sonó, y lo
+  recuerda entre sesiones.
+- **Cambio de comportamiento**: pausar y reanudar una tarea ya no vuelve a tocar la
+  campana el mismo día. Subirle el estimado sí, porque es otra promesa.
+- **Arreglado: un link en las notas navegaba la ventana de la app**, que quedaba
+  mostrando una web sin forma de volver. Ahora todos abren en el navegador.
+- **Si una actualización falla, la franja abre el detalle.** Con el mensaje completo
+  y un botón para copiarlo junto con las versiones y el sistema.
+
 ## v0.8.0 — 2026-09-02
 
 Agregar una tarea es ahora escribir la frase y darle Enter: el tiempo estimado, el
