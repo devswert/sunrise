@@ -465,6 +465,17 @@
   color: var(--mint-ink);
   font-weight: 600;
 }
+/* La tarea no entra antes de la hora de salida (§4.3). Va DESPUÉS de
+   `.is-running` a propósito: una tarea puede estar corriendo y salirse igual, y
+   ahí el aviso pesa más que el "esta es la de ahora" —que de todas formas sigue
+   contándolo el punto pulsante, que es mint y no cambia—. El 35% es la misma
+   proporción que el resto de los fondos de la card, para que el ámbar tenga el
+   contraste que sus `-ink` ya tienen calculado en los dos temas. */
+.tc__badge.is-late {
+  background: color-mix(in srgb, var(--butter) 45%, transparent);
+  color: var(--butter-ink);
+  font-weight: 600;
+}
 /* Punto pulsante: deja claro que se está trabajando en esa tarea. */
 .tc__pulse {
   width: 6px;

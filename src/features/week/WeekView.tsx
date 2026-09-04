@@ -36,6 +36,7 @@ import { usePanelPresence } from "./panelPresence";
 import { BacklogPanel } from "../backlog/BacklogPanel";
 import type { Task } from "../../lib/types";
 import { useDayWork } from "../calendar/useTrabajoDelDia";
+import { useLateTasks } from "../calendar/useLateTasks";
 
 export function WeekView() {
   const [anchor, setAnchor] = useState<Date>(() => new Date());
@@ -106,6 +107,17 @@ export function WeekView() {
   // está en pantalla y el rail mostraría algo que no se ve en ninguna columna.
   const diaDelRail = diaElegido != null && dates.includes(diaElegido) ? diaElegido : porDefecto;
   const { work, segundosEnCurso } = useDayWork(diaDelRail);
+
+  // Qué se sale del horario, **solo en hoy**. La agenda y no la lista de la
+  // columna: una reunión ignorada no es una card pero igual te ocupa la tarde,
+  // y si no contara la proyección del board diría otra hora que la del rail.
+  const lateIds = useLateTasks(
+    today,
+    board.agendaByDate[today] ?? [],
+    workday.start,
+    workday.end,
+    dates.includes(today),
+  );
 
   /**
    * Los días plegados salen de Configs (números ISO), con dos excepciones:
@@ -318,6 +330,7 @@ export function WeekView() {
                       categories={board.categories}
                       capacityTarget={capacity.target}
                       capacityWarnRatio={capacity.warnRatio}
+                      lateIds={d === today ? lateIds : undefined}
                       onToggle={board.toggleTask}
                       onOpen={(t) => setSelectedId(t.id)}
                       onPatch={board.patchTask}

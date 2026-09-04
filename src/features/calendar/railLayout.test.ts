@@ -3,6 +3,7 @@ import type { Task } from "../../lib/types";
 import {
   buildRail,
   hourLabel,
+  lateTaskIds,
   minutesFromTime,
   DURACION_POR_DEFECTO,
   TRAMO_MINIMO,
@@ -642,5 +643,51 @@ describe("armarRail · proyección de las tareas sin hora", () => {
       "18:00",
     );
     expect(r.blocks.map((b) => b.taskId)).toEqual([1]);
+  });
+});
+
+describe("lateTaskIds", () => {
+  const JORNADA = ["09:00", "18:00"] as const;
+
+  it("no marca nada si todo entra antes de la hora de salida", () => {
+    const tasks = [task({ id: 1, estimatedMinutes: 30 }), task({ id: 2, estimatedMinutes: 30 })];
+    const rail = buildRail(tasks, ...JORNADA, { ahoraMin: 17 * 60 });
+    expect([...lateTaskIds(rail, tasks)]).toEqual([]);
+  });
+
+  it("marca la que se pasa, y solo esa", () => {
+    // 17:00 + 30 = 17:30 entra; la siguiente termina 18:00... y la tercera no.
+    const tasks = [
+      task({ id: 1, position: 1, estimatedMinutes: 30 }),
+      task({ id: 2, position: 2, estimatedMinutes: 30 }),
+      task({ id: 3, position: 3, estimatedMinutes: 30 }),
+    ];
+    const rail = buildRail(tasks, ...JORNADA, { ahoraMin: 17 * 60 });
+    expect([...lateTaskIds(rail, tasks)]).toEqual([3]);
+  });
+
+  it("lo completado no se marca aunque su bloque caiga tarde", () => {
+    const tasks = [
+      task({ id: 1, status: "DONE", actualSeconds: 3600, estimatedMinutes: 60 }),
+      task({ id: 2, position: 2, estimatedMinutes: 60 }),
+    ];
+    const rail = buildRail(tasks, ...JORNADA, {
+      ahoraMin: 19 * 60,
+      work: [{ taskId: 1, seconds: 3600, trackedAt: `${DIA}T19:00:00Z`, running: false }],
+    });
+    expect(lateTaskIds(rail, tasks).has(1)).toBe(false);
+    expect(lateTaskIds(rail, tasks).has(2)).toBe(true);
+  });
+
+  it("una reunión agendada después de la hora de salida cuenta como fuera", () => {
+    const tasks = [event(1, "19:00", 30)];
+    const rail = buildRail(tasks, ...JORNADA, { ahoraMin: 10 * 60 });
+    expect([...lateTaskIds(rail, tasks)]).toEqual([1]);
+  });
+
+  it("una tarea partida se marca si el último tramo se pasa", () => {
+    const tasks = [task({ id: 1, position: 1, estimatedMinutes: 120 }), event(2, "17:00", 30)];
+    const rail = buildRail(tasks, ...JORNADA, { ahoraMin: 16 * 60 });
+    expect(lateTaskIds(rail, tasks).has(1)).toBe(true);
   });
 });

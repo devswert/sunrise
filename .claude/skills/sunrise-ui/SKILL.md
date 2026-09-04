@@ -42,7 +42,9 @@ todo. **El usuario insiste en esto de forma consistente.**
   lista. Al recortar, el `word-break` se queda junto al clamp: sin él un token sin
   espacios se sale de ancho en vez de recortarse.
 - **El color clasifica, nunca decora.** Dice a qué canal pertenece algo o cómo va la
-  capacidad. Un color sin significado no va.
+  capacidad. Un color sin significado no va. En el badge de tiempo de una card ya
+  conviven dos: mint = la estás trabajando, ámbar = se sale de tu horario (§4.3).
+  El ámbar gana, y el mint sigue contándose con el punto pulsante.
 - **Nada pide confirmación salvo lo irreversible.** Todo se autoguarda y todo se
   puede deshacer moviendo la tarea de vuelta.
 - **Cada vista responde una pregunta.** Si una vista necesita un párrafo para

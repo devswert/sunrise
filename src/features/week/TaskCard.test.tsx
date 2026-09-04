@@ -38,11 +38,11 @@ function makeTask(over: Partial<Task> = {}): Task {
   };
 }
 
-function renderCard(task: Task, onToggle = vi.fn(), onOpen = vi.fn()) {
+function renderCard(task: Task, onToggle = vi.fn(), onOpen = vi.fn(), late = false) {
   render(
     <DndContext>
       <SortableContext items={[`task-${task.id}`]}>
-        <TaskCard task={task} category={null} onToggle={onToggle} onOpen={onOpen} />
+        <TaskCard task={task} category={null} onToggle={onToggle} onOpen={onOpen} late={late} />
       </SortableContext>
     </DndContext>,
   );
@@ -54,6 +54,18 @@ describe("TaskCard", () => {
     renderCard(makeTask());
     expect(screen.getByText("Demo task")).toBeInTheDocument();
     expect(screen.getByText("0:30")).toBeInTheDocument();
+  });
+
+  it("el badge de tiempo va en ámbar si la tarea se sale del horario", () => {
+    renderCard(makeTask(), undefined, undefined, true);
+    const badge = screen.getByLabelText("Ver tiempos");
+    expect(badge.className).toContain("is-late");
+  });
+
+  it("sin aviso, el badge queda como siempre", () => {
+    renderCard(makeTask());
+    const badge = screen.getByLabelText("Ver tiempos");
+    expect(badge.className).not.toContain("is-late");
   });
 
   // El recorte a dos líneas es CSS y jsdom no lo aplica; lo que sí se puede

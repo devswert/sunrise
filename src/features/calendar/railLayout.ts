@@ -266,6 +266,29 @@ export function buildRail(
   };
 }
 
+/**
+ * Las tareas que, según la proyección del rail, **no entran antes de la hora de
+ * salida**.
+ *
+ * Sale del mismo `Rail` que dibuja la agenda, y eso es lo importante: si la
+ * cuenta se hiciera aparte —sumando estimados desde ahora— diría una hora y la
+ * agenda otra, sobre el mismo día y a la vista al mismo tiempo. La regla es la
+ * línea de la jornada: cualquier bloque que termine después de
+ * `jornadaHastaMin` marca su tarea.
+ *
+ * Lo completado no cuenta aunque su bloque REAL caiga tarde: haberte pasado ya
+ * no es un aviso, es un hecho.
+ */
+export function lateTaskIds(rail: Rail, tasks: Task[]): Set<number> {
+  const done = new Set(tasks.filter((t) => t.status === "DONE").map((t) => t.id));
+  const late = new Set<number>();
+  for (const b of rail.blocks) {
+    if (done.has(b.taskId)) continue;
+    if (b.endMin > rail.jornadaHastaMin) late.add(b.taskId);
+  }
+  return late;
+}
+
 interface Tramo {
   taskId: number;
   /** La posición de su card en la columna: es lo que ordena la proyección. */

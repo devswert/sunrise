@@ -13,6 +13,8 @@ interface TaskCardProps {
   onPatch?: (id: number, patch: TaskPatch) => void;
   /** Ver `TaskCardContent`: esconde los rellenos de los campos vacíos. */
   hidePlaceholders?: boolean;
+  /** Ver `TaskCardContent`: la tarea no entra en el horario de trabajo. */
+  late?: boolean;
 }
 
 export function TaskCard({
@@ -23,6 +25,7 @@ export function TaskCard({
   onOpen,
   onPatch,
   hidePlaceholders,
+  late,
 }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `task-${task.id}`,
@@ -59,6 +62,7 @@ export function TaskCard({
         onToggle={onToggle}
         onPatch={onPatch}
         hidePlaceholders={hidePlaceholders}
+        late={late}
       />
     </div>
   );
@@ -77,6 +81,7 @@ export function TaskCardStatic({
   onOpen,
   onPatch,
   hidePlaceholders,
+  late,
 }: TaskCardProps) {
   const done = task.status === "DONE";
   const running = useTimerStore((s) => s.active?.taskId === task.id);
@@ -94,6 +99,7 @@ export function TaskCardStatic({
         // Se pasa igual que en la card arrastrable: es la misma card, y sin esto
         // la vista Backlog salía con los rellenos que el panel esconde.
         hidePlaceholders={hidePlaceholders}
+        late={late}
       />
     </div>
   );

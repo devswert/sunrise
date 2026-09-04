@@ -219,6 +219,22 @@ siguiente corrida.
   (de `settings`, default 480), semáforo por `computeCapacityLevel`:
   `> target` ⇒ `OVER` (rojo); `>= target * 0.85` ⇒ `WARN` (amarillo); resto
   `OK` (gris). `target <= 0` ⇒ siempre `OK`.
+- **Aviso de "se sale del horario"** (`lateTaskIds`): en la columna de **hoy**, el
+  badge de tiempo de una card va en ámbar (`.tc__badge.is-late`) si su bloque
+  proyectado termina después de `work_end`. Tres precisiones:
+  - Sale del **mismo `buildRail`** que dibuja la agenda (`useLateTasks`), y no de
+    una suma aparte: el rail ya sabe de reales, fijos y tramos partidos, y dos
+    proyecciones distintas del mismo día a la vista al mismo tiempo se
+    contradirían. Por eso entra la **agenda** del día y no la lista de la
+    columna: una reunión ignorada (§4.12) no es una card pero igual ocupa la
+    tarde.
+  - **Lo completado no se marca**, aunque su bloque REAL caiga tarde: haberte
+    pasado ya no es un aviso.
+  - El aviso **envejece solo**, así que `useLateTasks` se suscribe a
+    `useMinuteTick` (`lib/day.ts`), el mismo reloj compartido del rail.
+  - Es distinto del contador de capacidad de arriba: aquel compara el plan contra
+    un presupuesto de minutos; este proyecta contra el reloj. Se puede estar
+    holgado de presupuesto y no llegar igual.
 - **Barra de progreso** solo en la columna de hoy, pero dentro de un slot de
   altura fija en TODAS las columnas para que las listas queden alineadas
   (regla de UI, ver §7).

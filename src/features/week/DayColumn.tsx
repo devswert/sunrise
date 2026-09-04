@@ -40,6 +40,12 @@ interface DayColumnProps {
    * de la columna.
    */
   onCollapse?: (date: string) => void;
+  /**
+   * Las tareas que se salen del horario de trabajo, para que su badge de tiempo
+   * vaya en ámbar. Solo la columna de hoy lo recibe: la proyección arranca en la
+   * hora actual y en un día futuro no querría decir nada.
+   */
+  lateIds?: Set<number>;
 }
 
 const LEVEL_CLASS: Record<CapacityLevel, string> = {
@@ -64,6 +70,7 @@ export function DayColumn({
   collapsed = false,
   onExpand,
   onCollapse,
+  lateIds,
 }: DayColumnProps) {
   const openCompose = useAppStore((s) => s.openCompose);
   // Toda la columna es zona de drop (no solo la lista), para que el arrastre
@@ -218,6 +225,7 @@ export function DayColumn({
               onToggle={onToggle}
               onOpen={onOpen}
               onPatch={onPatch}
+              late={lateIds?.has(t.id)}
             />
           ))}
         </SortableContext>

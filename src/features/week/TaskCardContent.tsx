@@ -35,6 +35,12 @@ interface Props {
    * `CategoryTag` tampoco dibuja nada sin categoría.
    */
   hidePlaceholders?: boolean;
+  /**
+   * La proyección del día deja esta tarea fuera del horario de trabajo, así que
+   * el badge de tiempo va en ámbar. Quién lo decide: `useLateTasks`, con el
+   * mismo `buildRail` que dibuja la agenda.
+   */
+  late?: boolean;
 }
 
 /**
@@ -51,6 +57,7 @@ export function TaskCardContent({
   onToggle,
   onPatch,
   hidePlaceholders,
+  late = false,
 }: Props) {
   const [openFooter, setOpenFooter] = useState(false);
   const [picker, setPicker] = useState<null | "channel" | "planned" | "actual">(null);
@@ -111,7 +118,7 @@ export function TaskCardContent({
         </div>
         {!(hidePlaceholders && task.estimatedMinutes == null && liveSeconds === 0) && (
           <button
-            className={`tc__badge${running ? " is-running" : ""}`}
+            className={`tc__badge${running ? " is-running" : ""}${late ? " is-late" : ""}`}
             onPointerDown={stop}
             onClick={(e) => {
               stop(e);

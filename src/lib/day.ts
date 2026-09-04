@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { todayISO } from "./date";
+import { nowMinutes, todayISO } from "./date";
 import { useAppStore } from "./store";
 
 /**
@@ -47,6 +47,59 @@ export function checkDayChange(): boolean {
 /** El día de hoy, y re-renderiza cuando cambia. */
 export function useToday(): string {
   return useSyncExternalStore(suscribir, leer);
+}
+
+/**
+ * El minuto de reloj de hoy, como estado observable.
+ *
+ * Lo pide quien muestra algo que **envejece solo**: la proyección contra la hora
+ * de salida cambia sin que nadie toque un dato, así que sin esto el aviso
+ * aparecería recién en el próximo render por otro motivo.
+ *
+ * Se suscribe a pedido, y el intervalo solo existe mientras haya alguien
+ * escuchando: el board monta siete columnas y una sola —hoy— necesita el latido.
+ */
+let currentMinute = nowMinutes();
+const minuteSubs = new Set<() => void>();
+let minuteTimer: ReturnType<typeof setInterval> | null = null;
+
+function pumpMinute(): void {
+  const m = nowMinutes();
+  if (m === currentMinute) return;
+  currentMinute = m;
+  for (const notify of minuteSubs) notify();
+}
+
+function subscribeMinute(notify: () => void): () => void {
+  // Al entrar el valor puede venir viejo, si nadie estuvo escuchando un rato.
+  pumpMinute();
+  minuteSubs.add(notify);
+  if (!minuteTimer) minuteTimer = setInterval(pumpMinute, 15_000);
+  return () => {
+    minuteSubs.delete(notify);
+    if (minuteSubs.size === 0 && minuteTimer) {
+      clearInterval(minuteTimer);
+      minuteTimer = null;
+    }
+  };
+}
+
+function readMinute(): number {
+  return currentMinute;
+}
+
+/** Definida a nivel de módulo por lo mismo que `suscribir`: la identidad importa. */
+const noSubscribe = () => () => {};
+
+/**
+ * Minutos transcurridos del día, y re-renderiza cuando avanza el minuto.
+ *
+ * `enabled` en `false` devuelve el último valor conocido sin suscribirse, para
+ * que quien no lo necesita no pague el latido. No se puede resolver con un `if`
+ * en el llamador: los hooks no son condicionales.
+ */
+export function useMinuteTick(enabled = true): number {
+  return useSyncExternalStore(enabled ? subscribeMinute : noSubscribe, readMinute);
 }
 
 /** Respaldo para cuando la app queda abierta y visible sin que nadie la toque. */

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { CalendarDays, X } from "lucide-react";
+import { useMinuteTick } from "../../lib/day";
 import type { Category, Task, DayWork } from "../../lib/types";
-import { nowMinutes, weekdayLabel } from "../../lib/date";
+import { weekdayLabel } from "../../lib/date";
 import { buildRail, hourLabel, type BloqueRail } from "./railLayout";
 
 /** Alto de una hora de grilla, en px. La geometría se calcula en minutos. */
@@ -67,7 +68,7 @@ export function CalendarRail({
   className,
   onClose,
 }: Props) {
-  const ahora = useMinutoActual();
+  const ahora = useMinuteTick();
   const esHoy = date === today;
   // En el día de hoy la proyección arranca en "ahora": lo que queda por delante
   // no empieza a las 9 de la mañana si ya son las 2 de la tarde.
@@ -272,21 +273,4 @@ function colorDe(t: Task, categoryMap: Map<number, Category>): React.CSSProperti
     background: `color-mix(in srgb, var(--${c.color}) 18%, var(--surface-raised))`,
     borderLeftColor: `var(--${c.color})`,
   };
-}
-
-/**
- * Minutos desde medianoche, que avanzan solos.
- *
- * Se recalcula leyendo el reloj y no sumando: macOS agrupa los temporizadores
- * al suspender, así que el intervalo puede disparar tarde o no disparar; leer la
- * hora da el valor correcto se ejecute cuando se ejecute. Mismo criterio que
- * `checkDayChange` en `lib/day.ts`.
- */
-function useMinutoActual(): number {
-  const [min, setMin] = useState(nowMinutes);
-  useEffect(() => {
-    const id = setInterval(() => setMin(nowMinutes()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-  return min;
 }
