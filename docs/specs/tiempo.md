@@ -189,6 +189,14 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   título largo se partía en cuatro líneas con espacio libre al lado. El chip del
   canal es el mismo `.cat-tag` + `chipVars` de la card y el modal (§7): teñido con
   el color del canal, no con un color fijo de la vista.
+- **La vista se centra con márgenes automáticos, no con `justify-content`.** Un
+  flex centrado que no cabe reparte el sobrante hacia los dos lados, así que una
+  reunión con muchos invitados empujaba la cabecera de la tarea unos 250 px por
+  encima del origen del scroll: invisible y sin forma de llegar, ni para leerla ni
+  para clickear el check o el play. Los márgenes automáticos centran igual cuando
+  sobra espacio y se resuelven a cero cuando falta, y `.focus` lleva `min-height`
+  y no `height` para poder crecer y dejar que `.app-main` la scrollee. El estado
+  vacío queda fuera de la regla: no centra, se alinea arriba.
 - **La línea sobre las notas solo se dibuja si hay tarjeta del calendario**
   (`hasCalendarData`): sin nada que separar quedaba una segunda línea paralela a
   la del título con aire vacío en medio.

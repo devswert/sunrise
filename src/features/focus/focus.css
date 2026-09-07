@@ -4,10 +4,29 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: var(--space-5);
-  height: 100%;
+  /* `min-height` y no `height`: con muchos invitados la tarjeta pasa del alto de
+   * la ventana, y fijar el alto dejaba el sobrante fuera de la caja. Así crece y
+   * `.app-main` —que ya tiene `overflow-y: auto`— la scrollea. */
+  min-height: 100%;
   padding-bottom: 8vh;
+}
+
+/* **El centrado se hace con márgenes automáticos, no con `justify-content`**, y
+ * es la corrección de un bug real: un flex centrado que no cabe reparte el
+ * sobrante hacia los DOS lados, así que la cabecera de la tarea quedaba 250px
+ * por encima del origen del scroll —invisible y sin forma de llegar, ni siquiera
+ * para clickear el check o el play—. Los márgenes automáticos centran igual
+ * cuando sobra espacio y se resuelven a cero cuando falta, que es justo lo que
+ * hace falta: el contenido arranca arriba y se scrollea.
+ *
+ * El estado vacío queda fuera porque no centra: se alinea arriba con su propio
+ * `padding-top`. */
+.focus:not(.focus--empty) > :first-child {
+  margin-top: auto;
+}
+.focus:not(.focus--empty) > :last-child {
+  margin-bottom: auto;
 }
 
 .focus__card {
