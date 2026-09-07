@@ -154,7 +154,7 @@ pub fn run() {
             // frente. Sin esto queda detrás de la app que estaba adelante y el
             // reinicio parece no haber pasado (§4.21).
             if update::came_from_update(app.handle()) {
-                update::raise_main_window(app.handle());
+                commands::raise_main_window(app.handle());
             }
 
             Ok(())

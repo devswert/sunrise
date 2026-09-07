@@ -117,6 +117,21 @@ día era un banner, con el argumento de que si te lo pierdes el shutdown sigue a
 Cierto, pero tampoco llevaba a ninguna parte: había que ir a buscar la vista a mano,
 que es justo el trabajo que el aviso viene a ahorrar.
 
+**Accionar un aviso trae la ventana al frente** (`commands::raise_main_window`, el
+mismo helper que usa el updater tras un `restart()`). No es un extra: macOS **no
+activa la app** por responder un aviso, así que sin esto el front navegaba a la
+vista correcta en una ventana que seguía detrás de lo que estuvieras mirando —
+indistinguible de un aviso que no hace nada, que es exactamente como se reportó.
+Insiste con reintentos porque el primer `set_focus` compite con el Centro de
+Notificaciones, que sigue al frente. Va antes del `emit` y sin esperarlo: la
+navegación no tiene por qué quedarse esperando al foco.
+
+> **Ojo en dev.** El aviso sale con la identidad de la app **instalada**
+> (`claim_notification_identity`), así que macOS puede activar esa y no la de
+> desarrollo. El evento sí llega al proceso de dev y la navegación ocurre, pero la
+> ventana que se levanta puede no ser la que estás mirando. En una app instalada no
+> pasa.
+
 ### 4.26 El aviso de próxima reunión (Mej.4)
 
 **Lo manda Rust** (`notice.rs`), y es el tercer vigilante después de la campana y
@@ -200,12 +215,13 @@ verla."**, y cada parte del texto tiene su razón:
   "en sunrise"**: macOS ya pone el nombre de la app arriba, y repetirlo gasta la
   línea que sirve para decir qué hacer.
 
-**El click lleva a Focus con esa tarea.** `useMeetingNotice` escucha la respuesta,
-escribe `focusTaskId` en el store y navega; `FocusView` lo **consume** al cargar su
-cola y lo limpia. Tres cosas que importan: se monta en `Shell` (el evento llega a
-las dos ventanas y el taxímetro no tiene esas vistas), **solo `action` navega**
-—`click` y `close` no pidieron ir a ninguna parte—, y sin `taskId` no navega, porque
-el aviso del cierre pasa por el mismo evento.
+**El click lleva a Focus con esa tarea.** `useNoticeNavigation` escucha la
+respuesta, escribe `focusTaskId` en el store y navega; `FocusView` lo **consume** al
+cargar su cola y lo limpia. Tres cosas que importan: se monta en `Shell` (el evento
+llega a las dos ventanas y el taxímetro no tiene esas vistas); **`action` y `click`
+navegan igual** —ver la invariante I de arriba—, y `close`/`none` no; y lo que
+decide si hay a dónde ir es la **ruta**, no la tarea: el aviso del cierre pasa por el
+mismo evento y no tiene `taskId`.
 
 **El ajuste es `notice_meeting_minutes`, con 0 = apagado** (mismo patrón que
 `backup_dir` vacío). Un aviso que no se puede apagar es peor que no tenerlo.

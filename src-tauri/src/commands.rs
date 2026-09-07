@@ -262,6 +262,53 @@ pub fn focus_queue(
     repo::focus_queue(&conn, &date, &now_hhmm).map_err(e)
 }
 
+/// Cuánto se espera entre intentos de levantar la ventana, en milisegundos.
+///
+/// Son cuatro y no uno porque quien tiene el foco cuando pedimos la ventana no
+/// suelta de inmediato: tras un `restart()` el proceso viejo todavía está
+/// muriendo, y tras accionar un aviso el Centro de Notificaciones sigue al
+/// frente. El primer `set_focus` compite con eso y se pierde. Cada intento
+/// **comprueba primero si el anterior funcionó** y corta ahí, así que en el caso
+/// normal se hace uno y se descarta el segundo. Comprobar justo después de pedir
+/// el foco no sirve: `set_focus` en macOS despacha al hilo principal y vuelve
+/// antes de que la activación haya pasado, o sea que siempre daría "todavía no" y
+/// los cuatro intentos correrían igual —el último a casi tres segundos,
+/// arrebatándole el foco a quien ya se cambió de app.
+const INTENTOS_MS: [u64; 4] = [0, 250, 800, 1800];
+
+/// Trae la ventana `main` al frente, insistiendo hasta que quede con el foco.
+///
+/// **Los dos problemas que arregla.** `app.restart()` lanza el proceso nuevo y
+/// mata el viejo, y macOS no activa a nadie por eso: la ventana nueva aparece
+/// detrás de la app que quedó al frente, y desde afuera la app "nunca se
+/// reinició". Y accionar un aviso del sistema **tampoco activa la app**: el front
+/// navega a donde el aviso prometía, pero lo hace en una ventana que sigue atrás,
+/// que es indistinguible de que el aviso no haga nada.
+///
+/// Solo `main`: el taxímetro no se levanta nunca por su cuenta.
+///
+/// `set_focus` de tao no hace nada si la ventana está minimizada o escondida, así
+/// que el orden `unminimize` → `show` → `set_focus` importa.
+pub fn raise_main_window(app: &tauri::AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        for espera in INTENTOS_MS {
+            if espera > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(espera)).await;
+            }
+            let Some(main) = app.get_webview_window("main") else {
+                continue;
+            };
+            if main.is_focused().unwrap_or(false) {
+                return;
+            }
+            let _ = main.unminimize();
+            let _ = main.show();
+            let _ = main.set_focus();
+        }
+    });
+}
+
 /// Muestra u oculta el taxímetro.
 ///
 /// Se hace desde Rust a propósito: es el camino más directo (no depende de
@@ -1160,6 +1207,15 @@ pub fn send_alert(
                         Some(t) => (Some(t.route.clone()), t.task_id),
                         None => (None, None),
                     };
+                    // **Accionar un aviso no activa la app.** El front navega a
+                    // donde el aviso prometía, pero en una ventana que sigue
+                    // detrás de lo que estés mirando, y eso se ve exactamente
+                    // igual que un aviso que no hace nada. Va antes del `emit` y
+                    // sin esperarlo: `raise_main_window` reintenta por su cuenta
+                    // durante segundos y la navegación no tiene por qué esperar.
+                    if matches!(response_label(&response), "action" | "click") {
+                        raise_main_window(&app);
+                    }
                     let _ = app.emit(
                         NOTIFICATION_ACTION,
                         NoticeResponse {

@@ -1,7 +1,6 @@
 //! Las dos piezas del updater que no son un comando: el progreso de la descarga
 //! y el "vuelve al frente" del arranque de después.
 
-use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -25,17 +24,6 @@ pub const UPDATE_PROGRESS: &str = "sunrise://update-progress";
 /// consumir la de producción, lo único que pasa es que una ventana se levanta.
 const MARCA: &str = "pending-update-focus";
 
-/// Cuánto se espera entre intentos de levantar la ventana, en milisegundos.
-///
-/// Son cuatro y no uno porque el proceso viejo todavía está muriendo cuando el
-/// nuevo dibuja su ventana: el primer `set_focus` compite con una app que sigue
-/// al frente y se pierde. Cada intento **comprueba primero si el anterior
-/// funcionó** y corta ahí, así que en el caso normal se hace uno y se descarta el
-/// segundo. Comprobar justo después de pedir el foco no sirve: `set_focus` en macOS
-/// despacha al hilo principal y vuelve antes de que la activación haya pasado, o
-/// sea que siempre daría "todavía no" y los cuatro intentos correrían igual —el
-/// último a casi tres segundos, arrebatándole el foco a quien ya se cambió de app.
-const INTENTOS_MS: [u64; 4] = [0, 250, 800, 1800];
 
 /// El progreso que viaja al front. `total` es `Option` porque el servidor puede
 /// no mandar `Content-Length`: ahí la barra va indeterminada, no en cero.
@@ -80,37 +68,6 @@ fn consumir_marca(p: &std::path::Path) -> bool {
     }
     let _ = std::fs::remove_file(p);
     true
-}
-
-/// Trae la ventana `main` al frente, insistiendo hasta que quede con el foco.
-///
-/// **El problema que arregla.** `app.restart()` lanza el proceso nuevo y mata el
-/// viejo, y macOS no activa a nadie por eso: la ventana nueva aparece detrás de la
-/// app que quedó al frente. Desde afuera la app "nunca se reinició" —el síntoma es
-/// exactamente ese— cuando en realidad ya está corriendo la versión nueva.
-///
-/// Solo `main`: el taxímetro no se levanta nunca por su cuenta.
-///
-/// `set_focus` de tao no hace nada si la ventana está minimizada o escondida, así
-/// que el orden `unminimize` → `show` → `set_focus` importa.
-pub fn raise_main_window(app: &tauri::AppHandle) {
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        for espera in INTENTOS_MS {
-            if espera > 0 {
-                tokio::time::sleep(Duration::from_millis(espera)).await;
-            }
-            let Some(main) = app.get_webview_window("main") else {
-                continue;
-            };
-            if main.is_focused().unwrap_or(false) {
-                return;
-            }
-            let _ = main.unminimize();
-            let _ = main.show();
-            let _ = main.set_focus();
-        }
-    });
 }
 
 /// Manda el avance de la descarga a las ventanas.
