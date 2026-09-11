@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Category, Task } from "../../lib/types";
-import { filterByChannel, folderOf, groupByContext } from "./grouping";
+import { GroupBy } from "../../lib/enums";
+import { filterByChannel, folderOf, groupTasks, looseLabel } from "./grouping";
 
 function category(id: number, name: string, parentId: number | null = null): Category {
   return { id, parentId, name, color: "sky", position: id, archived: false };
@@ -38,11 +39,12 @@ describe("folderOf", () => {
   });
 });
 
-describe("groupByContext", () => {
+describe("groupTasks · por contexto", () => {
   it("agrupa por contexto, resolviendo los channels a su padre", () => {
-    const groups = groupByContext(
+    const groups = groupTasks(
       [task(10, DEPLOY.id), task(11, WORK.id), task(12, HOME.id)],
       CATEGORIES,
+      GroupBy.CONTEXT,
       { includeEmpty: false },
     );
 
@@ -51,20 +53,24 @@ describe("groupByContext", () => {
   });
 
   it("con includeEmpty deja los contextos sin tareas, que es lo que da el botón de crear", () => {
-    const groups = groupByContext([task(10, WORK.id)], CATEGORIES, { includeEmpty: true });
+    const groups = groupTasks([task(10, WORK.id)], CATEGORIES, GroupBy.CONTEXT, {
+      includeEmpty: true,
+    });
 
     expect(groups.map((g) => g.folder?.name)).toEqual(["Trabajo", "Casa"]);
     expect(groups[1].items).toEqual([]);
   });
 
   it("sin includeEmpty los esconde, que es lo que quieren el sidebar y el panel", () => {
-    const groups = groupByContext([task(10, WORK.id)], CATEGORIES, { includeEmpty: false });
+    const groups = groupTasks([task(10, WORK.id)], CATEGORIES, GroupBy.CONTEXT, {
+      includeEmpty: false,
+    });
 
     expect(groups.map((g) => g.folder?.name)).toEqual(["Trabajo"]);
   });
 
   it("las tareas sin contexto van al final, en su propio grupo", () => {
-    const groups = groupByContext([task(10, null), task(11, WORK.id)], CATEGORIES, {
+    const groups = groupTasks([task(10, null), task(11, WORK.id)], CATEGORIES, GroupBy.CONTEXT, {
       includeEmpty: false,
     });
 
@@ -75,7 +81,9 @@ describe("groupByContext", () => {
   it("el grupo sin contexto no aparece vacío ni siquiera con includeEmpty", () => {
     // No es una categoría, así que no hay nada a lo que colgarle una tarea
     // nueva: el grupo vacío no ofrecería nada, solo ocuparía espacio.
-    const groups = groupByContext([task(10, WORK.id)], CATEGORIES, { includeEmpty: true });
+    const groups = groupTasks([task(10, WORK.id)], CATEGORIES, GroupBy.CONTEXT, {
+      includeEmpty: true,
+    });
 
     expect(groups.every((g) => g.folder !== null)).toBe(true);
   });
@@ -100,5 +108,56 @@ describe("filterByChannel", () => {
   it("elegir un contexto deja todo lo que cuelga de él, channels incluidos", () => {
     const lista = [task(10, DEPLOY.id), task(11, WORK.id), task(12, HOME.id)];
     expect(filterByChannel(lista, CATEGORIES, WORK.id).map((t) => t.id)).toEqual([10, 11]);
+  });
+});
+
+describe("groupTasks · por channel", () => {
+  it("cada categoría es su propio grupo: un channel ya no se resuelve al padre", () => {
+    const groups = groupTasks(
+      [task(10, DEPLOY.id), task(11, WORK.id), task(12, HOME.id)],
+      CATEGORIES,
+      GroupBy.CHANNEL,
+      { includeEmpty: false },
+    );
+
+    expect(groups.map((g) => g.folder?.name)).toEqual(["Trabajo", "Deploy", "Casa"]);
+    expect(groups[0].items.map((t) => t.id)).toEqual([11]);
+    expect(groups[1].items.map((t) => t.id)).toEqual([10]);
+  });
+
+  /**
+   * Un contexto sin hijos es a la vez carpeta y el `#tag` que se ve en la card,
+   * así que mandarlo a "sin channel" diría que no tiene uno cuando la card
+   * muestra que sí.
+   */
+  it("una tarea colgada directo de un contexto es su propio channel", () => {
+    const groups = groupTasks([task(10, HOME.id)], CATEGORIES, GroupBy.CHANNEL, {
+      includeEmpty: false,
+    });
+
+    expect(groups.map((g) => g.folder?.name)).toEqual(["Casa"]);
+  });
+
+  it("con includeEmpty entran también los channels vacíos, cada uno con su botón", () => {
+    const groups = groupTasks([task(10, DEPLOY.id)], CATEGORIES, GroupBy.CHANNEL, {
+      includeEmpty: true,
+    });
+
+    expect(groups.map((g) => g.folder?.name)).toEqual(["Trabajo", "Deploy", "Casa"]);
+  });
+
+  it("las que no tienen categoría van al final igual", () => {
+    const groups = groupTasks([task(10, null)], CATEGORIES, GroupBy.CHANNEL, {
+      includeEmpty: false,
+    });
+
+    expect(groups.map((g) => g.folder)).toEqual([null]);
+  });
+});
+
+describe("looseLabel", () => {
+  it("el cajón de las sin categoría se llama según el nivel", () => {
+    expect(looseLabel(GroupBy.CHANNEL)).toBe("Sin channel");
+    expect(looseLabel(GroupBy.CONTEXT)).toBe("Sin contexto");
   });
 });

@@ -334,14 +334,31 @@ siguiente corrida.
 ### 4.5 Backlog
 
 `list_backlog`: `scheduled_date IS NULL AND status = 'TODO' AND source_state =
-'ACTIVE'`, agrupado por contexto. El agrupado vive en
-**`src/features/backlog/grouping.ts`** (`folderOf`, `groupByContext`), puro y
-compartido por sus tres consumidores — la vista, el sidebar y el panel de la
-semana—; estaba escrito tres veces. `includeEmpty` es explícito porque los
-consumidores difieren: **la vista lo quiere en `true`** (un contexto vacío ahí
-sigue mostrando su botón "Agregar tarea", que es la única forma de crear en un
-contexto que todavía no tiene nada), y el sidebar y el panel en `false`, porque
-no crean nada.
+'ACTIVE'`. El agrupado vive en **`src/features/backlog/grouping.ts`**
+(`groupIdOf`, `groupTasks`), puro y compartido por sus tres consumidores — la
+vista, el sidebar y el panel de la semana—; estaba escrito tres veces.
+`includeEmpty` es explícito porque los consumidores difieren: **la vista lo
+quiere en `true`** (un grupo vacío ahí sigue mostrando su botón "Agregar tarea",
+que es la única forma de crear en un grupo que todavía no tiene nada), y el
+sidebar y el panel en `false`, porque no crean nada.
+
+**Se agrupa por channel o por contexto, y se elige.** Son dos preguntas: el
+contexto dice en qué área tengo cosas, el channel de qué es exactamente cada una.
+**El default es el channel** porque es el nombre que se ve en la card, así que
+reconocerlo no cuesta traducción. Cuatro precisiones:
+
+- Por channel el grupo es **la categoría exacta**, no "las que tienen padre": un
+  contexto sin hijos es a la vez carpeta y el `#tag` de la card, y mandarlo a
+  "sin channel" diría que no tiene uno cuando la card muestra que sí.
+- La elección **se guarda** (`backlog_group_by`, doctrina de
+  `collapsed_weekdays`: ausente ⇒ `CHANNEL`). Un toggle que vuelve al default al
+  cambiar de vista hace que "por defecto" no signifique nada.
+- **La vista y el panel comparten la clave**: es el mismo backlog. La weekly
+  review tiene la suya (`review_group_by`, §4.15) porque responde otra pregunta.
+- El control es el mismo par de botones marcados en los dos lados, con dos
+  tallas: en la vista va suelto en la cabecera (`.backlog__groupby`, ahí sobra
+  ancho y es lo que cambia la forma de la pantalla), y en el panel dentro del
+  popover de filtros (`.bfilters__opt`), donde no hay 300px para gastar.
 
 Se ve en tres lugares:
 
@@ -400,8 +417,18 @@ Se ve en tres lugares:
   — repetirlos en el sidebar era una segunda lista que mantener y una columna más
   larga de nombres sobre los que no se puede hacer nada.
 - **El panel de la semana** (`BacklogPanel`), detrás del segundo icono de la
-  tira. Arrastra en los dos sentidos: al día y de vuelta. Ahí sí agrupa **por
-  contexto**, porque el contexto es lo que estás decidiendo al planificar.
+  tira. Arrastra en los dos sentidos: al día y de vuelta. Agrupa igual que la
+  vista, con la misma preferencia guardada. **Ordenado por prioridad la lista se
+  aplana y el par Channel/Contexto no se dibuja**: no cambiaría nada, y un
+  control marcado que no hace nada es peor que no tenerlo.
+- **La columna del ritual diario** (`BacklogColumn`, paso 2) lleva **el mismo
+  toolbox de filtros del panel** (`PanelFilters`): ahí también hay que elegir un
+  puñado de tareas entre decenas. Lo que no lleva es el agrupado —la columna es
+  una lista plana—, y por eso `level` es opcional en `PanelFilters`. El estado de
+  los filtros es de sesión y no de `settings`: filtrar mientras planificas es
+  parte del rato, no una preferencia. **Filtrar no cambia dónde cae un drop**: la
+  `position` del backlog es global sobre el bucket `scheduled_date IS NULL`, así
+  que soltar algo ahí lo pone primero de la lista entera, se esté viendo o no.
 
 #### El panel de la semana
 

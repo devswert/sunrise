@@ -49,6 +49,12 @@ const categories: Category[] = [
   { id: 5, parentId: null, name: "Selfcare", color: "rose", position: 4, archived: false },
   { id: 6, parentId: null, name: "Issues", color: "butter", position: 5, archived: false },
   { id: 7, parentId: null, name: "Meetings", color: "sage", position: 6, archived: false },
+  // **Dos channels colgando de un contexto**, y no por adorno: sin un solo hijo
+  // en la semilla, el árbol de categorías es plano y el preview no puede mostrar
+  // la diferencia entre agrupar por contexto y por channel (§4.9). Con esto,
+  // Projects se abre en dos y el toggle hace algo visible.
+  { id: 8, parentId: 4, name: "Deploys", color: "sky", position: 0, archived: false },
+  { id: 9, parentId: 4, name: "Discovery", color: "lavender", position: 1, archived: false },
 ];
 seq = 100;
 
@@ -188,9 +194,11 @@ function logEvent(
     logEvent(t.id, "CREATED", null, date);
     logEvent(t.id, "START_DATE_SET", null, date);
   }
-  // una en backlog
-  const b = blankTask({ title: "Idea: automatizar reporte", categoryId: 1 }, 0);
-  tasks.push(b);
+  // Tres en backlog, y **dos de ellas en channels del mismo contexto**: es lo que
+  // deja ver que agrupar por channel y por contexto no dan lo mismo.
+  tasks.push(blankTask({ title: "Idea: automatizar reporte", categoryId: 1 }, 0));
+  tasks.push(blankTask({ title: "Migrar el pipeline de deploy", categoryId: 8 }, 0));
+  tasks.push(blankTask({ title: "Entrevistas de descubrimiento", categoryId: 9 }, 0));
 
   // Un día anterior con algo cerrado: sin esto el repaso del ritual (§4.14) no
   // se puede ver en el browser, porque el carry-over se lleva a hoy todo lo

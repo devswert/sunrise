@@ -264,6 +264,55 @@ describe("DailyPlanningView", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
+  /**
+   * El mismo toolbox del panel del backlog de la semana. Acá el backlog puede
+   * traer decenas de tareas y hay que elegir un puñado, que es exactamente el
+   * problema para el que se hizo el control.
+   */
+  it("el backlog del paso 2 se puede filtrar por prioridad", async () => {
+    const arde = await api.createTask({ title: "Arde y es del backlog" });
+    await api.updateTask(arde.id, { priority: "P1" });
+    await api.createTask({ title: "Puede esperar y es del backlog" });
+    mount();
+    await goToToday();
+
+    const backlogCol = await waitFor(() => {
+      const el = [...document.querySelectorAll<HTMLElement>(".day-col")].find((c) =>
+        c.textContent?.includes("Agregar al backlog"),
+      );
+      expect(el).toBeDefined();
+      return el!;
+    });
+    expect(within(backlogCol).getByText("Puede esperar y es del backlog")).toBeInTheDocument();
+
+    await userEvent.click(within(backlogCol).getByLabelText("Filtrar y ordenar"));
+    await userEvent.click(screen.getByRole("button", { name: "P1" }));
+
+    expect(within(backlogCol).getByText("Arde y es del backlog")).toBeInTheDocument();
+    expect(within(backlogCol).queryByText("Puede esperar y es del backlog")).toBeNull();
+    // Y la cabecera dice cuántas de cuántas: el número a secas escondería que el
+    // backlog tiene más.
+    expect(backlogCol.querySelector(".day-col__date")!.textContent).toMatch(/ de /);
+  });
+
+  /** El agrupado no se ofrece acá: la columna es una lista plana. */
+  it("el toolbox del ritual no trae el par Channel/Contexto", async () => {
+    mount();
+    await goToToday();
+
+    const backlogCol = await waitFor(() => {
+      const el = [...document.querySelectorAll<HTMLElement>(".day-col")].find((c) =>
+        c.textContent?.includes("Agregar al backlog"),
+      );
+      expect(el).toBeDefined();
+      return el!;
+    });
+    await userEvent.click(within(backlogCol).getByLabelText("Filtrar y ordenar"));
+
+    expect(screen.queryByRole("button", { name: "Contexto" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Prioridad" })).toBeInTheDocument();
+  });
+
   it("terminar el ritual marca el día, tira confeti y vuelve a la semana", async () => {
     mount();
     await goToToday();

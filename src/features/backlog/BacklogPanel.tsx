@@ -5,12 +5,13 @@ import { Inbox, X } from "lucide-react";
 import { shortDate } from "../../lib/date";
 import type { Category, Task, TaskPatch } from "../../lib/types";
 import { TaskCard } from "../week/TaskCard";
-import { filterByChannel, groupByContext } from "./grouping";
+import { filterByChannel, groupTasks, looseLabel } from "./grouping";
 import { PanelFilters } from "./PanelFilters";
 import { BacklogSort, filterByPriority, sortTasks } from "../tasks/priority";
 import { channelOptions } from "../tasks/channelOptions";
-import { usePrioritiesOn } from "../../lib/settings";
+import { SettingKey, useGroupBy, usePrioritiesOn } from "../../lib/settings";
 import type { Priority } from "../../lib/enums";
+import { GroupBy } from "../../lib/enums";
 
 interface Props {
   tasks: Task[];
@@ -71,6 +72,7 @@ export function BacklogPanel({
   const [channel, setChannel] = useState<number | null>(null);
   const [sort, setSort] = useState<BacklogSort>(BacklogSort.CREATED);
   const prioridades = usePrioritiesOn();
+  const [level, setLevel] = useGroupBy(SettingKey.BACKLOG_GROUP_BY);
   const opciones = useMemo(() => channelOptions(categories), [categories]);
   const canal = channel != null ? categories.find((c) => c.id === channel) : null;
 
@@ -123,7 +125,7 @@ export function BacklogPanel({
   const lista = plano ? sortTasks(visibles, orden) : [];
   const groups = plano
     ? []
-    : groupByContext(visibles, categories, { includeEmpty: false }).map((g) => ({
+    : groupTasks(visibles, categories, level, { includeEmpty: false }).map((g) => ({
         ...g,
         items: sortTasks(g.items, orden),
       }));
@@ -194,10 +196,13 @@ export function BacklogPanel({
             selected={canal}
             sort={sort}
             onSort={setSort}
+            level={level}
+            onLevel={setLevel}
             onReset={() => {
               setLevels(new Set());
               setChannel(null);
               setSort(BacklogSort.CREATED);
+              setLevel(GroupBy.CHANNEL);
             }}
             priorities={prioridades}
           />
@@ -240,7 +245,7 @@ export function BacklogPanel({
                     style={{ background: `var(--${g.folder.color})` }}
                   />
                 )}
-                {g.folder?.name ?? "Sin contexto"}
+                {g.folder?.name ?? looseLabel(level)}
               </div>
               <div className="backlog-panel__list">{g.items.map((t) => card(t))}</div>
             </div>

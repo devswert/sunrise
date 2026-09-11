@@ -522,3 +522,16 @@
   font-variant-numeric: tabular-nums;
   flex: none;
 }
+
+/* El segmentado Channels/Contextos, empujado al final de la fila del título.
+   Reusa `.backlog__groupby` (week.css) para que el mismo control se vea igual en
+   las dos pantallas; acá solo se lo achica, porque compite con un `h2` y no con
+   un buscador. */
+.review__groupby {
+  margin-left: auto;
+}
+.review__groupby .backlog__groupby-opt {
+  padding: 2px 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+}

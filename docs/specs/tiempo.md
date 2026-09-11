@@ -270,10 +270,17 @@ Detalles que ya costaron algo:
 - **`category_id IS NULL` tiene su propio grupo** ("Sin channel"), y una
   categoría borrada conserva sus horas. Con un JOIN interno el donut deja de
   sumar el total y nadie se entera.
-- **El donut agrupa por contexto** (`parent_id ?? id`) y **las barras por
-  channel**: de un vistazo importa el contexto, y al mirar un día importa el
-  detalle. El contexto viene resuelto en SQL para no cruzar el árbol de
-  categorías en cada render.
+- **El donut agrupa por channel o por contexto, y se elige** (`byLevel`, mismo
+  par de botones que la vista Backlog, en la cabecera del panel). El default es
+  el channel, que es el nombre que se ve en las cards toda la semana; el contexto
+  (`parent_id ?? id`) responde la otra pregunta —en qué área se fue— con menos
+  trozos. **Las barras siguen siendo siempre por channel**: al mirar un día lo
+  que importa es el detalle. El contexto viene resuelto en SQL para no cruzar el
+  árbol de categorías en cada render.
+- **La preferencia del donut es su propia clave** (`review_group_by`), separada
+  de la del backlog (§4.5): son la misma pregunta sobre pantallas distintas —"qué
+  tengo pendiente" vs "en qué se me fue la semana"— y acoplarlas obligaría a
+  elegir lo mismo en las dos.
 - **La escala de las barras es de la semana, no de cada día** (y nunca baja de
   una hora): con una escala por día, un sábado de 20 minutos se ve igual de alto
   que un martes de 8 horas.

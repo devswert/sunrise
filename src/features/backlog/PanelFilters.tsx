@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { RotateCcw, SlidersHorizontal } from "lucide-react";
 import type { Category } from "../../lib/types";
+import { GroupBy } from "../../lib/enums";
 import type { Priority } from "../../lib/enums";
 import { Popover } from "../../components/Popover";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
@@ -16,6 +17,15 @@ interface Props {
   selected: Category | null | undefined;
   sort: BacklogSort;
   onSort: (next: BacklogSort) => void;
+  /**
+   * Por qué nivel de categoría se agrupa la lista. Se guarda en `settings`.
+   *
+   * **Opcional porque no todos los que usan el toolbox agrupan**: la columna del
+   * backlog del ritual diario es una lista plana, y ahí un par de botones que no
+   * cambian nada sería peor que no tenerlos.
+   */
+  level?: GroupBy;
+  onLevel?: (next: GroupBy) => void;
   /** Deja los tres controles como estaban. */
   onReset: () => void;
   /** Con las prioridades apagadas quedan solo el canal y nada de orden. */
@@ -58,6 +68,8 @@ export function PanelFilters({
   selected,
   sort,
   onSort,
+  level,
+  onLevel,
   onReset,
   priorities,
 }: Props) {
@@ -65,7 +77,11 @@ export function PanelFilters({
   const ref = useRef<HTMLDivElement>(null);
 
   const activos = levels.size + (channel != null ? 1 : 0);
-  const tocado = activos > 0 || sort !== BacklogSort.CREATED;
+  // El agrupado cuenta como "tocado" pero **no** suma al contador, igual que el
+  // orden: siempre hay uno puesto, así que un número permanente no distinguiría
+  // nada. Y no esconde tareas, que es lo que el contador promete.
+  const tocado =
+    activos > 0 || sort !== BacklogSort.CREATED || (level != null && level !== GroupBy.CHANNEL);
 
   return (
     <div className="chip-wrap" ref={ref}>
@@ -113,6 +129,33 @@ export function PanelFilters({
                 }}
               />
             </section>
+
+            {/* Agrupar va después del canal y antes del orden porque ese es el
+             * orden en que se decide: primero qué se ve, después cómo se junta,
+             * después cómo se ordena adentro. Ordenando por prioridad la lista
+             * se aplana, así que el control queda inerte y no se dibuja: un
+             * botón marcado que no cambia nada es peor que no tenerlo. */}
+            {level != null && onLevel != null && !(priorities && sort === BacklogSort.P) && (
+              <section className="bfilters__sec">
+                <span className="bfilters__label">Agrupar por</span>
+                <div className="bfilters__orden">
+                  <button
+                    className={`bfilters__opt${level === GroupBy.CHANNEL ? " is-active" : ""}`}
+                    aria-pressed={level === GroupBy.CHANNEL}
+                    onClick={() => onLevel(GroupBy.CHANNEL)}
+                  >
+                    Channel
+                  </button>
+                  <button
+                    className={`bfilters__opt${level === GroupBy.CONTEXT ? " is-active" : ""}`}
+                    aria-pressed={level === GroupBy.CONTEXT}
+                    onClick={() => onLevel(GroupBy.CONTEXT)}
+                  >
+                    Contexto
+                  </button>
+                </div>
+              </section>
+            )}
 
             {priorities && (
               <section className="bfilters__sec">

@@ -18,11 +18,17 @@ import { useToday } from "../../lib/day";
 import {
   SettingKey,
   useCapacitySettings,
+  usePrioritiesOn,
   useSettingsStore,
   useWorkHours,
   planMark,
   type PlanMark,
 } from "../../lib/settings";
+import { PanelFilters } from "../backlog/PanelFilters";
+import { filterByChannel } from "../backlog/grouping";
+import { BacklogSort, filterByPriority, sortTasks } from "../tasks/priority";
+import { channelOptions } from "../tasks/channelOptions";
+import type { Priority } from "../../lib/enums";
 import { useAppStore } from "../../lib/store";
 import { celebrate } from "../../lib/confetti";
 import {
@@ -90,6 +96,42 @@ export function DailyPlanningView() {
   // Guarda **la marca**, no un booleano: el aviso dice a qué hora planificaste,
   // y esa hora sale de lo guardado y no del reloj de ahora.
   const [notice, setAviso] = useState<PlanMark | null>(null);
+
+  /**
+   * El mismo toolbox del panel del backlog de la semana, acá.
+   *
+   * Es el mismo problema: la columna del backlog del paso 2 puede traer decenas
+   * de tareas y hay que elegir un puñado para hoy. Lo que **no** trae es el
+   * agrupado —la columna es una lista plana, así que el par Channel/Contexto no
+   * cambiaría nada— y por eso `level` es opcional en `PanelFilters`.
+   *
+   * El estado es de sesión y no de `settings`: filtrar acá es parte del rato de
+   * planificar, no una preferencia. El nivel de agrupado sí se guarda, pero ese
+   * es el otro control.
+   */
+  const [levels, setLevels] = useState<Set<Priority>>(new Set());
+  const [channel, setChannel] = useState<number | null>(null);
+  const [sort, setSort] = useState<BacklogSort>(BacklogSort.CREATED);
+  const prioridades = usePrioritiesOn();
+  const opcionesCanal = useMemo(() => channelOptions(board.categories), [board.categories]);
+  const canal = channel != null ? board.categories.find((c) => c.id === channel) : null;
+
+  /**
+   * Lo que se dibuja en la columna del backlog.
+   *
+   * **Filtrar no cambia dónde cae un drop**: la `position` del backlog es global
+   * sobre el bucket `scheduled_date IS NULL`, así que soltar algo acá lo pone
+   * primero de la lista entera, se esté viendo o no. Es lo mismo que ya pasa en
+   * el panel de la semana.
+   */
+  const backlogVisible = useMemo(() => {
+    const filtrado = filterByChannel(
+      prioridades ? filterByPriority(backlog, levels) : backlog,
+      board.categories,
+      channel,
+    );
+    return sortTasks(filtrado, prioridades ? sort : BacklogSort.CREATED);
+  }, [backlog, levels, channel, sort, prioridades, board.categories]);
 
   const load = useCallback(async () => {
     const [atras, bl, rescates] = await Promise.all([
@@ -346,7 +388,26 @@ export function DailyPlanningView() {
             <DayBoard
               date={today}
               tasks={tasks}
-              backlog={backlog}
+              backlog={backlogVisible}
+              backlogTotal={backlog.length}
+              backlogTools={
+                <PanelFilters
+                  levels={levels}
+                  onLevels={setLevels}
+                  channel={channel}
+                  onChannel={setChannel}
+                  options={opcionesCanal}
+                  selected={canal}
+                  sort={sort}
+                  onSort={setSort}
+                  onReset={() => {
+                    setLevels(new Set());
+                    setChannel(null);
+                    setSort(BacklogSort.CREATED);
+                  }}
+                  priorities={prioridades}
+                />
+              }
               rescued={rescued}
               categoryMap={board.categoryMap}
               categories={board.categories}

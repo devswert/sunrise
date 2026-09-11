@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DndContext } from "@dnd-kit/core";
+import { api } from "../../lib/ipc";
 import type { Category, Task } from "../../lib/types";
 import { Priority } from "../../lib/enums";
 import { BacklogPanel } from "./BacklogPanel";
+import { useSettingsStore } from "../../lib/settings";
 
 function category(id: number, name: string, parentId: number | null = null): Category {
   return { id, parentId, name, color: "sky", position: id, archived: false };
@@ -53,17 +55,40 @@ function renderPanel(tasks: Task[], rescued = new Map<number, string>()) {
   );
 }
 
+/**
+ * Abre el toolbox y pasa el panel a contextos. Por defecto agrupa por channel.
+ * **Deja el popover abierto**: cerrarlo es un click más que la mitad de los
+ * tests no necesita, y los que sí siguen apretando adentro.
+ */
+async function porContexto() {
+  await userEvent.click(screen.getByLabelText("Filtrar y ordenar"));
+  await userEvent.click(screen.getByRole("button", { name: "Contexto" }));
+}
+
 const groupHeads = () =>
   [...document.querySelectorAll(".backlog-panel__group-head")].map((e) => e.textContent!.trim());
 
 describe("BacklogPanel", () => {
-  it("agrupa por contexto, resolviendo el channel a su carpeta", () => {
+  // El nivel de agrupado se guarda en `settings`, y el store es un singleton del
+  // módulo: sin esto, el test que elige contextos se lo deja puesto al siguiente.
+  beforeEach(() => {
+    useSettingsStore.setState({ values: {} });
+  });
+
+  it("de fábrica agrupa por channel: la categoría exacta, sin resolver al padre", () => {
     renderPanel([task(1, "Subir la release", DEPLOY.id), task(2, "Comprar pan", HOME.id)]);
+
+    expect(groupHeads()).toEqual(["Deploy", "Casa"]);
+  });
+
+  it("en contextos el channel se resuelve a su carpeta", async () => {
+    renderPanel([task(1, "Subir la release", DEPLOY.id), task(2, "Comprar pan", HOME.id)]);
+    await porContexto();
 
     expect(groupHeads()).toEqual(["Trabajo", "Casa"]);
   });
 
-  it("no dibuja los contextos vacíos: 300px no se gastan en nombres sin tareas", () => {
+  it("no dibuja los grupos vacíos: 300px no se gastan en nombres sin tareas", () => {
     renderPanel([task(1, "Comprar pan", HOME.id)]);
 
     expect(groupHeads()).toEqual(["Casa"]);
@@ -72,7 +97,7 @@ describe("BacklogPanel", () => {
   it("las tareas sin categoría van a su propio grupo, al final", () => {
     renderPanel([task(1, "Suelta"), task(2, "Comprar pan", HOME.id)]);
 
-    expect(groupHeads()).toEqual(["Casa", "Sin contexto"]);
+    expect(groupHeads()).toEqual(["Casa", "Sin channel"]);
   });
 
   it("dice de qué día se cayó una tarea, que es lo que explica por qué está acá", () => {
@@ -152,7 +177,7 @@ describe("BacklogPanel", () => {
     await userEvent.click(screen.getByLabelText("Filtrar y ordenar"));
     await userEvent.click(screen.getByRole("option", { name: "Trabajo" }));
 
-    expect(groupHeads()).toEqual(["Trabajo"]);
+    expect(groupHeads()).toEqual(["Deploy"]);
     expect(titulos()).toEqual(["Subir la release"]);
   });
 
@@ -188,7 +213,7 @@ describe("BacklogPanel", () => {
       task(3, "Casa tranquila", HOME.id, Priority.P5),
       task(4, "Trabajo urgente", DEPLOY.id, Priority.P2),
     ]);
-    expect(groupHeads()).toEqual(["Trabajo", "Casa"]);
+    expect(groupHeads()).toEqual(["Deploy", "Casa"]);
 
     await userEvent.click(screen.getByLabelText("Filtrar y ordenar"));
     await userEvent.click(screen.getByRole("button", { name: "Prioridad" }));
@@ -212,7 +237,7 @@ describe("BacklogPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Prioridad" }));
     await userEvent.click(screen.getByRole("button", { name: "Antigüedad" }));
 
-    expect(groupHeads()).toEqual(["Trabajo", "Casa"]);
+    expect(groupHeads()).toEqual(["Deploy", "Casa"]);
   });
 
   it("volver a hacer click en un nivel lo saca, sin botón de limpiar", async () => {
@@ -329,8 +354,45 @@ describe("BacklogPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Restablecer" }));
 
     expect(titulos()).toEqual(["Subir la release", "Comprar pan"]);
-    expect(groupHeads()).toEqual(["Trabajo", "Casa"]);
+    expect(groupHeads()).toEqual(["Deploy", "Casa"]);
     expect(boton).not.toHaveTextContent("1");
+  });
+
+  /**
+   * El nivel no es un filtro de sesión: se guarda, porque "por defecto" no
+   * significa nada si vuelve al default cada vez que cambias de vista.
+   */
+  it("elegir el nivel lo guarda en settings", async () => {
+    const set = vi.spyOn(api, "setSetting").mockResolvedValue(undefined);
+    renderPanel([task(1, "Comprar pan", HOME.id)]);
+
+    await porContexto();
+
+    expect(set).toHaveBeenCalledWith("backlog_group_by", "CONTEXT");
+  });
+
+  it("Restablecer también devuelve el agrupado al default", async () => {
+    renderPanel([task(1, "Subir la release", DEPLOY.id)]);
+    await porContexto();
+    expect(groupHeads()).toEqual(["Trabajo"]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Restablecer" }));
+
+    expect(groupHeads()).toEqual(["Deploy"]);
+  });
+
+  /**
+   * Por prioridad la lista se aplana, así que el par Channel/Contexto no cambia
+   * nada: un control marcado que no hace nada es peor que no tenerlo.
+   */
+  it("ordenando por prioridad el agrupado no se ofrece", async () => {
+    renderPanel([task(1, "Arde", HOME.id, Priority.P1)]);
+
+    await userEvent.click(screen.getByLabelText("Filtrar y ordenar"));
+    expect(screen.getByRole("button", { name: "Contexto" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Prioridad" }));
+    expect(screen.queryByRole("button", { name: "Contexto" })).toBeNull();
   });
 
   it("sin nada puesto no hay nada que restablecer, así que el botón no está", async () => {

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CalendarClock, Inbox, Plus } from "lucide-react";
@@ -15,6 +16,17 @@ interface Props {
   onToggle: (task: Task) => void;
   onOpen?: (task: Task) => void;
   onPatch?: (id: number, patch: TaskPatch) => void;
+  /**
+   * Controles para la cabecera de la columna (el toolbox de filtros del ritual
+   * diario). Entra como slot y no adentro: la columna dibuja el backlog, no
+   * decide con qué se filtra, y Today la usa sin ninguno.
+   */
+  tools?: ReactNode;
+  /**
+   * Cuántas hay **sin filtrar**. Con filtros puestos la cabecera dice "2 de 12":
+   * el número a secas escondería que el backlog tiene doce.
+   */
+  total?: number;
 }
 
 /**
@@ -46,6 +58,8 @@ export function BacklogColumn({
   onToggle,
   onOpen,
   onPatch,
+  tools,
+  total,
 }: Props) {
   const openCompose = useAppStore((s) => s.openCompose);
   const { setNodeRef, isOver, active } = useDroppable({
@@ -69,8 +83,12 @@ export function BacklogColumn({
         <span className="day-col__weekday">
           <Inbox size={13} aria-hidden /> Backlog
         </span>
-        <span className="day-col__date">
-          {tasks.length} {tasks.length === 1 ? "pendiente" : "pendientes"}
+        <span className="day-col__head-end">
+          <span className="day-col__date">
+            {total != null && total !== tasks.length && `${tasks.length} de `}
+            {total ?? tasks.length} {(total ?? tasks.length) === 1 ? "pendiente" : "pendientes"}
+          </span>
+          {tools}
         </span>
       </header>
 

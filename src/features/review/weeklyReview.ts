@@ -8,6 +8,7 @@
  */
 import type { Category, Task, WeeklyRollup } from "../../lib/types";
 import { groupBy, type Segmento } from "../../lib/segmentos";
+import { GroupBy } from "../../lib/enums";
 import { dayInZone, shortWeekday } from "../../lib/date";
 // Se re-exportan: el formato de duraciones vive en `lib/capacity.ts` —lo comparten
 // la review y la bitácora—, pero la vista lo pide junto al resto de sus cuentas.
@@ -42,9 +43,19 @@ export function barsByDay(rollup: WeeklyRollup, cats: Map<number, Category>): Di
   }));
 }
 
-/** El donut: por **contexto**, que es como se lee una semana de un vistazo. */
-export function byContext(rollup: WeeklyRollup, cats: Map<number, Category>): Segmento[] {
-  return groupBy(rollup.cells, cats, true);
+/**
+ * El donut, por el nivel que se haya elegido.
+ *
+ * El default es el channel: es el nombre que uno ve en las cards toda la semana,
+ * así que reconocerlo no cuesta traducción. El contexto sigue a un click, y
+ * responde la otra pregunta —en qué área se fue— con menos trozos.
+ */
+export function byLevel(
+  rollup: WeeklyRollup,
+  cats: Map<number, Category>,
+  level: GroupBy,
+): Segmento[] {
+  return groupBy(rollup.cells, cats, level === GroupBy.CONTEXT);
 }
 
 /**

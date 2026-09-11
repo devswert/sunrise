@@ -7,10 +7,11 @@ import { TaskModal } from "../tasks/TaskModal";
 import { PLAIN_INPUT } from "../../components/plainInput";
 import { isoWeekId, shortDate } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
-import { groupByContext } from "./grouping";
+import { groupTasks, looseLabel } from "./grouping";
 import { PriorityFilter } from "./PriorityFilter";
 import { filterByPriority } from "../tasks/priority";
-import { usePrioritiesOn } from "../../lib/settings";
+import { SettingKey, useGroupBy, usePrioritiesOn } from "../../lib/settings";
+import { GroupBy } from "../../lib/enums";
 import type { Priority } from "../../lib/enums";
 
 /**
@@ -49,6 +50,7 @@ export function BacklogView() {
   const [query, setQuery] = useState("");
   const [levels, setLevels] = useState<Set<Priority>>(new Set());
   const prioridades = usePrioritiesOn();
+  const [level, setLevel] = useGroupBy(SettingKey.BACKLOG_GROUP_BY);
   const openCompose = useAppStore((s) => s.openCompose);
   const bumpData = useAppStore((s) => s.bumpData);
   const dataVersion = useAppStore((s) => s.dataVersion);
@@ -94,9 +96,9 @@ export function BacklogView() {
   const visibles = prioridades ? filterByPriority(porTitulo, levels) : porTitulo;
   const filtrando = !!filtro || (prioridades && levels.size > 0);
 
-  // Con el buscador escrito, un contexto sin resultados no es un contexto vacío
-  // al que agregarle algo: es ruido entre los que sí coinciden.
-  const groups = groupByContext(visibles, categories, { includeEmpty: !filtrando });
+  // Con el buscador escrito, un grupo sin resultados no es un grupo vacío al que
+  // agregarle algo: es ruido entre los que sí coinciden.
+  const groups = groupTasks(visibles, categories, level, { includeEmpty: !filtrando });
 
   return (
     <div className="backlog">
@@ -116,6 +118,28 @@ export function BacklogView() {
         </div>
 
         <div className="backlog__tools">
+          {/* El agrupado va como un par de botones marcados y no dentro de un
+           * popover: acá sobra ancho —es una vista, no los 300px del panel— y es
+           * lo que cambia la forma de toda la pantalla, así que esconderlo lo
+           * volvería difícil de encontrar. La preferencia es la misma que la del
+           * panel de la semana (`backlog_group_by`): es el mismo backlog. */}
+          <div className="backlog__groupby" role="group" aria-label="Agrupar por">
+            <button
+              className={`backlog__groupby-opt${level === GroupBy.CHANNEL ? " is-active" : ""}`}
+              aria-pressed={level === GroupBy.CHANNEL}
+              onClick={() => setLevel(GroupBy.CHANNEL)}
+            >
+              Channels
+            </button>
+            <button
+              className={`backlog__groupby-opt${level === GroupBy.CONTEXT ? " is-active" : ""}`}
+              aria-pressed={level === GroupBy.CONTEXT}
+              onClick={() => setLevel(GroupBy.CONTEXT)}
+            >
+              Contextos
+            </button>
+          </div>
+
           {prioridades && <PriorityFilter value={levels} onChange={setLevels} />}
 
           <div className="backlog__search">
@@ -151,7 +175,7 @@ export function BacklogView() {
                     style={{ background: `var(--${g.folder.color})` }}
                   />
                 )}
-                {g.folder?.name ?? "Sin contexto"}
+                {g.folder?.name ?? looseLabel(level)}
               </span>
               {/* Cuántas tiene, en el lugar donde una columna de día lleva su
                * fecha. Con las columnas lado a lado es lo que dice de un vistazo

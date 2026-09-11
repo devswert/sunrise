@@ -1,4 +1,4 @@
-import { PRIORITIES, Priority } from "../../lib/enums";
+import { PRIORITIES, type Priority } from "../../lib/enums";
 import type { Task } from "../../lib/types";
 
 /**

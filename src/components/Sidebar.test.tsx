@@ -185,15 +185,15 @@ describe("Sidebar · backlog", () => {
   it("el item Backlog lleva el total de pendientes", async () => {
     renderSidebar();
 
-    // El mock siembra una sola tarea en el backlog.
+    // El mock siembra tres tareas en el backlog.
     const item = await screen.findByRole("link", { name: "Backlog" });
-    await waitFor(() => expect(item).toHaveTextContent("1"));
+    await waitFor(() => expect(item).toHaveTextContent("3"));
   });
 
   it("no lista los canales: esos viven en la vista", async () => {
     renderSidebar();
     await waitFor(() =>
-      expect(screen.getByRole("link", { name: "Backlog" })).toHaveTextContent("1"),
+      expect(screen.getByRole("link", { name: "Backlog" })).toHaveTextContent("3"),
     );
 
     expect(screen.queryByText("Thinking")).toBeNull();

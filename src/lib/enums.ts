@@ -72,6 +72,22 @@ export const CapacityLevel = {
 export type CapacityLevel = (typeof CapacityLevel)[keyof typeof CapacityLevel];
 
 /**
+ * Por cuál de los dos niveles del árbol de categorías agrupa una vista.
+ *
+ * **No está en la base**, igual que `CapacityLevel`: es una preferencia de
+ * pantalla que viaja como valor de `settings` (`backlog_group_by`,
+ * `review_group_by`), no una columna. En MAYÚSCULAS igual que el resto para que
+ * un valor guardado se lea igual que uno de la DB.
+ */
+export const GroupBy = {
+  /** La carpeta: `parentId ?? id`. Junta todos los channels de un área. */
+  CONTEXT: "CONTEXT",
+  /** La categoría exacta de la tarea, sea del nivel que sea. */
+  CHANNEL: "CHANNEL",
+} as const;
+export type GroupBy = (typeof GroupBy)[keyof typeof GroupBy];
+
+/**
  * El valor de `bell_sound` que significa **la campana sintetizada de la app**.
  *
  * No es un enum de verdad —esa clave guarda el nombre del archivo cuando elegiste

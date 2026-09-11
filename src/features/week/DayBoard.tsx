@@ -14,6 +14,7 @@ import { DayColumn } from "./DayColumn";
 import { boardCollision } from "./collision";
 import { TaskCardOverlay } from "./TaskCard";
 import { BacklogColumn } from "../backlog/BacklogColumn";
+import type { ReactNode } from "react";
 import type { Category, Task, TaskPatch } from "../../lib/types";
 
 interface Props {
@@ -33,6 +34,10 @@ interface Props {
   backlog?: Task[];
   /** `taskId` → día del que vino, para el grupo de arriba del backlog. */
   rescued?: Map<number, string>;
+  /** Controles de la cabecera del backlog. Ver `BacklogColumn`. */
+  backlogTools?: ReactNode;
+  /** Cuántas hay en el backlog antes de filtrar. Ver `BacklogColumn`. */
+  backlogTotal?: number;
 }
 
 /**
@@ -61,6 +66,8 @@ export function DayBoard({
   colClassName,
   backlog,
   rescued,
+  backlogTools,
+  backlogTotal,
 }: Props) {
   const [activeId, setActiveId] = useState<number | null>(null);
   const sensors = useSensors(
@@ -125,11 +132,16 @@ export function DayBoard({
           onPatch={onPatch}
         />
       </div>
+      {/* `is-backlog` para que cada vista pueda darle su propio ancho: el backlog
+       * lleva el toolbox de filtros en la cabecera y el día no, así que la misma
+       * medida no les sirve a los dos. */}
       {backlog && (
-        <div className={colClassName}>
+        <div className={`${colClassName} is-backlog`}>
           <BacklogColumn
             tasks={backlog}
             rescued={rescued}
+            tools={backlogTools}
+            total={backlogTotal}
             categoryMap={categoryMap}
             categories={categories}
             onToggle={onToggle}

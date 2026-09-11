@@ -45,6 +45,14 @@ todo. **El usuario insiste en esto de forma consistente.**
   capacidad. Un color sin significado no va. En el badge de tiempo de una card ya
   conviven dos: mint = la estás trabajando, ámbar = se sale de tu horario (§4.3).
   El ámbar gana, y el mint sigue contándose con el punto pulsante.
+- **Dos opciones excluyentes con una siempre puesta van como un par de botones
+  marcados, no como una lista de la que se elige** — es la diferencia entre un
+  radio y un menú. Es el patrón de Channel/Contexto y de Antigüedad/Prioridad, y
+  tiene dos tallas: `.backlog__groupby` cuando va suelto en la cabecera de una
+  vista, `.bfilters__opt` cuando va dentro del popover de filtros del panel, donde
+  no hay 300px que gastar. Si el control no cambiaría nada en el estado actual
+  —agrupar con la lista aplanada por prioridad—, **no se dibuja**: un botón
+  marcado que no hace nada es peor que no tenerlo.
 - **Nada pide confirmación salvo lo irreversible.** Todo se autoguarda y todo se
   puede deshacer moviendo la tarea de vuelta.
 - **Cada vista responde una pregunta.** Si una vista necesita un párrafo para

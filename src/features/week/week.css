@@ -2462,6 +2462,30 @@ button.tc__tag.is-empty {
   flex: 0 0 236px;
   max-width: 236px;
 }
+/* El backlog va más ancho que el día, y es por lo que lleva en la cabecera: al
+   lado del rótulo y el contador está el botón de filtros, y con los tres en
+   236px el contador filtrado ("2 de 12 pendientes") empujaba el botón a una
+   segunda línea. 300px es la medida del panel del backlog de la semana, que
+   muestra exactamente lo mismo: misma pregunta, mismo ancho.
+
+   **Puede encoger, pero nunca crecer.** La regla de arriba prohíbe repartirse el
+   espacio libre —una card estirada al doble deja de leerse como la misma card—,
+   y eso es sobre crecer; encoger es lo contrario y es lo que hace falta acá. Con
+   `0 0 300px` fijo, en una ventana angosta la columna se salía del scroller de
+   `.daily-plan__hoy` —que la agenda tapa por la derecha— y el botón de filtros
+   quedaba cortado sin forma de llegar a él. El piso son los 236px del día: por
+   debajo de eso la card sí dejaría de ser la misma. */
+.daily-plan__hoy .daily-plan__col.is-backlog {
+  flex: 0 1 300px;
+  min-width: 236px;
+  max-width: 300px;
+}
+
+/* Y un respiro a la derecha del último control: pegado al borde, el `overflow`
+   del scroller le come el borde al botón aunque la columna entre justa. */
+.daily-plan__hoy .daily-plan__col.is-backlog .day-col__head {
+  padding-right: 2px;
+}
 
 .daily-plan__col {
   flex: 0 0 300px;
@@ -3069,6 +3093,38 @@ button.tc__tag.is-empty {
 .backlog__tools .bfilter:hover,
 .backlog__tools .bfilter.is-on {
   border-color: var(--muted);
+}
+
+/* El par Channels/Contextos de la vista. Es un segmentado —dos opciones
+   excluyentes y siempre hay una—, así que comparte la caja del buscador y del
+   filtro: mismo alto, mismo radio, mismo fondo hundido. Dentro del popover del
+   panel el mismo control usa `.bfilters__opt`, que es la talla chica. */
+.backlog__groupby {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+.backlog__groupby-opt {
+  padding: 4px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 13px;
+  cursor: pointer;
+}
+.backlog__groupby-opt:hover {
+  color: var(--ink);
+}
+.backlog__groupby-opt.is-active {
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-weight: 600;
 }
 
 .backlog-panel__body {

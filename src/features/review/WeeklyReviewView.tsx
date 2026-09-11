@@ -34,9 +34,11 @@ import {
   closedByDay,
   hours,
   hoursFromMinutes,
-  byContext,
+  byLevel,
   ceilingInMinutes,
 } from "./weeklyReview";
+import { GroupBy } from "../../lib/enums";
+import { SettingKey, useGroupBy } from "../../lib/settings";
 import "./review.css";
 
 /** Una cifra de la cabecera: punto de color, número y su etiqueta, en una línea. */
@@ -145,7 +147,11 @@ export function WeeklyReviewView() {
 
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const barras = useMemo(() => (rollup ? barsByDay(rollup, catMap) : []), [rollup, catMap]);
-  const contextos = useMemo(() => (rollup ? byContext(rollup, catMap) : []), [rollup, catMap]);
+  const [level, setLevel] = useGroupBy(SettingKey.REVIEW_GROUP_BY);
+  const segmentos = useMemo(
+    () => (rollup ? byLevel(rollup, catMap, level) : []),
+    [rollup, catMap, level],
+  );
   const closed = useMemo(() => (rollup ? closedByDay(rollup) : new Map()), [rollup]);
   const techo = ceilingInMinutes(barras);
 
@@ -316,14 +322,37 @@ export function WeeklyReviewView() {
             <section className="review__panel">
               <h2 className="review__h2">
                 <PieChart size={14} aria-hidden /> En qué se fue el tiempo
+                {/* El mismo segmentado de la vista Backlog, en la cabecera del
+                 * panel: es la leyenda del donut la que cambia, así que el
+                 * control tiene que estar donde se mira el resultado. */}
+                <span
+                  className="backlog__groupby review__groupby"
+                  role="group"
+                  aria-label="Agrupar por"
+                >
+                  <button
+                    className={`backlog__groupby-opt${level === GroupBy.CHANNEL ? " is-active" : ""}`}
+                    aria-pressed={level === GroupBy.CHANNEL}
+                    onClick={() => setLevel(GroupBy.CHANNEL)}
+                  >
+                    Channels
+                  </button>
+                  <button
+                    className={`backlog__groupby-opt${level === GroupBy.CONTEXT ? " is-active" : ""}`}
+                    aria-pressed={level === GroupBy.CONTEXT}
+                    onClick={() => setLevel(GroupBy.CONTEXT)}
+                  >
+                    Contextos
+                  </button>
+                </span>
               </h2>
-              {contextos.length === 0 ? (
+              {segmentos.length === 0 ? (
                 <p className="review__vacio">Sin tiempo registrado esta semana.</p>
               ) : (
                 <div className="donut-bloque">
-                  <Donut segments={contextos} total={rollup.totalSeconds} />
+                  <Donut segments={segmentos} total={rollup.totalSeconds} />
                   <ul className="leyenda">
-                    {contextos.map((s) => (
+                    {segmentos.map((s) => (
                       <li key={s.key}>
                         <span className="leyenda__punto" style={{ background: s.color }} />
                         <span className="leyenda__nombre">{s.name}</span>

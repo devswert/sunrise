@@ -7,9 +7,10 @@ import {
   closedByDay,
   hours,
   hoursFromMinutes,
-  byContext,
+  byLevel,
   ceilingInMinutes,
 } from "./weeklyReview";
+import { GroupBy } from "../../lib/enums";
 
 const DIAS = [
   "2026-08-10",
@@ -50,7 +51,7 @@ function rollup(parcial: Partial<WeeklyRollup> = {}): WeeklyRollup {
 }
 
 describe("weeklyReview", () => {
-  it("agrupa el donut por contexto, no por channel", () => {
+  it("por contexto el donut junta los channels de una misma carpeta", () => {
     // Dev y Soporte cuelgan de Trabajo: el donut muestra una sola porción.
     const r = rollup({
       cells: [
@@ -59,11 +60,23 @@ describe("weeklyReview", () => {
       ],
     });
 
-    const donut = byContext(r, catMap);
+    const donut = byLevel(r, catMap, GroupBy.CONTEXT);
     expect(donut).toHaveLength(1);
     expect(donut[0].name).toBe("Trabajo");
     expect(donut[0].seconds).toBe(5400);
     expect(donut[0].color).toBe("var(--sky)");
+  });
+
+  it("por channel las separa, que es el default del donut", () => {
+    const r = rollup({
+      cells: [
+        { date: DIAS[1], categoryId: 2, contextId: 1, seconds: 3600 },
+        { date: DIAS[1], categoryId: 3, contextId: 1, seconds: 1800 },
+      ],
+    });
+
+    const donut = byLevel(r, catMap, GroupBy.CHANNEL);
+    expect(donut.map((s) => s.name)).toEqual(["Dev", "Soporte"]);
   });
 
   it("las barras sí separan por channel, de mayor a menor", () => {
@@ -85,7 +98,7 @@ describe("weeklyReview", () => {
       totalSeconds: 600,
     });
 
-    const donut = byContext(r, catMap);
+    const donut = byLevel(r, catMap, GroupBy.CHANNEL);
     expect(donut[0].name).toBe("Sin channel");
     expect(donut[0].seconds).toBe(600);
   });
@@ -95,7 +108,7 @@ describe("weeklyReview", () => {
       cells: [{ date: DIAS[0], categoryId: 99, contextId: 99, seconds: 900 }],
     });
 
-    expect(byContext(r, catMap).reduce((a, s) => a + s.seconds, 0)).toBe(900);
+    expect(byLevel(r, catMap, GroupBy.CONTEXT).reduce((a, s) => a + s.seconds, 0)).toBe(900);
   });
 
   it("la escala es de la semana, no de cada día", () => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 import { api } from "./ipc";
-import { FontChoice, SUNRISE_BELL } from "./enums";
+import { FontChoice, GroupBy, SUNRISE_BELL } from "./enums";
 import { useAppStore } from "./store";
 import { setZone } from "./date";
 import {
@@ -50,6 +50,16 @@ export const SettingKey = {
   FONT_BODY: "font_body",
   /** El interruptor general de prioridades. Solo lo lee el front. */
   PRIORITIES_ENABLED: "priorities_enabled",
+  /**
+   * Por cuál nivel del árbol de categorías agrupan el backlog (la vista y el
+   * panel de la semana) y el donut de la weekly review. **Dos claves y no una**:
+   * son la misma pregunta sobre pantallas distintas —"qué tengo pendiente" vs
+   * "en qué se me fue la semana"— y acoplarlas obligaría a elegir lo mismo en
+   * las dos. Valores: `CONTEXT` o `CHANNEL`; ausente o desconocido ⇒ `CHANNEL`.
+   * Solo las lee el front.
+   */
+  BACKLOG_GROUP_BY: "backlog_group_by",
+  REVIEW_GROUP_BY: "review_group_by",
   /**
    * Las reglas del sugeridor del modal de crear (§4.31), como JSON: qué palabras
    * valen cuántos minutos y qué palabras apuntan a qué canal. Solo las lee el
@@ -434,6 +444,26 @@ export function prioritiesOn(values: SettingsMap): boolean {
 /** Atajo para las vistas: si se dibujan las prioridades. */
 export function usePrioritiesOn(): boolean {
   return prioritiesOn(useSettingsStore((s) => s.values));
+}
+
+/**
+ * Por qué nivel agrupa una de las dos pantallas que lo permiten.
+ *
+ * Doctrina de `collapsed_weekdays`: **ausente ⇒ el default**. Acá el default es
+ * el channel, que es lo que se lee en la card y por lo tanto lo que uno reconoce
+ * sin traducir. Un valor que no sea ninguno de los dos —una versión vieja, un
+ * ajuste editado a mano— también cae en el default en vez de dejar la vista sin
+ * agrupar.
+ */
+export function groupByLevel(values: SettingsMap, key: SettingKey): GroupBy {
+  return values[key]?.trim() === GroupBy.CONTEXT ? GroupBy.CONTEXT : GroupBy.CHANNEL;
+}
+
+/** Atajo para las vistas, con el `setter` al lado: es un toggle, no un ajuste de Configs. */
+export function useGroupBy(key: SettingKey): [GroupBy, (next: GroupBy) => void] {
+  const values = useSettingsStore((s) => s.values);
+  const set = useSettingsStore((s) => s.set);
+  return [groupByLevel(values, key), (next) => void set(key, next)];
 }
 
 /** Atajo para las vistas: capacidad y umbral ya interpretados. */
