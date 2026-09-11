@@ -15,6 +15,32 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.10.0 — 2026-09-11
+
+El backlog ahora se agrupa por channel, que es el nombre que ves en cada tarjeta, y
+puedes cambiar a contextos cuando quieras mirar por área — la elección se queda
+puesta. El mismo par de botones está en el donut de la weekly review, y los filtros
+del backlog de la semana ahora también viven en la planificación diaria. Además, el
+weekly te avisa en amarillo cuándo una tarea ya no entra en tu horario de trabajo.
+
+### Detalle
+
+- El backlog (la vista y el panel de la semana) se agrupa por **channel** de
+  fábrica, con un botón para pasar a contextos. La elección se guarda.
+- El donut de la weekly review tiene el mismo control, con su propia preferencia:
+  el backlog y la semana responden preguntas distintas. Las barras por día siguen
+  siendo siempre por channel.
+- La planificación diaria recibe el toolbox de filtros del panel de la semana:
+  prioridad, canal y orden. Su columna de backlog va más ancha.
+- En el weekly, el tiempo de una tarea se pinta en ámbar cuando la proyección del
+  día la deja fuera de tu horario de trabajo. Solo en hoy, y descontando lo que ya
+  llevas trabajado en la tarea que está corriendo.
+- Al accionar una notificación, la app ahora se trae al frente: antes navegaba a la
+  vista correcta en una ventana que seguía detrás y parecía que el aviso no hacía
+  nada.
+- En Focus, una reunión con muchos invitados ya no deja la cabecera de la tarea
+  fuera de alcance: la vista scrollea.
+
 ## v0.9.0 — 2026-09-03
 
 Tres arreglos de cosas que molestaban a diario: el taxímetro vuelve a aparecer solo
