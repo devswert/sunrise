@@ -15,6 +15,28 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.11.0 — 2026-10-16
+
+Ahora puedes conectar sunrise a Claude Desktop: Claude puede ver tu día y tu
+backlog, y crear, editar o mover tareas por ti. Por ejemplo, pídele que busque los
+compromisos que tomaste hoy en Slack (si lo tienes conectado en Claude) y que los
+agregue como tareas: aparecen solas en la app. Se activa con un botón en Configs →
+MCP, y el servidor corre en tu Mac sin abrir ningún puerto.
+
+### Detalle
+
+- Servidor MCP local: el mismo binario con `--mcp`, por stdio. Claude Desktop lo
+  lanza y funciona aunque sunrise esté cerrada.
+- Siete herramientas: listar las tareas de un día o un rango, el backlog y los
+  channels, ver una tarea, y crear, editar o mover tareas. No completa tareas, no
+  toca el timer ni borra nada, y las reuniones del calendario solo las lee.
+- Lo que crea o cambia Claude aparece en la app en un par de segundos, sin recargar.
+- Configs → MCP: estado de la conexión, un botón que agrega sunrise a la
+  configuración de Claude Desktop (solo agrega, guarda una copia y no pisa una
+  entrada que ya exista), y el comando para Claude Code.
+- Lo que Claude lee de sunrise —títulos, notas, links de reuniones— viaja a Claude
+  como cualquier mensaje. La sección lo dice.
+
 ## v0.10.0 — 2026-09-11
 
 El backlog ahora se agrupa por channel, que es el nombre que ves en cada tarjeta, y
