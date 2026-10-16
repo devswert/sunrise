@@ -49,6 +49,7 @@ La lista de casos vive en los propios archivos y no se duplica acá; esto es el 
 | Primitivas | `Dialog.test.tsx`, `Popover.test.tsx`, `SearchSelect.test.tsx`, `QuitConfirm.test.tsx`, `Sidebar.test.tsx`, `SunriseMark.test.tsx` |
 | Cruce entre ventanas | `store.test.tsx`, `TodayView.sync.test.tsx` |
 | Contrato IPC | `ipcContract.test.ts` |
+| Servidor MCP | `mcp/tools.rs`, `mcp/store.rs`, `mcp/server.rs` (el esquema publicado), `external.rs`, `claude_desktop.rs`, `useExternalChanges.test.ts`, `McpCard.test.tsx` |
 
 ## Los tests que protegen una decisión, no un código
 
@@ -107,6 +108,11 @@ pendiente vivo está en el [ROADMAP](../ROADMAP.md).
   LaunchAgent** del inicio automático.
 - La **restauración real**: el mock no tiene base que reemplazar.
 - La **descarga del update**: reemplaza el `.app` instalado y reinicia el proceso.
+- **El MCP con Claude Desktop de verdad**: el protocolo se prueba a mano por stdio,
+  pero lo que hace el modelo con las tools y que la tarea aparezca en la app abierta
+  solo se ve corriendo los dos. `external.rs` se prueba con dos conexiones a un
+  archivo temporal, que es el único caso en que `data_version` se mueve; el
+  vigilante en sí (el loop y el `emit`) necesita Tauri.
 - **El gesto del DnD**, el **scroll** y el **`position: sticky`**: jsdom no devuelve
   rectángulos, no implementa `scrollLeft` y no resuelve sticky, así que un assert sobre
   la posición pasaría o fallaría por el motivo equivocado.

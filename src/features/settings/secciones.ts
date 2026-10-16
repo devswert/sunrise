@@ -6,6 +6,7 @@ import {
   Hash,
   Keyboard,
   Palette,
+  Plug,
   SlidersHorizontal,
   Sparkles,
   type LucideIcon,
@@ -41,6 +42,9 @@ export const TABS = [
   { id: "atajos", label: "Atajos", icon: Keyboard },
   // Antes de Respaldo: se visita más que él y menos que el resto.
   { id: "notificaciones", label: "Notificaciones", icon: BellRing },
+  // Conectar con Claude Desktop (§4.32). Se configura una vez y no se vuelve, así
+  // que va abajo; antes de Respaldo, que tiene que quedar última.
+  { id: "mcp", label: "MCP", icon: Plug },
   // Al final: es la sección que menos se visita y la única que puede destruir
   // datos, así que no debe quedar en el camino de nadie.
   { id: "respaldo", label: "Respaldo", icon: DatabaseBackup },

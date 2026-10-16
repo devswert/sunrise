@@ -1,4 +1,11 @@
-import type { Priority, SourceState, TaskEventType, TaskSource, TaskStatus } from "./enums";
+import type {
+  ClaudeStatus,
+  Priority,
+  SourceState,
+  TaskEventType,
+  TaskSource,
+  TaskStatus,
+} from "./enums";
 
 /** Categoría de 2 niveles. `parentId === null` => categoría padre (carpeta del backlog). */
 export interface Category {
@@ -326,6 +333,27 @@ export interface RestoreResult {
   tasks: number;
   /** Lo último trabajado según la base restaurada (RFC3339 en UTC). */
   lastActivity: string | null;
+}
+
+/**
+ * Si sunrise está registrado en Claude Desktop (Configs → MCP, §4.32). Espejo de
+ * `claude_desktop::ClaudeDesktopInfo`.
+ */
+export interface ClaudeDesktopInfo {
+  status: ClaudeStatus;
+  /** `sunrise`, o `sunrise-dev` en dev: así las dos conviven registradas. */
+  serverName: string;
+  /** La ruta de este binario, que es lo que se registra. */
+  command: string;
+  configPath: string;
+  /** El bloque de `claude_desktop_config.json` para pegar a mano. */
+  snippet: string;
+  /** El comando para registrarlo en Claude Code. */
+  cliCommand: string;
+  /** A dónde apunta la entrada que ya existe, si es `ELSEWHERE`. */
+  currentCommand: string | null;
+  /** Por qué no se puede conectar desde acá, si hay un motivo. */
+  problem: string | null;
 }
 
 /**

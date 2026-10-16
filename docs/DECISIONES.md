@@ -882,3 +882,76 @@ cero**, así que la primera medición de un centrado da números sin sentido.
 **Una decisión de UI se toma midiendo cuando se puede medir.** El overlay del
 arrastre, el contraste de la paleta, el ancho del rail, el ΔE de los colores: todos
 salieron de números, y en varios casos el número contradijo lo que parecía obvio.
+
+---
+
+## 11. Claude Desktop por MCP
+
+El principio era "sin IA" (estaba en el README y en SPECS). Se levantó en octubre
+de 2026 con una condición que sigue valiendo: **la IA no vive dentro de la app**.
+Entra desde afuera, por un cliente que el usuario ya tiene, y pasa por las mismas
+funciones de `repo.rs` que cualquier vista. Detalle en
+[specs/mcp.md](specs/mcp.md) (§4.32).
+
+**stdio y no HTTP en localhost.** Un puerto local lo puede tocar cualquier proceso
+de la máquina —y una página web, con DNS rebinding—, así que habría pedido token y
+chequeo de `Origin`. Con stdio solo habla quien lanzó el proceso. Además, los
+conectores remotos de Claude Desktop pasan por la nube y no llegan a `localhost`:
+HTTP habría obligado a un puente en Node igual.
+
+**El mismo binario con `--mcp`, no un segundo binario.** Se evaluó un
+`src/bin/sunrise-mcp.rs`, y pedía tres cosas: hacer públicos `repo` y `db` (hoy son
+`mod` privados de `sunrise_lib`), declararlo como `externalBin` (con el nombre por
+target triple y su propia firma) y confiar en que el updater lo actualizara junto
+con la app. Con el flag nada de eso existe. El precio es un binario más grande
+cargando para servir JSON, que no se nota.
+
+**Abrir el SQLite y no hablarle a la app.** La alternativa era que el MCP le pidiera
+las cosas a la app viva. Eso obliga a que esté abierta y a abrir un canal entre
+procesos, que es justo el puerto que se quería evitar. SQLite en WAL está hecho para
+dos procesos; lo que faltaba era el `busy_timeout`.
+
+**Una conexión por llamada.** Restaurar un respaldo reemplaza el archivo. Una
+conexión que el MCP tuviera abierta desde antes seguiría escribiendo en el archivo
+viejo, y esas tareas se perderían sin ningún error a la vista.
+
+**El MCP nunca migra.** Migrar desde un proceso que nadie mira dejaría una
+migración a medio escribir sin testigos, y la app ya sabe hacerlo con respaldo y
+aviso. El desfase es real en las dos direcciones: la app se actualiza sola y Claude
+Desktop puede quedar apuntando a un binario viejo.
+
+**`PRAGMA data_version` y no un evento del MCP.** El MCP no puede emitir eventos de
+Tauri: es otro proceso. Lo que se puede observar desde la app es la base, y
+`data_version` tiene exactamente la semántica que hace falta: se mueve con los
+commits **de otra conexión** y no con los propios. Eso hace imposible el eco que
+§5.3 tuvo que evitar a mano. Vigilar el archivo `-wal` con el sistema de archivos
+también funcionaría, pero se dispara con las escrituras de la propia app.
+
+**Por qué no completar, timer ni borrar en la primera versión.** Completar la
+tarea que tiene el timer corriendo lo detiene en la base (I5), y el taxímetro, el
+`timerStore` de cada ventana y `bell.rs` no se enterarían: el aviso solo invalida
+vistas. Antes de abrir esas tools, el aviso tiene que refrescar también el timer.
+
+**Las tareas de calendario se leen y no se editan.** Su dueño es el reconciler, que
+vuelve cada quince minutos y reescribe título, día y hora desde el feed. Una edición
+desde Claude duraría hasta la próxima sincronización, y el usuario no sabría por
+qué se deshizo.
+
+**El `"default": null` que borraba datos.** El primer uso real del MCP editó las
+notas de una tarea y le quitó el estimado. schemars publica `"default": null` por
+cada campo con `#[serde(default)]`, y el cliente completa los campos que el modelo
+no mandó con ese valor; en `update_task`, `null` significa "borrar". Los tests de
+`tools.rs` estaban en verde porque prueban el JSON que llega, no el que el cliente
+arma a partir del esquema. **El test que sirve lee el esquema publicado** por el
+router, igual que el contrato IPC lee los dos lados del puente.
+
+**Registrar desde Configs y no solo documentarlo.** Editar a mano el JSON de otra
+app es el paso donde se cae la gente: ruta absoluta del binario, ⌘Q en vez de
+cerrar la ventana. El botón lo hace, pero **solo agrega**: una entrada con nuestro
+nombre que apunta a otro lado no se pisa (decisión del dev: puede ser una puesta a
+mano con argumentos propios), y un JSON que no se entiende no se reescribe, porque
+escribir encima borraría lo que la persona tenía. Copia antes de escribir y
+conserva el orden de las claves. **Una entrada que ya apunta a este binario cuenta
+como conectada aunque se llame distinto**: el caso real fue un `sunrise` puesto a
+mano apuntando a dev, y el botón de dev (`sunrise-dev`) agregaba un segundo
+servidor sobre la misma base.

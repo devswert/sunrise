@@ -13,6 +13,11 @@ Declaradas en `src-tauri/tauri.conf.json`; sus permisos, en
 `src-tauri/capabilities/default.json`. **Una API de ventana nueva sin su permiso
 ahí falla en runtime, no en compilación.**
 
+**Hay un tercer proceso, sin ventana**: el servidor MCP (`sunrise --mcp`, §4.32),
+que lanza Claude Desktop. Es el mismo binario, pero no construye Tauri: abre el
+mismo archivo SQLite con su propia conexión y llama a `repo.rs` directo, sin pasar
+por `commands.rs` ni por el puente IPC.
+
 > **Son dos documentos y dos bundles de React**, o sea **dos instancias de cada
 > store de Zustand**. No comparten memoria — ver [§5](sincronizacion.md).
 
@@ -27,7 +32,8 @@ db/ (open, migrate)  →  repo.rs (todo el SQL, funciones puras sobre &Connectio
 - `repo.rs` no conoce Tauri: recibe `&Connection`, y por eso es testeable con
   SQLite en memoria. **La lógica de negocio va acá, no en `commands.rs`.**
 - Una sola `Connection` en `Mutex`, manejada por Tauri (`app.manage(Db(...))`) y
-  compartida por ambas ventanas. La DB vive en `app_data_dir()/sunrise.sqlite`.
+  compartida por ambas ventanas. **No es la única conexión al archivo**: el MCP
+  abre la suya en cada llamada, y por eso `db::open` fija un `busy_timeout`. La DB vive en `app_data_dir()/sunrise.sqlite`.
 - `models.rs` usa `#[serde(rename_all = "camelCase")]` para espejar
   `src/lib/types.ts`. **Un campo nuevo se toca en los dos lados.**
 

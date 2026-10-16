@@ -25,6 +25,7 @@ import { useTimerStore } from "./features/timer/timerStore";
 import { useTimerRuntime } from "./features/timer/useTimer";
 import { useFloatingWindow, useGotoListener } from "./features/timer/useFloatingWindow";
 import { useCalendarListener } from "./features/calendar/useCalendarListener";
+import { useExternalChanges } from "./lib/useExternalChanges";
 import { useCalendarSyncRuntime } from "./lib/calendarSync";
 import { useShutdownReminder } from "./features/shutdown/useShutdownReminder";
 import { useBackupListener } from "./features/backup/useBackupListener";
@@ -64,6 +65,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   useGotoListener();
   // El poller de calendario corre en Rust y avisa por evento de Tauri.
   useCalendarListener();
+  // Lo que escribe el servidor MCP desde otro proceso (§4.32), por la misma vía.
+  useExternalChanges();
   // Y además se sincroniza al abrir la app y al volver a la ventana, que es
   // cuando de verdad importa que esté al día.
   useCalendarSyncRuntime();

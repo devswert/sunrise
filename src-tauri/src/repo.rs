@@ -17,7 +17,7 @@ use serde::Deserialize;
 /// equivocados, y ninguna de las dos suites enterada.
 ///
 /// El `#[serde(default)]` sigue haciendo falta: es lo que cubre el campo ausente.
-fn double_option<'de, D, T>(de: D) -> std::result::Result<Option<Option<T>>, D::Error>
+pub(crate) fn double_option<'de, D, T>(de: D) -> std::result::Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: Deserialize<'de>,

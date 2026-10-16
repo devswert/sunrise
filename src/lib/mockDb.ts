@@ -25,7 +25,9 @@ import type {
   RestoreResult,
   Profile,
   AppUpdate,
+  ClaudeDesktopInfo,
 } from "./types";
+import { ClaudeStatus } from "./enums";
 import { toISODate, todayISO, weekDates } from "./date";
 
 let seq = 1;
@@ -75,6 +77,23 @@ const settings = new Map<string, string>([
  * la verdad la tiene el sistema operativo, no la base.
  */
 let autostart = false;
+
+/** Configs → MCP. Fuera de Tauri no hay configuración de Claude que leer. */
+const MOCK_BIN = "/Applications/sunrise.app/Contents/MacOS/sunrise";
+const claudeDesktop: ClaudeDesktopInfo = {
+  status: ClaudeStatus.NOT_CONNECTED,
+  serverName: "sunrise-dev",
+  command: MOCK_BIN,
+  configPath: "~/Library/Application Support/Claude/claude_desktop_config.json",
+  snippet: JSON.stringify(
+    { mcpServers: { "sunrise-dev": { command: MOCK_BIN, args: ["--mcp"] } } },
+    null,
+    2,
+  ),
+  cliCommand: `claude mcp add --scope user sunrise-dev -- ${MOCK_BIN} --mcp`,
+  currentCommand: null,
+  problem: null,
+};
 
 /**
  * Los respaldos "hechos" en esta sesión.
@@ -1249,6 +1268,13 @@ export const mock = {
    * distintivo "dev" visible en el sidebar del preview.
    */
   profile: async (): Promise<Profile> => ({ dev: true, dbFile: "sunrise-dev.sqlite" }),
+  // Configs → MCP. En el browser no hay archivo de Claude que leer: arranca sin
+  // conectar y "conectar" solo cambia el estado en memoria.
+  claudeDesktopStatus: async (): Promise<ClaudeDesktopInfo> => ({ ...claudeDesktop }),
+  connectClaudeDesktop: async (): Promise<ClaudeDesktopInfo> => {
+    claudeDesktop.status = ClaudeStatus.CONNECTED;
+    return { ...claudeDesktop };
+  },
 
   /**
    * Fuera de Tauri **nunca hay actualización**, y eso no es una simplificación:

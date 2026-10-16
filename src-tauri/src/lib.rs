@@ -3,9 +3,12 @@
 mod backup;
 mod bell;
 mod calendar;
+mod claude_desktop;
 mod commands;
 mod db;
+mod external;
 mod fonts;
+pub mod mcp;
 mod models;
 mod notice;
 mod repo;
@@ -29,6 +32,10 @@ pub const CALENDAR_SYNCED: &str = "sunrise://calendar-synced";
 /// escucha Configs para releer la lista de zips y el último error, que los acaba
 /// de escribir Rust (ver `useBackupListener` en el front).
 pub const BACKUP_RAN: &str = "sunrise://backup-ran";
+/// Aviso de que otro proceso —el servidor MCP (§4.32)— escribió en la base. Llega a
+/// las dos ventanas, pero solo lo escucha `main` (`useExternalChanges`, en `Shell`):
+/// el taxímetro no tiene vistas que recargar.
+pub const DATA_CHANGED: &str = "sunrise://data-changed";
 
 /// Pide la confirmación de salida, **después** de asegurarse de que se pueda
 /// ver.
@@ -150,6 +157,10 @@ pub fn run() {
             // justamente "estoy en otra ventana".
             notice::start_watcher(app.handle().clone());
 
+            // Lo que escribe el servidor MCP desde otro proceso. Sin esto, una
+            // tarea creada desde Claude no aparecería hasta recargar a mano.
+            external::start_watcher(app.handle().clone());
+
             // Si este arranque es el de después de un update, la ventana viene al
             // frente. Sin esto queda detrás de la app que estaba adelante y el
             // reinicio parece no haber pasado (§4.21).
@@ -225,6 +236,8 @@ pub fn run() {
             // respaldos
             commands::app_version,
             commands::profile,
+            commands::claude_desktop_status,
+            commands::connect_claude_desktop,
             commands::create_backup,
             commands::test_backup_dir,
             commands::list_backups,

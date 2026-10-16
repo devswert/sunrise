@@ -58,9 +58,14 @@ cambias una, actualiza este archivo en el mismo commit.
 - **I9. Las migraciones aplicadas son inmutables**: se agrega una versión nueva.
 - **I10. Todo acceso a datos pasa por `src/lib/ipc.ts`**, con su gemelo en `mockDb.ts`.
   Ningún componente llama `invoke` directo.
+  **Vale para el front.** El servidor MCP (§4.32) es otro proceso y llama a `repo.rs`
+  directo, que es justamente lo que lo obliga a no tener reglas propias.
 - **I11. Toda mutación llama `bumpData()`** ([§5.3](sincronizacion.md)). Para invalidar
   **sin** avisar hacia afuera está `markDataStale()`, que existe solo para el listener
   que recibe esos avisos.
+  **Lo que escribe otro proceso no puede llamarlo**: lo cubre `external.rs`, que
+  detecta el commit ajeno con `PRAGMA data_version` y emite `sunrise://data-changed`
+  (§5.3, §4.32).
 
 ## §9 Deuda técnica conocida
 
@@ -74,3 +79,11 @@ Las resueltas se podan; su relato está en `git log -p docs/SPECS.md`.
   peor caso de un camino que además tiene vuelta atrás (el archivo previo queda al
   lado), así que es de baja prioridad. Queda anotado porque es el único lugar donde lo
   nativo le gana a nuestro estilo.
+- **D10. Dos procesos escriben la base y dos escrituras de `repo.rs` no son
+  atómicas** (§4.32). `update_task` lee la tarea y reescribe todas sus columnas, así
+  que si la app y el MCP editan campos distintos de la misma tarea en el mismo
+  instante, uno de los dos cambios se pierde. `create_task` y `move_task` calculan la
+  posición fuera de la transacción y pueden empatar posiciones. La ventana es de
+  milisegundos y con una sola persona usando las dos cosas es casi imposible; el
+  arreglo es un `UPDATE` que solo toque los campos del patch, o `BEGIN IMMEDIATE`
+  alrededor de leer y escribir.

@@ -26,7 +26,24 @@ que ambas ventanas alcanzan por IPC. La DB es la fuente de verdad, así que el
 problema **siempre** es de invalidación de cache, nunca de datos.
 
 De ahí sale la regla que se rompe seguido: **toda mutación llama `bumpData()`**
-(invariante I11). No hay invalidación automática y Rust no emite eventos de datos.
+(invariante I11). No hay invalidación automática para lo que escribe el front.
+
+**Hay dos excepciones, y las dos entran por evento de Tauri con `markDataStale()`**:
+el poller de calendario (`sunrise://calendar-synced`) y **lo que escribe otro
+proceso**, hoy el servidor MCP de Claude Desktop (`sunrise://data-changed`, §4.32).
+Ese segundo lo detecta `src-tauri/src/external.rs` con `PRAGMA data_version`, que
+solo se mueve con commits de **otra** conexión: lo que escribe la app no lo dispara,
+así que no puede hacer eco. Del lado del front lo escucha `useExternalChanges`, en
+`Shell`.
+
+- **`markDataStale` y nunca `bumpData` al recibir un evento de Tauri.** El evento ya
+  le llega a las dos ventanas; `bumpData` además escribiría en `localStorage` y la
+  otra respondería. El test de `useExternalChanges` se pone rojo si alguien lo
+  cambia.
+- **El listener vive en `Shell`, que solo existe en `main`.** El taxímetro no se
+  entera: si Claude renombra la tarea que tiene el timer corriendo, el título
+  flotante puede quedar viejo hasta el próximo cambio de timer. Por eso el MCP no toca ni
+  el estado ni el timer (I5).
 
 ## Las trampas
 

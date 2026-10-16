@@ -112,3 +112,21 @@ export const FontChoice = {
   SYSTEM: "SYSTEM",
 } as const;
 export type FontChoice = (typeof FontChoice)[keyof typeof FontChoice];
+
+/**
+ * Si sunrise está registrado en Claude Desktop (Configs → MCP, §4.32). Espeja
+ * `claude_desktop::Status` en Rust. No vive en la base: se calcula leyendo la
+ * configuración de Claude cada vez.
+ */
+export const ClaudeStatus = {
+  /** No hay carpeta de Claude Desktop: no está instalado o nunca se abrió. */
+  NO_CLAUDE: "NO_CLAUDE",
+  NOT_CONNECTED: "NOT_CONNECTED",
+  /** Registrado y apuntando a este binario. */
+  CONNECTED: "CONNECTED",
+  /** Hay una entrada con el mismo nombre que apunta a otro binario. */
+  ELSEWHERE: "ELSEWHERE",
+  /** La configuración de Claude no es JSON válido: no se toca. */
+  INVALID: "INVALID",
+} as const;
+export type ClaudeStatus = (typeof ClaudeStatus)[keyof typeof ClaudeStatus];

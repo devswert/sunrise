@@ -7,11 +7,11 @@ Vuelve al [índice de SPECS](../SPECS.md).
 
 ### 4.8 Settings
 
-Siete secciones, cada una con título y bajada propia (`Card` en
+Nueve secciones, cada una con título y bajada propia (`Card` en
 `SettingsView.tsx`), en este orden: **General**, **Apariencia** (§4.28),
 **Calendarios** (§4.12), **Canales**, **Sugerencias** (§4.31), **Atajos de
-teclado** (§4.9), **Notificaciones** (§4.27) y **Respaldo** (§4.17). En dev hay
-una octava al final, **Dev Tools** (§4.24), que la app instalada no muestra. El orden de la
+teclado** (§4.9), **Notificaciones** (§4.27), **MCP** (§4.32) y **Respaldo**
+(§4.17). En dev hay una décima al final, **Dev Tools** (§4.24), que la app instalada no muestra. El orden de la
 lista lateral y el de las cards **tienen que coincidir**: el resaltado lo decide
 un `IntersectionObserver` sobre las secciones, así que si divergen la lista marca
 una y se ve otra. Las dos salen de la misma lista, `settings/secciones.ts`, que es

@@ -22,18 +22,27 @@ Ninguno tiene fases abiertas.
 
 ## Mejoras
 
-**Ninguna abierta.** Las cerradas se podan —lo aprendido va a `DECISIONES.md`— y
-las retiradas también, una vez que sus partes vivas tienen dónde vivir.
+Las cerradas se podan —lo aprendido va a `DECISIONES.md`— y las retiradas también,
+una vez que sus partes vivas tienen dónde vivir. El marcador es `🔵` abierta o `⬛`
+retirada (fuera de alcance, con la razón en una línea). Una retirada no es pendiente.
 
-Cuando haya, el marcador es `🔵` abierta o `⬛` retirada (fuera de alcance, con la
-razón en una línea). Una retirada no es pendiente.
+### Mej.30 🔵 Claude Desktop por MCP: falta la prueba con Claude de verdad
+
+Implementado (§4.32, [specs/mcp.md](specs/mcp.md); el porqué en DECISIONES §11),
+con sus tests en verde y el protocolo probado a mano por stdio contra el `.app` de
+release, y el aviso a la app confirmado contra `tauri dev` (el log del vigilante). Tiene
+su sección en Configs → MCP. **Falta lo que ningún test cubre**: registrarlo en un Claude Desktop real,
+pedirle que cree, edite y mueva tareas con la app abierta y verlas aparecer, y
+revisar cómo se comporta el modelo con los errores. Al cerrarlo se poda.
+
+**La v2 que queda anotada**: completar, timer y borrar. Piden que el aviso de
+`external.rs` refresque también el timer (I5), no solo las vistas.
 
 ## Post-MVP (fuera de alcance)
 
 - Recurrentes / rituales auto-generados.
 - Sync multi-dispositivo (el modelo de datos queda listo; no se implementa).
 - Email de resumen vía SMTP.
-- Nada de IA ni integraciones.
 
 ## Verificación end-to-end
 

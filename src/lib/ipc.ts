@@ -20,6 +20,7 @@ import type {
   RestoreResult,
   AppUpdate,
   Profile,
+  ClaudeDesktopInfo,
   NewTaskInput,
   TaskPatch,
 } from "./types";
@@ -332,6 +333,10 @@ export const api = {
    * desde los componentes: pasa por `useProfile()`, que lo cachea por sesión.
    */
   profile: () => (isTauri() ? invoke<Profile>("profile") : mock.profile()),
+  claudeDesktopStatus: () =>
+    isTauri() ? invoke<ClaudeDesktopInfo>("claude_desktop_status") : mock.claudeDesktopStatus(),
+  connectClaudeDesktop: () =>
+    isTauri() ? invoke<ClaudeDesktopInfo>("connect_claude_desktop") : mock.connectClaudeDesktop(),
 
   createBackup: () => (isTauri() ? invoke<BackupFile>("create_backup") : mock.createBackup()),
 

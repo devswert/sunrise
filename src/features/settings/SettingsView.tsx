@@ -19,6 +19,7 @@ import { FeedsCard } from "../calendar/FeedsCard";
 import { AppearanceCard } from "../appearance/AppearanceCard";
 import { NotificationsCard } from "../notifications/NotificationsCard";
 import { BackupCard } from "../backup/BackupCard";
+import { McpCard } from "../mcp/McpCard";
 import { DevToolsCard } from "../devtools/DevToolsCard";
 import { TABS, type TabId, sectionIcon, visibleTabs } from "./secciones";
 import {
@@ -1245,6 +1246,7 @@ export function SettingsView() {
         <SuggestionsCard />
         <ShortcutsCard />
         <NotificationsCard />
+        <McpCard />
         <BackupCard />
         {/* Solo en dev, y con la misma condición que filtra su tab. */}
         {profile?.dev && <DevToolsCard />}

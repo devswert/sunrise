@@ -58,9 +58,19 @@ pub fn is_dev() -> bool {
 /// de la conexión y puede cambiarla.
 pub struct Db(pub Mutex<Connection>);
 
+/// Cuánto espera una escritura a que la otra conexión suelte el lock antes de
+/// rendirse con `SQLITE_BUSY`.
+///
+/// Hace falta desde que hay **dos procesos** sobre el archivo: la app y el
+/// servidor MCP (§4.32). Sin espera, un `INSERT` que llega mientras el otro hace
+/// commit falla en el acto. Las transacciones de los dos son de milisegundos, así
+/// que cinco segundos nunca se alcanzan si nada está roto.
+const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Abre (o crea) la base en `path` y activa foreign keys.
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(path)?;
+    conn.busy_timeout(BUSY_TIMEOUT)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     Ok(conn)

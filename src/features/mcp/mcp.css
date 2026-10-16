@@ -1,0 +1,46 @@
+/* Sección MCP de Configs. La card, los campos y los avisos son los de siempre
+   (`set-*` de week.css, `resp-*` de backup.css); acá solo va el bloque de código
+   para copiar. */
+
+/* El texto ocupa el ancho de la card y el botón queda arriba a la derecha, sobre
+   el bloque, para no robarle una columna a una ruta que ya es larga. */
+.mcp-code {
+  position: relative;
+  min-width: 0;
+}
+.mcp-code__text {
+  margin: 0;
+  padding: 10px 36px 10px 12px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  /* Una ruta no se parte: se scrollea. Partirla a la mitad invita a copiarla mal
+     a mano. */
+  white-space: pre;
+  overflow-x: auto;
+  user-select: text;
+}
+.mcp-code__copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.mcp-code__copy:hover,
+.mcp-code__copy:focus-visible {
+  background: var(--surface-raised);
+  color: var(--ink);
+}

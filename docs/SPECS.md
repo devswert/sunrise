@@ -11,7 +11,9 @@ comentario del código sigue siendo válido, y esta tabla dice dónde cayó.
 ## Qué es sunrise
 
 Planner diario personal y liviano, para una persona en una máquina. Datos 100%
-locales en SQLite. Sin cuentas, sin servidor, sin IA.
+locales en SQLite. Sin cuentas y sin servidor. La IA no vive dentro de la app: si
+entra, lo hace desde afuera —un cliente MCP local— y pasa por las mismas reglas de
+`repo.rs` que cualquier vista.
 
 Objetivo: **exactamente las features que se usan y ninguna más**. Es lo que explica
 casi todas las decisiones que siguen: entre una función más y algo que se entienda de
@@ -45,6 +47,7 @@ una mirada, gana lo segundo.
 | [§4.8–4.11, 4.24, 4.28 App y ajustes](specs/app-y-ajustes.md) | Settings, atajos, cierre de la app, tema, Dev Tools y Apariencia. |
 | [§4.25–4.27 Notificaciones](specs/notificaciones.md) | Las alertas, el aviso de próxima reunión y qué se configura de ellas. |
 | [§4.17–4.23 Durabilidad y distribución](specs/distribucion.md) | Respaldo y restauración, inicio automático, el `.dmg`, dev vs producción, actualizaciones y el modal "Lo nuevo". |
+| [§4.32 Servidor MCP](specs/mcp.md) | Cómo Claude Desktop lee y crea tareas: el binario con `--mcp`, las tools, la base compartida y cómo se entera la app. |
 
 ### Cómo se ve y cómo se prueba
 

@@ -49,6 +49,16 @@ Dos detalles a respetar:
   el taxímetro no tiene vistas que dependan de `dataVersion`.
 
 Un evento de Tauri puede entrar por esta misma puerta llamando a `markDataStale`.
+Hoy entran dos:
+
+| Evento | Lo emite | Lo escucha |
+|---|---|---|
+| `sunrise://calendar-synced` | el poller de calendario | `useCalendarListener` |
+| `sunrise://data-changed` | `external.rs`, cuando **otro proceso** escribió en la base (el MCP, §4.32) | `useExternalChanges` |
+
+El segundo se detecta con `PRAGMA data_version`, que solo se mueve con commits de
+**otra** conexión: lo que escribe la app no lo dispara, así que tampoco puede hacer
+eco.
 
 ## 5.3.1 El día también es estado (`useDayWatcher`)
 

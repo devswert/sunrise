@@ -10,7 +10,7 @@
 
 ---
 
-Planificas el día, cronometras lo que haces, y al final de la jornada la cierras. **Sin cuentas, sin servidor, sin suscripción y sin IA**. Tu uso vive en un archivo SQLite dentro de tu máquina.
+Planificas el día, cronometras lo que haces, y al final de la jornada la cierras. **Sin cuentas, sin servidor y sin suscripción**. Tu uso vive en un archivo SQLite dentro de tu máquina.
 
 ## 👋 Un aviso honesto
 
@@ -24,6 +24,7 @@ Sunrise es una herramienta personal, publicada porque _why not_. Pasé por organ
 - 🎯 **Focus:** Una tarea a la vez, en la cola que decidiste, sin el resto de la app a la vista.
 - 📅 **Calendario por ICS:** Tus reuniones entran como tareas y se sincronizan solas.
 - 📊 **Weekly Review y cierre del día:** Horas por canal, avance de los objetivos, y una bitácora que se arma con lo que hiciste.
+- 🤖 **Desde Claude Desktop:** Si lo usas, puede leer tu día y tu backlog, y crear, editar o mover tareas por ti. Es opcional: el servidor corre en tu máquina, pero lo que Claude lee de sunrise viaja a Claude como cualquier otro mensaje.
 - 💾 **Respaldos:** Un `.zip` con todo y un `manifest.yml` que dice de qué versión salió, a la hora que elijas, en la carpeta que elijas.
 
 ## 📦 Instalar
@@ -42,6 +43,31 @@ Necesitas macOS 11 o más nuevo, en un Mac con Apple Silicon.
 
 De ahí en adelante **la app se actualiza sola** desde `Configs → General → Actualizaciones`, o desde la franja que aparece en el sidebar cuando hay algo nuevo. Esas descargas las trae y las verifica la app, no el navegador, así que no vuelven a pasar por la cuarentena ni por este trámite.
 
+## 🤖 Conectarlo a Claude Desktop
+
+sunrise trae un servidor MCP local: Claude Desktop lo lanza como un proceso y le habla por la entrada y la salida estándar, sin abrir ningún puerto. Lee y escribe la misma base que la app, así que funciona aunque sunrise esté cerrada, y si está abierta las tareas aparecen solas en un par de segundos.
+
+La forma corta: en sunrise, **Configs → MCP → Conectar con Claude Desktop**. Agrega sunrise a la configuración de Claude Desktop sin tocar lo que ya tengas, y guarda una copia de la anterior. Ahí mismo está el comando para Claude Code.
+
+A mano: en Claude Desktop, abre `Settings → Developer → Edit Config` y agrega esto a `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sunrise": {
+      "command": "/Applications/sunrise.app/Contents/MacOS/sunrise",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+Cierra Claude Desktop del todo (⌘Q, no basta con la ventana) y vuelve a abrirlo. Abre sunrise al menos una vez antes, para que exista la base.
+
+**Ojo con qué sale de tu máquina.** El servidor es local y no abre ningún puerto, pero lo que Claude lee de sunrise —títulos, notas, y de las reuniones la descripción y el link— pasa a la conversación con Claude, igual que si lo pegaras en el chat. Pedirle "qué tengo hoy" le manda el día entero; lo que no lee no sale de acá.
+
+Claude puede **listar** las tareas de un día o de un rango, el backlog y los channels, y **crear, editar y mover** tareas. No puede completarlas, tocar el timer ni borrar nada, y las reuniones del calendario las lee pero no las cambia.
+
 ## 🛠️ Desarrollo
 
 Necesitas [Rust](https://rustup.rs), Node 22 y `pnpm`.
@@ -59,6 +85,8 @@ pnpm dmg          # build de release: .app y .dmg
 ```
 
 **Dev y la app instalada no comparten datos**: la base de desarrollo es `sunrise-dev.sqlite` y la de verdad es `sunrise.sqlite`, las dos en `~/Library/Application Support/app.sunrise.desktop`. Las dos pueden estar abiertas a la vez; el sidebar muestra un distintivo `dev` para que se sepa cuál es cuál.
+
+El servidor MCP sigue la misma regla: el binario decide la base. Para probarlo contra la de dev, apunta Claude Desktop a `src-tauri/target/debug/sunrise` (con su ruta absoluta) en vez de al `.app`.
 
 Para trabajar contra datos reales sin tocarlos, respalda desde la app instalada e importa ese `.zip` en dev.
 

@@ -16,7 +16,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `preserve_order`: al registrar el MCP se reescribe la configuración de Claude
+# Desktop, que la gente edita a mano; sin esto saldría con las claves en orden
+# alfabético (§4.32).
+serde_json = { version = "1", features = ["preserve_order"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
@@ -31,7 +34,7 @@ chrono-tz = "0.10.4"
 iana-time-zone = "0.1"
 # `macros` es por el `select!` del vigilante de la campana (`bell.rs`), que espera
 # el momento de sonar o el timbre de "arrancó un timer", lo que llegue primero.
-tokio = { version = "1.53.1", features = ["time", "macros", "sync"] }
+tokio = { version = "1.53.1", features = ["time", "macros", "sync", "rt"] }
 tauri-plugin-opener = "2.5.4"
 # Solo `deflate`: los defaults arrastran zstd, lzma, bzip2 y AES, que son
 # formatos que nunca vamos a escribir ni a leer (el .zip lo hace esta app).
@@ -40,6 +43,12 @@ tauri-plugin-dialog = "2.7.2"
 tempfile = "3.27.0"
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-updater = "2"
+# El servidor MCP que lanza Claude Desktop con `sunrise --mcp` (§4.32). Versión
+# exacta: el SDK todavía mueve su API entre menores, y las macros generan código
+# que depende de ella.
+rmcp = { version = "=3.5.1", features = ["server", "transport-io", "macros"] }
+# El esquema JSON de los parámetros de cada tool, que `rmcp` arma con esto.
+schemars = "1.2.3"
 
 # El aviso con botón que queda pegado en pantalla (§4.25). El plugin de
 # notificaciones no sirve para esto: manda por `notify-rust`, cuyo backend de

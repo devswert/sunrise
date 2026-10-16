@@ -29,6 +29,20 @@ valida, decide u ordena está en la capa equivocada: bájalo, y déjale al coman
 tomar el `Mutex` y mapear el error a `String`. **Ningún componente llama `invoke`
 directo.**
 
+**`repo.rs` tiene un segundo consumidor que no pasa por este flujo**: el servidor
+MCP (`src-tauri/src/mcp/`, §4.32), que corre en otro proceso y llama a `repo`
+directo. Cuatro consecuencias:
+
+- **Una regla de negocio que viva en `commands.rs` o en el front, el MCP no la
+  ve.** Es una razón más para bajarla a `repo.rs`.
+- **Cambiar la firma de una función de `repo` que use `mcp/tools.rs`** rompe la
+  compilación del MCP, no solo la del comando.
+- **Una migración nueva deja al MCP rechazando llamadas** hasta que corra el
+  binario nuevo, y es a propósito: el MCP nunca migra (`mcp::store::check_schema`).
+- **Lo que escribe el MCP lo avisa `external.rs`, no un `bumpData()`**: la app se
+  entera por `PRAGMA data_version`. Si agregas otra escritura desde fuera de la
+  app, ya está cubierta.
+
 ## Checklist para un comando nuevo
 
 El que se olvida suele ser el 5 o el 6, y el síntoma aparece lejos.

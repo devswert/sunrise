@@ -677,6 +677,20 @@ pub fn profile() -> Profile {
     }
 }
 
+/// Si sunrise está registrado en Claude Desktop, y lo necesario para hacerlo a
+/// mano (§4.32).
+#[tauri::command]
+pub fn claude_desktop_status() -> Result<crate::claude_desktop::ClaudeDesktopInfo, String> {
+    crate::claude_desktop::read()
+}
+
+/// Agrega sunrise a la configuración de Claude Desktop. Nunca pisa una entrada
+/// que apunte a otro lado ni un archivo que no se entienda.
+#[tauri::command]
+pub fn connect_claude_desktop() -> Result<crate::claude_desktop::ClaudeDesktopInfo, String> {
+    crate::claude_desktop::connect()
+}
+
 /// La carpeta de respaldos configurada, o un error explicando que no hay.
 fn backup_dir_setting(conn: &rusqlite::Connection) -> Result<std::path::PathBuf, String> {
     let dir = repo::get_setting(conn, BACKUP_DIR)
