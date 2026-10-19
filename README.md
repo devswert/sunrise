@@ -107,7 +107,7 @@ La documentación está toda en el repo, y es el punto de partida para cambiar a
 | | Qué |
 |---|---|
 | 📘 [docs/SPECS.md](docs/SPECS.md) | todo lo que existe hoy y cómo funciona, con las invariantes y la deuda conocida |
-| 🗺️ [docs/ROADMAP.md](docs/ROADMAP.md) | qué falta, en orden |
+| 🗺️ [Project en GitHub](https://github.com/users/devswert/projects/3) | qué falta: las issues, por estado y prioridad |
 | 📐 [CLAUDE.md](CLAUDE.md) | las reglas de trabajo |
 
 Cada decisión que costó algo está escrita **con el por qué**, incluidas las que se tomaron después de que la alternativa obvia fallara. Ahí está el valor, más que en el diff.

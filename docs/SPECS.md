@@ -1,7 +1,7 @@
 # sunrise — Especificación funcional y reglas
 
-**Qué existe y qué no se debe romper.** Lo que falta está en
-[ROADMAP.md](ROADMAP.md); **por qué es así** —lo descartado, lo medido y lo que se
+**Qué existe y qué no se debe romper.** Lo que falta está en las issues del
+[Project de GitHub](https://github.com/users/devswert/projects/3); **por qué es así** —lo descartado, lo medido y lo que se
 pagó caro— en [DECISIONES.md](DECISIONES.md).
 
 Este archivo es solo el índice. El contenido vive en [`specs/`](specs/), un archivo
@@ -59,6 +59,6 @@ una mirada, gana lo segundo.
 El reparto sigue el mismo corte que la tabla de skills de `CLAUDE.md`, para que las
 dos no digan cosas distintas sobre dónde vive cada dominio.
 
-> **Los `Mej.N` que aparecen ahí adentro** son ítems del roadmap cerrados y podados.
-> Su relato está en `git log -p docs/ROADMAP.md`; lo aprendido, en
+> **Los `Mej.N` que aparecen ahí adentro** son ítems del antiguo `ROADMAP.md`, que
+> ya no existe: su relato está en `git log -p -- docs/ROADMAP.md`; lo aprendido, en
 > [DECISIONES.md](DECISIONES.md).

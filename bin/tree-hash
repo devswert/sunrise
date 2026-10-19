@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Hash del working tree completo (trackeado + sin trackear, respetando .gitignore) sin
+# tocar el índice real. Es la huella que `bin/gates` sella y el hook compara.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+index="$(mktemp)"
+trap 'rm -f "$index"' EXIT
+cp "$(git rev-parse --git-path index)" "$index"
+GIT_INDEX_FILE="$index" git add -A
+GIT_INDEX_FILE="$index" git write-tree
