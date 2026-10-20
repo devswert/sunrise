@@ -101,8 +101,8 @@ qué defienden.
 
 ## Lo que ningún test cubre
 
-Necesita Tauri corriendo, o un sistema operativo de verdad. **Se verifica a mano**; el
-pendiente vivo está en el [ROADMAP](../ROADMAP.md).
+Necesita Tauri corriendo, o un sistema operativo de verdad. **Se verifica a mano**, en
+el plan de QA de la issue que lo toca (skill `sunrise-lifecycle`).
 
 - El camino real de **⌘Q**, el **aviso nativo de `work_end`** y el **registro del
   LaunchAgent** del inicio automático.

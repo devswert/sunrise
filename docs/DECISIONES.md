@@ -6,8 +6,9 @@ funciona; acá está lo que se descartó, lo que se midió y lo que se pagó car
 
 Está organizado **por tema y no por ítem**, porque nadie busca una decisión por su
 número. Salió de podar `ROADMAP.md`, que llegó a tener 2600 líneas de las cuales
-2560 describían trabajo terminado; **el relato completo de cada ítem, con su
-commit, sigue en `git log -p docs/ROADMAP.md`**.
+2560 describían trabajo terminado. Ese archivo ya no existe (§12); **el relato
+completo de cada ítem `Mej.N`, con su commit, sigue en
+`git log -p -- docs/ROADMAP.md`**.
 
 Una advertencia de lectura: varias de estas decisiones se tomaron **después** de
 que la alternativa obvia fallara. Si algo acá se ve retorcido, lo más probable es
@@ -955,3 +956,37 @@ conserva el orden de las claves. **Una entrada que ya apunta a este binario cuen
 como conectada aunque se llame distinto**: el caso real fue un `sunrise` puesto a
 mano apuntando a dev, y el botón de dev (`sunrise-dev`) agregaba un segundo
 servidor sobre la misma base.
+
+**Lo que el MCP todavía no hace.** Completar tareas y manejar el timer piden que el
+aviso de `external.rs` refresque también el timer (I5), no solo las vistas. Borrar
+no se hace directo: va a pasar por un basurero de 30 días con restauración, para
+que un error del agente no sea irreversible (issue #11).
+
+## 12. Lo que falta vive en GitHub, no en el repo
+
+**`docs/ROADMAP.md` se reemplazó por el [Project 3](https://github.com/users/devswert/projects/3)**
+(octubre de 2026). El archivo mezclaba tres cosas que envejecen distinto —lo que
+falta, el relato de lo hecho y las verificaciones a mano— y cada cierre pedía
+podarlo a mano; llegó a 2600 líneas. Una issue tiene estado, prioridad, size,
+sub-issues y su PR enlazado, y se cierra sola con el merge. Lo que se aprende al
+cerrarla sigue viniendo acá, en el mismo PR: la issue no lleva el relato.
+
+**El flujo** son tres skills que se piden con palabras: `sunrise-lifecycle`
+("¿qué viene?", implementar hasta el QA), `sunrise-shaping` (refinar) y
+`sunrise-ship` ("mándalo": PR, CI y merge). **Mezclar no es publicar**: lo
+mezclado queda en `Done`, y "vamos pa prod" es `sunrise-release`, que junta todo lo
+de `Done` en una versión, le pone el milestone `vX.Y.Z` a cada issue y la pasa a
+`Released`. Es la diferencia con un servicio web, donde mezclar es desplegar: acá
+cada publicación la instala el equipo, y conviene juntar varias.
+
+**Una worktree por issue, con el disco compartido.** `src-tauri/target` pesa
+decenas de GB; `bin/worktree` lo enlaza al del checkout principal y deja que pnpm
+clone `node_modules` desde su store. `node_modules` no se enlaza: dos ramas pueden
+tener lockfiles distintos. El QA con `pnpm tauri dev` es de una worktree a la vez,
+porque todas usan el puerto 1420 y la misma `sunrise-dev.sqlite`. Por la misma
+razón `target/debug/sunrise` es una sola ruta para todas: el LaunchAgent y el MCP
+registrados desde dev corren lo que haya compilado la última worktree.
+
+**Fuera de alcance**, desde el MVP y sin issue: recurrentes o rituales generados
+solos; sync entre dispositivos (el modelo de datos queda listo, no se implementa);
+resumen por email vía SMTP.

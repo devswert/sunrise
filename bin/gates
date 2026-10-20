@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Gates de calidad de una rama de sunrise, una vez por estado del código, antes de
+# abrir, empujar o mezclar un PR. Si pasan, sella el hash del working tree para que
+# el hook (.claude/hooks/require-gates.sh) deje pasar `git push` y `gh pr create|merge`
+# sin volver a correrlos. Es lo mismo que corre CI (tests.yml), más dos chequeos que
+# CI no hace y TZ=UTC para Rust, que es donde CI ya encontró bugs de fecha.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+fail() { echo "✗ $*" >&2; exit 1; }
+step() { echo "▸ $*"; }
+
+git fetch --quiet origin main 2>/dev/null || echo "  (sin red: uso origin/main local)"
+base="$(git merge-base origin/main HEAD)"
+
+step "Migraciones aplicadas intactas"
+# Todas viven en un solo arreglo de migrations.rs, así que no basta mirar si se
+# editó el archivo: se puede agregar, pero ninguna línea existente puede salir.
+if git diff "$base" -- src-tauri/src/db/migrations.rs | grep -Eq '^-[^-]'; then
+  fail "Se editó o borró una línea de migrations.rs: las migraciones aplicadas son inmutables, agrega una versión nueva"
+fi
+
+step "Tests no debilitados"
+[ -z "$(git diff --name-only --diff-filter=D "$base" -- 'src/*.test.ts' 'src/*.test.tsx')" ] \
+  || fail "Se borraron archivos de test"
+if git diff "$base" -- src | grep -Eq '^\+.*\b(it|test|describe)\.(skip|only|todo)\('; then
+  fail "Se agregó skip/only/todo en tests de Vitest"
+fi
+if git diff "$base" -- src-tauri/src | grep -Eq '^\+.*#\[ignore'; then
+  fail "Se agregó #[ignore] en tests de Rust"
+fi
+
+step "Tipos";  pnpm --silent typecheck || fail "tsc con errores"
+step "Lint";   pnpm --silent lint      || fail "Biome con errores (pnpm lint:fix arregla el formato)"
+step "Vitest"; pnpm --silent test      || fail "Vitest en rojo"
+step "Rust";   pnpm --silent test:rust || fail "cargo test en rojo"
+step "Rust en UTC (como CI)"
+TZ=UTC pnpm --silent test:rust > /dev/null || fail "cargo test en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"
+
+tree="$(bin/tree-hash)"
+echo "$tree" > "$(git rev-parse --git-path sunrise-gates-ok)"
+echo "✓ Gates en verde (${tree:0:12})"

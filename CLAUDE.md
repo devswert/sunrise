@@ -15,17 +15,13 @@ solas cuando el tema aparece — no hace falta leerlas todas por adelantado:
 | `sunrise-capa-de-datos` | migraciones, `repo.rs`, comandos, `ipc.ts` + `mockDb.ts` |
 | `sunrise-ui` | autosave, popovers, slots, paleta, DnD |
 | `sunrise-tests` | Vitest/RTL, `cargo test`, por qué el mock es obligatorio |
-| `sunrise-release` | publicar: changelog, versión en tres archivos, tag |
-
-Y una que no es de reglas sino de consulta, para invocar como comando:
-**`/sunrise-backlog`** responde qué queda por hacer, leyendo el ROADMAP y
-devolviéndolo en tablas por categoría con una recomendación al final.
+| `sunrise-release` | publicar: changelog, versión en tres archivos, tag, milestone |
 
 **Si tu cambio no cae limpio en ninguna de esas seis, lee `docs/SPECS.md` antes
 de tocar código** — las skills cubren los dominios más frágiles, no todo el
 proyecto (por ejemplo el reconciler ICS de M3 no tiene skill todavía).
 
-Los cuatro documentos, y cada uno responde una pregunta distinta:
+Los tres documentos, y cada uno responde una pregunta distinta:
 
 - **[docs/SPECS.md](docs/SPECS.md)** — *qué existe y cómo funciona*. Es **solo el
   índice**: una línea por archivo diciendo qué responde. El contenido vive en
@@ -38,14 +34,32 @@ Los cuatro documentos, y cada uno responde una pregunta distinta:
   descartó, lo que se midió y lo que se pagó caro, por tema. Léelo antes de
   "arreglar" algo que se ve retorcido: lo más probable es que la versión derecha
   esté descrita ahí, con el motivo por el que no sirvió.
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — *qué falta*, y **solo** eso. Los ítems
-  cerrados se podan; su relato queda en `git log -p docs/ROADMAP.md`.
 - **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — *qué cambió para quien la usa*. No
   es decorativo: lo lee el código (§4.22).
 
 Si cambias una invariante o una regla, actualiza el archivo de `docs/specs/` que
-corresponda **y la skill** en el mismo commit. Y al cerrar un ítem del roadmap,
-lo que se aprendió va a `DECISIONES.md` — el ítem no se archiva, se poda.
+corresponda **y la skill** en el mismo commit. Y al cerrar una issue, lo que se
+aprendió va a `DECISIONES.md` en el mismo PR: la issue no lleva el relato. Los
+`Mej.N` del código son ítems del antiguo `ROADMAP.md`; su relato está en
+`git log -p -- docs/ROADMAP.md`.
+
+## Flujo de trabajo
+
+Lo que falta son las issues del [Project 3](https://github.com/users/devswert/projects/3)
+(`Shaping` → `Backlog` → `In progress` → `Done` → `Released`). Cuatro skills lo
+recorren, y se piden con palabras:
+
+| Cuando el dev dice | Skill | Hasta dónde llega |
+|---|---|---|
+| "¿qué viene?", "implementa N" | `sunrise-lifecycle` | elegir, worktree, plan, implementar, gates, reviewer, plan de QA |
+| "iteremos N", "shaping", una idea nueva | `sunrise-shaping` | la issue lista en Backlog |
+| "mándalo", "mezcla" (QA ok) | `sunrise-ship` | PR, CI, merge a `main`, board en `Done` |
+| "vamos pa prod" | `sunrise-release` | versión, tag, Release, milestone, board en `Released` |
+
+**Mezclar no es publicar**: la app instalada solo cambia con un tag, así que una
+versión junta todo lo que está en `Done`. Subagentes en `.claude/agents/`:
+`Explore` (búsqueda), `test-runner` (haiku), `implementer` (sonnet, ediciones
+acotadas), `reviewer` (opus, revisión sin contexto de la conversación).
 
 ## Comandos
 
@@ -56,6 +70,8 @@ pnpm test:rust    # cargo test (SQLite en memoria)
 pnpm test:all     # ambos
 pnpm dmg          # build de release + .app y .dmg (specs/distribucion.md §4.19)
 pnpm iconos       # regenera el icon set desde public/app-icon.svg
+bin/gates         # antes de push / PR / merge: tipos, lint, suites, Rust en UTC
+bin/worktree N slug   # worktree por issue, con target/ y dependencias compartidos
 ```
 
 **Publicar una versión la maneja la skill `sunrise-release`.** Son cuatro cosas
@@ -66,10 +82,12 @@ tests que se ponen rojos si algo de eso divergió.
 
 ## Reglas de trabajo
 
-- **No commitear sin confirmación.** Deja los cambios en el working tree y
-  muestra qué se tocó; el commit lo autoriza el dev cada vez. Autorizar un
-  commit no autoriza el siguiente: si terminas otra tanda de trabajo en el mismo
-  turno, vuelve a preguntar. Vale igual para `git push`, ramas y `git reset`.
+- **Una issue, una rama, una worktree, un PR.** En la rama de la issue los
+  commits y el push son libres. A `main` solo se llega con `gh pr merge`, y solo
+  cuando el dev dice "mándalo"; el tag, solo con "vamos pa prod". Nunca se empuja
+  a `main` directo: lo bloquea el hook `.claude/hooks/require-gates.sh`, que además
+  exige `bin/gates` en verde sobre el estado exacto antes de push, PR o merge.
+  `git reset` y `--force` sobre algo ya empujado siguen pidiendo confirmación.
 - **El código en inglés, el texto en español.** No es gusto: mezclar los dos
   idiomas en la misma línea obliga a traducir mentalmente en cada lectura, y el
   daño es visual antes que técnico. La línea es exacta:

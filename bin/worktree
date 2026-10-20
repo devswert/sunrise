@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Una worktree por issue, para llevar varias versiones del código en paralelo sin
+# pagar el disco de cada una:
+#
+# - `src-tauri/target` es un symlink al del checkout principal. Es lo caro (decenas
+#   de GB): las dependencias compiladas se comparten, y cargo separa solo el crate
+#   de sunrise de cada worktree porque su ruta es distinta. Dos builds a la vez se
+#   esperan por el lock de cargo; no se pisan.
+# - `node_modules` sale del store global de pnpm, que en APFS clona los archivos
+#   (copy-on-write): no ocupa disco nuevo y no se comparte por symlink a propósito,
+#   porque dos ramas pueden tener lockfiles distintos.
+#
+# Uso, desde cualquier checkout del repo:
+#   bin/worktree N slug          crea (o reutiliza) ../<repo>-issue-N en la rama issue-N-slug
+#   bin/worktree --list          las worktrees con su rama
+#   bin/worktree --clean-merged  borra las worktrees cuyo PR ya se mezcló
+set -euo pipefail
+
+main_root="$(cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")" && pwd)"
+repo_name="$(basename "$main_root")"
+cd "$main_root"
+
+case "${1:-}" in
+  --list)
+    git worktree list
+    exit 0
+    ;;
+  --clean-merged)
+    git worktree list --porcelain | awk '/^worktree /{p=$2} /^branch /{print p, $2}' |
+      while read -r path ref; do
+        branch="${ref#refs/heads/}"
+        [[ "$branch" == issue-* ]] || continue
+        merged="$(gh pr list --head "$branch" --state merged --json number --jq 'length')"
+        if [ "$merged" = "0" ]; then
+          echo "  $branch: sin PR mezclado, queda"
+          continue
+        fi
+        if [ -n "$(git -C "$path" status --porcelain)" ]; then
+          echo "  $branch: mezclado pero con cambios sin commitear, queda (revísalo)"
+          continue
+        fi
+        # El symlink primero, explícito: que nada siga el enlace y borre el target compartido.
+        [ -L "$path/src-tauri/target" ] && rm "$path/src-tauri/target"
+        git worktree remove "$path" && git branch -D "$branch" > /dev/null
+        # La rama remota por la API y no con un push: desde el checkout principal el
+        # hook bloquea todo push que no sea un tag.
+        gh api -X DELETE "repos/{owner}/{repo}/git/refs/heads/$branch" > /dev/null 2>&1 || true
+        echo "  $branch: borrada"
+      done
+    git worktree prune
+    exit 0
+    ;;
+esac
+
+n="${1:?uso: bin/worktree N slug}"
+slug="${2:?uso: bin/worktree N slug}"
+branch="issue-$n-$slug"
+path="$(dirname "$main_root")/$repo_name-issue-$n"
+
+if [ -d "$path" ]; then
+  echo "Ya existe: $path ($(git -C "$path" branch --show-current))"
+else
+  git fetch --quiet origin main
+  if git show-ref --verify --quiet "refs/heads/$branch"; then
+    git worktree add "$path" "$branch"
+  else
+    git worktree add --no-track -b "$branch" "$path" origin/main
+  fi
+fi
+
+mkdir -p "$main_root/src-tauri/target"
+[ -e "$path/src-tauri/target" ] || ln -s "$main_root/src-tauri/target" "$path/src-tauri/target"
+(cd "$path" && pnpm install --frozen-lockfile --prefer-offline --silent)
+
+echo "✓ $path  (rama $branch)"

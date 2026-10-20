@@ -324,7 +324,7 @@ que no publicar, porque alguien lo instala.
 
 Está ejercitado desde la `v0.1.0`, y las tres versiones publicadas salieron por
 ahí. La primera corrida falló, y no por el workflow: encontró un bug de zona
-horaria que en Santiago pasaba por casualidad (ROADMAP 5.5).
+horaria que en Santiago pasaba por casualidad (DECISIONES §10).
 
 #### Los tests corren en cada push
 
@@ -337,7 +337,7 @@ un PR. Éste corre con `contents: read` y no publica nada.
 **Lo que agrega es el reloj, no la suite.** `pnpm test:all` ya corría antes de
 empaquetar, así que un tag nunca publicó tests rojos. Lo que faltaba es que
 corrieran **antes**: CI trabaja en UTC y la máquina del dev no, y esa diferencia
-ya encontró dos bugs de fecha (ROADMAP 5.5 y 5.7) —las dos veces al empujar el
+ya encontró dos bugs de fecha (DECISIONES §10) —las dos veces al empujar el
 tag, con el número de versión ya commiteado y el release a medio camino. Ahora el
 mismo hallazgo llega en el push que lo introdujo.
 
