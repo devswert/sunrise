@@ -987,8 +987,9 @@ function ChannelsCard() {
                     defaultValue={p.name}
                     onBlur={(e) => {
                       const v = bareName(e.target.value);
-                      // El campo no es controlado: sin esto seguiría mostrando el `#`.
-                      if (v) e.target.value = v;
+                      // El campo no es controlado: sin esto seguiría mostrando el `#`, o un
+                      // "##" que no se guardó.
+                      e.target.value = v || p.name;
                       if (v && v !== p.name) rename(p, v);
                     }}
                     aria-label={`Nombre de ${p.name}`}
@@ -1041,8 +1042,9 @@ function ChannelsCard() {
                         defaultValue={ch.name}
                         onBlur={(e) => {
                           const v = bareName(e.target.value);
-                          // El campo no es controlado: sin esto seguiría mostrando el `#`.
-                          if (v) e.target.value = v;
+                          // El campo no es controlado: sin esto seguiría mostrando el `#`, o un
+                          // "##" que no se guardó.
+                          e.target.value = v || ch.name;
                           if (v && v !== ch.name) rename(ch, v);
                         }}
                         aria-label={`Nombre de ${ch.name}`}
