@@ -1210,7 +1210,7 @@ export const mock = {
     const c: Category = {
       id: nextId(),
       parentId,
-      name: bareName(name),
+      name: bareName(name) || name.trim(),
       color,
       position: categories.length,
       archived: false,
@@ -1222,7 +1222,7 @@ export const mock = {
   updateCategory: async (id: number, name: string, color: string): Promise<void> => {
     const c = categories.find((x) => x.id === id);
     if (c) {
-      c.name = bareName(name);
+      c.name = bareName(name) || name.trim();
       c.color = color;
     }
   },

@@ -1882,9 +1882,11 @@ pub fn category_usage(conn: &Connection) -> Result<Vec<CategoryUsage>> {
 }
 
 /// El nombre de una categoría sin los `#` del comienzo (#9): el numeral lo pone
-/// la app al mostrarlo, y uno escrito a mano terminaba dibujado dos veces.
+/// la app al mostrarlo, y uno escrito a mano terminaba dibujado dos veces. Un
+/// nombre que es solo numerales se queda como vino: vacío no se vería.
 fn bare_category_name(name: &str) -> &str {
-    name.trim().trim_start_matches('#').trim()
+    let bare = name.trim().trim_start_matches('#').trim();
+    if bare.is_empty() { name.trim() } else { bare }
 }
 
 pub fn create_category(
@@ -4695,6 +4697,11 @@ mod tests {
             .find(|x| x.id == ch.id)
             .unwrap();
         assert_eq!(guardado.name, "bar");
+
+        let ctx = create_category(&c, None, "#Casa", "rose").unwrap();
+        assert_eq!(ctx.name, "Casa");
+        let solo = create_category(&c, None, "##", "rose").unwrap();
+        assert_eq!(solo.name, "##");
     }
 
     /// El almuerzo entra por la ruta de verdad —un evento del feed, marcado con

@@ -229,6 +229,13 @@ mismo `#tag` de las cards), y el borde apricot del chip con su popover abierto, 
 es un estado momentáneo. La clase la comparten el modal de crear y los selectores
 de Calendarios: un cambio ahí se ve en los tres.
 
+**El `#` de un channel no se escribe a mano: sale de `lib/channelLabel.ts`.** Con
+channel, `channelLabel(name)` —el texto `#nombre`, sin ícono—; sin channel, solo el
+ícono `#` tenue. Nunca los dos juntos. Cada chip armaba el suyo y así nació "# #nombre"
+(#9). El nombre guardado puede traer su propio `#` (los de antes de que crear lo
+quitara), así que todo lo que compare o muestre un nombre de channel pasa por
+`bareName` — también `suggest.ts`.
+
 **Los presets de duración son una sola lista**, `TIME_PRESETS` en `lib/capacity.ts`.
 Estaba copiada en `TimePicker`, `ObjectiveModal` y el modal de crear, y ya habían
 divergido. Si agregas un selector de tiempo, importa esa.

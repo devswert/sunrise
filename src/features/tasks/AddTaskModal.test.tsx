@@ -293,4 +293,12 @@ describe("AddTaskModal · el chip del canal lleva un solo numeral", () => {
     expect(screen.getAllByText("#Deploys")).toHaveLength(1);
     expect(chip.querySelector("svg")).toBeNull();
   });
+
+  it("sin canal queda el ícono # tenue junto a la palabra", async () => {
+    useAppStore.setState({ composeOpen: true, composeDefaults: {} });
+    render(<AddTaskModal />);
+
+    const chip = await screen.findByRole("button", { name: "canal" });
+    expect(chip.querySelector("svg")).not.toBeNull();
+  });
 });

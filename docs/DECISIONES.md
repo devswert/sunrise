@@ -700,6 +700,15 @@ tamaño en que un icono se usa. El cielo va oscuro porque el icono vive en el Do
 sobre el fondo de pantalla de cualquiera, y un sol pastel sobre un cielo pastel
 desaparece: los colores siguen siendo los tokens, lo que cambia es la relación.
 
+**El `#` de un channel se arregla al mostrar, no con una migración** (#9). Cada chip
+armaba su propio numeral, y con un nombre guardado como "#foo" salía "##foo" o
+"# #foo". Crear y renombrar ahora quitan los `#` del comienzo, pero reescribir los
+nombres ya guardados no hacía falta: `bareName` los tolera en un solo lugar. El costo
+aceptado es que enfocar y salir del campo de un channel antiguo en Configs lo
+normaliza sin que el usuario lo haya editado. Lo que costó: al sacar el ícono del
+chip con channel, se fue también el del chip vacío, y ese sí tiene que quedar —es el
+único ícono del chip sin dato, y los demás chips de la barra lo llevan—.
+
 ---
 
 ## 8. Notificaciones: lo que no está en nuestras manos

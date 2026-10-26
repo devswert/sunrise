@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
-import { CalendarDays, Clock, Flag, Link2, Plus, Target, X } from "lucide-react";
+import { CalendarDays, Clock, Flag, Hash, Link2, Plus, Target, X } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, Objective } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
@@ -363,7 +363,13 @@ export function AddTaskModal() {
               style={chipVarsForColor(selectedCat?.color)}
               onClick={() => toggle("channel")}
             >
-              {selectedCat ? categoryLabel(selectedCat) : "canal"}
+              {selectedCat ? (
+                categoryLabel(selectedCat)
+              ) : (
+                <>
+                  <Hash size={14} /> canal
+                </>
+              )}
             </button>
             {picker === "channel" && (
               <Popover anchorRef={chanRef} onClose={() => setPicker(null)}>
