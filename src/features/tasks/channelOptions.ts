@@ -9,13 +9,19 @@
  */
 import type { SearchOption } from "../../components/SearchSelect";
 import type { Category } from "../../lib/types";
+import { bareName, channelLabel } from "../../lib/channelLabel";
 
 export function channelOptions(categories: Category[]): SearchOption[] {
   const out: SearchOption[] = [];
   for (const ctx of categories.filter((c) => c.parentId === null)) {
-    out.push({ value: String(ctx.id), label: ctx.name, color: ctx.color });
+    out.push({ value: String(ctx.id), label: bareName(ctx.name), color: ctx.color });
     for (const ch of categories.filter((c) => c.parentId === ctx.id)) {
-      out.push({ value: String(ch.id), label: `#${ch.name}`, hint: ctx.name, color: ch.color });
+      out.push({
+        value: String(ch.id),
+        label: channelLabel(ch.name),
+        hint: bareName(ctx.name),
+        color: ch.color,
+      });
     }
   }
   return out;

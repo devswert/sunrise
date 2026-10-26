@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AddTaskModal } from "./AddTaskModal";
@@ -273,5 +273,24 @@ describe("AddTaskModal · el resto de la barra", () => {
 
     await user.click(await screen.findByRole("button", { name: /Hoy/ }));
     expect(await screen.findByRole("button", { name: "Al backlog" })).toBeTruthy();
+  });
+});
+
+// #9: el chip dibujaba el ícono `#` **y** el texto `#nombre`, y un nombre que ya
+// traía su numeral terminaba en "# ##nombre".
+describe("AddTaskModal · el chip del canal lleva un solo numeral", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("con canal elegido muestra #nombre una vez y sin ícono", async () => {
+    vi.spyOn(api, "listCategories").mockResolvedValue([
+      { id: 1, parentId: null, name: "Projects", color: "apricot", position: 0, archived: false },
+      { id: 2, parentId: 1, name: "#Deploys", color: "sky", position: 0, archived: false },
+    ]);
+    useAppStore.setState({ composeOpen: true, composeDefaults: { categoryId: 2 } });
+    render(<AddTaskModal />);
+
+    const chip = await screen.findByRole("button", { name: "#Deploys" });
+    expect(screen.getAllByText("#Deploys")).toHaveLength(1);
+    expect(chip.querySelector("svg")).toBeNull();
   });
 });

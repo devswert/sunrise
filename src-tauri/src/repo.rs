@@ -1881,6 +1881,12 @@ pub fn category_usage(conn: &Connection) -> Result<Vec<CategoryUsage>> {
     rows
 }
 
+/// El nombre de una categoría sin los `#` del comienzo (#9): el numeral lo pone
+/// la app al mostrarlo, y uno escrito a mano terminaba dibujado dos veces.
+fn bare_category_name(name: &str) -> &str {
+    name.trim().trim_start_matches('#').trim()
+}
+
 pub fn create_category(
     conn: &Connection,
     parent_id: Option<i64>,
@@ -1897,7 +1903,7 @@ pub fn create_category(
         .unwrap_or(0);
     conn.execute(
         "INSERT INTO categories (parent_id, name, color, position) VALUES (?1, ?2, ?3, ?4)",
-        params![parent_id, name, color, position],
+        params![parent_id, bare_category_name(name), color, position],
     )?;
     let id = conn.last_insert_rowid();
     conn.query_row(
@@ -1910,7 +1916,7 @@ pub fn create_category(
 pub fn update_category(conn: &Connection, id: i64, name: &str, color: &str) -> Result<()> {
     conn.execute(
         "UPDATE categories SET name=?2, color=?3 WHERE id=?1",
-        params![id, name, color],
+        params![id, bare_category_name(name), color],
     )?;
     Ok(())
 }
@@ -4671,6 +4677,24 @@ mod tests {
             .map(|x| x.seconds)
             .sum();
         assert_eq!(ctx, 5400);
+    }
+
+    /// El numeral lo pone la app al mostrar (#9): uno escrito en el nombre se
+    /// dibujaba dos veces.
+    #[test]
+    fn crear_y_renombrar_un_canal_quita_los_numerales_del_comienzo() {
+        let c = conn();
+        let work = create_category(&c, None, "Trabajo", "sky").unwrap();
+        let ch = create_category(&c, Some(work.id), "#foo", "mint").unwrap();
+        assert_eq!(ch.name, "foo");
+
+        update_category(&c, ch.id, " ##bar", "mint").unwrap();
+        let guardado = list_categories(&c)
+            .unwrap()
+            .into_iter()
+            .find(|x| x.id == ch.id)
+            .unwrap();
+        assert_eq!(guardado.name, "bar");
     }
 
     /// El almuerzo entra por la ruta de verdad —un evento del feed, marcado con

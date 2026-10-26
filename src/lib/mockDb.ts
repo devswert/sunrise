@@ -29,6 +29,7 @@ import type {
 } from "./types";
 import { ClaudeStatus } from "./enums";
 import { toISODate, todayISO, weekDates } from "./date";
+import { bareName } from "./channelLabel";
 
 let seq = 1;
 const nextId = () => seq++;
@@ -1209,7 +1210,7 @@ export const mock = {
     const c: Category = {
       id: nextId(),
       parentId,
-      name,
+      name: bareName(name),
       color,
       position: categories.length,
       archived: false,
@@ -1221,7 +1222,7 @@ export const mock = {
   updateCategory: async (id: number, name: string, color: string): Promise<void> => {
     const c = categories.find((x) => x.id === id);
     if (c) {
-      c.name = name;
+      c.name = bareName(name);
       c.color = color;
     }
   },

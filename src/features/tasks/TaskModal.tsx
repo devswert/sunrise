@@ -13,6 +13,7 @@ import { formatMinutes } from "../../lib/capacity";
 import { SearchSelect } from "../../components/SearchSelect";
 import { Switch } from "../../components/Switch";
 import { channelOptions } from "./channelOptions";
+import { channelLabel } from "../../lib/channelLabel";
 import { PriorityTag } from "./PriorityTag";
 import { priorityVar } from "./priority";
 import { TimePicker } from "../../components/TimePicker";
@@ -286,7 +287,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                   la pieza por la que se reconoce el canal en el resto de la app. */}
               {channel ? (
                 <span className="cat-tag tmodal__chip" style={chipVars(channel)}>
-                  {`#${channel.name}`}
+                  {channelLabel(channel.name)}
                 </span>
               ) : (
                 <span className="tmodal__meta-value">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Clock, Hash, Plus, Trash2, X } from "lucide-react";
+import { Clock, Plus, Trash2, X } from "lucide-react";
 import { Popover } from "../../components/Popover";
 import { SearchSelect } from "../../components/SearchSelect";
 import { PLAIN_INPUT } from "../../components/plainInput";
@@ -9,6 +9,7 @@ import { api } from "../../lib/ipc";
 import type { Category } from "../../lib/types";
 import { sectionIcon } from "../settings/secciones";
 import { channelOptions } from "./channelOptions";
+import { categoryLabel } from "../../lib/channelLabel";
 import { chipVarsForColor } from "./chipVars";
 import {
   type ChannelRule,
@@ -360,8 +361,7 @@ function ChannelPicker({
         style={chipVarsForColor(cat?.color)}
         onClick={() => setOpen((v) => !v)}
       >
-        <Hash size={13} />
-        {cat ? (cat.parentId != null ? `#${cat.name}` : cat.name) : "elegir canal"}
+        {cat ? categoryLabel(cat) : "elegir canal"}
       </button>
       {open && (
         <Popover anchorRef={ref} align="right" onClose={() => setOpen(false)}>

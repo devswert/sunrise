@@ -12,11 +12,13 @@ import { useTimer, hms } from "../timer/useTimer";
 import { CalendarEventCard, hasCalendarData } from "../calendar/EventoDelCalendario";
 import { NotesEditor } from "../tasks/NotesEditor";
 import { useAutosave } from "../tasks/useAutosave";
-import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
+import { SearchSelect } from "../../components/SearchSelect";
 import { SunriseMark } from "../../components/SunriseMark";
 import type { Category } from "../../lib/types";
 import { Hash } from "lucide-react";
 import { chipVars } from "../tasks/chipVars";
+import { channelOptions } from "../tasks/channelOptions";
+import { channelLabel } from "../../lib/channelLabel";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
 
@@ -74,16 +76,7 @@ export function FocusView() {
     };
   }, [loading, queue.length, dataVersion]);
 
-  const opcionesCanal = useMemo<SearchOption[]>(() => {
-    const out: SearchOption[] = [];
-    for (const ctx of categories.filter((c) => c.parentId === null)) {
-      out.push({ value: String(ctx.id), label: ctx.name, color: ctx.color });
-      for (const ch of categories.filter((c) => c.parentId === ctx.id)) {
-        out.push({ value: String(ch.id), label: `#${ch.name}`, hint: ctx.name, color: ch.color });
-      }
-    }
-    return out;
-  }, [categories]);
+  const opcionesCanal = useMemo(() => channelOptions(categories), [categories]);
 
   // Al arrancar el timer en otra tarea, Focus salta a ella. El salto ocurre una
   // sola vez por tarea (incluso si la cola aún no había cargado al montar);
@@ -261,7 +254,7 @@ export function FocusView() {
               aria-label="Cambiar canal"
               onClick={() => setPicker((p) => (p === "canal" ? null : "canal"))}
             >
-              {channel ? `#${channel.name}` : <Hash size={13} />}
+              {channel ? channelLabel(channel.name) : <Hash size={13} />}
             </button>
             {picker === "canal" && (
               <Popover anchorRef={canalRef} onClose={() => setPicker(null)}>

@@ -5,6 +5,7 @@ import type { Category, Objective, Task } from "../../lib/types";
 import { SearchSelect } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
 import { channelOptions } from "../tasks/channelOptions";
+import { channelLabel } from "../../lib/channelLabel";
 import { chipVars } from "../tasks/chipVars";
 import { TIME_PRESETS, formatMinutes } from "../../lib/capacity";
 import { shortWeekday } from "../../lib/date";
@@ -238,7 +239,7 @@ export function ObjectiveModal({
              * numeral en gris. */}
             {channel ? (
               <span className="cat-tag" style={chipVars(channel)}>
-                #{channel.name}
+                {channelLabel(channel.name)}
               </span>
             ) : (
               <span className="omodal__chip-value">
