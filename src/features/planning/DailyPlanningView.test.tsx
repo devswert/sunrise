@@ -34,6 +34,51 @@ function hace(n: number): string {
 const goToToday = () => userEvent.click(screen.getByRole("button", { name: /Qué hay para hoy/ }));
 
 /**
+ * El repaso del paso 1. Las tareas del día anterior salen ahí **y** en el rail,
+ * que muestra ese mismo día: buscarlas en toda la pantalla da dos resultados.
+ */
+async function recap() {
+  return within(
+    await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(".repaso");
+      expect(el).not.toBeNull();
+      return el!;
+    }),
+  );
+}
+
+/**
+ * Una corrida real del taxímetro de 10:00 a 10:40 hora local, fechada `date`. Un
+ * ajuste a mano no sirve: no tiene hora (`trackedAt` nulo) y no dibuja bloque
+ * trabajado. El reloj vuelve a ser el real antes de salir, porque el resto del
+ * archivo corre con él.
+ */
+async function runTimerOn(date: string, taskId: number) {
+  const [y, m, d] = date.split("-").map(Number);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    vi.setSystemTime(new Date(y, m - 1, d, 10, 0));
+    await api.startTimer(taskId);
+    vi.setSystemTime(new Date(y, m - 1, d, 10, 40));
+    await api.stopTimer();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+/** Los bloques trabajados del rail, cuando ya llegaron. */
+function railRealBlocks() {
+  return waitFor(() => {
+    const els = [...document.querySelectorAll<HTMLElement>(".rail__bloque.is-real")];
+    expect(els.length).toBeGreaterThan(0);
+    return els;
+  });
+}
+
+/** El rail de la vista. Se busca adentro para no confundirlo con el repaso ni con la columna del día. */
+const rail = () => within(screen.getByRole("complementary", { name: "Agenda del día" }));
+
+/**
  * Manda al backlog lo que la semilla del mock dejó en días pasados.
  *
  * **La semilla es data de preview, no una fixture**: fija sus fechas por día de la
@@ -88,7 +133,7 @@ describe("DailyPlanningView", () => {
       return el!;
     });
     expect(figures.textContent).toMatch(/1\/2\s*cerradas/);
-    expect(screen.getByText("Quedó abierta")).toBeInTheDocument();
+    expect((await recap()).getByText("Quedó abierta")).toBeInTheDocument();
   });
 
   it("trae a hoy lo que quedó abierto, que es lo que el carry-over no toca", async () => {
@@ -114,7 +159,7 @@ describe("DailyPlanningView", () => {
     await api.createTask({ title: "Vengo de antes", scheduledDate: hace(2) });
     mount();
 
-    await userEvent.click(await screen.findByText("Vengo de antes"));
+    await userEvent.click(await (await recap()).findByText("Vengo de antes"));
 
     expect(await screen.findByRole("dialog", { name: "Detalle de tarea" })).toBeInTheDocument();
   });
@@ -128,7 +173,7 @@ describe("DailyPlanningView", () => {
     await api.createTask({ title: "Se va a borrar", scheduledDate: hace(2) });
     mount();
 
-    await userEvent.click(await screen.findByText("Se va a borrar"));
+    await userEvent.click(await (await recap()).findByText("Se va a borrar"));
     const detalle = await screen.findByRole("dialog", { name: "Detalle de tarea" });
     await userEvent.click(within(detalle).getByRole("button", { name: "Eliminar tarea" }));
     await userEvent.click(within(detalle).getByRole("button", { name: /Sí, eliminar/ }));
@@ -311,6 +356,116 @@ describe("DailyPlanningView", () => {
 
     expect(screen.queryByRole("button", { name: "Contexto" })).toBeNull();
     expect(screen.getByRole("button", { name: "Prioridad" })).toBeInTheDocument();
+  });
+
+  it("el rail del paso 1 muestra el día que se repasa, y el del paso 2 muestra hoy", async () => {
+    // Una tarea con hora hace de reunión: el mock no importa calendarios, y para
+    // el rail las dos son lo mismo, un bloque fijo a su hora. Con un solo rail
+    // de hoy para los dos pasos, el repaso de ayer se leía al lado de la agenda
+    // de hoy.
+    await limpiarDiasPasados();
+    await api.createTask({
+      title: "Reunión de antes",
+      scheduledDate: hace(2),
+      scheduledTime: "10:00",
+      estimatedMinutes: 30,
+    });
+    await api.createTask({
+      title: "Reunión de hoy",
+      scheduledDate: todayISO(),
+      scheduledTime: "11:00",
+      estimatedMinutes: 30,
+    });
+    mount();
+
+    await recap();
+    await waitFor(() => expect(rail().getByText("Reunión de antes")).toBeInTheDocument());
+    expect(rail().queryByText("Reunión de hoy")).toBeNull();
+    // La línea de "ahora" es de hoy: en el día repasado mentiría.
+    expect(document.querySelector(".rail__ahora")).toBeNull();
+
+    await goToToday();
+    await waitFor(() => expect(rail().getByText("Reunión de hoy")).toBeInTheDocument());
+    expect(rail().queryByText("Reunión de antes")).toBeNull();
+    // Y en hoy vuelve: la grilla es de 24 h, así que "ahora" siempre cae adentro.
+    expect(document.querySelector(".rail__ahora")).not.toBeNull();
+  });
+
+  it("en el paso 1, los bloques trabajados del rail son los del día que se repasa", async () => {
+    // Con lo trabajado de hoy, la tarea saldría proyectada y no trabajada.
+    await limpiarDiasPasados();
+    const task = await api.createTask({ title: "Trabajada antes", scheduledDate: hace(2) });
+    await runTimerOn(hace(2), task.id);
+    mount();
+
+    await recap();
+    const realBlocks = await railRealBlocks();
+    expect(realBlocks.map((b) => b.querySelector(".rail__bloque-titulo")!.textContent)).toEqual([
+      "Trabajada antes",
+    ]);
+    expect(realBlocks[0].querySelector(".rail__bloque-hora")!.textContent).toMatch(/^10:00 AM/);
+  });
+
+  it("lo trabajado ese día sigue en el rail aunque la tarea ya se haya traído a hoy", async () => {
+    // El tiempo es del día en que corrió el taxímetro, no del día donde vive la
+    // tarea. Sin esto, "Traer a hoy" borraba el bloque y la portada lo seguía
+    // contando. Y en ese día solo se dibuja lo trabajado: lo que le falta es de hoy.
+    await limpiarDiasPasados();
+    await api.createTask({ title: "Ancla del día", scheduledDate: hace(2) });
+    const task = await api.createTask({
+      title: "Traída después",
+      scheduledDate: hace(2),
+      estimatedMinutes: 120,
+    });
+    await runTimerOn(hace(2), task.id);
+    await api.moveTask(task.id, todayISO(), 0);
+    mount();
+
+    await recap();
+    const realBlocks = await railRealBlocks();
+    // `toContain` y no la lista exacta: el caso anterior dejó una corrida ese
+    // mismo día, y su tarea —ya en el backlog— también sale, por la misma regla.
+    expect(realBlocks.map((b) => b.querySelector(".rail__bloque-titulo")!.textContent)).toContain(
+      "Traída después",
+    );
+    const projectedTitles = [...document.querySelectorAll(".rail__bloque.is-proyectado")].map(
+      (b) => b.querySelector(".rail__bloque-titulo")!.textContent,
+    );
+    expect(projectedTitles).not.toContain("Traída después");
+  });
+
+  it("sin día anterior, el rail del paso 1 muestra hoy", async () => {
+    // Primer uso: no hay otro día que repasar, y un rail vacío no le sirve a nadie.
+    await limpiarDiasPasados();
+    await api.createTask({
+      title: "Sola hoy",
+      scheduledDate: todayISO(),
+      scheduledTime: "12:00",
+      estimatedMinutes: 30,
+    });
+    mount();
+
+    await screen.findByText(/No hay días anteriores con tareas/);
+    await waitFor(() => expect(rail().getByText("Sola hoy")).toBeInTheDocument());
+  });
+
+  it("un bloque del rail del día repasado abre su detalle", async () => {
+    // `useBoard` solo carga hoy: el detalle tiene que buscar también en las
+    // tareas de los días previos, o el click no hace nada.
+    await limpiarDiasPasados();
+    await api.createTask({
+      title: "Reunión vieja",
+      scheduledDate: hace(2),
+      scheduledTime: "09:30",
+      estimatedMinutes: 30,
+    });
+    mount();
+
+    await recap();
+    await userEvent.click(await rail().findByText("Reunión vieja"));
+
+    const detalle = await screen.findByRole("dialog", { name: "Detalle de tarea" });
+    expect(within(detalle).getByDisplayValue("Reunión vieja")).toBeInTheDocument();
   });
 
   it("terminar el ritual marca el día, tira confeti y vuelve a la semana", async () => {

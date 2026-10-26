@@ -10,7 +10,7 @@ import { useBoard } from "../tasks/useBoard";
 import { CalendarRail } from "../calendar/CalendarRail";
 import { useDayWork } from "../calendar/useTrabajoDelDia";
 import { api } from "../../lib/ipc";
-import type { Task, DayWork } from "../../lib/types";
+import type { Task } from "../../lib/types";
 import { CapacityLevel } from "../../lib/enums";
 import { formatMinutes } from "../../lib/capacity";
 import { dateLabel, parseISODate, toISODate, toISOTimestamp, weekdayLabel } from "../../lib/date";
@@ -168,16 +168,58 @@ export function DailyPlanningView() {
   );
   const repaso = useMemo(() => dayRecap(delDiaAnterior), [delDiaAnterior]);
 
-  // Lo trabajado ese día es una lectura aparte: `actual_seconds` es el total de
-  // la tarea, y una arrastrada de tres días lo trae todo junto.
-  const [trabajadoAyer, setTrabajadoAyer] = useState(0);
-  useEffect(() => {
-    if (diaAnterior == null) {
-      setTrabajadoAyer(0);
-      return;
+  /**
+   * El rail muestra **el día del paso**: en el repaso, el día que se repasa —sus
+   * reuniones y lo que se trabajó ahí—; en el paso 2, hoy. Sin día anterior el
+   * paso 1 no tiene otro día que mostrar y se queda en hoy.
+   *
+   * Lo trabajado se lee para los dos días a la vez y no con un solo
+   * `useDayWork(railDate)`: con uno, cada cambio de paso volvía a leer la base y
+   * el rail quedaba un momento vacío de bloques trabajados.
+   *
+   * `delDiaAnterior` trae los bloques `railOnly` igual que la agenda de hoy: las
+   * dos listas salen de `list_tasks_for_range`, el mismo comando que lee `useBoard`.
+   */
+  const { work: previousDayWork } = useDayWork(diaAnterior ?? today);
+
+  // Lo trabajado ese día sale de las mismas filas que dibuja el rail (ver
+  // `previousDayRail`), así que la portada y el rail solo difieren en una tarea
+  // trabajada ese día que hoy vive fuera de lo cargado. Es una lectura aparte de
+  // las tareas:
+  // `actual_seconds` es el total de la tarea, y una arrastrada de tres días lo
+  // trae todo junto.
+  const trabajadoAyer = useMemo(
+    () => (diaAnterior == null ? 0 : workedMinutes(previousDayWork)),
+    [diaAnterior, previousDayWork],
+  );
+  const railIsToday = paso !== 0 || diaAnterior == null;
+
+  /**
+   * Las tareas del rail del paso 1: las agendadas ese día **más las que se
+   * trabajaron ese día y ya no están ahí**. El tiempo se atribuye por cuándo
+   * corrió el taxímetro, no por `scheduled_date`, y el rail solo dibuja bloques
+   * de las tareas que recibe: sin esto, "Traer a hoy" borraba del rail el bloque
+   * trabajado mientras la portada lo seguía contando.
+   *
+   * Las agregadas van **sin hora ni estimado**: en ese día solo tienen lo que se
+   * trabajó, y con esos dos campos el rail les proyectaba además lo que falta o
+   * un compromiso a su hora, que pertenecen al día donde viven ahora. Solo entran
+   * las filas con hora y segundos —las que dibujan un bloque trabajado—; una que
+   * no está entre las cargadas (otra fecha fuera de la ventana) no se dibuja.
+   */
+  const previousDayRail = useMemo(() => {
+    const ids = new Set(delDiaAnterior.map((t) => t.id));
+    const known = [...board.tasks, ...previas, ...backlog];
+    const moved: Task[] = [];
+    for (const row of previousDayWork) {
+      if (ids.has(row.taskId) || row.trackedAt == null || row.seconds <= 0) continue;
+      const task = known.find((t) => t.id === row.taskId);
+      if (!task) continue;
+      ids.add(task.id);
+      moved.push({ ...task, scheduledTime: null, estimatedMinutes: null });
     }
-    void api.dayWork(diaAnterior).then((rows: DayWork[]) => setTrabajadoAyer(workedMinutes(rows)));
-  }, [diaAnterior, dataVersion]);
+    return moved.length > 0 ? [...delDiaAnterior, ...moved] : delDiaAnterior;
+  }, [delDiaAnterior, previousDayWork, board.tasks, previas, backlog]);
 
   // Busca también en los días previos y en el backlog: el paso 1 abre tareas que
   // **no** están en el día de hoy, y `useBoard` solo carga hoy.
@@ -422,17 +464,20 @@ export function DailyPlanningView() {
           </div>
         )}
 
-        {/* El rail acompaña los dos pasos: es la agenda contra la que se
-         * planifica, y cambiar de paso no cambia el día. */}
+        {/* El rail acompaña los dos pasos, pero **con el día de cada uno**: en el
+         * repaso, el día que se repasa; en el paso 2, la agenda de hoy contra la
+         * que se planifica. `today` sigue siendo hoy a propósito: es lo que
+         * apaga la línea de "ahora" en un día que no lo es. El taxímetro solo
+         * suma en hoy: su corrida abierta no es de otro día. */}
         <CalendarRail
-          date={today}
+          date={railIsToday ? today : (diaAnterior ?? today)}
           today={today}
-          tasks={agenda}
+          tasks={railIsToday ? agenda : previousDayRail}
           categoryMap={board.categoryMap}
           workStart={workday.start}
           workEnd={workday.end}
-          work={work}
-          segundosEnCurso={segundosEnCurso}
+          work={railIsToday ? work : previousDayWork}
+          segundosEnCurso={railIsToday ? segundosEnCurso : 0}
           onOpen={(t) => setSelectedId(t.id)}
         />
       </div>
