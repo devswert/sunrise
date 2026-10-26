@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import { CalendarDays, Clock, Flag, Hash, Link2, Plus, Target, X } from "lucide-react";
@@ -8,7 +8,7 @@ import { useAppStore } from "../../lib/store";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { channelOptions } from "./channelOptions";
 import { categoryLabel } from "../../lib/channelLabel";
-import { appendResources, harvestLinks } from "./resources";
+import { appendResources, harvestLinks, replaceKeepingCaret } from "./resources";
 import { Popover } from "../../components/Popover";
 import { es } from "date-fns/locale";
 import { dateLabel, isToday, isoWeekId, parseISODate, toISODate, todayISO } from "../../lib/date";
@@ -35,6 +35,13 @@ export function AddTaskModal() {
   const initialDate = composeDefaults.date !== undefined ? composeDefaults.date : todayISO();
 
   const [title, setTitle] = useState("");
+  /**
+   * Dónde va el cursor después de cada cambio del título. Un objeto nuevo por
+   * cambio y no un número: si la limpieza deja el título igual al de antes,
+   * React no vuelve a dibujar, pero el DOM ya recibió el valor de vuelta y el
+   * cursor quedó al final — este estado es lo que fuerza el render que lo repone.
+   */
+  const [caret, setCaret] = useState<{ pos: number } | null>(null);
   const [date, setDate] = useState<string | null>(initialDate);
   const [planned, setPlanned] = useState<number | null>(null);
   const [categoryId, setCategoryId] = useState<number | null>(composeDefaults.categoryId ?? null);
@@ -92,6 +99,20 @@ export function AddTaskModal() {
   }, [title]);
 
   /**
+   * El cursor vuelve a donde se estaba escribiendo. El `textarea` es controlado
+   * y su valor se reescribe en cada tecla (se cosechan links, se juntan
+   * espacios): cuando el valor guardado difiere del DOM, React lo reemplaza y el
+   * cursor salta al final. Va en `useLayoutEffect` para que se reponga antes de
+   * que se pinte, y **en cada cambio**, no solo cuando la limpieza tocó algo.
+   */
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (caret && el && (el.selectionStart !== caret.pos || el.selectionEnd !== caret.pos)) {
+      el.setSelectionRange(caret.pos, caret.pos);
+    }
+  }, [caret]);
+
+  /**
    * Escape y ⌘Enter cuelgan de `window`, no del div del modal.
    *
    * Con el click afuera bloqueado, Escape pasó a ser **la única salida**, y un
@@ -146,14 +167,15 @@ export function AddTaskModal() {
 
   /**
    * Cosecha los links de un texto y los suma a la lista de recursos.
-   * Devuelve el texto ya sin ellos, que es lo que queda en el título.
+   * Devuelve el texto ya sin ellos, que es lo que queda en el título, y dónde
+   * cae en él el cursor que se le pasó.
    */
-  function cosechar(texto: string, terminatedOnly = false): string {
-    const { text, links } = harvestLinks(texto, terminatedOnly);
+  function cosechar(texto: string, terminatedOnly = false, cursor?: number) {
+    const { text, links, caret: pos } = harvestLinks(texto, terminatedOnly, cursor);
     if (links.length > 0) {
       setResources((prev) => [...prev, ...links.filter((l) => !prev.includes(l))]);
     }
-    return text;
+    return { text, pos };
   }
 
   async function create() {
@@ -228,7 +250,20 @@ export function AddTaskModal() {
           /* El aplanado de saltos va **antes** de cosechar: un pegado multilínea
            * termina la URL con el salto, que convertido en espacio la deja
            * cerrada y lista para que la levante hasta el `onChange`. */
-          onChange={(e) => setTitle(cosechar(e.target.value.replace(/\s*\n\s*/g, " "), true))}
+          onChange={(e) => {
+            const el = e.target;
+            const flat = replaceKeepingCaret(
+              el.value,
+              /\s*\n\s*/g,
+              () => " ",
+              el.selectionStart ?? el.value.length,
+            );
+            const { text, pos } = cosechar(flat.text, true, flat.caret);
+            setTitle(text);
+            // Con una tecla muerta a medio componer (´ + a → á) el cursor no se
+            // toca: mover la selección ahí cierra la composición antes de tiempo.
+            if (!(e.nativeEvent as InputEvent).isComposing) setCaret({ pos: pos ?? text.length });
+          }}
           /* Pegar es el gesto que motivó esto, y lo que se pega llega entero:
            * acá se cosecha todo, sin esperar a que la URL quede cerrada —al
            * final de un pegado no hay espacio que la cierre. Se inserta a mano
@@ -237,11 +272,16 @@ export function AddTaskModal() {
             const pegado = e.clipboardData.getData("text");
             if (!/https?:\/\//.test(pegado)) return;
             e.preventDefault();
-            const limpio = cosechar(pegado.replace(/\s*\n\s*/g, " "));
+            const limpio = cosechar(pegado.replace(/\s*\n\s*/g, " ")).text;
             const el = e.currentTarget;
             const desde = el.selectionStart ?? title.length;
             const hasta = el.selectionEnd ?? desde;
-            setTitle((prev) => `${prev.slice(0, desde)}${limpio}${prev.slice(hasta)}`.trimStart());
+            const joined = `${title.slice(0, desde)}${limpio}${title.slice(hasta)}`;
+            const next = joined.trimStart();
+            setTitle(next);
+            // Después de lo pegado, menos lo que se llevó el `trimStart`.
+            const trimmed = joined.length - next.length;
+            setCaret({ pos: Math.max(0, desde + limpio.length - trimmed) });
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {

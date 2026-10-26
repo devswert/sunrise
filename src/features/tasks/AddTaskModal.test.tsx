@@ -302,3 +302,121 @@ describe("AddTaskModal · el chip del canal lleva un solo numeral", () => {
     expect(chip.querySelector("svg")).not.toBeNull();
   });
 });
+
+describe("AddTaskModal · el cursor se queda donde se está escribiendo", () => {
+  beforeEach(() => {
+    useAppStore.setState({ composeOpen: true, composeDefaults: {} });
+  });
+
+  /** Abre el modal con `text` ya escrito y el cursor en `pos`. */
+  async function withCaret(text: string, pos: number) {
+    const user = userEvent.setup();
+    render(<AddTaskModal />);
+    const field = (await screen.findByPlaceholderText(
+      "Descripción de la tarea…",
+    )) as HTMLTextAreaElement;
+    await user.click(field);
+    await user.paste(text);
+    field.setSelectionRange(pos, pos);
+    return { user, field };
+  }
+
+  it("insertar un espacio en la mitad no manda el cursor al final", async () => {
+    const { user, field } = await withCaret("Si tengoesta frase", 8);
+    await user.keyboard(" ");
+
+    expect(field.value).toBe("Si tengo esta frase");
+    expect(field.selectionStart).toBe(9);
+  });
+
+  // El espacio tecleado justo antes de otro no se junta mientras el cursor está
+  // ahí: juntarlo pegaba la palabra siguiente a la que venía ("tengoyesta").
+  it("escribir una palabra antes de un espacio no la pega a la siguiente", async () => {
+    const { user, field } = await withCaret("Si tengo esta frase", 8);
+    await user.keyboard(" y");
+
+    expect(field.value).toBe("Si tengo y esta frase");
+    expect(field.selectionStart).toBe(10);
+  });
+
+  // El doble espacio que quedó sin palabra se junta al crear, como siempre.
+  it("un doble espacio que quedó en el título se guarda como uno", async () => {
+    const createTask = vi.spyOn(api, "createTask");
+    const { user } = await withCaret("Si tengo esta frase", 8);
+    await user.keyboard(" ");
+
+    await user.click(screen.getByRole("button", { name: /Crear task/i }));
+    await waitFor(() => expect(createTask).toHaveBeenCalled());
+    expect(createTask.mock.calls[0][0].title).toBe("Si tengo esta frase");
+  });
+
+  // Si la limpieza deja el título igual al de antes, React no vuelve a dibujar y
+  // el cursor quedaba donde lo dejó el DOM: al final.
+  it("una limpieza que deja el título igual también repone el cursor", async () => {
+    const { user, field } = await withCaret("Si tengo esta frase", 13);
+    // El salto pegado se aplana en el espacio que ya estaba: el título no cambia.
+    await user.paste("\n");
+
+    expect(field.value).toBe("Si tengo esta frase");
+    expect(field.selectionStart).toBe(14);
+  });
+
+  it("borrar un carácter en la mitad deja el cursor donde estaba", async () => {
+    const { user, field } = await withCaret("Si tengoa esta frase", 9);
+    await user.keyboard("{Backspace}");
+
+    expect(field.value).toBe("Si tengo esta frase");
+    expect(field.selectionStart).toBe(8);
+  });
+
+  // Mientras el cursor está pegado al final de la URL se la sigue escribiendo:
+  // en la mitad del título siempre hay un espacio después, y sin esta regla el
+  // link se cosecharía a la primera letra después de `https://`.
+  it("un link escrito en la mitad se cosecha al cerrarlo y el cursor queda en su lugar", async () => {
+    const createTask = vi.spyOn(api, "createTask");
+    const { user, field } = await withCaret("Revisar el PR mañana", 13);
+    await user.keyboard(" https://x.dev/1");
+
+    expect(field.value).toBe("Revisar el PR https://x.dev/1 mañana");
+    expect(field.selectionStart).toBe(29);
+
+    await user.keyboard(" ");
+    expect(field.value).toBe("Revisar el PR mañana");
+    expect(field.selectionStart).toBe(14);
+    expect(screen.getByRole("button", { name: "Quitar https://x.dev/1" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /Crear task/i }));
+    await waitFor(() => expect(createTask).toHaveBeenCalled());
+    expect(createTask.mock.calls[0][0].title).toBe("Revisar el PR mañana");
+    expect(createTask.mock.calls[0][0].notes).toBe("# Recursos:\n* https://x.dev/1");
+  });
+
+  it("pegar un link en la mitad deja el cursor después de lo pegado", async () => {
+    const { user, field } = await withCaret("Revisar el PR mañana", 13);
+    await user.paste(" y https://x.dev/1");
+
+    expect(field.value).toBe("Revisar el PR y mañana");
+    expect(field.selectionStart).toBe(15);
+    expect(screen.getByRole("button", { name: "Quitar https://x.dev/1" })).toBeTruthy();
+  });
+
+  // Lo pegado reemplaza lo seleccionado, y el cursor queda después de lo pegado.
+  it("pegar un link sobre una selección deja el cursor después de lo pegado", async () => {
+    const { user, field } = await withCaret("Revisar el PR mañana", 8);
+    field.setSelectionRange(8, 13);
+    await user.paste("ese https://x.dev/1");
+
+    expect(field.value).toBe("Revisar ese mañana");
+    expect(field.selectionStart).toBe(11);
+  });
+
+  // El espacio con el que empieza lo pegado al principio se recorta, y el
+  // cursor no puede quedar contándolo.
+  it("pegar al principio con espacios delante descuenta el recorte", async () => {
+    const { user, field } = await withCaret("mañana", 0);
+    await user.paste("  ver https://x.dev/1 ");
+
+    expect(field.value).toBe("vermañana");
+    expect(field.selectionStart).toBe(3);
+  });
+});

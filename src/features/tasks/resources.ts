@@ -21,6 +21,36 @@ export interface Harvest {
   text: string;
   /** Los links, en orden y sin repetir. */
   links: string[];
+  /** Dónde queda el cursor en `text`, si se pasó uno. */
+  caret?: number;
+}
+
+/**
+ * `String.replace` que además lleva un cursor de un texto al otro.
+ *
+ * Es lo que deja limpiar el título en cada tecla sin mandar el cursor al final:
+ * lo que se quita antes del cursor lo corre lo mismo, y si el cursor cae dentro
+ * de un tramo reemplazado queda en lo que sobrevivió de él.
+ */
+export function replaceKeepingCaret(
+  text: string,
+  re: RegExp,
+  replacer: (match: string, index: number) => string,
+  caret?: number,
+): { text: string; caret?: number } {
+  let moved = caret;
+  // El offset es el penúltimo argumento (el último es el texto): leerlo de ahí
+  // sigue valiendo si la regex tiene grupos de captura.
+  const out = text.replace(re, (match: string, ...args: unknown[]) => {
+    const index = args[args.length - 2] as number;
+    const repl = replacer(match, index);
+    if (caret !== undefined && moved !== undefined && caret > index) {
+      const inside = Math.min(caret, index + match.length) - index;
+      moved -= inside - Math.min(inside, repl.length);
+    }
+    return repl;
+  });
+  return { text: out, caret: moved };
 }
 
 /**
@@ -32,24 +62,61 @@ export interface Harvest {
  * campo. Mientras se tipea solo cuenta un link **cerrado** —el que tiene un
  * espacio después—; al pegar, el pedazo pegado llega entero y ahí sí se cosecha
  * todo, que es el caso que motivó todo esto.
+ *
+ * Con `caret`, "cerrado" pide además que el cursor no esté pegado al final de la
+ * URL: en la mitad del título siempre hay un espacio después, y sin esto un link
+ * escrito entre dos palabras se cosecharía en `https://x`. Y el cursor sale
+ * corrido por todo lo que se limpió antes de él.
  */
-export function harvestLinks(raw: string, terminatedOnly = false): Harvest {
+export function harvestLinks(raw: string, terminatedOnly = false, caret?: number): Harvest {
   const links: string[] = [];
-  const text = raw.replace(URL_RE, (url, index: number) => {
-    if (terminatedOnly) {
-      const after = raw[index + url.length];
-      // Sin nada después es una URL que todavía se está escribiendo.
-      if (after === undefined || !/\s/.test(after)) return url;
-    }
-    if (!links.includes(url)) links.push(url);
-    return "";
-  });
-  // El hueco que dejó el link no puede quedar como doble espacio. El espacio
-  // **final** solo se recorta al pegar: mientras se escribe es el que acaba de
-  // cerrar la URL, y comérselo pega la siguiente letra a la palabra anterior
-  // ("Escribir el" + "informe" → "Escribir elinforme").
-  const limpio = text.replace(/[ \t]{2,}/g, " ");
-  return { text: terminatedOnly ? limpio : limpio.replace(/\s+$/, ""), links };
+  // Dónde quedó cada link sacado, en coordenadas del texto ya sin ellos.
+  const gaps: number[] = [];
+  let removed = 0;
+  const noLinks = replaceKeepingCaret(
+    raw,
+    URL_RE,
+    (url, index) => {
+      if (terminatedOnly) {
+        const end = index + url.length;
+        const after = raw[end];
+        // Sin nada después, o con el cursor en su borde, es una URL que todavía
+        // se está escribiendo.
+        if (after === undefined || !/\s/.test(after) || end === caret) return url;
+      }
+      if (!links.includes(url)) links.push(url);
+      gaps.push(index - removed);
+      removed += url.length;
+      return "";
+    },
+    caret,
+  );
+  // El hueco que dejó el link no puede quedar como doble espacio. Salvo el que
+  // toca el cursor mientras se escribe, si no viene de un link: es el espacio que
+  // se acaba de teclear antes de otro, y juntarlo pega la palabra que viene a la
+  // siguiente ("el| informe" + " y" → "el yinforme"). `create()` lo junta igual.
+  const clean = replaceKeepingCaret(
+    noLinks.text,
+    /[ \t]{2,}/g,
+    (run, index) => {
+      const c = noLinks.caret;
+      const end = index + run.length;
+      const typing =
+        terminatedOnly &&
+        c !== undefined &&
+        c >= index &&
+        c <= end &&
+        !gaps.some((g) => g >= index && g <= end);
+      return typing ? run : " ";
+    },
+    noLinks.caret,
+  );
+  // El espacio **final** solo se recorta al pegar: mientras se escribe es el que
+  // acaba de cerrar la URL, y comérselo pega la siguiente letra a la palabra
+  // anterior ("Escribir el" + "informe" → "Escribir elinforme").
+  const text = terminatedOnly ? clean.text : clean.text.replace(/\s+$/, "");
+  const moved = clean.caret === undefined ? undefined : Math.min(clean.caret, text.length);
+  return caret === undefined ? { text, links } : { text, links, caret: moved };
 }
 
 /**

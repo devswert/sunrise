@@ -270,7 +270,7 @@ siguiente corrida.
   y nada más—, así que darle una sección propia es lo que permite limpiar el
   título sin inventarle una columna a la tarea ni dejar el link tirado en medio
   de una nota. Si la sección ya existe, el link entra **al final de su lista**,
-  no en una segunda sección. Tres detalles que no son evidentes:
+  no en una segunda sección. Cuatro detalles que no son evidentes:
   - **La cosecha usa el mismo patrón que `extractLinks`.** Dos detectores
     distintos dejarían guardado un link que después ningún chip dibuja.
   - **Al escribir solo se cosecha un link ya cerrado** (con un espacio detrás);
@@ -278,6 +278,13 @@ siguiente corrida.
     cosechar en cada tecla se comería la URL a la novena letra. Y por lo mismo el
     espacio final se recorta al pegar pero no al escribir: es el que acaba de
     cerrar la URL, y sacarlo pega la letra siguiente a la palabra anterior.
+    **Con el cursor pegado al final de la URL tampoco está cerrada**, aunque
+    tenga un espacio detrás: en la mitad del título siempre lo hay.
+  - **El cursor se queda donde se está escribiendo** (`replaceKeepingCaret`):
+    lo que la limpieza saca antes de él lo corre lo mismo, y se repone después
+    de cada cambio. El doble espacio que toca el cursor no se junta mientras se
+    escribe —juntarlo pega la palabra siguiente—, salvo el hueco de un link; el
+    que quede lo junta la creación.
   - **El modal de creación dibuja los links cosechados con una ×.** El título se
     limpia solo; sin ver a dónde fue el link, el gesto se leería como que se
     perdió, y no habría forma de arrepentirse antes de crear.

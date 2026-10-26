@@ -709,6 +709,28 @@ normaliza sin que el usuario lo haya editado. Lo que costó: al sacar el ícono 
 chip con channel, se fue también el del chip vacío, y ese sí tiene que quedar —es el
 único ícono del chip sin dato, y los demás chips de la barra lo llevan—.
 
+**El cursor del título al crear se repone en cada cambio, no solo cuando la
+limpieza tocó algo** (#3). El `textarea` es controlado y su valor se reescribe en
+cada tecla —se cosechan links, se juntan espacios—, y cuando lo guardado difiere
+del DOM React lo reemplaza y el cursor salta al final. Pero el dev reportó el
+salto también al **borrar** una letra, donde la limpieza no cambia nada, y en
+jsdom eso no se reproduce: la hipótesis es que el webview mueve la selección al
+reescribir el `textarea` aunque el valor sea el mismo. Por eso el cursor se guarda
+en cada `onChange` y se repone en un `useLayoutEffect`, y **como objeto nuevo y no
+como número**: si la limpieza deja el título igual al anterior, React no vuelve a
+dibujar, y sin ese estado no corre el efecto que lo repone.
+
+Arreglar el cursor destapó dos reglas que el salto al final escondía:
+
+- **Una URL con el cursor en su borde todavía se está escribiendo**, aunque tenga
+  un espacio detrás. "Cerrada = con un espacio después" solo funcionaba porque se
+  escribía al final; en la mitad del título siempre hay un espacio después, y el
+  link se cosechaba en `https://x`.
+- **El doble espacio que toca el cursor no se junta mientras se escribe**, salvo
+  que venga de sacar un link. Juntarlo dejaba el cursor pegado a la palabra
+  siguiente: escribir " y" antes de " esta" daba "tengo yesta". El que queda sin
+  palabra lo junta `create()`, que limpia el título entero al crear.
+
 ---
 
 ## 8. Notificaciones: lo que no está en nuestras manos
