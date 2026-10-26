@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { CalendarDays, X } from "lucide-react";
+import { CalendarDays, Hash, X } from "lucide-react";
 import { useMinuteTick } from "../../lib/day";
 import type { Category, Task, DayWork } from "../../lib/types";
 import { weekdayLabel } from "../../lib/date";
@@ -153,6 +153,7 @@ export function CalendarRail({
               onClick={() => onOpen?.(t)}
               style={colorDe(t, categoryMap)}
             >
+              {needsChannelWarning(t, categoryMap) && <NoChannelIcon />}
               {t.title}
             </button>
           ))}
@@ -176,6 +177,7 @@ export function CalendarRail({
             {rail.blocks.map((b) => {
               const t = porId.get(b.taskId);
               if (!t) return null;
+              const noChannel = needsChannelWarning(t, categoryMap);
               return (
                 <button
                   // Compuesta: una tarea partida deja varios bloques, y con la
@@ -188,6 +190,7 @@ export function CalendarRail({
                     (b.kind === "PROYECTADO" ? " is-proyectado" : "") +
                     (b.kind === "REAL" ? " is-real" : "") +
                     (t.railOnly ? " is-ignorado" : "") +
+                    (noChannel ? " has-no-channel" : "") +
                     ((b.endMin - b.startMin) * PX_POR_MINUTO < ALTO_COMPACTO ? " is-corto" : "")
                   }
                   style={{ ...geometria(b, y), ...colorDe(t, categoryMap) }}
@@ -197,7 +200,8 @@ export function CalendarRail({
                     (b.parts > 1 ? ` (tramo ${b.part} de ${b.parts})` : "") +
                     (b.kind === "PROYECTADO" ? " · proyectado" : "") +
                     (b.kind === "REAL" ? " · trabajado" : "") +
-                    (t.railOnly ? " · ignorado" : "")
+                    (t.railOnly ? " · ignorado" : "") +
+                    (noChannel ? " · sin channel" : "")
                   }
                 >
                   <span className="rail__bloque-hora">
@@ -211,6 +215,7 @@ export function CalendarRail({
                     )}
                   </span>
                   <span className="rail__bloque-titulo">{t.title}</span>
+                  {noChannel && <NoChannelIcon />}
                 </button>
               );
             })}
@@ -267,10 +272,34 @@ function geometria(b: BloqueRail, y: (min: number) => number): React.CSSProperti
  * y en tema oscuro un bloque chico con ese par queda ilegible.
  */
 function colorDe(t: Task, categoryMap: Map<number, Category>): React.CSSProperties {
-  const c = t.categoryId != null ? categoryMap.get(t.categoryId) : null;
+  const c = channelOf(t, categoryMap);
   if (!c) return {};
   return {
     background: `color-mix(in srgb, var(--${c.color}) 18%, var(--surface-raised))`,
     borderLeftColor: `var(--${c.color})`,
   };
+}
+
+/** El channel de la tarea, si tiene uno que exista. */
+function channelOf(t: Task, categoryMap: Map<number, Category>): Category | null {
+  return t.categoryId != null ? (categoryMap.get(t.categoryId) ?? null) : null;
+}
+
+/**
+ * Si el bloque tiene que avisar que le falta channel: justo cuando `colorDe` cae
+ * al neutro, para que el aviso y el color no puedan contradecirse. Un evento
+ * ignorado no avisa: ocupa su hora y nada más (§4.12), y pedir que se clasifique
+ * algo que decidiste no trabajar sería el ruido más fuerte del rail.
+ */
+function needsChannelWarning(t: Task, categoryMap: Map<number, Category>): boolean {
+  return !t.railOnly && channelOf(t, categoryMap) == null;
+}
+
+/** El `#` amarillo que pulsa en un bloque o chip sin channel (§7). */
+function NoChannelIcon() {
+  return (
+    <span className="rail__no-channel" role="img" aria-label="Sin channel">
+      <Hash size={10} strokeWidth={2.75} aria-hidden />
+    </span>
+  );
 }

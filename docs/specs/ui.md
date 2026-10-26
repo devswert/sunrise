@@ -174,6 +174,20 @@ opciones del select (`.ss__dot`) y los rótulos de columna del backlog
 `CategoryTag`— cambian juntos: es el mismo chip, y separarlos es lo que hace que
 la misma cosa se vea de dos formas.
 
+**Una tarea sin channel avisa en el rail con un `#` amarillo que pulsa** (`--cap-warn`,
+`.rail__no-channel`), en sus bloques y en sus chips de día completo. Sin channel el bloque
+cae al neutro —blanco con una franja casi invisible—, y una tarea sin clasificar se
+descubría recién en la weekly review, cuando ya no hay contexto para clasificarla. **Solo
+pulsa el icono**: el resto del bloque no cambia, porque lo que falta es un dato y no un
+estado de la tarea, y teñir el bloque entero lo haría competir con los que sí tienen
+color. El aviso sigue exactamente al color (`needsChannelWarning`): avisa cuando el
+channel no se resuelve, también si el `category_id` apunta a uno que ya no existe. Dos
+excepciones: **un evento ignorado no avisa** (§4.12: ocupa su hora y nada más) y **las
+otras vistas no lo llevan** — el rail es donde se mira el día mientras pasa. Con
+`prefers-reduced-motion` el icono queda amarillo y quieto, la misma convención que el
+punto pulsante de la card (`tc-pulse`); el texto lo repiten el `title` del bloque
+("· sin channel") y el nombre accesible del icono.
+
 **Los `--prio-*` son la segunda familia de color, y no viven bajo estas reglas**
 (§4.30). Cinco tokens, `--prio-p1`…`--prio-p5`, que son una **rampa interpolada en
 OKLCH** entre el rojo de P1 y el celeste de P5 —no colores elegidos uno por uno—,

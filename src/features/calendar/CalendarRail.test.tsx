@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Category, Task } from "../../lib/types";
 import { CalendarRail } from "./CalendarRail";
@@ -43,9 +43,12 @@ function task(over: Partial<Task> & { id: number; title: string }): Task {
  * la hora a la que se corran —de noche no queda día por delante y no se proyecta
  * nada—. Lo que depende de "hoy" se monta aparte, más abajo.
  */
-function renderRail(tasks: Task[], over: { date?: string; today?: string } = {}) {
+function renderRail(
+  tasks: Task[],
+  over: { date?: string; today?: string; categories?: Category[] } = {},
+) {
   const onOpen = vi.fn();
-  const categoryMap = new Map<number, Category>();
+  const categoryMap = new Map((over.categories ?? []).map((c) => [c.id, c]));
   render(
     <CalendarRail
       date={over.date ?? DIA}
@@ -84,7 +87,7 @@ describe("CalendarRail", () => {
       }),
     ]);
     // Aparece, pero sin hora: no tiene dónde caer en la escala del día.
-    const chip = screen.getByRole("button", { name: "Feriado" });
+    const chip = screen.getByRole("button", { name: /Feriado/ });
     expect(chip).toHaveClass("rail__chip");
   });
 
@@ -138,6 +141,76 @@ describe("CalendarRail", () => {
     // En otro día la línea mentiría: marcaría una hora que no es de ese día.
     const otro = render(<Rail tasks={conHora} date={OTRO_DIA} today={DIA} />);
     expect(otro.container.querySelector(".rail__ahora")).toBeNull();
+  });
+});
+
+/**
+ * Una tarea sin channel avisa con un `#` amarillo (§7): es la que después hay que
+ * clasificar en la weekly review, y en el neutro del rail pasaba inadvertida.
+ */
+describe("CalendarRail · aviso de tarea sin channel", () => {
+  const trabajo: Category = {
+    id: 3,
+    parentId: null,
+    name: "Trabajo",
+    color: "lavender",
+    position: 0,
+    archived: false,
+  };
+  const aviso = { name: "Sin channel" };
+
+  it("el bloque de una tarea sin channel muestra el aviso; el de una con channel no", () => {
+    renderRail(
+      [
+        task({ id: 1, title: "Sin clasificar", scheduledTime: "10:00" }),
+        task({ id: 2, title: "Clasificada", scheduledTime: "11:00", categoryId: 3 }),
+      ],
+      { categories: [trabajo] },
+    );
+
+    const sin = screen.getByRole("button", { name: /Sin clasificar/ });
+    expect(within(sin).getByRole("img", aviso)).toBeInTheDocument();
+    expect(sin).toHaveAttribute("title", expect.stringContaining("sin channel"));
+
+    const con = screen.getByRole("button", { name: /Clasificada/ });
+    expect(within(con).queryByRole("img", aviso)).toBeNull();
+  });
+
+  it("los chips de día completo siguen la misma regla", () => {
+    const diaCompleto = {
+      source: "CALENDAR" as const,
+      scheduledTime: null,
+      estimatedMinutes: null,
+    };
+    renderRail(
+      [
+        task({ id: 1, title: "Feriado", ...diaCompleto }),
+        task({ id: 2, title: "Offsite", categoryId: 3, ...diaCompleto }),
+      ],
+      { categories: [trabajo] },
+    );
+
+    expect(
+      within(screen.getByRole("button", { name: /Feriado/ })).getByRole("img", aviso),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("button", { name: /Offsite/ })).queryByRole("img", aviso),
+    ).toBeNull();
+  });
+
+  it("un channel que ya no existe cuenta como sin channel", () => {
+    // El aviso sigue al color: si el bloque cae al neutro, avisa.
+    renderRail([task({ id: 1, title: "Huérfana", scheduledTime: "10:00", categoryId: 99 })]);
+    const bloque = screen.getByRole("button", { name: /Huérfana/ });
+    expect(within(bloque).getByRole("img", aviso)).toBeInTheDocument();
+  });
+
+  it("un evento ignorado no avisa aunque no tenga channel", () => {
+    // Ocupa su hora y nada más (§4.12): pedir que se clasifique sería ruido.
+    renderRail([
+      task({ id: 7, title: "Lunch", source: "CALENDAR", scheduledTime: "13:15", railOnly: true }),
+    ]);
+    expect(screen.queryByRole("img", aviso)).toBeNull();
   });
 });
 
