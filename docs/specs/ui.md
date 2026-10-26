@@ -183,7 +183,9 @@ estado de la tarea, y teñir el bloque entero lo haría competir con los que sí
 color. El aviso sigue exactamente al color (`needsChannelWarning`): avisa cuando el
 channel no se resuelve, también si el `category_id` apunta a uno que ya no existe. Dos
 excepciones: **un evento ignorado no avisa** (§4.12: ocupa su hora y nada más) y **las
-otras vistas no lo llevan** — el rail es donde se mira el día mientras pasa. Con
+cards no lo llevan** — ni la semana ni el backlog: el rail es donde se mira el día
+mientras pasa, y va igual donde se monte (Today, el panel de la semana, Daily
+planning). Una tarea completada sin channel sigue avisando: el dato sigue faltando. Con
 `prefers-reduced-motion` el icono queda amarillo y quieto, la misma convención que el
 punto pulsante de la card (`tc-pulse`); el texto lo repiten el `title` del bloque
 ("· sin channel") y el nombre accesible del icono.

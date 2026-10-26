@@ -174,6 +174,8 @@ describe("CalendarRail · aviso de tarea sin channel", () => {
 
     const con = screen.getByRole("button", { name: /Clasificada/ });
     expect(within(con).queryByRole("img", aviso)).toBeNull();
+    // Y toma el color del channel, como antes.
+    expect(con.style.borderLeftColor).toBe("var(--lavender)");
   });
 
   it("los chips de día completo siguen la misma regla", () => {
@@ -190,9 +192,9 @@ describe("CalendarRail · aviso de tarea sin channel", () => {
       { categories: [trabajo] },
     );
 
-    expect(
-      within(screen.getByRole("button", { name: /Feriado/ })).getByRole("img", aviso),
-    ).toBeInTheDocument();
+    // El `#` va antes del título, así que también abre el nombre accesible.
+    const feriado = screen.getByRole("button", { name: "Sin channel Feriado" });
+    expect(feriado.firstElementChild).toBe(within(feriado).getByRole("img", aviso));
     expect(
       within(screen.getByRole("button", { name: /Offsite/ })).queryByRole("img", aviso),
     ).toBeNull();

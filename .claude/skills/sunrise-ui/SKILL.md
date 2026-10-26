@@ -44,7 +44,9 @@ todo. **El usuario insiste en esto de forma consistente.**
 - **El color clasifica, nunca decora.** Dice a qué canal pertenece algo o cómo va la
   capacidad. Un color sin significado no va. En el badge de tiempo de una card ya
   conviven dos: mint = la estás trabajando, ámbar = se sale de tu horario (§4.3).
-  El ámbar gana, y el mint sigue contándose con el punto pulsante.
+  El ámbar gana, y el mint sigue contándose con el punto pulsante. Y el amarillo
+  `--cap-warn` tiene un segundo uso fuera de la capacidad: el `#` que pulsa en el
+  rail cuando a una tarea le falta channel (`docs/specs/ui.md` §7, "Color").
 - **Dos opciones excluyentes con una siempre puesta van como un par de botones
   marcados, no como una lista de la que se elige** — es la diferencia entre un
   radio y un menú. Es el patrón de Channel/Contexto y de Antigüedad/Prioridad, y
