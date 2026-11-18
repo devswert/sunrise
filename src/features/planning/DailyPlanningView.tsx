@@ -8,6 +8,7 @@ import { Dialog } from "../../components/Dialog";
 import { reorderLocal } from "../tasks/reorder";
 import { useBoard } from "../tasks/useBoard";
 import { CalendarRail } from "../calendar/CalendarRail";
+import { drawsRealBlock } from "../calendar/railLayout";
 import { useDayWork } from "../calendar/useTrabajoDelDia";
 import { api } from "../../lib/ipc";
 import type { Task } from "../../lib/types";
@@ -179,8 +180,24 @@ export function DailyPlanningView() {
    *
    * `delDiaAnterior` trae los bloques `railOnly` igual que la agenda de hoy: las
    * dos listas salen de `list_tasks_for_range`, el mismo comando que lee `useBoard`.
+   *
+   * La llamada es incondicional aunque sin día anterior lea hoy dos veces: un
+   * hook no puede ir detrás de un `if`, y `diaAnterior` llega después del primer
+   * render.
    */
   const { work: previousDayWork } = useDayWork(diaAnterior ?? today);
+
+  /**
+   * Lo trabajado del día repasado **sin corridas abiertas**. Una que arrancó ese
+   * día y sigue corriendo llega con `running` y sin segundos escritos, y el rail
+   * la dibuja como un bloque de un minuto a la hora del play que crece con el
+   * taxímetro de hoy. Lo que se trabajó ahí todavía no está cerrado, así que no
+   * se dibuja: se ve al pararla.
+   */
+  const previousDayRows = useMemo(
+    () => previousDayWork.map((r) => (r.running ? { ...r, running: false } : r)),
+    [previousDayWork],
+  );
 
   // Lo trabajado ese día sale de las mismas filas que dibuja el rail (ver
   // `previousDayRail`), así que la portada y el rail solo difieren en una tarea
@@ -204,22 +221,24 @@ export function DailyPlanningView() {
    * Las agregadas van **sin hora ni estimado**: en ese día solo tienen lo que se
    * trabajó, y con esos dos campos el rail les proyectaba además lo que falta o
    * un compromiso a su hora, que pertenecen al día donde viven ahora. Solo entran
-   * las filas con hora y segundos —las que dibujan un bloque trabajado—; una que
-   * no está entre las cargadas (otra fecha fuera de la ventana) no se dibuja.
+   * las filas que dibujan un bloque trabajado (`drawsRealBlock`, el mismo umbral
+   * que el rail: con 20 s la tarea caería al camino normal y saldría proyectada);
+   * una que no está entre las cargadas (otra fecha fuera de la ventana) no se
+   * dibuja.
    */
   const previousDayRail = useMemo(() => {
     const ids = new Set(delDiaAnterior.map((t) => t.id));
     const known = [...board.tasks, ...previas, ...backlog];
     const moved: Task[] = [];
-    for (const row of previousDayWork) {
-      if (ids.has(row.taskId) || row.trackedAt == null || row.seconds <= 0) continue;
+    for (const row of previousDayRows) {
+      if (ids.has(row.taskId) || !drawsRealBlock(row)) continue;
       const task = known.find((t) => t.id === row.taskId);
       if (!task) continue;
       ids.add(task.id);
       moved.push({ ...task, scheduledTime: null, estimatedMinutes: null });
     }
     return moved.length > 0 ? [...delDiaAnterior, ...moved] : delDiaAnterior;
-  }, [delDiaAnterior, previousDayWork, board.tasks, previas, backlog]);
+  }, [delDiaAnterior, previousDayRows, board.tasks, previas, backlog]);
 
   // Busca también en los días previos y en el backlog: el paso 1 abre tareas que
   // **no** están en el día de hoy, y `useBoard` solo carga hoy.
@@ -468,7 +487,8 @@ export function DailyPlanningView() {
          * repaso, el día que se repasa; en el paso 2, la agenda de hoy contra la
          * que se planifica. `today` sigue siendo hoy a propósito: es lo que
          * apaga la línea de "ahora" en un día que no lo es. El taxímetro solo
-         * suma en hoy: su corrida abierta no es de otro día. */}
+         * suma en hoy; en el día repasado una corrida abierta no dibuja nada
+         * hasta que se para (`previousDayRows`). */}
         <CalendarRail
           date={railIsToday ? today : (diaAnterior ?? today)}
           today={today}
@@ -476,7 +496,7 @@ export function DailyPlanningView() {
           categoryMap={board.categoryMap}
           workStart={workday.start}
           workEnd={workday.end}
-          work={railIsToday ? work : previousDayWork}
+          work={railIsToday ? work : previousDayRows}
           segundosEnCurso={railIsToday ? segundosEnCurso : 0}
           onOpen={(t) => setSelectedId(t.id)}
         />

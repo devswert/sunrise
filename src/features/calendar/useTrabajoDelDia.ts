@@ -4,6 +4,9 @@ import type { DayWork } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
 import { useTimer } from "../timer/useTimer";
 
+/** Una sola instancia: un `[]` nuevo por render rompería los `useMemo` que dependen de `work`. */
+const NO_WORK: DayWork[] = [];
+
 /**
  * Lo que se trabajó en un día, para que el rail dibuje **lo que pasó** y no solo
  * lo planificado.
@@ -19,11 +22,11 @@ import { useTimer } from "../timer/useTimer";
  * Las filas se guardan **con su fecha** y solo se devuelven si es la pedida: al
  * cambiar `date`, hasta que llega la lectura nueva, el rail dibujaba el día nuevo
  * con lo trabajado del anterior, y una tarea con el mismo id salía trabajada a
- * una hora que no era de ese día.
+ * una hora que no era de ese día. El costo es un frame sin nada trabajado: en
+ * ese instante el rail —el de Week al cambiar de día, el de Today al pasar la
+ * medianoche— dibuja todo como proyectado, y `useLateTasks` no ve lo trabajado.
+ * Es mejor que dibujar trabajo de otro día, que es un dato falso.
  */
-/** Una sola instancia: un `[]` nuevo por render rompería los `useMemo` que dependen de `work`. */
-const NO_WORK: DayWork[] = [];
-
 export function useDayWork(date: string): {
   work: DayWork[];
   segundosEnCurso: number;

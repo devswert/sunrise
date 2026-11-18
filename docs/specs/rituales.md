@@ -33,9 +33,13 @@ ni estimado, porque lo que le falta ya es del día donde vive. La excepción es 
 que hoy vive fuera de lo que la vista carga (otra fecha fuera de los últimos 7
 días, o el futuro): cuenta en la portada y no sale en el rail. Las que siguen
 abiertas en el día repasado se proyectan desde el inicio de la jornada, igual que
-en el rail de cualquier día que no es hoy. Un borde: una corrida que arrancó el
-día repasado y **sigue abierta** no dibuja bloque trabajado en el paso 1, porque
-sus segundos todavía no están escritos y los del taxímetro solo se suman en hoy.
+en el rail de cualquier día que no es hoy. Una tarea trabajada ahí entra al
+rail con **el mismo umbral que dibuja un bloque trabajado** (`drawsRealBlock`:
+hora y al menos un minuto redondeado); con unos segundos no entra, en vez de
+salir proyectada en un día que ya no es el suyo. Un borde: una corrida que arrancó
+el día repasado y **sigue abierta** no dibuja bloque trabajado en el paso 1 hasta
+que se para — sus segundos todavía no están escritos, y el rail la dibujaría como
+un bloque de un minuto que crece con el taxímetro de hoy.
 
 Eran tres: "armar el día" y "ver si cabe" se juntaron porque son el mismo gesto
 —se saca algo justamente porque no cabe— y separarlos obligaba a ir y volver para

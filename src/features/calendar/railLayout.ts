@@ -186,7 +186,7 @@ export function buildRail(
     // en el rollup, que agrupan por día y no por hora.
     const realStart = trabajo?.trackedAt != null ? localMinutes(trabajo.trackedAt) : null;
 
-    if (worked > 0 && realStart != null) {
+    if (trabajo != null && drawsRealBlock(trabajo, segundosEnCurso) && realStart != null) {
       reales.push({
         taskId: t.id,
         position: t.position,
@@ -322,6 +322,17 @@ function workedMinutes(w: DayWork | undefined, segundosEnCurso: number): number 
   if (w.running) return Math.max(1, minutes);
   // Un ajuste manual a cero deja una fila sin tiempo: no hay nada que dibujar.
   return Math.max(0, minutes);
+}
+
+/**
+ * Si una fila de lo trabajado dibuja un bloque REAL: tiene hora (`trackedAt`) y
+ * al menos un minuto redondeado. Es la misma condición que usa `buildRail`, y
+ * quien arme la lista de tareas del rail fuera de acá tiene que usar esta y no
+ * una propia: una fila de 20 s no dibuja bloque, y la tarea cae al camino
+ * normal —proyectada o de día completo—.
+ */
+export function drawsRealBlock(w: DayWork, segundosEnCurso = 0): boolean {
+  return w.trackedAt != null && workedMinutes(w, segundosEnCurso) > 0;
 }
 
 /**

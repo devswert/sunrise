@@ -6,6 +6,7 @@ import { DailyPlanningView } from "./DailyPlanningView";
 import { api } from "../../lib/ipc";
 import { shortDate, toISODate, todayISO } from "../../lib/date";
 import { SettingKey, useSettingsStore } from "../../lib/settings";
+import { useTimerStore } from "../timer/timerStore";
 
 // El canvas de jsdom no implementa `getContext`: la llamada real reventaría en
 // cuanto un test aprete el botón del final. Por eso vive en su propio módulo.
@@ -48,31 +49,55 @@ async function recap() {
 }
 
 /**
- * Una corrida real del taxímetro de 10:00 a 10:40 hora local, fechada `date`. Un
- * ajuste a mano no sirve: no tiene hora (`trackedAt` nulo) y no dibuja bloque
- * trabajado. El reloj vuelve a ser el real antes de salir, porque el resto del
- * archivo corre con él.
+ * Mueve el reloj a `date` a las `hour:minute` hora local, corre `fn` y lo deja
+ * en el real antes de salir: el resto del archivo corre con él.
  */
-async function runTimerOn(date: string, taskId: number) {
+async function at(date: string, hour: number, minute: number, fn: () => Promise<unknown>) {
   const [y, m, d] = date.split("-").map(Number);
   vi.useFakeTimers({ toFake: ["Date"] });
   try {
-    vi.setSystemTime(new Date(y, m - 1, d, 10, 0));
-    await api.startTimer(taskId);
-    vi.setSystemTime(new Date(y, m - 1, d, 10, 40));
-    await api.stopTimer();
+    vi.setSystemTime(new Date(y, m - 1, d, hour, minute));
+    await fn();
   } finally {
     vi.useRealTimers();
   }
 }
 
-/** Los bloques trabajados del rail, cuando ya llegaron. */
-function railRealBlocks() {
-  return waitFor(() => {
-    const els = [...document.querySelectorAll<HTMLElement>(".rail__bloque.is-real")];
-    expect(els.length).toBeGreaterThan(0);
-    return els;
+/**
+ * Una corrida real del taxímetro desde las 10:00 hora local de `date`, de 40
+ * minutos salvo que se diga otra cosa. Un ajuste a mano no sirve: no tiene hora
+ * (`trackedAt` nulo) y no dibuja bloque trabajado.
+ */
+async function runTimerOn(date: string, taskId: number, seconds = 40 * 60) {
+  await at(date, 10, 0, () => api.startTimer(taskId));
+  await at(date, 10, 0, async () => {
+    vi.setSystemTime(Date.now() + seconds * 1000);
+    await api.stopTimer();
   });
+}
+
+/**
+ * Los `title` de los bloques del rail —"10:00 AM – 10:40 AM · Tarea · trabajado"—,
+ * que dicen hora, tarea y tipo en el texto que ve quien pasa el mouse.
+ */
+function railBlockTitles(): string[] {
+  const aside = screen.getByRole("complementary", { name: "Agenda del día" });
+  return [...aside.querySelectorAll<HTMLElement>("button[title]")].map((b) => b.title);
+}
+
+/** Los bloques trabajados del rail, cuando ya llegaron. */
+function railWorkedTitles() {
+  return waitFor(() => {
+    const titles = railBlockTitles().filter((t) => t.endsWith(" · trabajado"));
+    expect(titles.length).toBeGreaterThan(0);
+    return titles;
+  });
+}
+
+/** La cifra "trabajado" de la portada del repaso. */
+function workedFigure(): string {
+  const label = screen.getByText("trabajado", { selector: ".cifra__label" });
+  return label.previousElementSibling!.textContent!;
 }
 
 /** El rail de la vista. Se busca adentro para no confundirlo con el repaso ni con la columna del día. */
@@ -103,6 +128,12 @@ async function limpiarDiasPasados() {
  *    montaje. Los casos que dejan una tarea en un día pasado dependen de que ya
  *    haya corrido; aislarlos con `-t` los deja pasar en falso, porque ahí sí se
  *    ejecuta y les manda la tarea al backlog.
+ *
+ * Y una tercera, de los casos del rail: las corridas del taxímetro **no se
+ * borran** al mandar su tarea al backlog, y el rail del paso 1 dibuja lo
+ * trabajado ese día aunque la tarea ya no esté ahí. Un caso que corre el
+ * taxímetro en `hace(2)` deja su bloque en el rail de los que vienen después;
+ * por eso esos casos buscan su propia tarea y no comparan la lista entera.
  */
 describe("DailyPlanningView", () => {
   beforeEach(() => {
@@ -399,14 +430,10 @@ describe("DailyPlanningView", () => {
     mount();
 
     await recap();
-    const realBlocks = await railRealBlocks();
-    expect(realBlocks.map((b) => b.querySelector(".rail__bloque-titulo")!.textContent)).toEqual([
-      "Trabajada antes",
-    ]);
-    expect(realBlocks[0].querySelector(".rail__bloque-hora")!.textContent).toMatch(/^10:00 AM/);
+    expect(await railWorkedTitles()).toEqual(["10:00 AM – 10:40 AM · Trabajada antes · trabajado"]);
   });
 
-  it("lo trabajado ese día sigue en el rail aunque la tarea ya se haya traído a hoy", async () => {
+  it("traer a hoy una tarea trabajada ese día la deja en el rail y no cambia lo trabajado", async () => {
     // El tiempo es del día en que corrió el taxímetro, no del día donde vive la
     // tarea. Sin esto, "Traer a hoy" borraba el bloque y la portada lo seguía
     // contando. Y en ese día solo se dibuja lo trabajado: lo que le falta es de hoy.
@@ -418,20 +445,103 @@ describe("DailyPlanningView", () => {
       estimatedMinutes: 120,
     });
     await runTimerOn(hace(2), task.id);
+    const view = mount();
+
+    await recap();
+    const block = "10:00 AM – 10:40 AM · Traída después · trabajado";
+    // `toContain` y no la lista exacta: los casos anteriores dejaron corridas ese
+    // mismo día, y sus tareas —ya en el backlog— también salen, por la misma regla.
+    expect(await railWorkedTitles()).toContain(block);
+    const before = workedFigure();
+
+    await userEvent.click(screen.getByRole("button", { name: "Traer Traída después a hoy" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Traer Traída después a hoy" })).toBeNull(),
+    );
+
+    // Se vuelve a abrir el ritual: recién montado lee todo de la base, y sin eso
+    // la aserción podía pasar en el frame anterior a la relectura.
+    view.unmount();
+    mount();
+    await recap();
+    await waitFor(() => expect(railBlockTitles()).toContain(block));
+    expect(railBlockTitles().filter((t) => t.includes("Traída después"))).toEqual([block]);
+    await waitFor(() => expect(workedFigure()).toBe(before));
+  });
+
+  it("una corrida de segundos no deja proyectada en el día repasado la tarea que se trajo a hoy", async () => {
+    // El rail redondea a minutos: 20 s no dibujan bloque trabajado, y sin el
+    // mismo umbral la tarea caía al camino normal y salía proyectada media hora.
+    await limpiarDiasPasados();
+    await api.createTask({ title: "Ancla breve", scheduledDate: hace(2) });
+    const task = await api.createTask({ title: "Apenas tocada", scheduledDate: hace(2) });
+    await runTimerOn(hace(2), task.id, 20);
     await api.moveTask(task.id, todayISO(), 0);
     mount();
 
     await recap();
-    const realBlocks = await railRealBlocks();
-    // `toContain` y no la lista exacta: el caso anterior dejó una corrida ese
-    // mismo día, y su tarea —ya en el backlog— también sale, por la misma regla.
-    expect(realBlocks.map((b) => b.querySelector(".rail__bloque-titulo")!.textContent)).toContain(
-      "Traída después",
+    await waitFor(() =>
+      expect(railBlockTitles().some((t) => t.includes("Ancla breve"))).toBe(true),
     );
-    const projectedTitles = [...document.querySelectorAll(".rail__bloque.is-proyectado")].map(
-      (b) => b.querySelector(".rail__bloque-titulo")!.textContent,
-    );
-    expect(projectedTitles).not.toContain("Traída después");
+    expect(railBlockTitles().filter((t) => t.includes("Apenas tocada"))).toEqual([]);
+  });
+
+  it("una corrida que arrancó el día repasado y sigue abierta no dibuja bloque trabajado ahí", async () => {
+    // Sus segundos todavía no están escritos: sin esto salía un bloque de un
+    // minuto a la hora del play, que además crecía con el taxímetro de hoy.
+    await limpiarDiasPasados();
+    const task = await api.createTask({ title: "Sigue corriendo", scheduledDate: hace(3) });
+    await at(hace(3), 10, 0, () => api.startTimer(task.id));
+    try {
+      mount();
+
+      await recap();
+      await waitFor(() =>
+        expect(railBlockTitles().some((t) => t.includes("Sigue corriendo"))).toBe(true),
+      );
+      expect(railBlockTitles().filter((t) => t.includes("Sigue corriendo · trabajado"))).toEqual(
+        [],
+      );
+    } finally {
+      // Se cierra ese mismo día: abierta, el próximo `startTimer` la cerraría
+      // con días de segundos.
+      await at(hace(3), 11, 0, () => api.stopTimer());
+    }
+  });
+
+  it("con el taxímetro corriendo hoy, el rail del paso 1 no lo suma y el del paso 2 sí", async () => {
+    // La misma tarea se trabajó el día repasado y sigue corriendo hoy. En el
+    // repaso su bloque es lo de ese día; en el paso 2 crece con la corrida.
+    await limpiarDiasPasados();
+    await api.createTask({ title: "Ancla en curso", scheduledDate: hace(2) });
+    const task = await api.createTask({ title: "En curso hoy", scheduledDate: hace(2) });
+    await runTimerOn(hace(2), task.id);
+    await api.moveTask(task.id, todayISO(), 0);
+    const active = await api.startTimer(task.id);
+    // Una hora corriendo: el store es el que alimenta `segundosEnCurso`.
+    useTimerStore.setState({
+      active: { ...active, startedAt: new Date(Date.now() - 3600 * 1000).toISOString() },
+    });
+    try {
+      mount();
+
+      await recap();
+      await waitFor(() =>
+        expect(railBlockTitles().filter((t) => t.includes("En curso hoy"))).toEqual([
+          "10:00 AM – 10:40 AM · En curso hoy · trabajado",
+        ]),
+      );
+
+      await goToToday();
+      await waitFor(() => {
+        const today = railBlockTitles().filter((t) => t.includes("En curso hoy · trabajado"));
+        expect(today).toHaveLength(1);
+        expect(today[0]).not.toMatch(/^10:00 AM – 10:40 AM/);
+      });
+    } finally {
+      useTimerStore.setState({ active: null, elapsed: 0 });
+      await api.stopTimer();
+    }
   });
 
   it("sin día anterior, el rail del paso 1 muestra hoy", async () => {
@@ -464,8 +574,8 @@ describe("DailyPlanningView", () => {
     await recap();
     await userEvent.click(await rail().findByText("Reunión vieja"));
 
-    const detalle = await screen.findByRole("dialog", { name: "Detalle de tarea" });
-    expect(within(detalle).getByDisplayValue("Reunión vieja")).toBeInTheDocument();
+    const detail = await screen.findByRole("dialog", { name: "Detalle de tarea" });
+    expect(within(detail).getByDisplayValue("Reunión vieja")).toBeInTheDocument();
   });
 
   it("terminar el ritual marca el día, tira confeti y vuelve a la semana", async () => {
