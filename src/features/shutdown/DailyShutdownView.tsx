@@ -6,6 +6,7 @@ import type { LogDay } from "../../lib/types";
 import { dateLabel, weekdayLabel } from "../../lib/date";
 import { formatMinutes } from "../../lib/capacity";
 import { groupBy } from "../../lib/segmentos";
+import { channelLabel } from "../../lib/channelLabel";
 import { useToday } from "../../lib/day";
 import { useAppStore } from "../../lib/store";
 import { useBoard } from "../tasks/useBoard";
@@ -218,7 +219,7 @@ export function DailyShutdownView() {
                       <div className="hitos__caja">
                         <div className="hitos__fila">
                           <div className="hitos__cuerpo">
-                            {ch && <span className="hitos__channel">#{ch.name}</span>}
+                            {ch && <span className="hitos__channel">{channelLabel(ch.name)}</span>}
                             <button
                               className="hitos__titulo hitos__link"
                               onClick={() => setSelectedId(task.id)}
@@ -275,7 +276,7 @@ export function DailyShutdownView() {
                       />
                       <div className="hitos__fila">
                         <div className="hitos__cuerpo">
-                          {ch && <span className="hitos__channel">#{ch.name}</span>}
+                          {ch && <span className="hitos__channel">{channelLabel(ch.name)}</span>}
                           <button
                             className="hitos__titulo hitos__link"
                             onClick={() => setSelectedId(task.id)}

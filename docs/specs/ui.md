@@ -200,6 +200,17 @@ para lo que avisa. Todo botón de acción lleva **su icono** además del texto.
 que se reconoce de reojo en una lista; un texto de color con 24 colores en tono medio se
 lee como texto raro.
 
+**El `#` lo pone la app, una sola vez, y la etiqueta sale de `lib/channelLabel.ts`** (#9).
+Con channel, el texto `#nombre` (`channelLabel`); sin channel, solo el ícono `#` tenue, que
+es lo que hace la card (`TaskCardContent`). Nunca los dos juntos: el chip que dibujaba el
+ícono **y** el texto se leía "# #nombre". Los selectores siguen la regla de
+`channelOptions` —el numeral lo llevan los channels, no los contextos—, y para eso está
+`categoryLabel`. Los rótulos que no son chip (la leyenda del donut, la columna del backlog,
+el valor del filtro) van con `bareName`, sin numeral. **Crear y renombrar quitan los `#`
+del comienzo** (`repo.rs`, `mockDb.ts` y el campo de Configs), pero los nombres guardados
+antes siguen con el suyo: por eso mostrar también los tolera, y no hace falta migración. Un
+chip nuevo que arme el `#` a mano vuelve a abrir el bug.
+
 ## Componentes y patrones
 
 **Los links salen al navegador del sistema, siempre.** Dentro del webview un

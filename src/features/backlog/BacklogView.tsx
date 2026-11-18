@@ -8,6 +8,7 @@ import { PLAIN_INPUT } from "../../components/plainInput";
 import { isoWeekId, shortDate } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
 import { groupTasks, looseLabel } from "./grouping";
+import { bareName } from "../../lib/channelLabel";
 import { PriorityFilter } from "./PriorityFilter";
 import { filterByPriority } from "../tasks/priority";
 import { SettingKey, useGroupBy, usePrioritiesOn } from "../../lib/settings";
@@ -175,7 +176,7 @@ export function BacklogView() {
                     style={{ background: `var(--${g.folder.color})` }}
                   />
                 )}
-                {g.folder?.name ?? looseLabel(level)}
+                {g.folder ? bareName(g.folder.name) : looseLabel(level)}
               </span>
               {/* Cuántas tiene, en el lugar donde una columna de día lleva su
                * fecha. Con las columnas lado a lado es lo que dice de un vistazo

@@ -13,6 +13,7 @@ import {
 } from "../../lib/date";
 import { formatMinutes } from "../../lib/capacity";
 import { groupBy } from "../../lib/segmentos";
+import { channelLabel } from "../../lib/channelLabel";
 import { useAppStore } from "../../lib/store";
 import { useToday } from "../../lib/day";
 import { useTimer } from "../timer/useTimer";
@@ -158,7 +159,9 @@ export function DailyHighlightsView() {
                               style={ch ? { background: `var(--${ch.color}-ink)` } : undefined}
                             />
                             <button className="hitos__cuerpo" onClick={() => setAbierta(task)}>
-                              {ch && <span className="hitos__channel">#{ch.name}</span>}
+                              {ch && (
+                                <span className="hitos__channel">{channelLabel(ch.name)}</span>
+                              )}
                               <span className="hitos__titulo">{task.title}</span>
                               {note && <span className="hitos__nota">{note}</span>}
                             </button>

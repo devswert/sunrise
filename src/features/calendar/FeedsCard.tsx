@@ -3,6 +3,7 @@ import { Plus, RefreshCw, Trash2, TriangleAlert } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { CalendarFeed, Category } from "../../lib/types";
 import { chipVarsForColor } from "../tasks/chipVars";
+import { channelOptions } from "../tasks/channelOptions";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { Popover } from "../../components/Popover";
 import { Spinner } from "../../components/Spinner";
@@ -47,16 +48,7 @@ export function FeedsCard({ categories }: Props) {
     if (!sincronizando) void load();
   }, [sincronizando, load]);
 
-  const opcionesCanal = useMemo<SearchOption[]>(() => {
-    const out: SearchOption[] = [];
-    for (const ctx of categories.filter((c) => c.parentId === null)) {
-      out.push({ value: String(ctx.id), label: ctx.name, color: ctx.color });
-      for (const ch of categories.filter((c) => c.parentId === ctx.id)) {
-        out.push({ value: String(ch.id), label: `#${ch.name}`, hint: ctx.name, color: ch.color });
-      }
-    }
-    return out;
-  }, [categories]);
+  const opcionesCanal = useMemo(() => channelOptions(categories), [categories]);
 
   return (
     <section className="set-card" id="set-calendarios" data-section="calendarios">

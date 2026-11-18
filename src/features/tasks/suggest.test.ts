@@ -171,6 +171,19 @@ describe("stripChannelTag · la etiqueta sale del título", () => {
   });
 });
 
+// #9: un channel creado antes de que crear quitara el `#` sigue guardado con él.
+describe("un nombre guardado con # se reconoce igual", () => {
+  const viejo = cat(9, "#infra", 3);
+
+  it("#infra en el título sugiere el canal", () => {
+    expect(suggestCategoryId("Subir el certificado #infra", [viejo])).toBe(9);
+  });
+
+  it("y la etiqueta sale del título", () => {
+    expect(stripChannelTag("Subir el certificado #infra", viejo)).toBe("Subir el certificado");
+  });
+});
+
 // --- Las reglas configurables (Configs → Sugerencias) ------------------------
 describe("las reglas las escribe el usuario, y se comparan con tolerancia", () => {
   const reglasTiempo = [

@@ -6,6 +6,7 @@
  * el mismo channel del mismo color.
  */
 import type { Category, RollupCell } from "./types";
+import { bareName } from "./channelLabel";
 
 /** Un trozo de barra o de donut: una categoría con su tiempo. */
 export interface Segmento {
@@ -32,7 +33,7 @@ function etiquetaDe(id: number | null, cats: Map<number, Category>): Omit<Segmen
   // Una categoría archivada o borrada deja horas huérfanas: se muestran igual,
   // porque el tiempo ocurrió. Perderlas dejaría el donut sin sumar el total.
   if (!c) return { key: `cat-${id}`, name: "Sin nombre", color: "var(--faint)" };
-  return { key: `cat-${id}`, name: c.name, color: `var(--${c.color})` };
+  return { key: `cat-${id}`, name: bareName(c.name), color: `var(--${c.color})` };
 }
 
 /**

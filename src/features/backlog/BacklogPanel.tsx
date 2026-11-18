@@ -9,6 +9,7 @@ import { filterByChannel, groupTasks, looseLabel } from "./grouping";
 import { PanelFilters } from "./PanelFilters";
 import { BacklogSort, filterByPriority, sortTasks } from "../tasks/priority";
 import { channelOptions } from "../tasks/channelOptions";
+import { bareName } from "../../lib/channelLabel";
 import { SettingKey, useGroupBy, usePrioritiesOn } from "../../lib/settings";
 import type { Priority } from "../../lib/enums";
 import { GroupBy } from "../../lib/enums";
@@ -245,7 +246,7 @@ export function BacklogPanel({
                     style={{ background: `var(--${g.folder.color})` }}
                   />
                 )}
-                {g.folder?.name ?? looseLabel(level)}
+                {g.folder ? bareName(g.folder.name) : looseLabel(level)}
               </div>
               <div className="backlog-panel__list">{g.items.map((t) => card(t))}</div>
             </div>

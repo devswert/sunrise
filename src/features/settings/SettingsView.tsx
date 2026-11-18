@@ -39,6 +39,7 @@ import { minutesFromTime } from "../calendar/railLayout";
 import { PLAIN_INPUT } from "../../components/plainInput";
 import { useProfile } from "../../lib/profile";
 import { SuggestionsCard } from "../tasks/SuggestionsCard";
+import { bareName } from "../../lib/channelLabel";
 import {
   SHORTCUT_ACTIONS,
   type ShortcutId,
@@ -805,7 +806,8 @@ function AddRow({
   const creating = useRef(false);
 
   async function submit() {
-    const n = name.trim();
+    // Sin los `#` del comienzo: el numeral lo pone la app al mostrarlo (#9).
+    const n = bareName(name);
     if (!n) return onCancel();
     if (creating.current) return;
     creating.current = true;
@@ -984,9 +986,11 @@ function ChannelsCard() {
                     style={{ color: `var(--${p.color}-ink)` }}
                     defaultValue={p.name}
                     onBlur={(e) => {
-                      if (e.target.value.trim() && e.target.value !== p.name) {
-                        rename(p, e.target.value.trim());
-                      }
+                      const v = bareName(e.target.value);
+                      // El campo no es controlado: sin esto seguiría mostrando el `#`, o un
+                      // "##" que no se guardó.
+                      e.target.value = v || p.name;
+                      if (v && v !== p.name) rename(p, v);
                     }}
                     aria-label={`Nombre de ${p.name}`}
                     {...PLAIN_INPUT}
@@ -1037,9 +1041,11 @@ function ChannelsCard() {
                         style={{ color: `var(--${ch.color}-ink)` }}
                         defaultValue={ch.name}
                         onBlur={(e) => {
-                          if (e.target.value.trim() && e.target.value !== ch.name) {
-                            rename(ch, e.target.value.trim());
-                          }
+                          const v = bareName(e.target.value);
+                          // El campo no es controlado: sin esto seguiría mostrando el `#`, o un
+                          // "##" que no se guardó.
+                          e.target.value = v || ch.name;
+                          if (v && v !== ch.name) rename(ch, v);
                         }}
                         aria-label={`Nombre de ${ch.name}`}
                         {...PLAIN_INPUT}

@@ -18,6 +18,7 @@ import { useAppStore } from "../../lib/store";
 import { Popover } from "../../components/Popover";
 import { SearchSelect } from "../../components/SearchSelect";
 import { ObjectiveModal } from "../objectives/ObjectiveModal";
+import { channelLabel } from "../../lib/channelLabel";
 import {
   historyByWeek,
   streak,
@@ -316,7 +317,9 @@ export function WeeklyPlanningView() {
                     <button className="plan-fila__title-btn" onClick={() => setAbierto(o.id)}>
                       {o.title}
                     </button>
-                    {channel && <span className="plan-fila__channel">{`#${channel.name}`}</span>}
+                    {channel && (
+                      <span className="plan-fila__channel">{channelLabel(channel.name)}</span>
+                    )}
                     {/* La barra va en la fila y con ancho fijo: apiladas en la misma
                       columna, los avances se comparan sin leer un solo número. */}
                     <div

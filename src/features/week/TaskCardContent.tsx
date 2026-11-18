@@ -5,6 +5,7 @@ import { chipVars } from "../tasks/chipVars";
 import { formatMinutes } from "../../lib/capacity";
 import { SearchSelect } from "../../components/SearchSelect";
 import { channelOptions } from "../tasks/channelOptions";
+import { channelLabel } from "../../lib/channelLabel";
 import { PriorityTag } from "../tasks/PriorityTag";
 import { TimePicker } from "../../components/TimePicker";
 import { Popover } from "../../components/Popover";
@@ -194,7 +195,7 @@ export function TaskCardContent({
                 setPicker((p) => (p === "channel" ? null : "channel"));
               }}
             >
-              {category ? `#${category.name}` : <Hash size={12} />}
+              {category ? channelLabel(category.name) : <Hash size={12} />}
             </button>
             {picker === "channel" && (
               <Popover anchorRef={tagRef} align="right" onClose={() => setPicker(null)}>

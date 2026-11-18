@@ -7,6 +7,7 @@ import type { Category, Objective } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { channelOptions } from "./channelOptions";
+import { categoryLabel } from "../../lib/channelLabel";
 import { appendResources, harvestLinks } from "./resources";
 import { Popover } from "../../components/Popover";
 import { es } from "date-fns/locale";
@@ -362,12 +363,13 @@ export function AddTaskModal() {
               style={chipVarsForColor(selectedCat?.color)}
               onClick={() => toggle("channel")}
             >
-              <Hash size={14} />{" "}
-              {selectedCat
-                ? selectedCat.parentId != null
-                  ? `#${selectedCat.name}`
-                  : selectedCat.name
-                : "canal"}
+              {selectedCat ? (
+                categoryLabel(selectedCat)
+              ) : (
+                <>
+                  <Hash size={14} /> canal
+                </>
+              )}
             </button>
             {picker === "channel" && (
               <Popover anchorRef={chanRef} onClose={() => setPicker(null)}>

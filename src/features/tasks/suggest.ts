@@ -1,5 +1,6 @@
 import { TIME_PRESETS } from "../../lib/capacity";
 import type { Category, Objective } from "../../lib/types";
+import { bareName } from "../../lib/channelLabel";
 import { anyMatches, sameWord, normalize } from "./matching";
 import {
   DEFAULT_TIME_RULES,
@@ -174,7 +175,7 @@ export function suggestCategoryId(
 ): number | undefined {
   const t = normalize(title);
 
-  const tagged = categories.find((c) => nameAppears(t, normalize(c.name), true));
+  const tagged = categories.find((c) => nameAppears(t, normalize(bareName(c.name)), true));
   if (tagged) return tagged.id;
 
   const words = comparableWords(title);
@@ -185,7 +186,7 @@ export function suggestCategoryId(
 
   let best: Category | undefined;
   for (const c of categories) {
-    const name = normalize(c.name);
+    const name = normalize(bareName(c.name));
     if (name.length < 3) continue;
     // Un nombre de una sola palabra se compara con tolerancia, igual que las
     // reglas; uno compuesto (`docs-api`, `Weekly review`) se busca literal, que
@@ -193,7 +194,7 @@ export function suggestCategoryId(
     const hit = /^[a-z0-9]+$/.test(name)
       ? words.some((w) => sameWord(w, name))
       : nameAppears(t, name);
-    if (hit && (!best || name.length > normalize(best.name).length)) best = c;
+    if (hit && (!best || name.length > normalize(bareName(best.name)).length)) best = c;
   }
   return best?.id;
 }
@@ -226,7 +227,7 @@ function nameAppears(titleNorm: string, name: string, requireTag = false): boole
  */
 export function stripChannelTag(title: string, category: Category | null | undefined): string {
   if (!category) return title;
-  const escaped = category.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = bareName(category.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Sobre el título crudo y no sobre el normalizado: lo que se devuelve es el
   // texto tal cual lo escribió el usuario, menos la etiqueta.
   const re = new RegExp(`(?:^|\\s)#${escaped}(?![\\p{L}\\p{N}_-])`, "iu");

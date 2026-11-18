@@ -7,6 +7,7 @@ import { Popover } from "../../components/Popover";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { BacklogSort } from "../tasks/priority";
 import { PriorityLevels } from "./PriorityFilter";
+import { bareName } from "../../lib/channelLabel";
 
 interface Props {
   levels: Set<Priority>;
@@ -112,7 +113,7 @@ export function PanelFilters({
             <section className="bfilters__sec">
               <span className="bfilters__label">
                 Canal
-                {selected && <span className="bfilters__value">{selected.name}</span>}
+                {selected && <span className="bfilters__value">{bareName(selected.name)}</span>}
               </span>
               <SearchSelect
                 options={options}
