@@ -57,7 +57,8 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const dataVersion = useAppStore((s) => s.dataVersion);
   const quitOpen = useAppStore((s) => s.quitOpen);
   const navigate = useNavigate();
-  const running = timer.active?.taskId === task.id;
+  const running = timer.isRunning(task.id);
+  const runTotal = timer.runTotalOf(task.id);
   /**
    * Una tarea ignorada (§4.12) no es trabajo: **el detalle esconde todo lo que
    * la trataría como tal** —completar, el play y los dos ajustes de tiempo—.
@@ -72,7 +73,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   // sea lo de hoy: el mismo campo significaba dos cosas, y darle play a una
   // tarea arrastrada hacía *bajar* el número. Lo de "solo hoy" vive en el
   // taxímetro, que es el contador de la sesión.
-  const liveSeconds = task.actualSeconds + (running ? timer.runTotal : 0);
+  const liveSeconds = task.actualSeconds + timer.runTotalOf(task.id);
   const dialogRef = useRef<HTMLDivElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
@@ -96,10 +97,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
     api.listTimeEntries(task.id).then(setEntries);
   }, [task.id, dataVersion]);
 
-  const porDia = useMemo(
-    () => timeByDay(entries, running ? timer.runTotal : 0),
-    [entries, running, timer.runTotal],
-  );
+  const porDia = useMemo(() => timeByDay(entries, runTotal), [entries, runTotal]);
 
   // La tarea llega fresca desde el board: re-sincroniza los campos que no se
   // estén editando en este momento (planned, fecha, estado…).
@@ -571,7 +569,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                   aria-label={running ? "Pausar" : "Iniciar"}
                   onClick={async () => {
                     if (running) {
-                      await timer.stop();
+                      await timer.stop(task.id);
                       return;
                     }
                     // Al arrancar desde el detalle, pasamos a trabajar: cierra el

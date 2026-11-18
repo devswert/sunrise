@@ -42,7 +42,7 @@ Nombres en español y descriptivos de la regla, no del método
 cubierto: eventos de creación y movimiento, degradación selectiva al backlog,
 acumulación
 del timer, supervivencia del ajuste manual, contador del día que ignora ayer, un
-solo timer activo, completar detiene el timer y no detiene el de otra tarea,
+timer abierto por tarea (timers en paralelo), completar detiene solo su timer,
 `focus_queue`, backlog, síntesis del sonido.
 
 ## Front: `mockDb.ts` no es opcional

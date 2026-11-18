@@ -356,6 +356,17 @@ describe("armarRail · lo que ya se trabajó", () => {
     expect(bloqueDe(r, 1)).toMatchObject({ startMin: 540, endMin: 565, kind: "REAL" });
   });
 
+  it("con timers en paralelo cada bloque crece con su propia corrida", () => {
+    // Con un solo número, el bloque de la segunda crecía con la corrida de la
+    // primera.
+    const r = buildRail([task({ id: 1 }), task({ id: 2 })], "09:00", "18:00", {
+      work: [work(1, "09:00", 0, true), work(2, "12:00", 0, true)],
+      segundosEnCurso: (taskId) => (taskId === 1 ? 25 * 60 : 10 * 60),
+    });
+    expect(bloqueDe(r, 1)).toMatchObject({ startMin: 540, endMin: 565, kind: "REAL" });
+    expect(bloqueDe(r, 2)).toMatchObject({ startMin: 720, endMin: 730, kind: "REAL" });
+  });
+
   it("sin corrida en curso, los segundos en vivo no se le suman a nadie", () => {
     const r = buildRail([task({ id: 1 })], "09:00", "18:00", {
       work: [work(1, "09:00", 30)],

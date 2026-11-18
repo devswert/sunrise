@@ -130,7 +130,7 @@ export function FocusView() {
   /** Completa la actual, la manda al final del día y avanza. */
   const complete = useCallback(async () => {
     if (!current) return;
-    if (timer.active?.taskId === current.id) await timer.stop();
+    if (timer.isRunning(current.id)) await timer.stop(current.id);
 
     const eraLaUltima = queue.length === 1;
     const lastPos = queue.reduce((m, t) => Math.max(m, t.position), 0);
@@ -222,10 +222,10 @@ export function FocusView() {
     );
   }
 
-  const running = timer.active?.taskId === current.id;
+  const running = timer.isRunning(current.id);
   // Acumulado de la tarea + lo que va de la corrida: el mismo criterio que la
   // tarjeta y el modal. "Solo hoy" queda en el taxímetro.
-  const elapsed = current.actualSeconds + (running ? timer.runTotal : 0);
+  const elapsed = current.actualSeconds + timer.runTotalOf(current.id);
   const planned = current.estimatedMinutes;
   const channel =
     current.categoryId != null ? categories.find((c) => c.id === current.categoryId) : null;
@@ -335,7 +335,7 @@ export function FocusView() {
             <button
               className={`focus__play${running ? " is-running" : ""}`}
               aria-label={running ? "Pausar" : "Iniciar"}
-              onClick={() => (running ? timer.stop() : timer.start(current.id))}
+              onClick={() => (running ? timer.stop(current.id) : timer.start(current.id))}
             >
               {running ? <Pause size={16} /> : <Play size={16} />}
             </button>

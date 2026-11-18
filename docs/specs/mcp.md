@@ -91,8 +91,8 @@ se pruebe en memoria.
 
 **Fuera, a propósito:**
 
-- **Completar, el timer y borrar.** Por I5, completar la tarea activa detiene el
-  timer en la base, y ni `timerStore`, ni el taxímetro, ni `bell.rs` se enterarían:
+- **Completar, el timer y borrar.** Por I5, completar una tarea detiene **su** timer en
+  la base (solo el suyo: los que corren en paralelo siguen), y ni `timerStore`, ni el taxímetro, ni `bell.rs` se enterarían:
   el aviso de §5 solo invalida vistas.
 - **Editar o mover las tareas de calendario.** Se leen; su dueño es el reconciler,
   que reescribiría la edición en la próxima sincronización.

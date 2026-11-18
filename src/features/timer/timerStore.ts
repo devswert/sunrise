@@ -156,14 +156,59 @@ export function runSeconds(startedAt: string, ahora: number = Date.now()): numbe
   return Math.max(0, Math.round((ahora - from) / 1000));
 }
 
-interface TimerState {
+/** Opciones de `start`. */
+export interface StartOptions {
+  /**
+   * `true` arranca **sin pausar** los demás timers (play en paralelo, #17).
+   * Por defecto es el play clásico: pausa todo lo que corre y arranca esta.
+   */
+  parallel?: boolean;
+}
+
+/**
+ * Lo que se deriva de la lista de timers abiertos. Sale **siempre** de
+ * `derive`, para que `actives`, `elapsedById`, `active` y `elapsed` no puedan
+ * quedar desalineados entre sí.
+ */
+export interface TimersSnapshot {
+  actives: ActiveTimer[];
+  elapsedById: Record<number, number>;
   active: ActiveTimer | null;
+  elapsed: number;
+}
+
+export function derive(actives: ActiveTimer[], now: number = Date.now()): TimersSnapshot {
+  const elapsedById: Record<number, number> = {};
+  for (const a of actives) elapsedById[a.taskId] = a.baseSeconds + runSeconds(a.startedAt, now);
+  const active = actives[0] ?? null;
+  return {
+    actives,
+    elapsedById,
+    active,
+    elapsed: active ? elapsedById[active.taskId] : 0,
+  };
+}
+
+export interface TimerState {
+  /**
+   * Los timers en curso, **del más antiguo al más nuevo** (como los devuelve
+   * `get_active_timers`). A lo más uno por tarea (I4).
+   */
+  actives: ActiveTimer[];
+  /** Lo trabajado **hoy** por cada tarea que corre (`baseSeconds` + `runSeconds`). */
+  elapsedById: Record<number, number>;
+  /**
+   * **Compat**: el primero de `actives`, o `null`. Es "el" timer de las vistas
+   * que todavía muestran uno solo; con un solo timer corriendo es el de siempre.
+   */
+  active: ActiveTimer | null;
+  /** **Compat**: lo de hoy de `active` (`elapsedById[active.taskId]`), o 0. */
   elapsed: number;
   last: LastTask | null;
   /**
    * Si ya se leyó el timer de la base **al menos una vez** en esta ventana.
    *
-   * Existe para una sola cosa, y es de peso: **`active` arranca en `null` porque
+   * Existe para una sola cosa, y es de peso: **`actives` arranca vacío porque
    * vive en la base**, mientras que `last` sí se lee de `localStorage` de forma
    * síncrona. Sin esta bandera, un timer *corriendo* se ve como "no hay nada que
    * mostrar" durante el primer render, y quien decide la visibilidad del
@@ -172,14 +217,35 @@ interface TimerState {
   loaded: boolean;
 
   refresh: () => Promise<void>;
-  start: (taskId: number) => Promise<void>;
-  stop: () => Promise<[number, number] | null>;
+  /**
+   * Arranca el timer de `taskId`. Por defecto es el play clásico (pausa todos
+   * y arranca este); con `{ parallel: true }` lo suma sin tocar los demás. Si la
+   * tarea ya corre, no cambia nada.
+   */
+  start: (taskId: number, opts?: StartOptions) => Promise<void>;
+  /**
+   * Pausa el timer de `taskId`; **sin id, el de `active`** (compat con las
+   * vistas de un solo timer). Los demás siguen. Devuelve `[taskId, seconds]` de
+   * lo registrado, o `null` si no corría.
+   */
+  stop: (taskId?: number) => Promise<[number, number] | null>;
+  /** Pausa todos los timers. Un `[taskId, seconds]` por cada uno. */
+  stopAll: () => Promise<Array<[number, number]>>;
+  /** Si corre la pausa; si no, play **clásico**. */
   toggle: (taskId: number) => Promise<void>;
+  /** Si el timer de esa tarea está corriendo (lectura puntual; en un render usa `selectIsRunning`). */
+  isRunning: (taskId: number) => boolean;
   dismissLast: () => void;
   tick: () => void;
   /** Completa la tarea del taxímetro y deja lista la siguiente del día. */
   completeAndAdvance: () => Promise<void>;
 }
+
+/** Selector para suscribirse a "¿corre esta tarea?" desde un componente. */
+export const selectIsRunning =
+  (taskId: number) =>
+  (s: TimerState): boolean =>
+    s.actives.some((a) => a.taskId === taskId);
 
 /**
  * Estado del timer respaldado en la DB (`time_entries`), compartido por toda la
@@ -187,20 +253,23 @@ interface TimerState {
  * card, el Focus y el taxímetro vean siempre lo mismo: los eventos `storage`
  * no se disparan en el documento que los origina, así que un hook por
  * componente nunca se enteraría de los cambios locales.
+ *
+ * **Varios timers pueden correr a la vez** (#17), uno por tarea. Después de cada
+ * mutación la lista se **relee** de la base en vez de editarse a mano: un `set`
+ * que borrara `active` dejaría fuera de la vista a los que siguen corriendo.
  */
 export const useTimerStore = create<TimerState>((set, get) => ({
-  active: null,
-  elapsed: 0,
+  ...derive([]),
   last: readLast(),
   loaded: false,
 
   refresh: async () => {
-    const active = await api.getActiveTimer();
+    const actives = await api.getActiveTimers();
     let last = readLast();
 
     // Si hay una tarea pausada en el widget, re-léela: su título o su tiempo
     // planned pueden haber cambiado desde que se guardó el snapshot.
-    if (!active && last) {
+    if (actives.length === 0 && last) {
       const fresh = await api.getTask(last.taskId);
       if (!fresh) {
         // La tarea ya no está: la borraron en la otra ventana, o se restauró un
@@ -224,48 +293,74 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       persistLast(last);
     }
 
-    if (active) {
-      set({
-        active,
-        last,
-        elapsed: active.baseSeconds + runSeconds(active.startedAt),
-        loaded: true,
-      });
-    } else {
-      set({ active: null, last, elapsed: 0, loaded: true });
-    }
+    set({ ...derive(actives), last, loaded: true });
   },
 
-  start: async (taskId) => {
-    const active = await api.startTimer(taskId);
+  start: async (taskId, opts) => {
+    const started = await api.startTimer(taskId, opts?.parallel ?? false);
+    const actives = await api.getActiveTimers();
     const last: LastTask = {
-      taskId: active.taskId,
-      title: active.title,
-      estimatedMinutes: active.estimatedMinutes,
-      seconds: active.baseSeconds,
+      taskId: started.taskId,
+      title: started.title,
+      estimatedMinutes: started.estimatedMinutes,
+      seconds: started.baseSeconds,
     };
     writeLast(last);
-    set({ active, last, elapsed: active.baseSeconds });
+    set({ ...derive(actives), last });
     useAppStore.getState().bumpData();
     broadcast();
   },
 
-  stop: async () => {
-    const prev = get().active;
-    const res = await api.stopTimer();
+  stop: async (taskId) => {
+    // `typeof`: si alguien pasa `stop` directo a un `onClick`, el primer
+    // argumento es el evento del mouse, no un id.
+    // Sin id se pausa el primero **de la base**, no el de este store: si la
+    // ventana está desfasada (llegó tarde el aviso de un play en la otra), el
+    // id local cerraría nada y el clic se perdería.
+    const id = typeof taskId === "number" ? taskId : (await api.getActiveTimers())[0]?.taskId;
+    const prev = get().actives.find((a) => a.taskId === id) ?? null;
+    const res = id == null ? null : await api.stopTimer(id);
+    const actives = await api.getActiveTimers();
     if (res) {
-      const [taskId, seconds] = res;
+      const [stoppedId, seconds] = res;
       const guardada = readLast();
+      const sameSaved = guardada?.taskId === stoppedId ? guardada : null;
       const last: LastTask = {
-        taskId,
-        title: prev?.title ?? guardada?.title ?? "",
-        estimatedMinutes: prev?.estimatedMinutes ?? guardada?.estimatedMinutes ?? null,
+        taskId: stoppedId,
+        title: prev?.title ?? sameSaved?.title ?? "",
+        estimatedMinutes: prev?.estimatedMinutes ?? sameSaved?.estimatedMinutes ?? null,
         seconds: (prev?.baseSeconds ?? 0) + seconds,
       };
       writeLast(last);
-      set({ active: null, last, elapsed: 0 });
+      set({ ...derive(actives), last });
     } else {
-      set({ active: null, elapsed: 0 });
+      set(derive(actives));
+    }
+    useAppStore.getState().bumpData();
+    broadcast();
+    return res;
+  },
+
+  stopAll: async () => {
+    const prev = get().actives;
+    const res = await api.stopAllTimers();
+    // La pausada que queda en el taxímetro es la que mostraba: la primera.
+    const first = res[0];
+    if (first) {
+      const [stoppedId, seconds] = first;
+      const p = prev.find((a) => a.taskId === stoppedId);
+      const saved = readLast();
+      const last: LastTask = {
+        taskId: stoppedId,
+        title: p?.title ?? (saved?.taskId === stoppedId ? saved.title : ""),
+        estimatedMinutes:
+          p?.estimatedMinutes ?? (saved?.taskId === stoppedId ? saved.estimatedMinutes : null),
+        seconds: (p?.baseSeconds ?? 0) + seconds,
+      };
+      writeLast(last);
+      set({ ...derive(await api.getActiveTimers()), last });
+    } else {
+      set(derive(await api.getActiveTimers()));
     }
     useAppStore.getState().bumpData();
     broadcast();
@@ -273,13 +368,15 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   },
 
   toggle: async (taskId) => {
-    const { active, start, stop } = get();
-    if (active?.taskId === taskId) {
-      await stop();
+    const { isRunning, start, stop } = get();
+    if (isRunning(taskId)) {
+      await stop(taskId);
     } else {
       await start(taskId);
     }
   },
+
+  isRunning: (taskId) => selectIsRunning(taskId)(get()),
 
   dismissLast: () => {
     writeLast(null);
@@ -292,7 +389,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     const taskId = active?.taskId ?? last?.taskId;
     if (taskId == null) return;
 
-    if (active) await stop();
+    if (active) await stop(taskId);
 
     // Manda la completada al final de SU día, no de hoy: el taxímetro puede
     // estar cronometrando una tarea de otro día (se arrancó desde la semana, o
@@ -313,7 +410,8 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // se oculta: no queda nada que cronometrar.
     const next = await nextPaused(taskId);
     writeLast(next);
-    set({ active: null, elapsed: 0, last: next });
+    // Los que corrían en paralelo siguen corriendo: se releen, no se borran.
+    set({ ...derive(await api.getActiveTimers()), last: next });
     broadcast();
     useAppStore.getState().bumpData();
   },
@@ -325,9 +423,9 @@ export const useTimerStore = create<TimerState>((set, get) => ({
    * campana no sonaba hasta que algo despertaba la página.
    */
   tick: () => {
-    const { active } = get();
-    if (!active) return;
-    set({ elapsed: active.baseSeconds + runSeconds(active.startedAt) });
+    const { actives } = get();
+    if (actives.length === 0) return;
+    set(derive(actives));
   },
 }));
 

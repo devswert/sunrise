@@ -43,7 +43,7 @@ export function DailyShutdownView() {
   const navigate = useNavigate();
   const board = useBoard(today, today);
   const bumpData = useAppStore((s) => s.bumpData);
-  const { runTotal } = useTimer();
+  const { runTotalOf } = useTimer();
 
   const [day, setDia] = useState<LogDay | null>(null);
   const [nota, setNota] = useState("");
@@ -150,7 +150,7 @@ export function DailyShutdownView() {
   };
 
   const isClosed = day?.closedAt != null;
-  const worked = day ? workedWithRunning(day, runTotal) : 0;
+  const worked = day ? workedWithRunning(day, runTotalOf) : 0;
   const selectedTask = board.tasks.find((t) => t.id === selectedId) ?? null;
 
   return (
@@ -358,7 +358,7 @@ export function DailyShutdownView() {
                       <span className="dia__tlTitle">{t.title}</span>
                       <span className="dia__tlDur">
                         {t.running && <Timer size={9} aria-hidden />}
-                        {reloj(segmentSeconds(t, runTotal))}
+                        {reloj(segmentSeconds(t, runTotalOf))}
                       </span>
                     </li>
                   ))}

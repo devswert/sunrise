@@ -54,7 +54,7 @@ export function DailyHighlightsView() {
   // Una sesión abierta cruza la medianoche sin enterarse.
   const today = useToday();
   // Lo de la corrida en curso todavía no está en la base: lo tiene el taxímetro.
-  const { runTotal } = useTimer();
+  const { runTotalOf } = useTimer();
 
   const load = useCallback(async () => {
     // Los objetivos van por **rango** y no por semana: la bitácora abarca 30
@@ -102,11 +102,11 @@ export function DailyHighlightsView() {
 
       <div className="bitacora__feed">
         {visibles.map((d) => {
-          // La corrida en curso se le suma **solo a hoy**: `runTotal` se mide
-          // desde la medianoche local (I3), así que en cualquier otro día no
-          // significa nada. Y un timer abierto desde las 23:50 de ayer marca la
-          // fila de ayer como corriendo, que es justo el caso que sumaría mal.
-          const enCurso = d.date === today ? runTotal : 0;
+          // La corrida en curso se le suma **solo a hoy**. `runTotalOf` es la
+          // corrida completa, y las filas se agrupan por `started_at`: un timer
+          // abierto desde las 23:50 de ayer marca la fila de ayer como
+          // corriendo, que es justo el caso que sumaría mal.
+          const enCurso = d.date === today ? runTotalOf : 0;
           const worked = workedWithRunning(d, enCurso);
           const { shown, others } = highlights(d);
           const channels = groupBy(d.cells, catMap, false);

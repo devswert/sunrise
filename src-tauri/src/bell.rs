@@ -148,28 +148,46 @@ pub fn is_due(active: &ActiveTimer, midnight: DateTime<Utc>, now: DateTime<Utc>,
     elapsed_today(active.base_seconds, &active.started_at, midnight, now) >= estimated * 60
 }
 
-/// Cuánto dormir antes de volver a mirar: lo que falta para la campana, acotado
-/// entre `MIN_ESPERA` y `MAX_ESPERA`.
+/// Cuánto dormir antes de volver a mirar: lo que falta para **el cruce más
+/// cercano** entre todos los timers abiertos, acotado entre `MIN_ESPERA` y
+/// `MAX_ESPERA`.
 ///
-/// Sin timer, sin estimado, o con el estimado ya alcanzado, se espera el techo: no
-/// hay ningún momento que valga la pena adivinar.
-pub fn next_wake(
-    active: Option<&ActiveTimer>,
+/// Solo cuentan los timers a los que **todavía les falta**: uno sin estimado, o
+/// con el estimado ya alcanzado, no tiene momento que adivinar. Y eso importa
+/// más con varios timers que con uno: si un timer ya excedido entrara al mínimo
+/// con su "falta" en cero o negativa, la espera caería al piso de 1 s y el
+/// vigilante quedaría girando en caliente mientras ese timer siga abierto.
+///
+/// Sin ningún cruce pendiente se espera el techo.
+pub fn next_wake(actives: &[ActiveTimer], midnight: DateTime<Utc>, now: DateTime<Utc>) -> Duration {
+    actives
+        .iter()
+        .filter_map(|active| {
+            let estimated = active.estimated_minutes.filter(|m| *m > 0)?;
+            let remaining = estimated * 60
+                - elapsed_today(active.base_seconds, &active.started_at, midnight, now);
+            (remaining > 0).then_some(remaining)
+        })
+        .min()
+        .map(|remaining| Duration::from_secs(remaining as u64).clamp(MIN_ESPERA, MAX_ESPERA))
+        .unwrap_or(MAX_ESPERA)
+}
+
+/// Los timers a los que **les toca campana ahora**, cada uno con su estimado.
+///
+/// Con timers en paralelo cada tarea suena por **su** promesa (`bell_rung_for`):
+/// la de una no calla ni rearma la de otra.
+pub fn due_now(
+    actives: &[ActiveTimer],
     midnight: DateTime<Utc>,
     now: DateTime<Utc>,
-) -> Duration {
-    let Some(active) = active else {
-        return MAX_ESPERA;
-    };
-    let Some(estimated) = active.estimated_minutes.filter(|m| *m > 0) else {
-        return MAX_ESPERA;
-    };
-    let falta =
-        estimated * 60 - elapsed_today(active.base_seconds, &active.started_at, midnight, now);
-    if falta <= 0 {
-        return MAX_ESPERA;
-    }
-    Duration::from_secs(falta as u64).clamp(MIN_ESPERA, MAX_ESPERA)
+    today: &str,
+) -> Vec<(ActiveTimer, i64)> {
+    actives
+        .iter()
+        .filter(|a| is_due(a, midnight, now, today))
+        .filter_map(|a| a.estimated_minutes.map(|m| (a.clone(), m)))
+        .collect()
 }
 
 /// El texto de la notificación de la campana, **y vive acá y solo acá**.
@@ -201,11 +219,6 @@ pub fn ring(app: &AppHandle) -> anyhow::Result<()> {
     crate::sound::play_bell(custom)
 }
 
-/// Lee el timer en curso y **suelta el lock antes de volver**.
-///
-/// Vive aparte del loop por eso mismo: sostener el `Mutex` de la DB mientras se
-/// decide algo que no la necesita —y mientras suena la campana— es la forma de
-/// trabar al resto de la app.
 /// La clave de `settings` que agrega **una notificación** al sonido de la campana.
 /// Espeja `SettingKey.NOTICE_BELL`.
 const KEY_NOTICE: &str = "notice_bell";
@@ -246,16 +259,21 @@ fn mark_rung(app: &AppHandle, task_id: i64, promise: &str) -> anyhow::Result<()>
     Ok(())
 }
 
-fn read_active(app: &AppHandle) -> Option<ActiveTimer> {
+/// Lee los timers en curso y **suelta el lock antes de volver**.
+///
+/// Vive aparte del loop por eso mismo: sostener el `Mutex` de la DB mientras se
+/// decide algo que no la necesita —y mientras suena la campana— es la forma de
+/// trabar al resto de la app.
+fn read_actives(app: &AppHandle) -> Vec<ActiveTimer> {
     let db = app.state::<Db>();
     let conn = match db.0.lock() {
         Ok(conn) => conn,
         Err(e) => {
-            eprintln!("[sunrise] campana: no pude leer el timer: {e}");
-            return None;
+            eprintln!("[sunrise] campana: no pude leer los timers: {e}");
+            return Vec::new();
         }
     };
-    repo::get_active_timer(&conn).ok().flatten()
+    repo::get_active_timers(&conn).unwrap_or_default()
 }
 
 /// Arranca el vigilante. Se llama una vez, desde `setup`.
@@ -281,66 +299,72 @@ pub fn start_watcher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let armed = app.state::<Armed>().0.clone();
         loop {
-            let activo = read_active(&app);
-            let espera = match activo {
-                None => ESPERA_DORMIDO,
-                Some(ref a) => next_wake(Some(a), repo::start_of_today(), Utc::now()),
+            let actives = read_actives(&app);
+            let wait = if actives.is_empty() {
+                ESPERA_DORMIDO
+            } else {
+                next_wake(&actives, repo::start_of_today(), Utc::now())
             };
             // El timbre corta la espera: darle play a algo arma la campana en el
             // acto, sin tener que estar mirando el reloj mientras no hay timer.
             tokio::select! {
-                _ = tokio::time::sleep(espera) => {}
+                _ = tokio::time::sleep(wait) => {}
                 _ = armed.notified() => {}
             }
 
             // Se relee después de dormir: lo que se leyó para calcular la espera
             // ya puede ser viejo, y esta es la lectura que decide.
-            let Some(active) = read_active(&app) else {
-                continue;
-            };
-            let Some(estimated) = active.estimated_minutes.filter(|m| *m > 0) else {
-                continue;
-            };
             let today = today_local();
-            if !is_due(&active, repo::start_of_today(), Utc::now(), &today) {
+            let due = due_now(&read_actives(&app), repo::start_of_today(), Utc::now(), &today);
+            if due.is_empty() {
                 continue;
             }
 
-            // **La promesa se anota antes de sonar**, igual que el aviso de
-            // reunión: si se anotara después, una campanada que tarda —o un
-            // cierre en el medio— dejaría la vuelta siguiente sonando de nuevo.
-            if let Err(e) = mark_rung(&app, active.task_id, &promise(&today, estimated)) {
-                // Se sigue igual: no poder anotar es un problema de la base, y
-                // callar la campana por eso sería cambiar un bug por otro peor.
-                eprintln!("[sunrise] campana: no pude anotar que sonó: {e}");
+            for (active, estimated) in &due {
+                // **La promesa se anota antes de sonar**, igual que el aviso de
+                // reunión: si se anotara después, una campanada que tarda —o un
+                // cierre en el medio— dejaría la vuelta siguiente sonando de nuevo.
+                if let Err(e) = mark_rung(&app, active.task_id, &promise(&today, *estimated)) {
+                    // Se sigue igual: no poder anotar es un problema de la base, y
+                    // callar la campana por eso sería cambiar un bug por otro peor.
+                    eprintln!("[sunrise] campana: no pude anotar que sonó: {e}");
+                }
+                // Se deja rastro, como el poller de calendario: es lo único que
+                // permite saber después si sonó, y una campana que no suena no
+                // deja ningún síntoma en pantalla.
+                eprintln!(
+                    "[sunrise] campana: «{}» alcanzó sus {estimated} min (entrada {})",
+                    active.title, active.entry_id
+                );
             }
-            // Se deja rastro, como el poller de calendario: es lo único que
-            // permite saber después si sonó, y una campana que no suena no deja
-            // ningún síntoma en pantalla.
-            eprintln!(
-                "[sunrise] campana: «{}» alcanzó sus {estimated} min (entrada {})",
-                active.title, active.entry_id
-            );
+
+            // **Una sola campanada por vuelta**, aunque crucen dos timers en el
+            // mismo instante: dos campanadas superpuestas se escuchan como un solo
+            // sonido reventado, no como dos avisos. Cada tarea igual queda anotada
+            // por su promesa, y la notificación —si está prendida— dice cuáles.
             if let Err(e) = ring(&app) {
                 eprintln!("[sunrise] campana: no pudo sonar: {e}");
             }
             // Y la notificación, si la prendieron: el sonido dice "se acabó" y la
-            // notificación dice **de qué tarea** y te lleva a ella.
+            // notificación dice **de qué tarea** y te lleva a ella. Una por tarea.
             if notice_on(&app) {
-                let (titulo, cuerpo, boton) = copy(&active.title, estimated);
-                crate::commands::send_alert(
-                    &app,
-                    titulo,
-                    cuerpo,
-                    boton,
-                    // **Muda**: la campanada acaba de sonar. Las dos cosas en el mismo
-                // instante se escuchan como un solo sonido reventado, no como dos.
-                None,
-                    Some(crate::commands::NoticeTarget {
-                        route: "/focus".into(),
-                        task_id: Some(active.task_id),
-                    }),
-                );
+                for (active, estimated) in &due {
+                    let (titulo, cuerpo, boton) = copy(&active.title, *estimated);
+                    crate::commands::send_alert(
+                        &app,
+                        titulo,
+                        cuerpo,
+                        boton,
+                        // **Muda**: la campanada acaba de sonar. Las dos cosas en
+                        // el mismo instante se escuchan como un solo sonido
+                        // reventado, no como dos.
+                        None,
+                        Some(crate::commands::NoticeTarget {
+                            route: "/focus".into(),
+                            task_id: Some(active.task_id),
+                        }),
+                    );
+                }
             }
         }
     });
@@ -457,12 +481,12 @@ mod tests {
         let t = timer("2026-08-21T13:00:00+00:00", 0, Some(30));
         let medianoche = instante(MEDIANOCHE);
         assert_eq!(
-            next_wake(Some(&t), medianoche, instante("2026-08-21T13:05:00+00:00")),
+            next_wake(std::slice::from_ref(&t), medianoche, instante("2026-08-21T13:05:00+00:00")),
             MAX_ESPERA
         );
         // Faltando menos que el techo, se duerme exactamente lo que falta.
         assert_eq!(
-            next_wake(Some(&t), medianoche, instante("2026-08-21T13:29:48+00:00")),
+            next_wake(std::slice::from_ref(&t), medianoche, instante("2026-08-21T13:29:48+00:00")),
             Duration::from_secs(12)
         );
     }
@@ -472,14 +496,14 @@ mod tests {
         let medianoche = instante(MEDIANOCHE);
         let ahora = instante("2026-08-21T14:00:00+00:00");
         // Sin timer.
-        assert_eq!(next_wake(None, medianoche, ahora), MAX_ESPERA);
+        assert_eq!(next_wake(&[], medianoche, ahora), MAX_ESPERA);
         // Con timer sin estimado.
         let sin = timer("2026-08-21T13:00:00+00:00", 0, None);
-        assert_eq!(next_wake(Some(&sin), medianoche, ahora), MAX_ESPERA);
+        assert_eq!(next_wake(std::slice::from_ref(&sin), medianoche, ahora), MAX_ESPERA);
         // Y con el estimado ya alcanzado: no queda momento que adivinar, y sobre
         // todo no puede devolver cero y armar un loop caliente.
         let pasado = timer("2026-08-21T13:00:00+00:00", 0, Some(5));
-        assert_eq!(next_wake(Some(&pasado), medianoche, ahora), MAX_ESPERA);
+        assert_eq!(next_wake(std::slice::from_ref(&pasado), medianoche, ahora), MAX_ESPERA);
     }
 
     #[test]
@@ -534,5 +558,67 @@ mod tests {
             ),
             300
         );
+    }
+
+    /// El mismo timer, pero de otra tarea (otra entrada).
+    fn for_task(mut t: ActiveTimer, task_id: i64) -> ActiveTimer {
+        t.task_id = task_id;
+        t.entry_id = 100 + task_id;
+        t
+    }
+
+    /// Con timers en paralelo, se despierta en el cruce **más cercano** de todos.
+    #[test]
+    fn con_varios_timers_se_duerme_hasta_el_cruce_mas_cercano() {
+        let midnight = instante(MEDIANOCHE);
+        let ahora = instante("2026-08-21T13:29:40+00:00");
+        // A la primera le faltan 20 s; a la segunda, 10.
+        let a = for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(30)), 1);
+        let b = for_task(timer("2026-08-21T13:19:50+00:00", 0, Some(10)), 2);
+        assert_eq!(next_wake(&[a.clone(), b.clone()], midnight, ahora), Duration::from_secs(10));
+        // El orden de la lista no cambia la respuesta.
+        assert_eq!(next_wake(&[b, a], midnight, ahora), Duration::from_secs(10));
+    }
+
+    /// Un timer ya pasado de su estimado no puede arrastrar la espera al piso:
+    /// mientras siga abierto, el vigilante giraría cada segundo.
+    #[test]
+    fn un_timer_ya_excedido_no_acorta_la_espera_de_los_demas() {
+        let midnight = instante(MEDIANOCHE);
+        let ahora = instante("2026-08-21T14:00:00+00:00");
+        let overdue = rung_for(
+            for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(5)), 1),
+            HOY,
+            5,
+        );
+        // A esta le faltan 25 s.
+        let running = for_task(timer("2026-08-21T13:50:25+00:00", 0, Some(10)), 2);
+        assert_eq!(
+            next_wake(&[overdue.clone(), running], midnight, ahora),
+            Duration::from_secs(25)
+        );
+        assert_eq!(next_wake(&[overdue], midnight, ahora), MAX_ESPERA);
+    }
+
+    /// Cada tarea suena por **su** promesa: que una ya haya sonado no calla a la
+    /// otra, y cada una suena en su propio cruce.
+    #[test]
+    fn cada_timer_suena_en_su_cruce_y_por_su_promesa() {
+        let midnight = instante(MEDIANOCHE);
+        let a = for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(30)), 1);
+        let b = for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(60)), 2);
+
+        // 13:30: solo cruza la primera.
+        let due = due_now(&[a.clone(), b.clone()], midnight, instante("2026-08-21T13:30:00+00:00"), HOY);
+        assert_eq!(due.iter().map(|(t, m)| (t.task_id, *m)).collect::<Vec<_>>(), vec![(1, 30)]);
+
+        // 14:00: la primera ya sonó (su promesa está anotada) y cruza la segunda.
+        let a_rung = rung_for(a, HOY, 30);
+        let due = due_now(&[a_rung.clone(), b.clone()], midnight, instante("2026-08-21T14:00:00+00:00"), HOY);
+        assert_eq!(due.iter().map(|(t, m)| (t.task_id, *m)).collect::<Vec<_>>(), vec![(2, 60)]);
+
+        // Y con las dos anotadas, no suena ninguna.
+        let b_rung = rung_for(b, HOY, 60);
+        assert!(due_now(&[a_rung, b_rung], midnight, instante("2026-08-21T15:00:00+00:00"), HOY).is_empty());
     }
 }

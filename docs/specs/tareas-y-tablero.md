@@ -293,7 +293,9 @@ siguiente corrida.
   mano donde va.
 - **El tiempo trabajado ("Real" en la UI, `actual_seconds` en la DB) es siempre
   el total de la tarea**, más lo que va de la corrida en
-  curso si el timer está en ella (`task.actualSeconds + timer.runTotal`). Antes
+  curso si el timer está en ella (`task.actualSeconds + timer.runTotalOf(task.id)`:
+  **la corrida de esa tarea**, porque con timers en paralelo `runTotal` es solo la
+  del primero). Antes
   mostraba `timer.elapsed` mientras corría —o sea *lo de hoy*—, así que el mismo
   campo significaba dos cosas y darle play a una tarea arrastrada hacía **bajar**
   el número, como si se hubiera perdido el tiempo anterior. El "solo hoy" vive

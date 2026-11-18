@@ -19,7 +19,7 @@ Acá está lo que hay que saber para **editar** esto sin romperlo.
 
 | Archivo | Qué |
 |---|---|
-| `src-tauri/src/repo.rs` | `start_timer`, `stop_timer`, `get_active_timer`, `seconds_today`, `set_actual_seconds`, `focus_queue` |
+| `src-tauri/src/repo.rs` | `start_timer`, `stop_timer`, `stop_all_timers`, `get_active_timers`, `seconds_today`, `set_actual_seconds`, `focus_queue` |
 | `src-tauri/src/bell.rs` | **decide y toca** la campana del estimado (vigilante) |
 | `src-tauri/src/sound.rs` | síntesis de la campana con `rodio` |
 | `src/features/timer/timerStore.ts` | store del timer (por ventana), `isOverEstimate`, `hms` |
@@ -96,7 +96,7 @@ para el mismo trabajo:**
 
 - **El taxímetro muestra HOY** (`elapsed` = `base_seconds` + `runSeconds`).
 - **El campo del tiempo trabajado muestra el TOTAL** (`task.actualSeconds` +
-  `timer.runTotal`), en la tarjeta, el modal y Focus.
+  `timer.runTotalOf(task.id)`), en la tarjeta, el modal y Focus.
 
 En la UI ese campo se llama **"Real"**, y su par **"Estimado"**. En la DB y en
 estas reglas siguen siendo `actual_seconds` y `estimated_minutes`, así que hay
@@ -118,17 +118,47 @@ tiempo por fecha en otra parte, úsala o cópiale el criterio: cortar el timesta
 con `slice(0, 10)` da el día UTC, y en Chile eso corre al día siguiente todo lo
 trabajado después de las 20:00.
 
-**Un solo timer activo en todo el sistema.**
-Solo puede existir una fila de `time_entries` con `ended_at IS NULL`.
-`start_timer` llama a `stop_timer` primero. `get_active_timer` toma la más
-reciente (`ORDER BY e.id DESC LIMIT 1`) como red de seguridad.
+**Un timer abierto por tarea (I4), no uno en todo el sistema.**
+Desde #18 varias tareas pueden correr a la vez —agentes trabajando en paralelo—,
+y lo que no puede pasar es **dos filas abiertas de la misma tarea**. Eso lo
+garantiza la base (índice único parcial, migración 18), no `repo.rs`: el MCP es
+otro proceso y va a abrir timers sin pasar por `start_timer`.
+
+- `start_timer(conn, id, parallel)`: primero mira si **ya corre** y, si sí,
+  devuelve ese timer sin hacer nada — en los dos modos. Mirarlo antes de cerrar
+  es lo que evita que un play clásico sobre la tarea que corre pause a las demás
+  o le parta la corrida. Después: `parallel = false` es el **play clásico** y
+  cierra todos (`stop_all_timers`); `true` no toca nada. Inserta con
+  `INSERT OR IGNORE` y relee.
+- `stop_timer(conn, id)` cierra **solo esa**; `stop_all_timers` todas con **un
+  solo `ended`**. Las dos pasan por `close_entry`, que es donde viven I1 e I3: si
+  agregas otra forma de cerrar una entrada, que pase por ahí.
+- `get_active_timers` devuelve la lista **del más antiguo al más nuevo**, y el
+  orden es contrato: el front toma `actives[0]` como "el" timer donde todavía
+  muestra uno solo. `get_active_timer(conn, id)` es el de una tarea.
+- **En el store, después de cada mutación la lista se relee** (`derive` arma
+  `actives`, `elapsedById`, `active` y `elapsed` juntos). Un `set({ active: null,
+  elapsed: 0 })` —que era lo normal con un solo timer— hace desaparecer de la
+  vista a los que siguen corriendo.
+- **"Lo corrido" es por tarea.** `useTimer().runTotal` es solo el de `active`;
+  para sumarle la corrida a una tarea concreta usa `runTotalOf(id)`. Sumarle el
+  `runTotal` de otra que también corre es mentir. El rail (`segundosEnCurso`) y el
+  Shutdown (`workedWithRunning`, `segmentSeconds`) reciben un `RunningSeconds`
+  (`features/timer/runningSeconds.ts`): un número —un solo timer, los tests
+  puros— o una función por tarea, que es lo que les pasa `useDayWork`.
+- **Toda escritura del timer es atómica** (`atomically`, también
+  `set_task_status`): el play clásico encadena varios cierres, la reapertura y el
+  alta, y a la mitad quedaría una entrada cerrada sin su acumulación. Sin
+  transacción abierta usa `BEGIN IMMEDIATE` —una diferida que lee y después
+  escribe falla con `SQLITE_BUSY_SNAPSHOT` si el MCP confirmó en el medio—; dentro
+  de otra, `SAVEPOINT`, que anida.
 
 **Estado y timer se mueven juntos, y eso vive en Rust.**
 Son dos reglas simétricas, y conviene tratarlas como una sola:
 
-- `set_task_status(id, "DONE")` **detiene** el timer si la tarea completada era
-  la activa, para que el tiempo quede registrado y no siga corriendo algo ya
-  cerrado.
+- `set_task_status(id, "DONE")` **detiene el timer de esa tarea** —solo el suyo,
+  los que corren en paralelo siguen—, para que el tiempo quede registrado y no
+  siga corriendo algo ya cerrado.
 - `start_timer(id)` **reabre** la tarea si estaba `DONE` (`status = 'TODO'`,
   `completed_at = NULL`). Volver a trabajar en algo es decir que no estaba
   terminado; si no, quedaría acumulando tiempo una tarea marcada como cerrada y
@@ -205,6 +235,13 @@ con **la hora**. Dos formas de equivocarse, y las dos ya se pagaron:
   esa parte la tarea nunca volvería a sonar. **Pausar y reanudar ya no la
   rearma**: la llave era la entrada, y sobre una tarea pasada de su estimado eso
   daba una campanada en cada play.
+- **Con timers en paralelo, cada tarea suena por su promesa**: la de una no calla
+  ni rearma la de otra (`due_now`). `next_wake` toma el cruce **más cercano**,
+  pero solo entre los que todavía no llegan: si un timer ya excedido entrara al
+  mínimo, la espera caería al piso de 1 s y el vigilante giraría en caliente
+  mientras siga abierto. Dos cruces en la misma vuelta anotan las dos promesas y
+  dan **una sola campanada** (dos superpuestas se oyen reventadas); la
+  notificación, si está prendida, sale una por tarea.
 - **La espera y el timbre son optimizaciones, no la decisión.** Duerme hasta el
   momento en que tiene que sonar (`next_wake`, techo 30 s); sin timer espera el
   timbre `Armed` —que toca `start_timer`— con un techo de 5 min; y **cada vuelta
@@ -379,10 +416,16 @@ accidental, no para proteger datos: todo se autoguarda.
 ## Tests
 
 `repo.rs` ya cubre: acumulación del timer, supervivencia del ajuste manual,
-contador del día que ignora lo de ayer, un solo timer activo, completar detiene
-el timer (y no detiene el de otra tarea), `stop` sin timer activo, `focus_queue`,
+contador del día que ignora lo de ayer, un timer abierto por tarea (el play
+clásico cierra todos, el paralelo suma, el índice rechaza la segunda abierta, la
+migración 18 borra fantasmas), dos en paralelo acumulan cada uno lo suyo,
+`stop_all` en un mismo instante, completar detiene solo su timer, `stop` sin timer activo, `focus_queue`,
 y doce del rollup semanal (una por cada regla de arriba y sus bordes).
-En el front, `src/features/timer/timerStore.test.ts` cubre `completeAndAdvance`
+En `bell.rs`: cada timer suena en su cruce y por su promesa, y la espera es el
+cruce más cercano sin que uno ya excedido la acorte. En el front,
+`timerStore.parallel.test.ts` cubre el contrato de varios timers contra el
+`mockDb` real (`start` paralelo y clásico, `stop` por tarea, `stopAll`, `toggle`,
+el tick por tarea), y `src/features/timer/timerStore.test.ts` cubre `completeAndAdvance`
 (incluido que **no** arranque la siguiente) y el avance de `refresh`, y
 `FocusView.test.tsx` el `bumpData()` al completar, el resumen del día y que el
 confeti salga solo al vaciar la cola.

@@ -3,6 +3,7 @@ import { api } from "../../lib/ipc";
 import type { DayWork } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
 import { useTimer } from "../timer/useTimer";
+import type { RunningSeconds } from "../timer/runningSeconds";
 
 /** Una sola instancia: un `[]` nuevo por render rompería los `useMemo` que dependen de `work`. */
 const NO_WORK: DayWork[] = [];
@@ -17,7 +18,8 @@ const NO_WORK: DayWork[] = [];
  *
  * `segundosEnCurso` sale del taxímetro y no de la base: la corrida abierta
  * todavía no tiene segundos escritos, y sin esto el bloque de la tarea que estás
- * trabajando ahora mismo saldría de alto cero.
+ * trabajando ahora mismo saldría de alto cero. Es **por tarea**
+ * (`runTotalOf`): con timers en paralelo cada fila `running` suma la suya.
  *
  * Las filas se guardan **con su fecha** y solo se devuelven si es la pedida: al
  * cambiar `date`, hasta que llega la lectura nueva, el rail dibujaba el día nuevo
@@ -29,7 +31,7 @@ const NO_WORK: DayWork[] = [];
  */
 export function useDayWork(date: string): {
   work: DayWork[];
-  segundosEnCurso: number;
+  segundosEnCurso: RunningSeconds;
 } {
   const [loaded, setLoaded] = useState<{ date: string; rows: DayWork[] } | null>(null);
   const dataVersion = useAppStore((s) => s.dataVersion);
@@ -46,5 +48,5 @@ export function useDayWork(date: string): {
   }, [date, dataVersion]);
 
   const work = loaded?.date === date ? loaded.rows : NO_WORK;
-  return { work, segundosEnCurso: timer.runTotal };
+  return { work, segundosEnCurso: timer.runTotalOf };
 }

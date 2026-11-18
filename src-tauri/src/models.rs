@@ -244,8 +244,9 @@ impl TimeEntry {
     }
 }
 
-/// Timer en curso (entrada abierta) con su tarea.
-#[derive(Debug, Serialize, Deserialize)]
+/// Timer en curso (entrada abierta) con su tarea. Hay a lo más uno por tarea
+/// (I4): `get_active_timers` devuelve la lista.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveTimer {
     pub entry_id: i64,

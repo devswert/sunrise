@@ -1,5 +1,6 @@
 import { minutesOfDay } from "../../lib/date";
 import type { Task, DayWork } from "../../lib/types";
+import { type RunningSeconds, runningFor } from "../timer/runningSeconds";
 
 /**
  * Cálculo del rail de calendario: dónde va cada bloque en la grilla de horas.
@@ -99,7 +100,7 @@ export interface OpcionesRail {
    * Segundos de la corrida abierta, que todavía no están en `trabajo.seconds`.
    * Sin esto la tarea que estás trabajando ahora mismo saldría de alto cero.
    */
-  segundosEnCurso?: number;
+  segundosEnCurso?: RunningSeconds;
 }
 
 /** `"09:30"` → 570. `null` si no es una hora válida. */
@@ -311,9 +312,10 @@ interface Pendiente {
  * reunión dura más o menos de lo que decía el calendario, y el rail tiene que
  * mostrar lo segundo. La hora de inicio, igual: manda cuándo le diste play.
  */
-function workedMinutes(w: DayWork | undefined, segundosEnCurso: number): number {
+function workedMinutes(w: DayWork | undefined, segundosEnCurso: RunningSeconds): number {
   if (!w) return 0;
-  const segundos = w.seconds + (w.running ? segundosEnCurso : 0);
+  // La corrida de **esta** tarea: con timers en paralelo, cada una la suya.
+  const segundos = w.seconds + (w.running ? runningFor(segundosEnCurso, w.taskId) : 0);
   const minutes = Math.round(segundos / 60);
   // Con el taxímetro corriendo el bloque aparece de inmediato, aunque lleve
   // segundos: en cuanto le das play, el lugar de esa tarea en el día es la hora
@@ -331,7 +333,7 @@ function workedMinutes(w: DayWork | undefined, segundosEnCurso: number): number 
  * una propia: una fila de 20 s no dibuja bloque, y la tarea cae al camino
  * normal —proyectada o de día completo—.
  */
-export function drawsRealBlock(w: DayWork, segundosEnCurso = 0): boolean {
+export function drawsRealBlock(w: DayWork, segundosEnCurso: RunningSeconds = 0): boolean {
   return w.trackedAt != null && workedMinutes(w, segundosEnCurso) > 0;
 }
 

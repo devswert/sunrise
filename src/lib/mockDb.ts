@@ -179,6 +179,50 @@ function tramosPorDiaLocal(start: Date, end: Date): Array<[Date, Date]> {
   return segments;
 }
 
+/**
+ * Cierra una entrada abierta en `ended`. Espeja `repo::close_entry`, el cuerpo
+ * común de `stop_timer` y `stop_all_timers`: si la corrida cruzó una medianoche
+ * local se guarda partida por día (I3), y el total de la tarea **acumula** (I1).
+ * El último tramo absorbe el resto, así la suma de las filas da exactamente
+ * `seconds`.
+ */
+function closeEntry(open: TimeEntry, ended: string): [number, number] {
+  const seconds = Math.max(
+    0,
+    Math.round((new Date(ended).getTime() - new Date(open.startedAt).getTime()) / 1000),
+  );
+  const segments = tramosPorDiaLocal(new Date(open.startedAt), new Date(ended));
+  if (segments.length > 1) {
+    let repartido = 0;
+    segments.forEach(([ini, end], i) => {
+      const last = i === segments.length - 1;
+      const secs = last
+        ? seconds - repartido
+        : Math.max(0, Math.round((end.getTime() - ini.getTime()) / 1000));
+      repartido += secs;
+      if (i === 0) {
+        open.endedAt = end.toISOString();
+        open.seconds = secs;
+      } else {
+        entries.push({
+          id: nextId(),
+          taskId: open.taskId,
+          startedAt: ini.toISOString(),
+          endedAt: end.toISOString(),
+          seconds: secs,
+        });
+      }
+    });
+  } else {
+    open.endedAt = ended;
+    open.seconds = seconds;
+  }
+
+  const t = tasks.find((x) => x.id === open.taskId);
+  if (t) t.actualSeconds += seconds; // acumula, no recalcula
+  return [open.taskId, seconds];
+}
+
 function nextPosition(date: string | null): number {
   const inDay = tasks.filter((t) => t.scheduledDate === date);
   return inDay.reduce((m, t) => Math.max(m, t.position + 1), 0);
@@ -457,10 +501,8 @@ export const mock = {
     const t = tasks.find((x) => x.id === id);
     if (!t) return null;
     // Completar detiene el timer de esa tarea (igual que en Rust).
-    if (status === "DONE") {
-      const open = entries.find((e) => e.endedAt === null && e.taskId === id);
-      if (open) await mock.stopTimer();
-    }
+    // Solo el suyo: con timers en paralelo los demás siguen corriendo.
+    if (status === "DONE") await mock.stopTimer(id);
     t.status = status;
     t.completedAt = status === "DONE" ? nowISO() : null;
     t.updatedAt = nowISO();
@@ -614,27 +656,44 @@ export const mock = {
     events.filter((e) => e.taskId === taskId),
 
   // --- timer ---
-  getActiveTimer: async (): Promise<ActiveTimer | null> => {
-    const open = entries.find((e) => e.endedAt === null);
-    if (!open) return null;
-    const t = tasks.find((x) => x.id === open.taskId);
-    if (!t) return null;
-    return {
-      entryId: open.id,
-      taskId: t.id,
-      title: t.title,
-      startedAt: open.startedAt,
-      baseSeconds: secondsToday(t.id),
-      estimatedMinutes: t.estimatedMinutes,
-      // Fuera de Tauri no hay campana (la toca Rust), así que la promesa no se
-      // simula: el campo existe para que el tipo sea el mismo de los dos lados.
-      bellRungFor: null,
-    };
-  },
+  /** Espeja `repo::get_active_timers`: del más antiguo al más nuevo. */
+  getActiveTimers: async (): Promise<ActiveTimer[]> =>
+    entries
+      .filter((e) => e.endedAt === null)
+      .sort((a, b) =>
+        a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : a.id - b.id,
+      )
+      .flatMap((open) => {
+        const t = tasks.find((x) => x.id === open.taskId);
+        if (!t) return [];
+        return [
+          {
+            entryId: open.id,
+            taskId: t.id,
+            title: t.title,
+            startedAt: open.startedAt,
+            baseSeconds: secondsToday(t.id),
+            estimatedMinutes: t.estimatedMinutes,
+            // Fuera de Tauri no hay campana (la toca Rust), así que la promesa no
+            // se simula: el campo existe para que el tipo sea el mismo de los dos
+            // lados.
+            bellRungFor: null,
+          },
+        ];
+      }),
 
-  startTimer: async (taskId: number): Promise<ActiveTimer> => {
-    await mock.stopTimer();
-    // Espeja `repo::start_timer`: volver a trabajar en algo lo reabre.
+  /**
+   * Espeja `repo::start_timer`: si la tarea ya corre no hace nada; el play
+   * clásico cierra todos antes de abrir; el paralelo no toca a los demás.
+   */
+  startTimer: async (taskId: number, parallel: boolean = false): Promise<ActiveTimer> => {
+    const running = (await mock.getActiveTimers()).find((a) => a.taskId === taskId);
+    if (running) return running;
+    // En Rust una tarea inexistente falla y revierte todo (`atomically`): acá se
+    // valida antes de tocar nada para decir lo mismo.
+    if (!tasks.some((x) => x.id === taskId)) throw new Error(`task ${taskId} not found`);
+    if (!parallel) await mock.stopAllTimers();
+    // Volver a trabajar en algo lo reabre (I5).
     const t = tasks.find((x) => x.id === taskId);
     if (t && t.status === "DONE") {
       t.status = "TODO";
@@ -648,51 +707,24 @@ export const mock = {
       endedAt: null,
       seconds: 0,
     });
-    return (await mock.getActiveTimer())!;
+    return (await mock.getActiveTimers()).find((a) => a.taskId === taskId)!;
   },
 
-  stopTimer: async (): Promise<[number, number] | null> => {
-    const open = entries.find((e) => e.endedAt === null);
+  /** Espeja `repo::stop_timer`: cierra solo el de esa tarea. */
+  stopTimer: async (taskId: number): Promise<[number, number] | null> => {
+    const open = entries.find((e) => e.endedAt === null && e.taskId === taskId);
     if (!open) return null;
-    const ended = nowISO();
-    const seconds = Math.max(
-      0,
-      Math.round((new Date(ended).getTime() - new Date(open.startedAt).getTime()) / 1000),
-    );
-    // Espeja `repo::stop_timer`: si la corrida cruzó una medianoche local se
-    // guarda partida por día, para que el tiempo quede acreditado al día en que
-    // se trabajó. El último tramo absorbe el resto, así la suma de las filas da
-    // exactamente `seconds`.
-    const segments = tramosPorDiaLocal(new Date(open.startedAt), new Date(ended));
-    if (segments.length > 1) {
-      let repartido = 0;
-      segments.forEach(([ini, end], i) => {
-        const last = i === segments.length - 1;
-        const secs = last
-          ? seconds - repartido
-          : Math.max(0, Math.round((end.getTime() - ini.getTime()) / 1000));
-        repartido += secs;
-        if (i === 0) {
-          open.endedAt = end.toISOString();
-          open.seconds = secs;
-        } else {
-          entries.push({
-            id: nextId(),
-            taskId: open.taskId,
-            startedAt: ini.toISOString(),
-            endedAt: end.toISOString(),
-            seconds: secs,
-          });
-        }
-      });
-    } else {
-      open.endedAt = ended;
-      open.seconds = seconds;
-    }
+    return closeEntry(open, nowISO());
+  },
 
-    const t = tasks.find((x) => x.id === open.taskId);
-    if (t) t.actualSeconds += seconds; // acumula, no recalcula
-    return [open.taskId, seconds];
+  /** Espeja `repo::stop_all_timers`: todos en el mismo instante. */
+  stopAllTimers: async (): Promise<Array<[number, number]>> => {
+    const ended = nowISO();
+    const order = (await mock.getActiveTimers()).map((a) => a.entryId);
+    return order.flatMap((entryId) => {
+      const open = entries.find((e) => e.id === entryId);
+      return open ? [closeEntry(open, ended)] : [];
+    });
   },
 
   listTimeEntries: async (taskId: number): Promise<TimeEntry[]> =>
