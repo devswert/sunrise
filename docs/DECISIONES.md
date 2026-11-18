@@ -742,6 +742,21 @@ Arreglar el cursor destapó dos reglas que el salto al final escondía:
   siguiente: escribir " y" antes de " esta" daba "tengo yesta". El que queda sin
   palabra lo junta `create()`, que limpia el título entero al crear.
 
+**El rail del daily planning muestra el día de cada paso, no siempre hoy** (#6).
+Con un solo rail de hoy para los dos pasos, el repaso del día anterior quedaba al
+lado de las reuniones de hoy y se leía como si fueran del mismo día. Lo que costó
+no fue cambiar la fecha sino lo trabajado: `useDayWork` devolvía las filas de la
+fecha anterior hasta que llegaba la lectura nueva, y como una tarea traída a hoy
+conserva su id, un frame la mostraba trabajada a una hora que no era de ese día.
+Ahora el hook guarda la fecha junto a las filas y no devuelve las de otra.
+
+Lo que costó la segunda vuelta fue otra cosa: el rail dibuja bloques trabajados
+solo de las tareas que recibe, y se le pasaban las agendadas ese día. Pero el
+tiempo se atribuye por `started_at`, no por `scheduled_date`, así que "Traer a
+hoy" borraba el bloque trabajado del rail mientras la portada lo seguía contando.
+El rail del paso 1 recibe además las tareas trabajadas ese día que viven en otro
+lado, sin hora ni estimado para que no se les proyecte nada ahí.
+
 ---
 
 ## 8. Notificaciones: lo que no está en nuestras manos

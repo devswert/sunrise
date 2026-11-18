@@ -53,7 +53,8 @@ interface Props {
  * escritura, cuando el control de volver atrás ya estaba en el detalle.
  *
  * Recibe las tareas por props, las mismas que la columna del día, para que las
- * dos vistas del mismo día no puedan divergir. Daily planning (3.4) lo usa igual.
+ * dos vistas del mismo día no puedan divergir. Daily planning (§4.14) lo usa igual,
+ * salvo que en el paso 1 le pasa el día que se repasa en vez de hoy.
  */
 export function CalendarRail({
   date,

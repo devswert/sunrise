@@ -462,7 +462,8 @@ se apilarían. Por lo mismo, **clickear la cabecera de un día trae la agenda**
 incluso con el backlog abierto — el click es un pedido de ver ese día, y dejarlo
 sin efecto visible sería peor que el cambio de panel.
 
-Daily planning (M3.4) lo usa con las mismas props.
+Daily planning (M3.4) lo usa con las mismas props en el paso 2; en el paso 1 le
+pasa el día que se repasa, con sus tareas y lo trabajado ese día (§4.14).
 
 El cálculo está separado del render en `railLayout.ts` (`buildRail`), puro y
 testeado: entra la lista de tareas del día y salen bloques en minutos.

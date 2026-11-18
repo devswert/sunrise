@@ -7,8 +7,8 @@ Vuelve al [índice de SPECS](../SPECS.md).
 
 ### 4.14 Planificación diaria (`DailyPlanningView`)
 
-**Dos pasos** a la izquierda y el rail (§4.13, mismas props que en Today) a la
-derecha, en `/daily-planning`. Todo se centra, y las columnas del paso 2 miden
+**Dos pasos** a la izquierda y el rail (§4.13) a la derecha, en
+`/daily-planning`. Todo se centra, y las columnas del paso 2 miden
 **lo mismo que una columna de la semana** (el `flex-basis` de `.day-col`): una
 card estirada al doble deja de leerse como la misma card, así que el espacio que
 sobra queda como aire en vez de repartirse.
@@ -18,6 +18,28 @@ sobra queda como aire en vez de repartirse.
    quedaron abiertas (con traer a hoy o mandar al backlog) y las cerradas.
 2. **Qué hay para hoy** — el día y el **backlog** como dos columnas del mismo
    tablero, arrastrables entre sí, con la agenda al lado.
+
+**El rail muestra el día de cada paso.** En el paso 1, el día que se repasa
+(`diaAnterior`, el último con tareas: un lunes, el viernes), con sus reuniones,
+sus bloques `railOnly` y lo trabajado ese día, sin la línea de "ahora" ni la
+corrida abierta del taxímetro, que son de hoy. En el paso 2, hoy, igual que en
+Today: es la agenda contra la que se planifica. Sin día anterior (primer uso), el
+paso 1 también muestra hoy. Lo trabajado de los dos días se lee a la vez
+(`useDayWork` dos veces), y el `trabajado` de la portada sale de esas mismas
+filas. **Lo trabajado se atribuye por cuándo corrió el taxímetro, no por dónde
+vive la tarea** (§6): una tarea trabajada ese día y después traída a hoy o
+mandada al backlog sigue en el rail del paso 1 con su bloque trabajado, sin hora
+ni estimado, porque lo que le falta ya es del día donde vive. La excepción es una
+que hoy vive fuera de lo que la vista carga (otra fecha fuera de los últimos 7
+días, o el futuro): cuenta en la portada y no sale en el rail. Las que siguen
+abiertas en el día repasado se proyectan desde el inicio de la jornada, igual que
+en el rail de cualquier día que no es hoy. Una tarea trabajada ahí entra al
+rail con **el mismo umbral que dibuja un bloque trabajado** (`drawsRealBlock`:
+hora y al menos un minuto redondeado); con unos segundos no entra, en vez de
+salir proyectada en un día que ya no es el suyo. Un borde: una corrida que arrancó
+el día repasado y **sigue abierta** no dibuja bloque trabajado en el paso 1 hasta
+que se para — sus segundos todavía no están escritos, y el rail la dibujaría como
+un bloque de un minuto que crece con el taxímetro de hoy.
 
 Eran tres: "armar el día" y "ver si cabe" se juntaron porque son el mismo gesto
 —se saca algo justamente porque no cabe— y separarlos obligaba a ir y volver para
