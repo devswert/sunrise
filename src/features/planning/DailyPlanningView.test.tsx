@@ -78,11 +78,15 @@ async function runTimerOn(date: string, taskId: number, seconds = 40 * 60) {
 
 /**
  * Los `title` de los bloques del rail —"10:00 AM – 10:40 AM · Tarea · trabajado"—,
- * que dicen hora, tarea y tipo en el texto que ve quien pasa el mouse.
+ * que dicen hora, tarea y tipo en el texto que ve quien pasa el mouse. Sin el
+ * " · sin channel" del aviso de #7: las tareas de estos tests no tienen channel, y
+ * lo que se mira acá es el día y el tipo del bloque, no el aviso.
  */
 function railBlockTitles(): string[] {
   const aside = screen.getByRole("complementary", { name: "Agenda del día" });
-  return [...aside.querySelectorAll<HTMLElement>("button[title]")].map((b) => b.title);
+  return [...aside.querySelectorAll<HTMLElement>("button[title]")].map((b) =>
+    b.title.replace(/ · sin channel$/, ""),
+  );
 }
 
 /** Los bloques trabajados del rail, cuando ya llegaron. */
