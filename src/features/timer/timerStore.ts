@@ -314,7 +314,10 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   stop: async (taskId) => {
     // `typeof`: si alguien pasa `stop` directo a un `onClick`, el primer
     // argumento es el evento del mouse, no un id.
-    const id = typeof taskId === "number" ? taskId : get().active?.taskId;
+    // Sin id se pausa el primero **de la base**, no el de este store: si la
+    // ventana está desfasada (llegó tarde el aviso de un play en la otra), el
+    // id local cerraría nada y el clic se perdería.
+    const id = typeof taskId === "number" ? taskId : (await api.getActiveTimers())[0]?.taskId;
     const prev = get().actives.find((a) => a.taskId === id) ?? null;
     const res = id == null ? null : await api.stopTimer(id);
     const actives = await api.getActiveTimers();

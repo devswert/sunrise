@@ -278,9 +278,11 @@ Las reglas que lo sostienen:
   rail — en la base no están hasta que pares. **Son por tarea** (`runTotalOf`, tipo
   `RunningSeconds`): con timers en paralelo (I4) cada tramo `running` suma la suya y
   el día las suma todas; un solo número le sumaba a cada tarea la corrida de la
-  primera. **Solo se le suman a hoy**: `runTotalOf` se mide
-  desde la medianoche local (I3), así que en otro día no significa nada, y un
-  timer abierto desde las 23:50 de ayer marca la fila de ayer como corriendo.
+  primera. **Solo se le suman a hoy**: `runTotalOf` es la corrida
+  **completa** (`runTotalSeconds`, sin corte en la medianoche), y `day_work` y
+  `daily_log` agrupan por `started_at`, así que un timer abierto desde las 23:50 de
+  ayer marca la fila de **ayer** como corriendo: sumarle la corrida en otro día
+  que no sea hoy la contaría donde no corresponde.
 - **Recargar no pisa lo que estás escribiendo.** `load` corre con cada
   invalidación —tildar una tarea, mover una pendiente, un aviso de la otra
   ventana—, y sembrar los campos desde el servidor borraba el texto a medio

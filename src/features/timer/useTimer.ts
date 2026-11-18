@@ -70,15 +70,15 @@ export function useTimer() {
   // Lo corrido de **una tarea**: con timers en paralelo, `runTotal` es solo el de
   // `active`, y sumárselo a otra tarea que también corre sería mentir. Estable
   // entre renders mientras nada cambie —entra en `useMemo` del rail—, pero
-  // depende de `elapsed`, que avanza con el tick: así el rail sigue creciendo en
+  // depende de `elapsedById`, que avanza con el tick: así el rail sigue creciendo en
   // vivo.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `elapsed` es la señal del tick
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `elapsedById` es la señal del tick
   const runTotalOf = useCallback(
     (taskId: number) => {
       const a = actives.find((x) => x.taskId === taskId);
       return a ? runTotalSeconds(a.startedAt) : 0;
     },
-    [actives, elapsed],
+    [actives, elapsedById],
   );
 
   const display = active

@@ -102,10 +102,10 @@ export function DailyHighlightsView() {
 
       <div className="bitacora__feed">
         {visibles.map((d) => {
-          // La corrida en curso se le suma **solo a hoy**: `runTotalOf` se mide
-          // desde la medianoche local (I3), así que en cualquier otro día no
-          // significa nada. Y un timer abierto desde las 23:50 de ayer marca la
-          // fila de ayer como corriendo, que es justo el caso que sumaría mal.
+          // La corrida en curso se le suma **solo a hoy**. `runTotalOf` es la
+          // corrida completa, y las filas se agrupan por `started_at`: un timer
+          // abierto desde las 23:50 de ayer marca la fila de ayer como
+          // corriendo, que es justo el caso que sumaría mal.
           const enCurso = d.date === today ? runTotalOf : 0;
           const worked = workedWithRunning(d, enCurso);
           const { shown, others } = highlights(d);

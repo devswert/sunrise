@@ -3737,6 +3737,24 @@ mod tests {
         stop_all_timers(&c).unwrap();
     }
 
+    /// Con dos timers en paralelo, `day_work` marca las dos filas corriendo: es
+    /// lo que el rail y el Shutdown leen para sumarle a cada una su corrida.
+    #[test]
+    fn day_work_marca_corriendo_a_las_dos_tareas_en_paralelo() {
+        let c = conn();
+        // El día local de la base, el mismo con el que `day_work` corta.
+        let day = Utc::now().with_timezone(&zone(&c)).format("%Y-%m-%d").to_string();
+        let a = create_task(&c, new_task("a", Some(&day))).unwrap();
+        let b = create_task(&c, new_task("b", Some(&day))).unwrap();
+        start_timer(&c, a.id, false).unwrap();
+        start_timer(&c, b.id, true).unwrap();
+
+        let mut rows: Vec<(i64, bool)> =
+            day_work(&c, &day).unwrap().iter().map(|w| (w.task_id, w.running)).collect();
+        rows.sort();
+        assert_eq!(rows, vec![(a.id, true), (b.id, true)]);
+    }
+
     /// Lo que justifica `atomically`: un play clásico que falla a la mitad no
     /// puede dejar los demás timers cerrados sin el nuevo, ni acumulaciones a
     /// medias, ni la conexión colgada en una transacción.
@@ -3797,8 +3815,9 @@ mod tests {
         let reopened = get_task(&c, t.id).unwrap().unwrap();
         assert_eq!(reopened.status, "TODO");
         assert!(reopened.completed_at.is_none());
-        // Y el timer efectivamente quedó corriendo en ella.
-        assert_eq!(get_active_timer(&c, t.id).unwrap().unwrap().task_id, t.id);
+        // Y el timer efectivamente quedó corriendo en ella, y solo en ella.
+        let running: Vec<i64> = get_active_timers(&c).unwrap().iter().map(|a| a.task_id).collect();
+        assert_eq!(running, vec![t.id]);
     }
 
     #[test]
