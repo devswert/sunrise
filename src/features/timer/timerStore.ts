@@ -177,9 +177,9 @@ export interface TimersSnapshot {
   elapsed: number;
 }
 
-export function derive(actives: ActiveTimer[], ahora: number = Date.now()): TimersSnapshot {
+export function derive(actives: ActiveTimer[], now: number = Date.now()): TimersSnapshot {
   const elapsedById: Record<number, number> = {};
-  for (const a of actives) elapsedById[a.taskId] = a.baseSeconds + runSeconds(a.startedAt, ahora);
+  for (const a of actives) elapsedById[a.taskId] = a.baseSeconds + runSeconds(a.startedAt, now);
   const active = actives[0] ?? null;
   return {
     actives,
@@ -346,13 +346,12 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     if (first) {
       const [stoppedId, seconds] = first;
       const p = prev.find((a) => a.taskId === stoppedId);
-      const guardada = readLast();
+      const saved = readLast();
       const last: LastTask = {
         taskId: stoppedId,
-        title: p?.title ?? (guardada?.taskId === stoppedId ? guardada.title : ""),
+        title: p?.title ?? (saved?.taskId === stoppedId ? saved.title : ""),
         estimatedMinutes:
-          p?.estimatedMinutes ??
-          (guardada?.taskId === stoppedId ? guardada.estimatedMinutes : null),
+          p?.estimatedMinutes ?? (saved?.taskId === stoppedId ? saved.estimatedMinutes : null),
         seconds: (p?.baseSeconds ?? 0) + seconds,
       };
       writeLast(last);

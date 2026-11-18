@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import {
   useTimerStore,
   timerDisplay,
@@ -67,6 +67,20 @@ export function useTimer() {
   const completeAndAdvance = useTimerStore((s) => s.completeAndAdvance);
   const refresh = useTimerStore((s) => s.refresh);
 
+  // Lo corrido de **una tarea**: con timers en paralelo, `runTotal` es solo el de
+  // `active`, y sumárselo a otra tarea que también corre sería mentir. Estable
+  // entre renders mientras nada cambie —entra en `useMemo` del rail—, pero
+  // depende de `elapsed`, que avanza con el tick: así el rail sigue creciendo en
+  // vivo.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `elapsed` es la señal del tick
+  const runTotalOf = useCallback(
+    (taskId: number) => {
+      const a = actives.find((x) => x.taskId === taskId);
+      return a ? runTotalSeconds(a.startedAt) : 0;
+    },
+    [actives, elapsed],
+  );
+
   const display = active
     ? {
         taskId: active.taskId,
@@ -89,10 +103,7 @@ export function useTimer() {
     runTotal: active ? runTotalSeconds(active.startedAt) : 0,
     // Lo mismo, pero de **una tarea**: con timers en paralelo, `runTotal` es solo
     // el de `active`, y sumárselo a otra tarea que también corre sería mentir.
-    runTotalOf: (taskId: number) => {
-      const a = actives.find((x) => x.taskId === taskId);
-      return a ? runTotalSeconds(a.startedAt) : 0;
-    },
+    runTotalOf,
     overEstimate: isOverEstimate(elapsed, active?.estimatedMinutes),
     start,
     stop,

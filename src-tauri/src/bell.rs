@@ -570,21 +570,21 @@ mod tests {
     /// Con timers en paralelo, se despierta en el cruce **más cercano** de todos.
     #[test]
     fn con_varios_timers_se_duerme_hasta_el_cruce_mas_cercano() {
-        let medianoche = instante(MEDIANOCHE);
+        let midnight = instante(MEDIANOCHE);
         let ahora = instante("2026-08-21T13:29:40+00:00");
         // A la primera le faltan 20 s; a la segunda, 10.
         let a = for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(30)), 1);
         let b = for_task(timer("2026-08-21T13:19:50+00:00", 0, Some(10)), 2);
-        assert_eq!(next_wake(&[a.clone(), b.clone()], medianoche, ahora), Duration::from_secs(10));
+        assert_eq!(next_wake(&[a.clone(), b.clone()], midnight, ahora), Duration::from_secs(10));
         // El orden de la lista no cambia la respuesta.
-        assert_eq!(next_wake(&[b, a], medianoche, ahora), Duration::from_secs(10));
+        assert_eq!(next_wake(&[b, a], midnight, ahora), Duration::from_secs(10));
     }
 
     /// Un timer ya pasado de su estimado no puede arrastrar la espera al piso:
     /// mientras siga abierto, el vigilante giraría cada segundo.
     #[test]
     fn un_timer_ya_excedido_no_acorta_la_espera_de_los_demas() {
-        let medianoche = instante(MEDIANOCHE);
+        let midnight = instante(MEDIANOCHE);
         let ahora = instante("2026-08-21T14:00:00+00:00");
         let overdue = rung_for(
             for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(5)), 1),
@@ -594,31 +594,31 @@ mod tests {
         // A esta le faltan 25 s.
         let running = for_task(timer("2026-08-21T13:50:25+00:00", 0, Some(10)), 2);
         assert_eq!(
-            next_wake(&[overdue.clone(), running], medianoche, ahora),
+            next_wake(&[overdue.clone(), running], midnight, ahora),
             Duration::from_secs(25)
         );
-        assert_eq!(next_wake(&[overdue], medianoche, ahora), MAX_ESPERA);
+        assert_eq!(next_wake(&[overdue], midnight, ahora), MAX_ESPERA);
     }
 
     /// Cada tarea suena por **su** promesa: que una ya haya sonado no calla a la
     /// otra, y cada una suena en su propio cruce.
     #[test]
     fn cada_timer_suena_en_su_cruce_y_por_su_promesa() {
-        let medianoche = instante(MEDIANOCHE);
+        let midnight = instante(MEDIANOCHE);
         let a = for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(30)), 1);
         let b = for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(60)), 2);
 
         // 13:30: solo cruza la primera.
-        let due = due_now(&[a.clone(), b.clone()], medianoche, instante("2026-08-21T13:30:00+00:00"), HOY);
+        let due = due_now(&[a.clone(), b.clone()], midnight, instante("2026-08-21T13:30:00+00:00"), HOY);
         assert_eq!(due.iter().map(|(t, m)| (t.task_id, *m)).collect::<Vec<_>>(), vec![(1, 30)]);
 
         // 14:00: la primera ya sonó (su promesa está anotada) y cruza la segunda.
         let a_rung = rung_for(a, HOY, 30);
-        let due = due_now(&[a_rung.clone(), b.clone()], medianoche, instante("2026-08-21T14:00:00+00:00"), HOY);
+        let due = due_now(&[a_rung.clone(), b.clone()], midnight, instante("2026-08-21T14:00:00+00:00"), HOY);
         assert_eq!(due.iter().map(|(t, m)| (t.task_id, *m)).collect::<Vec<_>>(), vec![(2, 60)]);
 
         // Y con las dos anotadas, no suena ninguna.
         let b_rung = rung_for(b, HOY, 60);
-        assert!(due_now(&[a_rung, b_rung], medianoche, instante("2026-08-21T15:00:00+00:00"), HOY).is_empty());
+        assert!(due_now(&[a_rung, b_rung], midnight, instante("2026-08-21T15:00:00+00:00"), HOY).is_empty());
     }
 }

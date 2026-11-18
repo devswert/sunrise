@@ -851,12 +851,19 @@ fn atomically<T>(conn: &Connection, f: impl FnOnce() -> Result<T>) -> Result<T> 
     let (begin, commit, rollback) = if conn.is_autocommit() {
         ("BEGIN IMMEDIATE", "COMMIT", "ROLLBACK")
     } else {
-        ("SAVEPOINT timer", "RELEASE timer", "ROLLBACK TO timer; RELEASE timer")
+        ("SAVEPOINT atomic", "RELEASE atomic", "ROLLBACK TO atomic; RELEASE atomic")
     };
     conn.execute_batch(begin)?;
     match f() {
         Ok(v) => {
-            conn.execute_batch(commit)?;
+            // Si el COMMIT falla, se deshace igual: la conexión es una sola, detrás
+            // del `Mutex`, y quedarse dentro de una transacción dejaría toda
+            // escritura posterior en un SAVEPOINT que nunca se confirma, con el
+            // lock de escritura tomado frente al MCP.
+            if let Err(e) = conn.execute_batch(commit) {
+                let _ = conn.execute_batch(rollback);
+                return Err(e);
+            }
             Ok(v)
         }
         Err(e) => {
@@ -3728,6 +3735,27 @@ mod tests {
         start_timer(&c, a.id, false).unwrap();
         assert!(c.is_autocommit());
         stop_all_timers(&c).unwrap();
+    }
+
+    /// Lo que justifica `atomically`: un play clásico que falla a la mitad no
+    /// puede dejar los demás timers cerrados sin el nuevo, ni acumulaciones a
+    /// medias, ni la conexión colgada en una transacción.
+    #[test]
+    fn el_play_clasico_que_falla_no_deja_los_demas_cerrados() {
+        let c = conn();
+        let a = create_task(&c, new_task("a", Some("2026-08-11"))).unwrap();
+        let b = create_task(&c, new_task("b", Some("2026-08-11"))).unwrap();
+        start_timer(&c, a.id, false).unwrap();
+        start_timer(&c, b.id, true).unwrap();
+        backdate_open(&c, a.id, 60);
+
+        // Una tarea que no existe: cierra los dos y después falla al abrir.
+        assert!(start_timer(&c, 9999, false).is_err());
+
+        assert_eq!(open_entries(&c, None), 2, "los dos siguen abiertos");
+        assert_eq!(get_task(&c, a.id).unwrap().unwrap().actual_seconds, 0);
+        assert_eq!(get_task(&c, b.id).unwrap().unwrap().actual_seconds, 0);
+        assert!(c.is_autocommit(), "la conexión no queda en una transacción");
     }
 
     #[test]

@@ -228,7 +228,9 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
 - ↑/↓ mueven el foco entre tareas del día (ignorado si el foco está en un
   input/textarea).
 - Si el timer arranca en otra tarea, Focus salta a ella **una sola vez por
-  tarea** (`syncedFor`), para no pelear con las flechas después.
+  tarea** (`syncedFor`), para no pelear con las flechas después. Mira `active`,
+  el más antiguo de los que corren: lo cumple el **play clásico**; un play en
+  paralelo no lo mueve (Focus en columnas es #21).
 - **Nunca auto-cierra ni bloquea al pasarse del estimado**: muestra el aviso
   "puedes seguir trabajando". Regla de producto, no detalle de UI.
 

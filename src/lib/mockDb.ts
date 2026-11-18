@@ -689,6 +689,9 @@ export const mock = {
   startTimer: async (taskId: number, parallel: boolean = false): Promise<ActiveTimer> => {
     const running = (await mock.getActiveTimers()).find((a) => a.taskId === taskId);
     if (running) return running;
+    // En Rust una tarea inexistente falla y revierte todo (`atomically`): acá se
+    // valida antes de tocar nada para decir lo mismo.
+    if (!tasks.some((x) => x.id === taskId)) throw new Error(`task ${taskId} not found`);
     if (!parallel) await mock.stopAllTimers();
     // Volver a trabajar en algo lo reabre (I5).
     const t = tasks.find((x) => x.id === taskId);

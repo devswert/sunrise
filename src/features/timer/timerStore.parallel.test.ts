@@ -4,10 +4,12 @@
  * el store le pidiera, y lo que hay que probar es justamente que el store y el
  * gemelo de `repo.rs` digan lo mismo.
  */
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { api } from "../../lib/ipc";
 import { todayISO } from "../../lib/date";
 import { selectIsRunning, useTimerStore } from "./timerStore";
+import { useTimer } from "./useTimer";
 
 async function newTask(title: string): Promise<number> {
   const t = await api.createTask({ title, scheduledDate: todayISO() });
@@ -207,5 +209,33 @@ describe("timerStore con timers en paralelo", () => {
     await useTimerStore.getState().refresh();
 
     expect(ids()).toEqual([a]);
+  });
+
+  it("runTotalOf da la corrida de cada tarea, y 0 a la que no corre", async () => {
+    const a = await newTask("a");
+    const b = await newTask("b");
+    const idle = await newTask("quieta");
+    await act(async () => {
+      await useTimerStore.getState().start(a);
+      await useTimerStore.getState().start(b, { parallel: true });
+    });
+    const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    const [ta, tb] = useTimerStore.getState().actives;
+    act(() => {
+      useTimerStore.setState({
+        actives: [
+          { ...ta, startedAt: ago(600) },
+          { ...tb, startedAt: ago(120) },
+        ],
+      });
+    });
+
+    const { result } = renderHook(() => useTimer());
+
+    expect(result.current.runTotalOf(a)).toBeGreaterThanOrEqual(599);
+    expect(result.current.runTotalOf(a)).toBeLessThanOrEqual(601);
+    expect(result.current.runTotalOf(b)).toBeGreaterThanOrEqual(119);
+    expect(result.current.runTotalOf(b)).toBeLessThanOrEqual(121);
+    expect(result.current.runTotalOf(idle)).toBe(0);
   });
 });

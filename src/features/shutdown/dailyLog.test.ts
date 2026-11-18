@@ -102,17 +102,17 @@ describe("bitácora", () => {
   it("con timers en paralelo cada tramo suma su corrida y el día suma las dos", () => {
     // Con un solo número, la segunda tarea mostraba la corrida de la primera y
     // el total del día sumaba una sola corrida en vez de dos.
-    const enCurso = (taskId: number) => (taskId === 1 ? 600 : 120);
-    const dos = day({
+    const running = (taskId: number) => (taskId === 1 ? 600 : 120);
+    const twoRunning = day({
       workedSeconds: 300,
       timeline: [
         { taskId: 1, title: "agente 1", seconds: 300, running: true },
         { taskId: 2, title: "agente 2", seconds: 0, running: true },
       ],
     });
-    expect(workedWithRunning(dos, enCurso)).toBe(300 + 600 + 120);
-    expect(segmentSeconds(dos.timeline[0], enCurso)).toBe(900);
-    expect(segmentSeconds(dos.timeline[1], enCurso)).toBe(120);
+    expect(workedWithRunning(twoRunning, running)).toBe(300 + 600 + 120);
+    expect(segmentSeconds(twoRunning.timeline[0], running)).toBe(900);
+    expect(segmentSeconds(twoRunning.timeline[1], running)).toBe(120);
   });
 });
 
