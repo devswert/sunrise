@@ -526,6 +526,8 @@ ocupa espacio para la siguiente:
   `completeAndAdvance` y en `timeByDay`. `scheduled_time` viene de
   `local_start` y `estimated_minutes` es la duración: los dos campos locales
   alcanzan y no queda conversión que hacer.
+- **Sin channel, el bloque avisa** con un `#` amarillo que pulsa, y el chip de día
+  completo también; un evento ignorado no (§7, "Color").
 - **Día completo ⇒ franja arriba de la grilla, no un bloque.** Un feriado no
   tiene dónde caer en la escala de horas (§4.12, "día completo = sin reloj").
   Una tarea **a mano** sin hora no entra en esa franja: no es de día completo,

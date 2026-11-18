@@ -694,6 +694,17 @@ confirmación de restaurar un respaldo no se cerraba con Escape.
 **Un icono que no hace nada al apretarlo enseña que la barra no responde**, así que
 solo se dibujan los botones que existen.
 
+**El aviso de "sin channel" del rail es un icono, no un bloque teñido** (#7). Teñir el
+bloque entero lo ponía a competir con los que sí tienen color, y lo que falta es un
+dato, no un estado de la tarea. Dos cosas que costaron: el icono partió junto a la
+hora, dentro de `.rail__bloque-hora`, y ahí el amarillo salía apagado — esa fila va
+al 75% de opacidad, y **la opacidad de un hijo se multiplica con la del padre, no la
+pisa**, así que un `opacity: 1` en el icono no hace nada. Por eso va en la esquina
+del bloque. Y los keyframes son propios del rail en vez de reusar `tc-pulse`: una
+animación nombrada es global, pero depender de que `week.css` esté cargada para que
+el rail anime es un acoplamiento que no se ve. Un bloque ya completado sin channel
+**sigue avisando**: el dato sigue faltando, y la weekly review lo va a pedir igual.
+
 **El icono de la app: solo sol y horizonte, y el cielo oscuro aunque la app sea
 clara.** Rayos o nubes son trazos finos que a 32px se vuelven suciedad, y 32px es el
 tamaño en que un icono se usa. El cielo va oscuro porque el icono vive en el Dock

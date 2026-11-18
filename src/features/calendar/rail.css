@@ -301,3 +301,38 @@
   opacity: 0.55;
   border-style: dashed;
 }
+
+/* Aviso de tarea sin channel (§7): un `#` amarillo que pulsa. Solo el icono
+   cambia; el bloque sigue en el neutro, porque lo que falta es un dato y no un
+   estado de la tarea. En el bloque va en la esquina de arriba a la derecha y no
+   junto a la hora: `.rail__bloque-hora` va al 75% de opacidad, y la de un hijo
+   se multiplica, no se pisa — el amarillo, que ya es débil sobre la superficie,
+   quedaba apagado. Los keyframes son propios y no los `tc-pulse` de `week.css`,
+   para que el rail no dependa de que esa hoja esté cargada. */
+.rail__no-channel {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--cap-warn);
+  animation: rail-warn-pulse 1.4s ease-in-out infinite;
+}
+.rail__bloque .rail__no-channel {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+}
+/* El título no se mete debajo del icono. */
+.rail__bloque.has-no-channel {
+  padding-right: 16px;
+}
+.rail__chip .rail__no-channel {
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+@keyframes rail-warn-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail__no-channel { animation: none; }
+}
