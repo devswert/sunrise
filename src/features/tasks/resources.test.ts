@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendResources, harvestLinks } from "./resources";
+import { appendResources, harvestLinks, replaceKeepingCaret } from "./resources";
 import { extractLinks } from "./history";
 
 describe("harvestLinks · saca los links del título", () => {
@@ -40,6 +40,69 @@ describe("harvestLinks · saca los links del título", () => {
     const r = harvestLinks("Revisar https://acme.dev/x y avisar", true);
     expect(r.text).toBe("Revisar y avisar");
     expect(r.links).toEqual(["https://acme.dev/x"]);
+  });
+});
+
+describe("harvestLinks · el cursor sigue al texto que quedó", () => {
+  it("un link sacado antes del cursor lo corre lo que medía", () => {
+    // "Ver https://a.dev/x y avisar", cursor después de "y".
+    const r = harvestLinks("Ver https://a.dev/x y avisar", true, 21);
+    expect(r.text).toBe("Ver y avisar");
+    expect(r.caret).toBe(5);
+  });
+
+  // Mientras el cursor está en su borde, la URL todavía se está escribiendo
+  // aunque tenga un espacio detrás.
+  it("la URL con el cursor en su borde no se cosecha", () => {
+    const r = harvestLinks("Ver https://a.dev mañana", true, 17);
+    expect(r.text).toBe("Ver https://a.dev mañana");
+    expect(r.links).toEqual([]);
+    expect(r.caret).toBe(17);
+  });
+
+  it("el hueco de un link se junta aunque toque el cursor", () => {
+    // Se acaba de teclear el espacio que cierra la URL, antes de " mañana".
+    const r = harvestLinks("PR https://a.dev  mañana", true, 17);
+    expect(r.text).toBe("PR mañana");
+    expect(r.caret).toBe(3);
+  });
+
+  it("el doble espacio que toca el cursor, sin link, se queda", () => {
+    const r = harvestLinks("Si tengo  esta", true, 9);
+    expect(r.text).toBe("Si tengo  esta");
+    expect(r.caret).toBe(9);
+  });
+
+  it("el doble espacio lejos del cursor se junta y lo corre", () => {
+    const r = harvestLinks("Si  tengo esta", true, 13);
+    expect(r.text).toBe("Si tengo esta");
+    expect(r.caret).toBe(12);
+  });
+
+  it("al pegar, el recorte del final no deja el cursor fuera del texto", () => {
+    const r = harvestLinks("Ver https://a.dev", false, 17);
+    expect(r.text).toBe("Ver");
+    expect(r.caret).toBe(3);
+  });
+});
+
+describe("replaceKeepingCaret · reemplaza sin perder el cursor", () => {
+  it("un salto aplanado antes del cursor lo corre", () => {
+    const r = replaceKeepingCaret("uno\n\n dos tres", /\s*\n\s*/g, () => " ", 11);
+    expect(r.text).toBe("uno dos tres");
+    // Después de la "t" de "tres", dos caracteres antes que en el original.
+    expect(r.caret).toBe(9);
+  });
+
+  it("un cursor dentro del tramo queda en lo que sobrevivió", () => {
+    const r = replaceKeepingCaret("uno   dos", /[ ]{2,}/g, () => " ", 5);
+    expect(r.text).toBe("uno dos");
+    expect(r.caret).toBe(4);
+  });
+
+  it("lo que está después del cursor no lo mueve", () => {
+    const r = replaceKeepingCaret("uno dos   tres", /[ ]{2,}/g, () => " ", 2);
+    expect(r.caret).toBe(2);
   });
 });
 
