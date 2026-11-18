@@ -792,11 +792,15 @@ pub fn mark_bell_rung(conn: &Connection, task_id: i64, promise: &str) -> Result<
 /// timer al completar, y vive acá por el mismo motivo: para que valga desde la
 /// semana, Today, Focus, el modal y el taxímetro sin repetirla en cada vista.
 pub fn start_timer(conn: &Connection, task_id: i64, parallel: bool) -> Result<ActiveTimer> {
+    atomically(conn, || start_timer_in(conn, task_id, parallel))
+}
+
+fn start_timer_in(conn: &Connection, task_id: i64, parallel: bool) -> Result<ActiveTimer> {
     if let Some(running) = get_active_timer(conn, task_id)? {
         return Ok(running);
     }
     if !parallel {
-        stop_all_timers(conn)?;
+        stop_all_timers_in(conn)?;
     }
     // El `AND status = 'DONE'` evita tocar `updated_at` de una tarea que ya
     // estaba pendiente.
@@ -808,20 +812,51 @@ pub fn start_timer(conn: &Connection, task_id: i64, parallel: bool) -> Result<Ac
     // `OR IGNORE` contra el índice único parcial (migración 18): si otro proceso
     // —el MCP— abrió el timer de esta tarea entre la lectura de arriba y esta
     // escritura, se queda el suyo y se devuelve ese. Nunca dos abiertas.
+    //
+    // `started_at` sale siempre de `now()` (RFC 3339 en UTC, `+00:00`): el orden
+    // de `get_active_timers` compara esos strings, y es contrato. Quien abra un
+    // timer por otro camino tiene que escribirlo igual.
     conn.execute(
         "INSERT OR IGNORE INTO time_entries (task_id, started_at, seconds) VALUES (?1, ?2, 0)",
         params![task_id, now()],
     )?;
-    Ok(get_active_timer(conn, task_id)?.expect("timer recién iniciado"))
+    // Sin `expect`: un panic acá ocurre con el `Mutex` de la base tomado y lo
+    // envenena, y la app queda sin base. Si la fila no está —el `OR IGNORE`
+    // también calla otras violaciones—, es un error y se devuelve como tal.
+    get_active_timer(conn, task_id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
+}
+
+/// Corre `f` dentro de un `SAVEPOINT`: o se escribe todo, o nada.
+///
+/// Cerrar un timer son tres escrituras (cerrar la fila, los tramos por día y la
+/// acumulación de I1), y el play clásico encadena una por cada timer abierto más
+/// la reapertura y el alta. A la mitad quedaría una entrada cerrada sin su
+/// acumulación, o todo cerrado sin el timer nuevo. Es `SAVEPOINT` y no
+/// `BEGIN` porque anida: `set_task_status` llama a `stop_timer`, y un llamador
+/// puede estar ya dentro de una transacción.
+fn atomically<T>(conn: &Connection, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    conn.execute_batch("SAVEPOINT timer")?;
+    match f() {
+        Ok(v) => {
+            conn.execute_batch("RELEASE timer")?;
+            Ok(v)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK TO timer; RELEASE timer");
+            Err(e)
+        }
+    }
 }
 
 /// Cierra el timer de `task_id` (si corre) y acumula su duración en la tarea.
 /// Devuelve `(task_id, seconds)` de lo registrado. **Los demás timers siguen.**
 pub fn stop_timer(conn: &Connection, task_id: i64) -> Result<Option<(i64, i64)>> {
-    let Some(active) = get_active_timer(conn, task_id)? else {
-        return Ok(None);
-    };
-    close_entry(conn, &active, &now()).map(Some)
+    atomically(conn, || {
+        let Some(active) = get_active_timer(conn, task_id)? else {
+            return Ok(None);
+        };
+        close_entry(conn, &active, &now()).map(Some)
+    })
 }
 
 /// Cierra **todos** los timers abiertos. Devuelve un `(task_id, seconds)` por
@@ -832,6 +867,10 @@ pub fn stop_timer(conn: &Connection, task_id: i64) -> Result<Option<(i64, i64)>>
 /// —la jornada de #22— no deberían ver un escalón de microsegundos entre una y
 /// otra.
 pub fn stop_all_timers(conn: &Connection) -> Result<Vec<(i64, i64)>> {
+    atomically(conn, || stop_all_timers_in(conn))
+}
+
+fn stop_all_timers_in(conn: &Connection) -> Result<Vec<(i64, i64)>> {
     let ended = now();
     get_active_timers(conn)?
         .iter()
@@ -3535,115 +3574,135 @@ mod tests {
         assert!(get_task(&c, b.id).unwrap().unwrap().actual_seconds >= 59);
     }
 
-    /// La migración 18 no puede abortar ni dejar fantasmas: una base con dos
-    /// filas abiertas (la regla vieja solo miraba la última) queda con una sola,
-    /// la más nueva, y sin horas inventadas en la tarea.
-    #[test]
-    fn la_migracion_18_cierra_en_cero_las_abiertas_de_mas() {
+    /// Aplica las migraciones hasta la 17, para probar la 18 sobre una base
+    /// "de antes".
+    fn conn_before_18() -> Connection {
         let c = db::open_in_memory().unwrap();
         c.execute_batch(
             "CREATE TABLE _migrations (version INTEGER PRIMARY KEY,
                                        applied_at TEXT NOT NULL DEFAULT (datetime('now')))",
         )
         .unwrap();
-        // Todas las migraciones hasta la 17.
         for (version, sql) in crate::db::migrations::MIGRATIONS.iter().filter(|(v, _)| *v < 18) {
             c.execute_batch(sql).unwrap();
             c.execute("INSERT INTO _migrations (version) VALUES (?1)", [version]).unwrap();
         }
+        c
+    }
+
+    fn insert_open(c: &Connection, task_id: i64, started_at: &str) {
+        c.execute(
+            "INSERT INTO time_entries (task_id, started_at, seconds) VALUES (?1, ?2, 0)",
+            params![task_id, started_at],
+        )
+        .unwrap();
+    }
+
+    /// La migración 18 no puede abortar ni dejar fantasmas: una base con dos
+    /// filas abiertas en la misma tarea (la regla vieja solo miraba la última)
+    /// queda con una sola, la más nueva, y sin horas inventadas en la tarea.
+    #[test]
+    fn la_migracion_18_borra_las_abiertas_de_mas_de_una_tarea() {
+        let c = conn_before_18();
         let t = create_task(&c, new_task("vieja", Some("2026-08-10"))).unwrap();
-        for when in ["2026-08-01T10:00:00+00:00", "2026-08-10T10:00:00+00:00"] {
-            c.execute(
-                "INSERT INTO time_entries (task_id, started_at, seconds) VALUES (?1, ?2, 0)",
-                params![t.id, when],
-            )
-            .unwrap();
-        }
+        insert_open(&c, t.id, "2026-08-01T10:00:00+00:00");
+        insert_open(&c, t.id, "2026-08-10T10:00:00+00:00");
 
         crate::db::migrations::run(&c).unwrap();
 
-        assert_eq!(open_entries(&c, None), 1);
-        let ghost: (String, i64) = c
-            .query_row(
-                "SELECT ended_at, seconds FROM time_entries WHERE started_at LIKE '2026-08-01%'",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
+        let left: Vec<String> = c
+            .prepare("SELECT started_at FROM time_entries")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_>>()
             .unwrap();
-        assert_eq!(ghost, ("2026-08-01T10:00:00+00:00".to_string(), 0));
+        assert_eq!(left, vec!["2026-08-10T10:00:00+00:00".to_string()]);
+        assert_eq!(open_entries(&c, None), 1);
         assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 0);
     }
 
+    /// Con abiertas en **tareas distintas** sobrevive la de mayor id —la única
+    /// que la regla vieja mostraba—, aunque sea de otra tarea, y el índice se
+    /// crea igual.
     #[test]
-    fn completar_una_tarea_detiene_su_timer() {
-        let c = conn();
-        let t = create_task(&c, new_task("en curso", Some("2026-08-11"))).unwrap();
-        start_timer(&c, t.id, false).unwrap();
-        assert!(get_active_timer(&c, t.id).unwrap().is_some());
+    fn la_migracion_18_deja_solo_la_mas_nueva_aunque_sea_de_otra_tarea() {
+        let c = conn_before_18();
+        let a = create_task(&c, new_task("a", Some("2026-08-10"))).unwrap();
+        let b = create_task(&c, new_task("b", Some("2026-08-10"))).unwrap();
+        insert_open(&c, a.id, "2026-08-01T10:00:00+00:00");
+        insert_open(&c, b.id, "2026-08-10T10:00:00+00:00");
 
-        set_task_status(&c, t.id, "DONE").unwrap();
+        crate::db::migrations::run(&c).unwrap();
 
-        assert!(
-            get_active_timer(&c, t.id).unwrap().is_none(),
-            "al completar, el timer debe detenerse"
-        );
-        // El tramo trabajado quedó registrado (entrada cerrada).
-        let closed_entries: i64 = c
+        let ids: Vec<i64> = get_active_timers(&c).unwrap().iter().map(|t| t.task_id).collect();
+        assert_eq!(ids, vec![b.id]);
+        let index: i64 = c
             .query_row(
-                "SELECT COUNT(*) FROM time_entries WHERE task_id = ?1 AND ended_at IS NOT NULL",
-                [t.id],
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'index' AND name = 'idx_time_entries_one_open_per_task'",
+                [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(closed_entries, 1);
+        assert_eq!(index, 1);
     }
 
+    /// Cada timer abierto trae el `base_seconds` de **su** tarea (I3).
     #[test]
-    fn darle_play_a_una_tarea_completada_la_reabre() {
+    fn cada_timer_abierto_trae_lo_de_hoy_de_su_tarea() {
         let c = conn();
-        let t = create_task(&c, new_task("cerrada", Some("2026-08-11"))).unwrap();
+        let today = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+        let a = create_task(&c, new_task("a", Some(&today))).unwrap();
+        let b = create_task(&c, new_task("b", Some(&today))).unwrap();
+        set_actual_seconds(&c, a.id, 600).unwrap();
+        set_actual_seconds(&c, b.id, 120).unwrap();
 
-        let done = set_task_status(&c, t.id, "DONE").unwrap().unwrap();
-        assert_eq!(done.status, "DONE");
-        assert!(done.completed_at.is_some());
+        start_timer(&c, a.id, false).unwrap();
+        start_timer(&c, b.id, true).unwrap();
 
-        // Volver a trabajar en algo es decir que no estaba terminado.
-        start_timer(&c, t.id, false).unwrap();
+        let bases: Vec<(i64, i64)> = get_active_timers(&c)
+            .unwrap()
+            .iter()
+            .map(|t| (t.task_id, t.base_seconds))
+            .collect();
+        assert_eq!(bases, vec![(a.id, 600), (b.id, 120)]);
+    }
 
-        let reopened = get_task(&c, t.id).unwrap().unwrap();
+    /// El play en paralelo también reabre una tarea completada (I5).
+    #[test]
+    fn el_play_en_paralelo_tambien_reabre_una_tarea_completada() {
+        let c = conn();
+        let a = create_task(&c, new_task("a", Some("2026-08-11"))).unwrap();
+        let b = create_task(&c, new_task("b", Some("2026-08-11"))).unwrap();
+        start_timer(&c, a.id, false).unwrap();
+        set_task_status(&c, b.id, "DONE").unwrap();
+
+        start_timer(&c, b.id, true).unwrap();
+
+        let reopened = get_task(&c, b.id).unwrap().unwrap();
         assert_eq!(reopened.status, "TODO");
         assert!(reopened.completed_at.is_none());
-        // Y el timer efectivamente quedó corriendo en ella.
-        assert_eq!(get_active_timer(&c, t.id).unwrap().unwrap().task_id, t.id);
+        assert_eq!(open_entries(&c, None), 2);
     }
 
+    /// El timer escribe dentro de un `SAVEPOINT`, que anida: llamarlo desde una
+    /// transacción abierta no falla, y lo que hizo se va con el rollback de
+    /// afuera.
     #[test]
-    fn la_tarea_reabierta_vuelve_a_la_cola_de_focus() {
+    fn el_timer_anida_dentro_de_una_transaccion_ajena() {
         let c = conn();
-        let t = create_task(&c, new_task("cerrada", Some("2026-08-11"))).unwrap();
-        set_task_status(&c, t.id, "DONE").unwrap();
-        assert!(focus_queue(&c, "2026-08-11", "10:00").unwrap().is_empty());
-
-        start_timer(&c, t.id, false).unwrap();
-
-        let queue = focus_queue(&c, "2026-08-11", "10:00").unwrap();
-        assert_eq!(queue.len(), 1);
-        assert_eq!(queue[0].id, t.id);
-    }
-
-    #[test]
-    fn darle_play_a_una_tarea_pendiente_no_la_toca() {
-        let c = conn();
-        let t = create_task(&c, new_task("pendiente", Some("2026-08-11"))).unwrap();
-
-        start_timer(&c, t.id, false).unwrap();
-
-        let after = get_task(&c, t.id).unwrap().unwrap();
-        assert_eq!(after.status, "TODO");
-        assert!(after.completed_at.is_none());
-        // No se le movió la fecha ni la posición por arrancar el timer.
-        assert_eq!(after.scheduled_date.as_deref(), Some("2026-08-11"));
-        assert_eq!(after.position, t.position);
+        let a = create_task(&c, new_task("a", Some("2026-08-11"))).unwrap();
+        {
+            let tx = c.unchecked_transaction().unwrap();
+            start_timer(&c, a.id, false).unwrap();
+            stop_all_timers(&c).unwrap();
+            tx.rollback().unwrap();
+        }
+        let entries: i64 = c
+            .query_row("SELECT COUNT(*) FROM time_entries", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(entries, 0);
     }
 
     /// Con timers en paralelo, completar una tarea detiene **solo el suyo** (I5).

@@ -4,6 +4,7 @@ import { useMinuteTick } from "../../lib/day";
 import type { Category, Task, DayWork } from "../../lib/types";
 import { weekdayLabel } from "../../lib/date";
 import { buildRail, hourLabel, type BloqueRail } from "./railLayout";
+import type { RunningSeconds } from "../timer/runningSeconds";
 
 /** Alto de una hora de grilla, en px. La geometría se calcula en minutos. */
 const PX_POR_MINUTO = 1;
@@ -27,7 +28,7 @@ interface Props {
   /** Lo trabajado ese día, por tarea (`repo::day_work`). */
   work?: DayWork[];
   /** Segundos de la corrida en curso, para que su bloque crezca en vivo. */
-  segundosEnCurso?: number;
+  segundosEnCurso?: RunningSeconds;
   /** Modificador de la vista que lo monta (p. ej. `rail--overlay`). */
   className?: string;
   /**

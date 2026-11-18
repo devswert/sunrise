@@ -138,12 +138,26 @@ Lo que se conservó, a propósito:
   vistas que muestran un solo timer no cambiaron, y por eso el orden de
   `get_active_timers` (del más antiguo al más nuevo) es contrato.
 
-**La migración 18 cierra en cero las filas abiertas de más.** Con la regla vieja no
-debería haber ninguna, pero `get_active_timer` miraba solo la última, así que una
-de más era invisible. El índice habría abortado la migración —y la app no
-arrancaba—, y la lista nueva las habría mostrado corriendo con semanas encima. Se
-cierran con `ended_at = started_at` y sin tocar `actual_seconds`: nunca se
-contaron ni se vieron, y cerrarlas con su duración inventaría horas.
+**La migración 18 borra las filas abiertas de más.** Con la regla vieja no debería
+haber ninguna, pero `get_active_timer` miraba solo la última, así que una de más
+era invisible. El índice habría abortado la migración —y la app no arrancaba—, y la
+lista nueva las habría mostrado corriendo con semanas encima. Se borran sin tocar
+`actual_seconds`: nunca se contaron ni se vieron. Cerrarlas con su duración
+inventaría horas, y cerrarlas en cero —la primera versión— tampoco es neutro: una
+fila con `started_at = ended_at` es la forma de un ajuste manual, y aparece como un
+día en 0:00, como una fila del rollup y, en una reunión de calendario, le quita su
+duración de evento (Regla 3).
+
+**La corrida en curso pasó a ser por tarea en todas partes, no solo en el store.**
+El rail y el Shutdown recibían un número —la corrida del único timer— y se lo
+sumaban a la fila `running`. Con dos timers, la segunda tarea crecía con la corrida
+de la primera y el día sumaba una sola. Ahora reciben `RunningSeconds`: un número
+sigue valiendo (un timer, tests puros), y `useDayWork` pasa `runTotalOf`.
+
+**Las escrituras del timer van en un `SAVEPOINT`.** Con un timer eran dos
+escrituras seguidas; el play clásico ahora encadena un cierre por timer abierto
+(tres escrituras cada uno) más la reapertura y el alta, y el MCP va a llamarlo desde
+otro proceso. `SAVEPOINT` y no `BEGIN` porque anida.
 
 **Dos campanas en el mismo instante suenan una vez.** Cada tarea anota su promesa
 (`bell_rung_for`) y la notificación sale por tarea, pero la campanada es una: dos

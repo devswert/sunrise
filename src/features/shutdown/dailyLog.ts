@@ -7,6 +7,7 @@
  */
 import type { LogDay, DoneTask } from "../../lib/types";
 import { SettingKey, noticeOn, type SettingsMap } from "../../lib/settings";
+import { type RunningSeconds, runningFor } from "../timer/runningSeconds";
 
 /** Un día sin nada: ni trabajo, ni tareas cerradas, ni nota, ni cierre. */
 export function isEmpty(d: LogDay): boolean {
@@ -65,17 +66,22 @@ export function dayStatus(d: LogDay): "CERRADO" | "BORRADOR" {
  * taxímetro. Es la misma cuenta que hace el rail, y sin ella la tarea que estás
  * trabajando ahora mismo aparece en 0 y el total del día va corto.
  */
-export function workedWithRunning(d: LogDay, segundosEnCurso: number): number {
-  const hayCorrida = d.timeline.some((t) => t.running);
-  return d.workedSeconds + (hayCorrida ? Math.max(0, segundosEnCurso) : 0);
+export function workedWithRunning(d: LogDay, segundosEnCurso: RunningSeconds): number {
+  // Una corrida por **tarea** que corre: con timers en paralelo hay varias, y
+  // cada una suma la suya. El `Set` evita contar dos veces una tarea que
+  // apareciera en más de un tramo abierto.
+  const corriendo = new Set(d.timeline.filter((t) => t.running).map((t) => t.taskId));
+  let enCurso = 0;
+  for (const taskId of corriendo) enCurso += runningFor(segundosEnCurso, taskId);
+  return d.workedSeconds + enCurso;
 }
 
 /** Igual que la anterior, pero para un tramo del timeline. */
 export function segmentSeconds(
-  tramo: { seconds: number; running: boolean },
-  segundosEnCurso: number,
+  tramo: { taskId: number; seconds: number; running: boolean },
+  segundosEnCurso: RunningSeconds,
 ): number {
-  return tramo.seconds + (tramo.running ? Math.max(0, segundosEnCurso) : 0);
+  return tramo.seconds + (tramo.running ? runningFor(segundosEnCurso, tramo.taskId) : 0);
 }
 
 /**

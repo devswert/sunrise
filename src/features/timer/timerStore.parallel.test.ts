@@ -9,7 +9,7 @@ import { api } from "../../lib/ipc";
 import { todayISO } from "../../lib/date";
 import { selectIsRunning, useTimerStore } from "./timerStore";
 
-async function nueva(title: string): Promise<number> {
+async function newTask(title: string): Promise<number> {
   const t = await api.createTask({ title, scheduledDate: todayISO() });
   return t.id;
 }
@@ -38,8 +38,8 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("start en paralelo suma el timer sin pausar el que corría", async () => {
-    const a = await nueva("agente 1");
-    const b = await nueva("agente 2");
+    const a = await newTask("agente 1");
+    const b = await newTask("agente 2");
     const { start } = useTimerStore.getState();
 
     await start(a);
@@ -58,22 +58,22 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("el play clásico pausa todos los que corren y arranca esta", async () => {
-    const a = await nueva("a");
-    const b = await nueva("b");
-    const reunion = await nueva("reunión");
+    const a = await newTask("a");
+    const b = await newTask("b");
+    const meeting = await newTask("reunión");
     const { start } = useTimerStore.getState();
     await start(a);
     await start(b, { parallel: true });
 
-    await start(reunion);
+    await start(meeting);
 
-    expect(ids()).toEqual([reunion]);
-    expect((await api.getActiveTimers()).map((t) => t.taskId)).toEqual([reunion]);
+    expect(ids()).toEqual([meeting]);
+    expect((await api.getActiveTimers()).map((t) => t.taskId)).toEqual([meeting]);
   });
 
   it("darle play a la que ya corre no la reinicia ni pausa a las demás", async () => {
-    const a = await nueva("a");
-    const b = await nueva("b");
+    const a = await newTask("a");
+    const b = await newTask("b");
     const { start } = useTimerStore.getState();
     await start(a);
     await start(b, { parallel: true });
@@ -86,8 +86,8 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("stop(taskId) pausa solo esa tarea y las demás siguen corriendo", async () => {
-    const a = await nueva("a");
-    const b = await nueva("b");
+    const a = await newTask("a");
+    const b = await newTask("b");
     const { start } = useTimerStore.getState();
     await start(a);
     await start(b, { parallel: true });
@@ -102,8 +102,8 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("stop() sin id pausa el de `active` (el primero), como hacían las vistas", async () => {
-    const a = await nueva("a");
-    const b = await nueva("b");
+    const a = await newTask("a");
+    const b = await newTask("b");
     const { start } = useTimerStore.getState();
     await start(a);
     await start(b, { parallel: true });
@@ -115,7 +115,7 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("stop ignora un evento del mouse en vez de tomarlo por un id", async () => {
-    const a = await nueva("a");
+    const a = await newTask("a");
     await useTimerStore.getState().start(a);
 
     // Lo que llega si alguien pasa `stop` directo a un `onClick`.
@@ -125,8 +125,8 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("stopAll pausa todos y deja en pausa la que se mostraba", async () => {
-    const a = await nueva("a");
-    const b = await nueva("b");
+    const a = await newTask("a");
+    const b = await newTask("b");
     const { start } = useTimerStore.getState();
     await start(a);
     await start(b, { parallel: true });
@@ -141,9 +141,9 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("toggle pausa solo la que corre, y sobre una detenida es el play clásico", async () => {
-    const a = await nueva("a");
-    const b = await nueva("b");
-    const c = await nueva("c");
+    const a = await newTask("a");
+    const b = await newTask("b");
+    const c = await newTask("c");
     const { start } = useTimerStore.getState();
     await start(a);
     await start(b, { parallel: true });
@@ -157,19 +157,19 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("el tick cuenta lo de hoy de cada timer por separado", async () => {
-    const a = await nueva("a");
-    const b = await nueva("b");
+    const a = await newTask("a");
+    const b = await newTask("b");
     const { start } = useTimerStore.getState();
     await start(a);
     await start(b, { parallel: true });
 
     // Diez minutos corridos en una y dos en la otra.
-    const hace = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
     const [ta, tb] = useTimerStore.getState().actives;
     useTimerStore.setState({
       actives: [
-        { ...ta, startedAt: hace(600) },
-        { ...tb, startedAt: hace(120) },
+        { ...ta, startedAt: ago(600) },
+        { ...tb, startedAt: ago(120) },
       ],
     });
     useTimerStore.getState().tick();
@@ -183,8 +183,8 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("completar la del taxímetro no pausa la que corre en paralelo", async () => {
-    const a = await nueva("a");
-    const b = await nueva("b");
+    const a = await newTask("a");
+    const b = await newTask("b");
     const { start } = useTimerStore.getState();
     await start(a);
     await start(b, { parallel: true });
@@ -197,8 +197,8 @@ describe("timerStore con timers en paralelo", () => {
   });
 
   it("completar una tarea desde fuera detiene solo su timer (setTaskStatus)", async () => {
-    const a = await nueva("a");
-    const b = await nueva("b");
+    const a = await newTask("a");
+    const b = await newTask("b");
     const { start } = useTimerStore.getState();
     await start(a);
     await start(b, { parallel: true });

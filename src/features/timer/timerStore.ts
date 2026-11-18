@@ -170,14 +170,14 @@ export interface StartOptions {
  * `derive`, para que `actives`, `elapsedById`, `active` y `elapsed` no puedan
  * quedar desalineados entre sí.
  */
-interface TimersSnapshot {
+export interface TimersSnapshot {
   actives: ActiveTimer[];
   elapsedById: Record<number, number>;
   active: ActiveTimer | null;
   elapsed: number;
 }
 
-function derive(actives: ActiveTimer[], ahora: number = Date.now()): TimersSnapshot {
+export function derive(actives: ActiveTimer[], ahora: number = Date.now()): TimersSnapshot {
   const elapsedById: Record<number, number> = {};
   for (const a of actives) elapsedById[a.taskId] = a.baseSeconds + runSeconds(a.startedAt, ahora);
   const active = actives[0] ?? null;
@@ -321,11 +321,11 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     if (res) {
       const [stoppedId, seconds] = res;
       const guardada = readLast();
-      const mismaGuardada = guardada?.taskId === stoppedId ? guardada : null;
+      const sameSaved = guardada?.taskId === stoppedId ? guardada : null;
       const last: LastTask = {
         taskId: stoppedId,
-        title: prev?.title ?? mismaGuardada?.title ?? "",
-        estimatedMinutes: prev?.estimatedMinutes ?? mismaGuardada?.estimatedMinutes ?? null,
+        title: prev?.title ?? sameSaved?.title ?? "",
+        estimatedMinutes: prev?.estimatedMinutes ?? sameSaved?.estimatedMinutes ?? null,
         seconds: (prev?.baseSeconds ?? 0) + seconds,
       };
       writeLast(last);

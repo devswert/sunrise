@@ -299,16 +299,16 @@ pub fn start_watcher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let armed = app.state::<Armed>().0.clone();
         loop {
-            let activos = read_actives(&app);
-            let espera = if activos.is_empty() {
+            let actives = read_actives(&app);
+            let wait = if actives.is_empty() {
                 ESPERA_DORMIDO
             } else {
-                next_wake(&activos, repo::start_of_today(), Utc::now())
+                next_wake(&actives, repo::start_of_today(), Utc::now())
             };
             // El timbre corta la espera: darle play a algo arma la campana en el
             // acto, sin tener que estar mirando el reloj mientras no hay timer.
             tokio::select! {
-                _ = tokio::time::sleep(espera) => {}
+                _ = tokio::time::sleep(wait) => {}
                 _ = armed.notified() => {}
             }
 
@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn el_tiempo_ya_registrado_hoy_cuenta() {
-        // 25 minutos cerrados antes + 5 corriendo = el estimado de 30.
+        // 25 minutos cerrados antes + 5 running = el estimado de 30.
         let t = timer("2026-08-21T13:00:00+00:00", 25 * 60, Some(30));
         assert!(is_due(&t, instante(MEDIANOCHE), instante("2026-08-21T13:05:00+00:00"), HOY));
     }
@@ -517,7 +517,7 @@ mod tests {
 
     #[test]
     fn una_entrada_abierta_desde_ayer_no_acredita_lo_de_ayer() {
-        // Sin el recorte a medianoche, un timer que quedó corriendo toda la noche
+        // Sin el recorte a medianoche, un timer que quedó running toda la noche
         // haría sonar la campana a las 00:00 de cualquier tarea con estimado.
         let t = timer("2026-08-20T18:00:00+00:00", 0, Some(30));
         let medianoche = instante(MEDIANOCHE);
@@ -561,7 +561,7 @@ mod tests {
     }
 
     /// El mismo timer, pero de otra tarea (otra entrada).
-    fn de_tarea(mut t: ActiveTimer, task_id: i64) -> ActiveTimer {
+    fn for_task(mut t: ActiveTimer, task_id: i64) -> ActiveTimer {
         t.task_id = task_id;
         t.entry_id = 100 + task_id;
         t
@@ -573,8 +573,8 @@ mod tests {
         let medianoche = instante(MEDIANOCHE);
         let ahora = instante("2026-08-21T13:29:40+00:00");
         // A la primera le faltan 20 s; a la segunda, 10.
-        let a = de_tarea(timer("2026-08-21T13:00:00+00:00", 0, Some(30)), 1);
-        let b = de_tarea(timer("2026-08-21T13:19:50+00:00", 0, Some(10)), 2);
+        let a = for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(30)), 1);
+        let b = for_task(timer("2026-08-21T13:19:50+00:00", 0, Some(10)), 2);
         assert_eq!(next_wake(&[a.clone(), b.clone()], medianoche, ahora), Duration::from_secs(10));
         // El orden de la lista no cambia la respuesta.
         assert_eq!(next_wake(&[b, a], medianoche, ahora), Duration::from_secs(10));
@@ -586,18 +586,18 @@ mod tests {
     fn un_timer_ya_excedido_no_acorta_la_espera_de_los_demas() {
         let medianoche = instante(MEDIANOCHE);
         let ahora = instante("2026-08-21T14:00:00+00:00");
-        let excedido = rung_for(
-            de_tarea(timer("2026-08-21T13:00:00+00:00", 0, Some(5)), 1),
+        let overdue = rung_for(
+            for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(5)), 1),
             HOY,
             5,
         );
         // A esta le faltan 25 s.
-        let corriendo = de_tarea(timer("2026-08-21T13:50:25+00:00", 0, Some(10)), 2);
+        let running = for_task(timer("2026-08-21T13:50:25+00:00", 0, Some(10)), 2);
         assert_eq!(
-            next_wake(&[excedido.clone(), corriendo], medianoche, ahora),
+            next_wake(&[overdue.clone(), running], medianoche, ahora),
             Duration::from_secs(25)
         );
-        assert_eq!(next_wake(&[excedido], medianoche, ahora), MAX_ESPERA);
+        assert_eq!(next_wake(&[overdue], medianoche, ahora), MAX_ESPERA);
     }
 
     /// Cada tarea suena por **su** promesa: que una ya haya sonado no calla a la
@@ -605,20 +605,20 @@ mod tests {
     #[test]
     fn cada_timer_suena_en_su_cruce_y_por_su_promesa() {
         let medianoche = instante(MEDIANOCHE);
-        let a = de_tarea(timer("2026-08-21T13:00:00+00:00", 0, Some(30)), 1);
-        let b = de_tarea(timer("2026-08-21T13:00:00+00:00", 0, Some(60)), 2);
+        let a = for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(30)), 1);
+        let b = for_task(timer("2026-08-21T13:00:00+00:00", 0, Some(60)), 2);
 
         // 13:30: solo cruza la primera.
         let due = due_now(&[a.clone(), b.clone()], medianoche, instante("2026-08-21T13:30:00+00:00"), HOY);
         assert_eq!(due.iter().map(|(t, m)| (t.task_id, *m)).collect::<Vec<_>>(), vec![(1, 30)]);
 
         // 14:00: la primera ya sonó (su promesa está anotada) y cruza la segunda.
-        let a_sonada = rung_for(a, HOY, 30);
-        let due = due_now(&[a_sonada.clone(), b.clone()], medianoche, instante("2026-08-21T14:00:00+00:00"), HOY);
+        let a_rung = rung_for(a, HOY, 30);
+        let due = due_now(&[a_rung.clone(), b.clone()], medianoche, instante("2026-08-21T14:00:00+00:00"), HOY);
         assert_eq!(due.iter().map(|(t, m)| (t.task_id, *m)).collect::<Vec<_>>(), vec![(2, 60)]);
 
         // Y con las dos anotadas, no suena ninguna.
-        let b_sonada = rung_for(b, HOY, 60);
-        assert!(due_now(&[a_sonada, b_sonada], medianoche, instante("2026-08-21T15:00:00+00:00"), HOY).is_empty());
+        let b_rung = rung_for(b, HOY, 60);
+        assert!(due_now(&[a_rung, b_rung], medianoche, instante("2026-08-21T15:00:00+00:00"), HOY).is_empty());
     }
 }

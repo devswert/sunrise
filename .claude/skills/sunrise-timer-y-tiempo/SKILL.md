@@ -142,7 +142,14 @@ otro proceso y va a abrir timers sin pasar por `start_timer`.
   vista a los que siguen corriendo.
 - **"Lo corrido" es por tarea.** `useTimer().runTotal` es solo el de `active`;
   para sumarle la corrida a una tarea concreta usa `runTotalOf(id)`. Sumarle el
-  `runTotal` de otra que también corre es mentir.
+  `runTotal` de otra que también corre es mentir. El rail (`segundosEnCurso`) y el
+  Shutdown (`workedWithRunning`, `segmentSeconds`) reciben un `RunningSeconds`
+  (`features/timer/runningSeconds.ts`): un número —un solo timer, los tests
+  puros— o una función por tarea, que es lo que les pasa `useDayWork`.
+- **Toda escritura del timer va en un `SAVEPOINT`** (`atomically`): el play
+  clásico encadena varios cierres, la reapertura y el alta, y a la mitad quedaría
+  una entrada cerrada sin su acumulación. Es `SAVEPOINT` porque anida
+  (`set_task_status` llama a `stop_timer`).
 
 **Estado y timer se mueven juntos, y eso vive en Rust.**
 Son dos reglas simétricas, y conviene tratarlas como una sola:

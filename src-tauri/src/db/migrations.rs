@@ -520,7 +520,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         -- proceso) también va a abrir timers, y una regla que viva solo en
         -- `repo::start_timer` no ve esa carrera.
         --
-        -- Antes de crear el índice se cierran las entradas abiertas que no son la
+        -- Antes de crear el índice se borran las entradas abiertas que no son la
         -- más nueva. Con la regla vieja no debería haber ninguna, pero
         -- `get_active_timer` miraba solo la última (`ORDER BY id DESC LIMIT 1`),
         -- así que una fila abierta de más era invisible. Dos cosas obligan a
@@ -529,11 +529,14 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         -- abiertas, así que un fantasma aparecería corriendo con semanas
         -- encima, y hasta haría sonar la campana.
         --
-        -- Se cierran en cero (`ended_at = started_at`) y sin tocar
-        -- `actual_seconds`: nunca se acumularon (I1) ni se mostraron, y cerrarlas
-        -- con su duración inventaría horas que nadie vio correr.
-        UPDATE time_entries
-           SET ended_at = started_at, seconds = 0
+        -- Se BORRAN, sin tocar `actual_seconds`: nunca se acumularon (I1) ni se
+        -- mostraron. Cerrarlas con su duración inventaría horas que nadie vio
+        -- correr, y cerrarlas en cero tampoco es neutro: una fila con
+        -- `started_at = ended_at` es la forma de un ajuste manual, y aparece como
+        -- un día en 0:00 en el modal, como una fila en `work_by_day` y, en una
+        -- reunión de calendario, le quita su duración de evento (Regla 3 del
+        -- rollup: basta una entrada para que no cuente).
+        DELETE FROM time_entries
          WHERE ended_at IS NULL
            AND id <> (SELECT MAX(id) FROM time_entries WHERE ended_at IS NULL);
 

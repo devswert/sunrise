@@ -272,10 +272,13 @@ Las reglas que lo sostienen:
   tienen botones: es el registro de algo que pasó (o no) ese día, y mandarla a
   mañana sería mentir sobre cuándo fue. Misma regla que la degradación diaria
   (§4.2). Tildarla sí se puede, desde la card.
-- **El timeline muestra la corrida en curso** aunque todavía no haya sumado
-  segundos: es justamente la tarea que estás haciendo. Los segundos se los pone
-  el front desde el taxímetro (`workedWithRunning`), igual que el rail — en la
-  base no están hasta que pares. **Solo se le suman a hoy**: `runTotal` se mide
+- **El timeline muestra las corridas en curso** aunque todavía no hayan sumado
+  segundos: son justamente las tareas que estás haciendo. Los segundos se los pone
+  el front desde el taxímetro (`workedWithRunning`, `segmentSeconds`), igual que el
+  rail — en la base no están hasta que pares. **Son por tarea** (`runTotalOf`, tipo
+  `RunningSeconds`): con timers en paralelo (I4) cada tramo `running` suma la suya y
+  el día las suma todas; un solo número le sumaba a cada tarea la corrida de la
+  primera. **Solo se le suman a hoy**: `runTotalOf` se mide
   desde la medianoche local (I3), así que en otro día no significa nada, y un
   timer abierto desde las 23:50 de ayer marca la fila de ayer como corriendo.
 - **Recargar no pisa lo que estás escribiendo.** `load` corre con cada

@@ -6,7 +6,7 @@ import { DailyPlanningView } from "./DailyPlanningView";
 import { api } from "../../lib/ipc";
 import { shortDate, toISODate, todayISO } from "../../lib/date";
 import { SettingKey, useSettingsStore } from "../../lib/settings";
-import { useTimerStore } from "../timer/timerStore";
+import { derive, useTimerStore } from "../timer/timerStore";
 
 // El canvas de jsdom no implementa `getContext`: la llamada real reventaría en
 // cuanto un test aprete el botón del final. Por eso vive en su propio módulo.
@@ -523,8 +523,8 @@ describe("DailyPlanningView", () => {
     await api.moveTask(task.id, todayISO(), 0);
     const active = await api.startTimer(task.id);
     // Una hora corriendo: el store es el que alimenta `segundosEnCurso`.
-    const corriendo = { ...active, startedAt: new Date(Date.now() - 3600 * 1000).toISOString() };
-    useTimerStore.setState({ active: corriendo, actives: [corriendo] });
+    const running = { ...active, startedAt: new Date(Date.now() - 3600 * 1000).toISOString() };
+    useTimerStore.setState(derive([running]));
     try {
       mount();
 
@@ -542,7 +542,7 @@ describe("DailyPlanningView", () => {
         expect(today[0]).not.toMatch(/^10:00 AM – 10:40 AM/);
       });
     } finally {
-      useTimerStore.setState({ active: null, actives: [], elapsed: 0, elapsedById: {} });
+      useTimerStore.setState(derive([]));
       await api.stopTimer(task.id);
     }
   });
