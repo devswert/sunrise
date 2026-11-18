@@ -11,7 +11,8 @@ vi.mock("../lib/ipc", () => ({
   isTauri: () => false,
   api: {
     confirmQuit: () => confirmQuit(),
-    getActiveTimer: vi.fn(async () => null),
+    getActiveTimers: vi.fn(async () => []),
+    stopAllTimers: vi.fn(async () => []),
     getTask: vi.fn(async () => null),
     stopTimer: vi.fn(async () => null),
   },

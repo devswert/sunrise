@@ -1,9 +1,15 @@
 import { useEffect } from "react";
-import { useTimerStore, timerDisplay, isOverEstimate, runTotalSeconds } from "./timerStore";
+import {
+  useTimerStore,
+  timerDisplay,
+  isOverEstimate,
+  runTotalSeconds,
+  selectIsRunning,
+} from "./timerStore";
 import { DATA_CHANNEL, useAppStore } from "../../lib/store";
 
 export { hms, isOverEstimate } from "./timerStore";
-export type { LastTask } from "./timerStore";
+export type { LastTask, StartOptions } from "./timerStore";
 
 /**
  * Arranca el ciclo de vida del timer en la ventana actual: carga el estado,
@@ -18,7 +24,7 @@ export type { LastTask } from "./timerStore";
 export function useTimerRuntime() {
   const refresh = useTimerStore((s) => s.refresh);
   const tick = useTimerStore((s) => s.tick);
-  const hasActive = useTimerStore((s) => !!s.active);
+  const hasActive = useTimerStore((s) => s.actives.length > 0);
   // Al editar la tarea (p. ej. su tiempo planned) hay que releer el timer:
   // `active` guarda una foto de la tarea y quedaría desactualizado.
   const dataVersion = useAppStore((s) => s.dataVersion);
@@ -47,11 +53,15 @@ export function useTimerRuntime() {
 
 /** Estado y acciones del timer (compartido dentro de la ventana). */
 export function useTimer() {
+  const actives = useTimerStore((s) => s.actives);
+  const elapsedById = useTimerStore((s) => s.elapsedById);
   const active = useTimerStore((s) => s.active);
   const elapsed = useTimerStore((s) => s.elapsed);
   const last = useTimerStore((s) => s.last);
   const start = useTimerStore((s) => s.start);
   const stop = useTimerStore((s) => s.stop);
+  const stopAll = useTimerStore((s) => s.stopAll);
+  const isRunning = useTimerStore((s) => s.isRunning);
   const toggle = useTimerStore((s) => s.toggle);
   const dismissLast = useTimerStore((s) => s.dismissLast);
   const completeAndAdvance = useTimerStore((s) => s.completeAndAdvance);
@@ -67,6 +77,8 @@ export function useTimer() {
     : last;
 
   return {
+    actives,
+    elapsedById,
     active,
     elapsed,
     last,
@@ -75,9 +87,17 @@ export function useTimer() {
     // Se recalcula en cada render, y el tick de 1s provoca uno por segundo, así
     // que avanza sin necesidad de guardarlo en el store.
     runTotal: active ? runTotalSeconds(active.startedAt) : 0,
+    // Lo mismo, pero de **una tarea**: con timers en paralelo, `runTotal` es solo
+    // el de `active`, y sumárselo a otra tarea que también corre sería mentir.
+    runTotalOf: (taskId: number) => {
+      const a = actives.find((x) => x.taskId === taskId);
+      return a ? runTotalSeconds(a.startedAt) : 0;
+    },
     overEstimate: isOverEstimate(elapsed, active?.estimatedMinutes),
     start,
     stop,
+    stopAll,
+    isRunning,
     toggle,
     dismissLast,
     completeAndAdvance,
@@ -86,4 +106,4 @@ export function useTimer() {
 }
 
 // Reexport para tests/otros usos.
-export { timerDisplay };
+export { timerDisplay, selectIsRunning };

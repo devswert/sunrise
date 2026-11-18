@@ -58,7 +58,8 @@ vi.mock("../../lib/ipc", () => ({
     focusQueue: vi.fn(async () => pendientes),
     stopTimer: vi.fn(async () => null),
     startTimer: (...a: unknown[]) => startTimer(...(a as [])),
-    getActiveTimer: vi.fn(async () => null),
+    getActiveTimers: vi.fn(async () => []),
+    stopAllTimers: vi.fn(async () => []),
   },
 }));
 

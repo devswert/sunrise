@@ -193,7 +193,8 @@ pub fn run() {
             // timer
             commands::start_timer,
             commands::stop_timer,
-            commands::get_active_timer,
+            commands::stop_all_timers,
+            commands::get_active_timers,
             commands::list_time_entries,
             commands::day_work,
             commands::weekly_rollup,

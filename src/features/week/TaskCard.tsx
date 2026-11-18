@@ -2,7 +2,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Category, Task, TaskPatch } from "../../lib/types";
 import { TaskCardContent } from "./TaskCardContent";
-import { useTimerStore } from "../timer/timerStore";
+import { selectIsRunning, useTimerStore } from "../timer/timerStore";
 
 interface TaskCardProps {
   task: Task;
@@ -42,7 +42,7 @@ export function TaskCard({
   });
 
   const done = task.status === "DONE";
-  const running = useTimerStore((s) => s.active?.taskId === task.id);
+  const running = useTimerStore(selectIsRunning(task.id));
 
   return (
     <div
@@ -84,7 +84,7 @@ export function TaskCardStatic({
   late,
 }: TaskCardProps) {
   const done = task.status === "DONE";
-  const running = useTimerStore((s) => s.active?.taskId === task.id);
+  const running = useTimerStore(selectIsRunning(task.id));
   return (
     <div
       className={`task-card${done ? " is-done" : ""}${running ? " is-running" : ""}`}

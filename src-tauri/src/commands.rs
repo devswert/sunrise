@@ -144,6 +144,9 @@ pub fn list_task_events(db: State<'_, Db>, task_id: i64) -> Result<Vec<TaskEvent
 
 /// Arranca el timer y **toca el timbre de la campana**.
 ///
+/// `parallel = false` es el play clásico (cierra todos y abre este);
+/// `parallel = true` abre este sin tocar los demás. Ver `repo::start_timer`.
+///
 /// Sin el timbre, el vigilante (`bell.rs`) tendría que estar mirando el reloj
 /// mientras no hay ningún timer, solo para enterarse de que empezó uno. Es una
 /// optimización y no el mecanismo: si esto no avisara, la campana saldría tarde,
@@ -153,26 +156,35 @@ pub fn start_timer(
     app: tauri::AppHandle,
     db: State<'_, Db>,
     task_id: i64,
+    parallel: bool,
 ) -> Result<ActiveTimer, String> {
     let active = {
         let conn = db.0.lock().map_err(e)?;
-        repo::start_timer(&conn, task_id).map_err(e)?
+        repo::start_timer(&conn, task_id, parallel).map_err(e)?
     };
     crate::bell::Armed::poke(&app);
     Ok(active)
 }
 
-/// Cierra el timer activo. Devuelve `(task_id, seconds)` si había uno.
+/// Cierra el timer de una tarea. Devuelve `(task_id, seconds)` si corría.
 #[tauri::command]
-pub fn stop_timer(db: State<'_, Db>) -> Result<Option<(i64, i64)>, String> {
+pub fn stop_timer(db: State<'_, Db>, task_id: i64) -> Result<Option<(i64, i64)>, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::stop_timer(&conn).map_err(e)
+    repo::stop_timer(&conn, task_id).map_err(e)
 }
 
+/// Cierra todos los timers. Un `(task_id, seconds)` por cada uno.
 #[tauri::command]
-pub fn get_active_timer(db: State<'_, Db>) -> Result<Option<ActiveTimer>, String> {
+pub fn stop_all_timers(db: State<'_, Db>) -> Result<Vec<(i64, i64)>, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::get_active_timer(&conn).map_err(e)
+    repo::stop_all_timers(&conn).map_err(e)
+}
+
+/// Los timers en curso, del más antiguo al más nuevo.
+#[tauri::command]
+pub fn get_active_timers(db: State<'_, Db>) -> Result<Vec<ActiveTimer>, String> {
+    let conn = db.0.lock().map_err(e)?;
+    repo::get_active_timers(&conn).map_err(e)
 }
 
 #[tauri::command]

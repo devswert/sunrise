@@ -34,10 +34,19 @@ cambias una, actualiza este archivo en el mismo commit.
      inimplementable sin aritmética de solapamiento en cada consulta: se corrigió en
      la escritura, una vez, en vez de en cada lector. El último tramo absorbe el
      resto de la división para que la suma siga dando el total (I1).
-- **I4. Un solo timer activo.** Una sola fila con `ended_at IS NULL`; `start_timer`
-  llama a `stop_timer` primero.
+- **I4. Un timer abierto por tarea.** A lo más una fila con `ended_at IS NULL` **por
+  tarea**, y la garantiza la base: índice único parcial `time_entries(task_id) WHERE
+  ended_at IS NULL` (migración 18). Varias tareas pueden correr a la vez (#17, agentes
+  en paralelo). `start_timer(id, parallel)`: con `parallel = false` —el play
+  clásico— cierra **todos** y abre este; con `true` lo suma sin tocar los demás; si
+  la tarea ya corre, no hace nada. `stop_timer(id)` cierra solo ese y
+  `stop_all_timers()` todos, en el mismo instante. `get_active_timers()` los lista
+  del más antiguo al más nuevo, y el front toma el primero donde todavía muestra uno
+  solo. Hasta la 18 era "un solo timer activo en todo el sistema"; por qué cambió y
+  qué se conservó, en [DECISIONES §1](../DECISIONES.md).
 - **I5. Estado y timer se mueven juntos, y eso vive en Rust.** `set_task_status(DONE)`
-  **detiene** el timer si la tarea era la activa, y `start_timer` **reabre** la tarea
+  **detiene el timer de esa tarea** —solo el suyo: los que corren en paralelo
+  siguen—, y `start_timer` **reabre** la tarea
   si estaba `DONE` — volver a trabajar en algo es decir que no estaba terminado. Están
   en `repo.rs` y no en cada vista para que valgan desde los cinco lugares con botón de
   play. **Corolario: quien llame `setTaskStatus` debe hacer `bumpData()` después**,

@@ -511,6 +511,36 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
         ALTER TABLE tasks ADD COLUMN bell_rung_for TEXT;
         "#,
     ),
+    (
+        18,
+        r#"
+        -- Timers en paralelo (#18): I4 deja de ser "un solo timer abierto en todo
+        -- el sistema" y pasa a ser "un timer abierto POR TAREA". Lo garantiza la
+        -- base, no el código: con agentes trabajando en paralelo, el MCP (otro
+        -- proceso) también va a abrir timers, y una regla que viva solo en
+        -- `repo::start_timer` no ve esa carrera.
+        --
+        -- Antes de crear el índice se cierran las entradas abiertas que no son la
+        -- más nueva. Con la regla vieja no debería haber ninguna, pero
+        -- `get_active_timer` miraba solo la última (`ORDER BY id DESC LIMIT 1`),
+        -- así que una fila abierta de más era invisible. Dos cosas obligan a
+        -- cerrarlas acá: el índice único aborta si una tarea tiene dos abiertas
+        -- —y entonces la app no arranca—, y desde ahora se listan TODAS las
+        -- abiertas, así que un fantasma aparecería corriendo con semanas
+        -- encima, y hasta haría sonar la campana.
+        --
+        -- Se cierran en cero (`ended_at = started_at`) y sin tocar
+        -- `actual_seconds`: nunca se acumularon (I1) ni se mostraron, y cerrarlas
+        -- con su duración inventaría horas que nadie vio correr.
+        UPDATE time_entries
+           SET ended_at = started_at, seconds = 0
+         WHERE ended_at IS NULL
+           AND id <> (SELECT MAX(id) FROM time_entries WHERE ended_at IS NULL);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_time_entries_one_open_per_task
+            ON time_entries(task_id) WHERE ended_at IS NULL;
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.

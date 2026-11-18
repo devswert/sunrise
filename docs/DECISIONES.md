@@ -112,6 +112,44 @@ Se podría deducir qué filas viejas son ajustes (`started_at = ended_at`), pero
 reescribir historial sobre una deducción es justo lo que se equivoca en silencio, y
 el dato correcto —a qué día quisiste acreditarlo— no está en ninguna parte.
 
+**I4 dejó de ser "un solo timer" y pasó a ser "un timer abierto por tarea"
+(#18).** La regla vieja era cómoda —un solo número en el taxímetro, una sola
+campana, un `LIMIT 1`— y no se cambió por elegancia: con agentes trabajando en
+paralelo en proyectos distintos, cada tarea tiene que acumular **su** tiempo
+completo, y con un solo timer había que elegir a cuál mentirle. Partir el reloj
+entre las que corren (cada una se lleva una fracción) se descartó por lo mismo:
+el número que importa es cuánto estuvo corriendo cada una, y el paralelismo se
+mide aparte (#22: tiempo en tareas ÷ jornada), no restándoselo a las tareas.
+
+Lo que se conservó, a propósito:
+
+- **El play de siempre sigue pausando todo.** Es el gesto de "entro a una
+  reunión", y el que lo usa no tiene por qué saber que existe el paralelo. El
+  paralelo es un botón aparte (#20), nunca el default.
+- **La regla vive en la base, no en `start_timer`.** Un índice único parcial
+  (`time_entries(task_id) WHERE ended_at IS NULL`) impide dos abiertas en la misma
+  tarea. Con un solo escritor el chequeo en Rust alcanzaba; el MCP (#23) es otro
+  proceso, y `INSERT OR IGNORE` contra el índice es lo único que no tiene carrera.
+- **I1, I3 e I5 no cambian, y viven en un solo lugar.** Cerrar una entrada
+  —acumular y partir por día— pasó a `close_entry`, que comparten `stop_timer` y
+  `stop_all_timers`. Completar sigue deteniendo el timer, pero solo el de esa
+  tarea.
+- **`active` y `elapsed` siguen en el store como el primero de la lista.** Las
+  vistas que muestran un solo timer no cambiaron, y por eso el orden de
+  `get_active_timers` (del más antiguo al más nuevo) es contrato.
+
+**La migración 18 cierra en cero las filas abiertas de más.** Con la regla vieja no
+debería haber ninguna, pero `get_active_timer` miraba solo la última, así que una
+de más era invisible. El índice habría abortado la migración —y la app no
+arrancaba—, y la lista nueva las habría mostrado corriendo con semanas encima. Se
+cierran con `ended_at = started_at` y sin tocar `actual_seconds`: nunca se
+contaron ni se vieron, y cerrarlas con su duración inventaría horas.
+
+**Dos campanas en el mismo instante suenan una vez.** Cada tarea anota su promesa
+(`bell_rung_for`) y la notificación sale por tarea, pero la campanada es una: dos
+superpuestas se oyen como un solo sonido reventado, igual que la campana con su
+propio aviso.
+
 ---
 
 ## 2. Lo que depende del reloj va en Rust

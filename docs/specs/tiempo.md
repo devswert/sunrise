@@ -41,13 +41,32 @@ El razonamiento completo, con lo que se midió y lo que se descartó, está en
 Respaldado en la DB (`time_entries`), no en memoria. Estado en
 `src/features/timer/timerStore.ts`.
 
-- `start_timer(taskId)`: cierra el timer previo si había (I4), **reabre la
-  tarea si estaba completada** (I5) e inserta una entrada abierta
-  (`ended_at IS NULL`).
-- `stop_timer()`: cierra la entrada, calcula sus segundos y **suma** a
-  `tasks.actual_seconds` (I1). Devuelve `(taskId, seconds)`.
-- `get_active_timer()`: la entrada abierta + `base_seconds` = `seconds_today`
-  de esa tarea (I3).
+- **Varios timers pueden correr a la vez, uno por tarea** (I4, #17). Lo
+  garantiza un índice único parcial (migración 18), no el código: el MCP es
+  otro proceso y también va a abrir timers.
+- `start_timer(taskId, parallel)`: si la tarea **ya corre**, no hace nada y
+  devuelve su timer (en los dos modos: un play clásico sobre la que corre no
+  pausa a las demás). Si no, con `parallel = false` —**play clásico**, el de
+  siempre— cierra todos los timers abiertos; con `true` no toca ninguno. Después
+  **reabre la tarea si estaba completada** (I5) e inserta una entrada abierta
+  (`ended_at IS NULL`, con `INSERT OR IGNORE` contra el índice).
+- `stop_timer(taskId)`: cierra **solo** la entrada de esa tarea, la parte por
+  día local (I3), calcula sus segundos y **suma** a `tasks.actual_seconds`
+  (I1). Devuelve `(taskId, seconds)`, o nada si no corría.
+- `stop_all_timers()`: cierra todos con el mismo `ended_at` (pausar todo es un
+  gesto, y la jornada de #22 mide solapamientos). Un `(taskId, seconds)` por
+  cada uno. Las dos comparten `close_entry`, para que I1 e I3 no se separen.
+- `get_active_timers()`: las entradas abiertas, **del más antiguo al más
+  nuevo** (`started_at`, id), cada una con `base_seconds` = `seconds_today` de
+  su tarea (I3). El orden es contrato: el front toma el primero como "el" timer
+  donde todavía muestra uno solo.
+- En el front (`timerStore`): `actives` y `elapsedById` (lo de hoy por tarea);
+  `active` = `actives[0]` y `elapsed` siguen como compat. `start(id, {
+  parallel })`, `stop(id?)` (sin id, el de `active`), `stopAll()`, `toggle(id)`
+  (si corre la pausa; si no, play clásico), `isRunning(id)` y el selector
+  `selectIsRunning(id)`. Después de cada mutación la lista **se relee** de la
+  base: un `set({ active: null })` borraría de la vista a los que siguen
+  corriendo.
 - El taxímetro muestra `actual / planned` con barra de progreso. Click en el
   título → enfoca `main` y emite `sunrise://goto` con `/focus`. Mantener y
   mover → arrastra la ventana (`useDragOrClick` distingue click de drag).
@@ -79,6 +98,12 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   porque el contador es de hoy (I3). Pausar y reanudar dentro del mismo día ya
   **no**: la llave era la entrada, y con una tarea pasada de su estimado eso era
   una campanada en cada play. El sonido se sintetiza con `rodio` (`sound.rs`).
+  **Con timers en paralelo, cada tarea suena por su promesa** y el vigilante
+  despierta en el cruce **más cercano** de todos (`next_wake` toma el mínimo solo
+  entre los que todavía no llegan: uno ya excedido lo dejaría girando cada
+  segundo). Si dos cruzan en la misma vuelta, se anotan las dos promesas y suena
+  **una sola campanada** —dos superpuestas se oyen como un sonido reventado—, y
+  la notificación, si está prendida, sale una por tarea.
 
   > **La promesa vive en la base** (`tasks.bell_rung_for`, migración 17), no en
   > una variable del proceso, y el bug que lo obligó es la otra cara de una

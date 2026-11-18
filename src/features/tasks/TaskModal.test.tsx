@@ -34,6 +34,10 @@ const TIMER_DETENIDO = {
   overEstimate: false,
   start: startTimer,
   stop: stopTimer,
+  // Derivados de `active`, como en el store real: corre la que está en `active`.
+  isRunning: (taskId: number) => estadoTimer.active?.taskId === taskId,
+  runTotalOf: (taskId: number) =>
+    estadoTimer.active?.taskId === taskId ? estadoTimer.runTotal : 0,
 };
 let estadoTimer: typeof TIMER_DETENIDO = { ...TIMER_DETENIDO };
 

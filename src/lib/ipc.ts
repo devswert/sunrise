@@ -121,13 +121,28 @@ export const api = {
     isTauri() ? invoke<Rescue[]>("rescued_from_backlog") : mock.rescuedFromBacklog(),
 
   // --- timer / focus ---
-  startTimer: (taskId: number) =>
-    isTauri() ? invoke<ActiveTimer>("start_timer", { taskId }) : mock.startTimer(taskId),
+  /**
+   * Arranca el timer de una tarea. `parallel = false` es el play clásico (cierra
+   * todos y abre este); `true` lo suma sin tocar los demás. Si la tarea ya
+   * corre, devuelve su timer sin hacer nada. La clave `parallel` va **siempre**:
+   * en Rust es un `bool`, y Tauri rechaza la llamada si falta.
+   */
+  startTimer: (taskId: number, parallel: boolean = false) =>
+    isTauri()
+      ? invoke<ActiveTimer>("start_timer", { taskId, parallel })
+      : mock.startTimer(taskId, parallel),
 
-  stopTimer: () => (isTauri() ? invoke<[number, number] | null>("stop_timer") : mock.stopTimer()),
+  /** Cierra el timer de una tarea; los demás siguen. `[taskId, seconds]` si corría. */
+  stopTimer: (taskId: number) =>
+    isTauri() ? invoke<[number, number] | null>("stop_timer", { taskId }) : mock.stopTimer(taskId),
 
-  getActiveTimer: () =>
-    isTauri() ? invoke<ActiveTimer | null>("get_active_timer") : mock.getActiveTimer(),
+  /** Cierra todos los timers, en el mismo instante. */
+  stopAllTimers: () =>
+    isTauri() ? invoke<Array<[number, number]>>("stop_all_timers") : mock.stopAllTimers(),
+
+  /** Los timers en curso, del más antiguo al más nuevo (uno por tarea, I4). */
+  getActiveTimers: () =>
+    isTauri() ? invoke<ActiveTimer[]>("get_active_timers") : mock.getActiveTimers(),
 
   listTimeEntries: (taskId: number) =>
     isTauri() ? invoke<TimeEntry[]>("list_time_entries", { taskId }) : mock.listTimeEntries(taskId),

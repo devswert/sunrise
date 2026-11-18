@@ -68,10 +68,10 @@ export function TaskCardContent({
   const timer = useTimer();
   const prioridades = usePrioritiesOn();
   const bumpData = useAppStore((s) => s.bumpData);
-  const running = timer.active?.taskId === task.id;
+  const running = timer.isRunning(task.id);
   // El acumulado de la tarea más lo que va de la corrida en curso: este número
   // es "cuánto llevo en total", no "cuánto llevo hoy" (eso es el taxímetro).
-  const liveSeconds = task.actualSeconds + (running ? timer.runTotal : 0);
+  const liveSeconds = task.actualSeconds + timer.runTotalOf(task.id);
 
   const done = task.status === "DONE";
 
