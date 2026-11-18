@@ -96,7 +96,7 @@ para el mismo trabajo:**
 
 - **El taxímetro muestra HOY** (`elapsed` = `base_seconds` + `runSeconds`).
 - **El campo del tiempo trabajado muestra el TOTAL** (`task.actualSeconds` +
-  `timer.runTotal`), en la tarjeta, el modal y Focus.
+  `timer.runTotalOf(task.id)`), en la tarjeta, el modal y Focus.
 
 En la UI ese campo se llama **"Real"**, y su par **"Estimado"**. En la DB y en
 estas reglas siguen siendo `actual_seconds` y `estimated_minutes`, así que hay
@@ -146,10 +146,12 @@ otro proceso y va a abrir timers sin pasar por `start_timer`.
   Shutdown (`workedWithRunning`, `segmentSeconds`) reciben un `RunningSeconds`
   (`features/timer/runningSeconds.ts`): un número —un solo timer, los tests
   puros— o una función por tarea, que es lo que les pasa `useDayWork`.
-- **Toda escritura del timer va en un `SAVEPOINT`** (`atomically`): el play
-  clásico encadena varios cierres, la reapertura y el alta, y a la mitad quedaría
-  una entrada cerrada sin su acumulación. Es `SAVEPOINT` porque anida
-  (`set_task_status` llama a `stop_timer`).
+- **Toda escritura del timer es atómica** (`atomically`, también
+  `set_task_status`): el play clásico encadena varios cierres, la reapertura y el
+  alta, y a la mitad quedaría una entrada cerrada sin su acumulación. Sin
+  transacción abierta usa `BEGIN IMMEDIATE` —una diferida que lee y después
+  escribe falla con `SQLITE_BUSY_SNAPSHOT` si el MCP confirmó en el medio—; dentro
+  de otra, `SAVEPOINT`, que anida.
 
 **Estado y timer se mueven juntos, y eso vive en Rust.**
 Son dos reglas simétricas, y conviene tratarlas como una sola:
@@ -416,7 +418,7 @@ accidental, no para proteger datos: todo se autoguarda.
 `repo.rs` ya cubre: acumulación del timer, supervivencia del ajuste manual,
 contador del día que ignora lo de ayer, un timer abierto por tarea (el play
 clásico cierra todos, el paralelo suma, el índice rechaza la segunda abierta, la
-migración 18 cierra fantasmas), dos en paralelo acumulan cada uno lo suyo,
+migración 18 borra fantasmas), dos en paralelo acumulan cada uno lo suyo,
 `stop_all` en un mismo instante, completar detiene solo su timer, `stop` sin timer activo, `focus_queue`,
 y doce del rollup semanal (una por cada regla de arriba y sus bordes).
 En `bell.rs`: cada timer suena en su cruce y por su promesa, y la espera es el

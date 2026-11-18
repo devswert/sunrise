@@ -154,10 +154,15 @@ sumaban a la fila `running`. Con dos timers, la segunda tarea crecía con la cor
 de la primera y el día sumaba una sola. Ahora reciben `RunningSeconds`: un número
 sigue valiendo (un timer, tests puros), y `useDayWork` pasa `runTotalOf`.
 
-**Las escrituras del timer van en un `SAVEPOINT`.** Con un timer eran dos
-escrituras seguidas; el play clásico ahora encadena un cierre por timer abierto
-(tres escrituras cada uno) más la reapertura y el alta, y el MCP va a llamarlo desde
-otro proceso. `SAVEPOINT` y no `BEGIN` porque anida.
+**Las escrituras del timer son atómicas, y con `BEGIN IMMEDIATE`.** Con un timer
+eran dos escrituras seguidas; el play clásico ahora encadena un cierre por timer
+abierto (tres escrituras cada uno) más la reapertura y el alta, y el MCP va a
+llamarlo desde otro proceso. La primera versión usó solo `SAVEPOINT`, y fuera de una
+transacción eso abre una **diferida**: lee, y al escribir falla con
+`SQLITE_BUSY_SNAPSHOT` si el otro proceso confirmó en el medio —un error que el
+`busy_timeout` no reintenta—. `IMMEDIATE` toma el lock antes de leer, y la espera
+vuelve a caer en el `busy_timeout`. Dentro de una transacción ajena sigue siendo
+`SAVEPOINT`, que anida (`set_task_status` → `stop_timer`).
 
 **Dos campanas en el mismo instante suenan una vez.** Cada tarea anota su promesa
 (`bell_rung_for`) y la notificación sale por tarea, pero la campanada es una: dos

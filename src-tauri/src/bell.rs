@@ -164,12 +164,12 @@ pub fn next_wake(actives: &[ActiveTimer], midnight: DateTime<Utc>, now: DateTime
         .iter()
         .filter_map(|active| {
             let estimated = active.estimated_minutes.filter(|m| *m > 0)?;
-            let falta = estimated * 60
+            let remaining = estimated * 60
                 - elapsed_today(active.base_seconds, &active.started_at, midnight, now);
-            (falta > 0).then_some(falta)
+            (remaining > 0).then_some(remaining)
         })
         .min()
-        .map(|falta| Duration::from_secs(falta as u64).clamp(MIN_ESPERA, MAX_ESPERA))
+        .map(|remaining| Duration::from_secs(remaining as u64).clamp(MIN_ESPERA, MAX_ESPERA))
         .unwrap_or(MAX_ESPERA)
 }
 
@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn el_tiempo_ya_registrado_hoy_cuenta() {
-        // 25 minutos cerrados antes + 5 running = el estimado de 30.
+        // 25 minutos cerrados antes + 5 corriendo = el estimado de 30.
         let t = timer("2026-08-21T13:00:00+00:00", 25 * 60, Some(30));
         assert!(is_due(&t, instante(MEDIANOCHE), instante("2026-08-21T13:05:00+00:00"), HOY));
     }
@@ -517,7 +517,7 @@ mod tests {
 
     #[test]
     fn una_entrada_abierta_desde_ayer_no_acredita_lo_de_ayer() {
-        // Sin el recorte a medianoche, un timer que quedó running toda la noche
+        // Sin el recorte a medianoche, un timer que quedó corriendo toda la noche
         // haría sonar la campana a las 00:00 de cualquier tarea con estimado.
         let t = timer("2026-08-20T18:00:00+00:00", 0, Some(30));
         let medianoche = instante(MEDIANOCHE);

@@ -70,10 +70,10 @@ export function workedWithRunning(d: LogDay, segundosEnCurso: RunningSeconds): n
   // Una corrida por **tarea** que corre: con timers en paralelo hay varias, y
   // cada una suma la suya. El `Set` evita contar dos veces una tarea que
   // apareciera en más de un tramo abierto.
-  const corriendo = new Set(d.timeline.filter((t) => t.running).map((t) => t.taskId));
-  let enCurso = 0;
-  for (const taskId of corriendo) enCurso += runningFor(segundosEnCurso, taskId);
-  return d.workedSeconds + enCurso;
+  const runningIds = new Set(d.timeline.filter((t) => t.running).map((t) => t.taskId));
+  let runningTotal = 0;
+  for (const taskId of runningIds) runningTotal += runningFor(segundosEnCurso, taskId);
+  return d.workedSeconds + runningTotal;
 }
 
 /** Igual que la anterior, pero para un tramo del timeline. */

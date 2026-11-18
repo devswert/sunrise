@@ -356,9 +356,9 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         seconds: (p?.baseSeconds ?? 0) + seconds,
       };
       writeLast(last);
-      set({ ...derive([]), last });
+      set({ ...derive(await api.getActiveTimers()), last });
     } else {
-      set(derive([]));
+      set(derive(await api.getActiveTimers()));
     }
     useAppStore.getState().bumpData();
     broadcast();
