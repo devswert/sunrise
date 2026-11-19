@@ -1,11 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext } from "@dnd-kit/sortable";
 import { TaskCard } from "./TaskCard";
 import type { Task } from "../../lib/types";
 import { Priority } from "../../lib/enums";
+import { api } from "../../lib/ipc";
+import { todayISO } from "../../lib/date";
+import { useTimerStore } from "../timer/timerStore";
 
 function makeTask(over: Partial<Task> = {}): Task {
   return {
@@ -149,5 +152,60 @@ describe("TaskCard · origen calendario", () => {
     renderCard(makeTask({ priority: null }));
 
     expect(document.querySelector(".prio-tag")).toBeNull();
+  });
+});
+
+describe("TaskCard · timers en paralelo", () => {
+  beforeEach(async () => {
+    await api.stopAllTimers();
+    localStorage.clear();
+    useTimerStore.setState({
+      actives: [],
+      elapsedById: {},
+      active: null,
+      elapsed: 0,
+      last: null,
+      loaded: false,
+    });
+  });
+  afterEach(async () => {
+    await api.stopAllTimers();
+  });
+
+  it("con dos timers, las dos cards se ven en curso", async () => {
+    const user = userEvent.setup();
+    const a = await api.createTask({ title: "Agente 1", scheduledDate: todayISO() });
+    const b = await api.createTask({ title: "Agente 2", scheduledDate: todayISO() });
+    const c = await api.createTask({ title: "Quieta", scheduledDate: todayISO() });
+    render(
+      <DndContext>
+        <SortableContext items={[a, b, c].map((t) => `task-${t.id}`)}>
+          {[a, b, c].map((t) => (
+            <section key={t.id} aria-label={t.title}>
+              <TaskCard task={t} category={null} onToggle={vi.fn()} />
+            </section>
+          ))}
+        </SortableContext>
+      </DndContext>,
+    );
+    const card = (name: string) => within(screen.getByRole("region", { name }));
+
+    // A con el play clásico; B en paralelo desde su card, abriendo sus tiempos.
+    await user.click(card("Agente 1").getByRole("button", { name: "Tiempos" }));
+    await user.click(card("Agente 1").getByRole("button", { name: "Iniciar" }));
+    await card("Agente 1").findByRole("button", { name: "Pausar" });
+    await user.click(card("Agente 2").getByRole("button", { name: "Tiempos" }));
+    await user.click(card("Agente 2").getByRole("button", { name: "Iniciar en paralelo" }));
+
+    for (const name of ["Agente 1", "Agente 2"]) {
+      expect(await card(name).findByRole("button", { name: "Pausar" })).toBeInTheDocument();
+      // La marca de "en curso" de la card misma, no solo la del botón.
+      const root = screen.getByRole("region", { name }).firstElementChild;
+      expect(root).toHaveClass("is-running");
+    }
+    expect(card("Quieta").queryByRole("button", { name: "Pausar" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Quieta" }).firstElementChild).not.toHaveClass(
+      "is-running",
+    );
   });
 });

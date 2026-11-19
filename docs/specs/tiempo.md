@@ -67,6 +67,15 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   `selectIsRunning(id)`. Después de cada mutación la lista **se relee** de la
   base: un `set({ active: null })` borraría de la vista a los que siguen
   corriendo.
+- **El play de una tarea es `PlayControls`** (`src/components/PlayControls.tsx`,
+  #20), el mismo en la card de la semana, Today, Backlog y `TaskModal` (la cola de
+  Focus todavía tiene su propio play: pendiente, #21).
+  Detenida: **play clásico** (`start(id)`, pausa todo) y, pegado a la derecha,
+  **play en paralelo** (`ListPlus`, "Iniciar en paralelo", `start(id, { parallel:
+  true })`). Corriendo: **solo la pausa** (`stop(id)`, solo esa). Desde el detalle
+  el clásico cierra y lleva a Focus; el paralelo se queda en el detalle (DECISIONES
+  §1). Las cards marcan "en curso" **cada** tarea que corre (`selectIsRunning`), no
+  solo `active`.
 - **El taxímetro es una pila: una fila por timer que corre** (#19), del más
   antiguo al más nuevo, hacia abajo y sin tope. Si no corre ninguno, una sola
   fila con la pausada (`last`); una pausada nunca convive con filas que corren.

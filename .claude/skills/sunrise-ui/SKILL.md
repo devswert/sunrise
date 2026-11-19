@@ -81,6 +81,7 @@ locale de `date-fns` va **por llamada** y es fácil olvidarlo, y
 | `src/components/ThemeToggle.tsx` | switch de tema (solo ese: tiene sol y luna dibujados) |
 | `src/components/Switch.tsx` | cualquier otro interruptor on/off |
 | `src/components/Spinner.tsx` | el icono de "esto está corriendo" |
+| `src/components/PlayControls.tsx` | el play de una tarea: clásico + en paralelo, o solo la pausa si corre |
 | `src/components/SunriseMark.tsx` | la marca dentro de la app |
 | `src/components/plainInput.ts` | `PLAIN_INPUT`, para un campo que no es prosa |
 | `src/features/week/DayColumn.tsx` | columna de un día (la reusa Today) |
