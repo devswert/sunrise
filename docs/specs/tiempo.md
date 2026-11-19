@@ -267,8 +267,9 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   tarea** (`syncedFor`), para no pelear con las flechas después. Mira `active`,
   el más antiguo de los que corren: lo cumple el **play clásico**; un play en
   paralelo no lo mueve, suma una columna (abajo).
-- **Una columna por timer** (#21). Con una columna o ninguna, Focus es
-  exactamente lo de arriba. Con dos o más, cada tarea es una columna —la misma `FocusTaskCard`, con
+- **Una columna por timer** (#21). Con una columna o ninguna, Focus es lo de
+  arriba, con el play compartido (`PlayControls`) en la tarjeta y en la tira de
+  la siguiente —es de donde se suman columnas—. Con dos o más, cada tarea es una columna —la misma `FocusTaskCard`, con
   su canal, sus tiempos, su pausa, su check, su aviso de estimado y sus notas— y
   se separan con una línea de 1px, no con tarjetas. Las flechas no hacen nada en
   ese modo: no hay "la" tarea en foco.
@@ -325,7 +326,10 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
     su día**, no de hoy (lo mismo que el check del taxímetro).
   - **El aviso de estimado excedido es por columna**
     (`isOverEstimate(elapsedById[id], estimado)`), no `timer.overEstimate`, que
-    solo mira el primero: cada tarea avisa por su promesa, como la campana.
+    solo mira el primero: cada tarea avisa por su promesa, como la campana. Y
+    como la campana, compara **lo de hoy** contra el estimado, aunque "Real"
+    muestre el total: una tarea arrastrada con 50 min de ayer y 5 de hoy, con
+    estimado de 30, muestra 0:55:00 sin rojo (igual que antes de #21).
   - La tira de abajo muestra **la primera de la cola sin columna**: es de donde
     se suma la siguiente con el play en paralelo.
 - **Nunca auto-cierra ni bloquea al pasarse del estimado**: muestra el aviso

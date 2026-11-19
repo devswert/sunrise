@@ -147,9 +147,9 @@ Cuatro reglas con test propio:
 
 - **El color en sí no se redefine por tema.** El punto de un canal siendo de dos colores
   según el tema rompe lo único que sirve para reconocerlo.
-- **Un fondo sólido con texto blanco encima no puede salir del `-ink`.** Ocho bloques
-  hacen `background: var(--mint-ink)` con `color: #fff` (la pausa de `PlayControls` y el play de Focus,
-  los cuatro checks): con el ink claro en oscuro, blanco sobre claro no se lee. Usan
+- **Un fondo sólido con texto blanco encima no puede salir del `-ink`.** Siete bloques
+  hacen `background: var(--mint-ink)` con `color: #fff` (la pausa de `PlayControls`, que
+  también es la de Focus desde #21, y los cuatro checks): con el ink claro en oscuro, blanco sobre claro no se lee. Usan
   **`--mint-solid`**, fijo en los dos temas. Los fills **sin** texto —el punto pulsante,
   las barras— sí siguen al tema, porque un verde oscuro sobre fondo oscuro desaparece. La
   pregunta al agregar uno es "¿lleva texto encima?", no "¿es un fondo?".
@@ -317,9 +317,11 @@ cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcio
   del mismo alto, con **un solo borde en la unión** (el segundo entra con
   `margin-left: -1px` y el que tiene el hover sube de `z-index` para que su borde se
   vea entero). Corriendo, solo la pausa en `--mint-solid`. Dos tallas: `sm` (26px, la
-  card) y `md` (34px, el detalle). **El alto no cambia entre estados y el ancho sí**,
+  card y la tira de Focus) y `md` (34px, el detalle); Focus agranda `md` a 42px
+  cambiando `--pc-h` en `.focus__play`, a la medida de sus tiempos de 19px. **El alto no cambia entre estados y el ancho sí**,
   así que va donde un ancho variable no empuje nada: en la card los tiempos van con
-  `margin-left: auto`, y en el detalle `.tmodal__play` reserva el ancho del split.
+  `margin-left: auto`, y en el detalle `.tmodal__play` y en Focus `.focus__play` reservan el ancho del
+  split.
   Lee el timer él mismo; no se le pasa "corriendo" por props.
 - **Slots de altura fija** en vez de renderizar condicionalmente algo que empuje el
   contenido: mantiene las columnas alineadas.

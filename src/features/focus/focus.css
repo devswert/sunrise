@@ -194,9 +194,15 @@ button.focus__canal.is-empty {
 }
 
 /* El play compartido (`PlayControls`) a la talla de Focus: los tiempos de al
- * lado son piezas de 19px, y a 34px el play se veía chico junto a ellos. */
+ * lado son piezas de 19px, y a 34px el play se veía chico junto a ellos.
+ *
+ * Reserva el ancho del botón partido también cuando solo se ve la pausa, igual
+ * que `.tmodal__play` en el detalle: va a la derecha de los tiempos, y sin la
+ * reserva cada pausa y cada play corría Real/Estimado ~37px —y en columnas
+ * recortaba y agrandaba el chip del canal—. La pausa queda donde estaba el play. */
 .play-controls.focus__play {
   --pc-h: 42px;
+  min-width: calc(var(--pc-h) * 2 - 5px);
 }
 
 .focus__over {

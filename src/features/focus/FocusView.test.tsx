@@ -542,10 +542,10 @@ describe("FocusView · una columna por timer", () => {
     runTimers(1);
     const { container } = renderFocus();
     await screen.findByRole("heading", { name: "Primera tarea" });
-    const tira = container.querySelector(".focus__next") as HTMLElement;
-    expect(within(tira).getByText("Segunda tarea")).toBeInTheDocument();
+    const strip = container.querySelector(".focus__next") as HTMLElement;
+    expect(within(strip).getByText("Segunda tarea")).toBeInTheDocument();
 
-    await user.click(within(tira).getByRole("button", { name: "Iniciar en paralelo" }));
+    await user.click(within(strip).getByRole("button", { name: "Iniciar en paralelo" }));
 
     expect(api.startTimer).toHaveBeenCalledWith(2, true);
     await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
