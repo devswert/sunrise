@@ -8,10 +8,19 @@ Obligatorios por milestone. Cuántos hay lo dice el runner, no este documento.
 pnpm test        # Vitest + RTL
 pnpm test:rust   # cargo test (SQLite en memoria)
 pnpm test:all    # ambos
-TZ=UTC pnpm test:rust   # como corre CI
+TZ=UTC pnpm test        # el reloj de los runners
+TZ=UTC pnpm test:rust
+bin/gates               # todo lo anterior + lockfile, tipos y lint: el CI del proyecto
 ```
 
-**CI corre en UTC y eso es una ventaja.** El primer tag de la 0.1.0 falló ahí por un
+**El CI es local.** `bin/gates` es lo único que corre las suites antes de que algo
+llegue a `main` o se publique: Actions ya no las corre (`tests.yml` es solo manual y
+`release.yml` solo compila y publica; DECISIONES §12). El hook
+`.claude/hooks/require-gates.sh` exige su sello sobre el **árbol commiteado** antes
+de `git push`, `gh pr create|merge` y el push de un tag `v*`, y antes del merge que
+la rama contenga `origin/main`.
+
+**UTC es una ventaja.** El primer tag de la 0.1.0 falló ahí por un
 bug de zona que llevaba desde el primer commit (§4.12, `RECURRENCE-ID`): en Santiago
 pasaba por casualidad. Si un test toca zonas, córrelo con `TZ=UTC` antes de empujar, y
 escríbelo con una zona **distinta** a la tuya — un caso con fixtures en tu propia zona

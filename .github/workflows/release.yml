@@ -12,6 +12,13 @@
 # El paso "versión" de acá falla si el tag no coincide con esos archivos, que es
 # el único lugar donde eso se puede pillar: los tests de Rust comprueban que los
 # tres archivos coincidan **entre sí**, pero no saben nada del tag.
+#
+# **Acá no corren las suites.** Las corre `bin/gates` en local sobre el commit
+# exacto que se taguea, y el hook `.claude/hooks/require-gates.sh` no deja empujar
+# un tag `v*` sin ese sello (docs/DECISIONES.md §12). Antes corrían también acá:
+# eran ~5 de los ~12,5 minutos de runner macOS de cada release, y compilaban el
+# crate entero en perfil debug solo para volver a compilarlo en release. Los tipos
+# igual se revisan: `tauri build` corre `pnpm build`, que empieza con `tsc`.
 name: release
 
 on:
@@ -21,6 +28,12 @@ on:
 # El Release lo crea el propio workflow.
 permissions:
   contents: write
+
+# Dos empujones del mismo tag (borrarlo y retaguear) no publican en paralelo: el
+# segundo espera al primero en vez de cancelarlo, para no dejar un Release a medias.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   dmg:
@@ -71,11 +84,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # El build de release desde cero toma unos tres minutos en local; sin caché
-      # en CI son más, y se pagan en cada tag.
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
+      # Sin `swatinem/rust-cache`, a propósito. Una corrida disparada por un tag
+      # solo puede restaurar cachés de su propio ref o de la rama por defecto, y
+      # cada versión es un tag nuevo: el caché que guardaba nunca lo leyó nadie
+      # (en la v0.11.0, 1 s de "restaurar" sin acierto y 46 s de subirlo). Con
+      # `tests.yml` apagado en `main`, tampoco hay uno de la rama por defecto.
 
       # El cuerpo del Release sale de `docs/CHANGELOG.md`, no de un texto fijo:
       # es el mismo párrafo que la app muestra en el modal "Lo nuevo" y en Configs
@@ -124,10 +137,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - run: pnpm install --frozen-lockfile
-
-      # Las dos suites antes de empaquetar. Un .dmg publicado con tests rojos es
-      # peor que no publicar: alguien lo instala.
-      - run: pnpm test:all
 
       # Las dos llaves del updater. Sin ellas `tauri-action` **no falla**: publica
       # artefactos sin firmar, y la app los rechaza al intentar actualizar — un

@@ -120,16 +120,18 @@ mecanismo está en la skill `sunrise-sync-ventanas`.
 
 - `pnpm` v11 lee su configuración de `pnpm-workspace.yaml`, **no** del campo
   `pnpm` de `package.json`. Ahí está `onlyBuiltDependencies: [esbuild]`.
-- **Corre `TZ=UTC pnpm test` además del normal si tocas algo con fechas.** CI corre
-  en UTC y tu máquina no, así que entre las 20:00 y medianoche de Santiago el "hoy"
-  de CI ya es el día siguiente. Dos veces seguidas eso encontró bugs de fecha que
+- **`bin/gates` corre las dos suites también con `TZ=UTC`**; si tocas fechas,
+  córrelo así mientras escribes (`TZ=UTC pnpm test`), no recién al final. Los
+  runners de Actions corren en UTC y tu máquina no, así que entre las 20:00 y
+  medianoche de Santiago el "hoy" en UTC ya es el día siguiente. Dos veces seguidas eso encontró bugs de fecha que
   en local pasaban por casualidad; los dos están contados en `docs/DECISIONES.md`
   §10, y el segundo pasaba **solo los martes**.
-- **CI ya no es solo cosa de los tags.** `.github/workflows/tests.yml` corre
-  `pnpm test:all` en cada push a `main` y en cada PR, así que un rojo aparece en el
-  push que lo introdujo y no cuando alguien va a publicar. `release.yml` sigue
-  corriendo las suites antes de empaquetar —eso no se toca— pero ya no es el primer
-  lugar donde se entera nadie. Detalle en `docs/specs/distribucion.md` §4.19.
+- **El CI es local: `bin/gates`.** Actions ya no corre las suites ni en PRs, ni en
+  `main`, ni en el release (`tests.yml` quedó solo manual; costo de minutos,
+  `docs/DECISIONES.md` §12). `bin/gates` corre tipos, lint y las dos suites, en tu
+  zona y en UTC, y el hook lo exige sobre el árbol commiteado antes de
+  push, PR, merge y tag. Un test que solo corre en tu máquina no lo va a volver a
+  correr nadie. Detalle en `docs/specs/distribucion.md` §4.19.
 
 ## Idioma: código en inglés, texto en español
 

@@ -1,14 +1,27 @@
 #!/usr/bin/env bash
-# Gates de calidad de una rama de sunrise, una vez por estado del código, antes de
-# abrir, empujar o mezclar un PR. Si pasan, sella el hash del working tree para que
-# el hook (.claude/hooks/require-gates.sh) deje pasar `git push` y `gh pr create|merge`
-# sin volver a correrlos. Es lo mismo que corre CI (tests.yml), más dos chequeos que
-# CI no hace y TZ=UTC para Rust, que es donde CI ya encontró bugs de fecha.
+# Gates de calidad de sunrise, una vez por estado del código: **son el CI del
+# proyecto**. Actions ya no corre en PRs ni en main (docs/DECISIONES.md §12), así que
+# esto corre antes de abrir, empujar o mezclar un PR, y antes de taguear una versión.
+# Si pasan, sella el hash del working tree; el hook (.claude/hooks/require-gates.sh)
+# exige que ese sello sea el árbol commiteado para dejar pasar `git push`,
+# `gh pr create|merge` y el push de un tag `v*`, sin volver a correrlos.
+#
+# Es lo que corría tests.yml en macOS (tipos, lint, las dos suites), y además:
+# - migraciones intactas y tests no debilitados;
+# - `pnpm install --frozen-lockfile`, lo más cerca de un entorno limpio que se puede
+#   pedir sin reinstalar todo;
+# - la prueba del propio hook (bin/test-hook);
+# - las dos suites otra vez con TZ=UTC, el reloj de los runners, donde salieron dos
+#   bugs de fecha.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 fail() { echo "✗ $*" >&2; exit 1; }
 step() { echo "▸ $*"; }
+
+# El árbol se mide al empezar: si algo cambia mientras corren las suites (varios
+# minutos), lo que se sellaría no es lo que se probó.
+tree="$(bin/tree-hash)"
 
 git fetch --quiet origin main 2>/dev/null || echo "  (sin red: uso origin/main local)"
 base="$(git merge-base origin/main HEAD)"
@@ -30,13 +43,33 @@ if git diff "$base" -- src-tauri/src | grep -Eq '^\+.*#\[ignore'; then
   fail "Se agregó #[ignore] en tests de Rust"
 fi
 
+step "Dependencias según el lockfile"
+# Lo que el entorno limpio de un runner pillaba gratis: un package.json que ya no
+# coincide con pnpm-lock.yaml, o un node_modules viejo con el que todo pasa en local.
+# Con el store al día no baja nada y tarda un par de segundos.
+pnpm --silent install --frozen-lockfile --prefer-offline \
+  || fail "pnpm-lock.yaml no coincide con package.json (o falló la instalación)"
+
+step "Hook"
+hook_log="$(bin/test-hook 2>&1)" || { grep -v '^  ok' <<< "$hook_log"; fail "el hook require-gates.sh no pasa bin/test-hook"; }
 step "Tipos";  pnpm --silent typecheck || fail "tsc con errores"
 step "Lint";   pnpm --silent lint      || fail "Biome con errores (pnpm lint:fix arregla el formato)"
 step "Vitest"; pnpm --silent test      || fail "Vitest en rojo"
 step "Rust";   pnpm --silent test:rust || fail "cargo test en rojo"
-step "Rust en UTC (como CI)"
-TZ=UTC pnpm --silent test:rust > /dev/null || fail "cargo test en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"
+# Las dos suites otra vez en UTC, el reloj de los runners: tests.yml corría todo así, y
+# entre las 20:00 y medianoche de Santiago el "hoy" en UTC ya es mañana (DECISIONES §10).
+step "Vitest en UTC (el reloj de los runners)"
+# La salida se guarda y solo se muestra si falla: en verde es la misma de arriba.
+utc_log="$(mktemp)"; trap 'rm -f "$utc_log"' EXIT
+TZ=UTC pnpm --silent test > "$utc_log" 2>&1 \
+  || { cat "$utc_log"; fail "Vitest en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"; }
+step "Rust en UTC"
+TZ=UTC pnpm --silent test:rust > "$utc_log" 2>&1 \
+  || { cat "$utc_log"; fail "cargo test en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"; }
 
-tree="$(bin/tree-hash)"
+if [ "$(bin/tree-hash)" != "$tree" ]; then
+  git status --porcelain >&2
+  fail "El árbol cambió mientras corrían los gates (arriba, qué). Si lo cambió una herramienta —cargo reescribiendo Cargo.lock, por ejemplo— commitéalo y vuelve a correrlos."
+fi
 echo "$tree" > "$(git rev-parse --git-path sunrise-gates-ok)"
 echo "✓ Gates en verde (${tree:0:12})"

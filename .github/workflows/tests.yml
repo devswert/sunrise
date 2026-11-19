@@ -1,30 +1,32 @@
-# Corre las dos suites en cada push a `main` y en cada pull request.
+# Corre las dos suites en Actions, **solo a mano** (`gh workflow run tests.yml
+# --ref <rama>` o el botón "Run workflow").
+#
+# Hasta noviembre de 2026 corría en cada push a `main` y en cada pull request. Se
+# apagó por costo: cada corrida eran 10-15 minutos de runner macOS, que se cobra
+# con multiplicador, y duplicaba exactamente lo que `bin/gates` ya corre en local
+# antes de cada push, PR y merge (tipos, lint, Vitest, cargo test y cargo test en
+# UTC). Los minutos se acabaron y además hubo días sin runners macOS disponibles,
+# con PRs esperando una cola que no avanzaba. **El CI de sunrise es `bin/gates`**,
+# y el hook `.claude/hooks/require-gates.sh` lo exige sobre el árbol commiteado.
+# El porqué completo y lo que se pierde, en docs/DECISIONES.md §12.
+#
+# Queda para cuando haga falta un entorno limpio de verdad: sospecha de que algo
+# pasa solo en la máquina del dev, un cambio de toolchain o de dependencias.
 #
 # Es un workflow aparte de `release.yml` a propósito: ese publica —tiene permiso
 # de escritura sobre el repo y toca la llave del updater— y se dispara solo con un
-# tag. Éste no publica nada y corre todo el tiempo. Meterlos en el mismo archivo
-# significaría darle permiso de escritura a cada PR.
-#
-# **Lo que agrega de verdad es que CI corre en UTC y la máquina del dev no.** Eso
-# ya encontró dos bugs de fecha que en Santiago pasaban por casualidad (los dos
-# están en docs/DECISIONES.md §10), pero los encontró al empujar el tag: con el release ya en marcha y
-# el número de versión ya commiteado. Acá el mismo hallazgo llega en el push que
-# lo introdujo.
+# tag. Éste no publica nada.
 name: tests
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 # Solo leer. `release.yml` necesita `contents: write` para crear el Release; acá
-# escribir no hace falta y un workflow que corre con cada PR es el último lugar
-# donde se quiere ese permiso.
+# escribir no hace falta.
 permissions:
   contents: read
 
-# Un push encima de otro cancela la corrida anterior: los runners de macOS son
-# lentos y una fila de rojos ya superados no le sirve a nadie.
+# Dos disparos sobre la misma rama: el segundo cancela al primero.
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
@@ -64,8 +66,7 @@ jobs:
       # Antes de las suites, porque Vitest transpila con esbuild y **no
       # typechequea**: un error de tipos pasaba las dos suites en verde y recién
       # aparecía dentro del build de `release.yml`, o sea con el tag ya empujado y
-      # la versión ya commiteada. Es el mismo modo de falla que este workflow vino
-      # a cerrar para los tests, y estaba abierto para los tipos.
+      # la versión ya commiteada. `bin/gates` lo corre por la misma razón.
       - run: pnpm typecheck
 
       # Biome hace lint y formato en un solo binario de Rust, así que este paso
