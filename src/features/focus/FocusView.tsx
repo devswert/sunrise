@@ -233,6 +233,10 @@ export function FocusView() {
   }, [noticeDone, noticeId]);
 
   const current = queue[index] ?? null;
+  // Con la cola de hoy vacía pero una columna de otro día todavía en Focus, se
+  // muestra esa: "Listo por hoy" con un timer corriendo escondía su pausa.
+  const lone = !multi && visible.length === 1 ? (taskOf(visible[0]) ?? null) : null;
+  const shown = current ?? lone;
   useEffect(() => {
     focusedId.current = current?.id ?? null;
   }, [current]);
@@ -252,7 +256,9 @@ export function FocusView() {
       if (timer.isRunning(task.id)) await timer.stop(task.id);
 
       const inQueue = queue.some((t) => t.id === task.id);
-      const wasLast = inQueue && queue.length === 1;
+      // "La única": la última de la cola y sin otra columna al lado. Con una de
+      // otro día corriendo todavía hay trabajo abierto, y no se celebra.
+      const wasLast = inQueue && queue.length === 1 && !visible.some((id) => id !== task.id);
       await api.setTaskStatus(task.id, "DONE");
       // Después de completarla y no antes: si falla, la columna sigue ahí.
       setColumns((c) => c.filter((id) => id !== task.id));
@@ -279,7 +285,7 @@ export function FocusView() {
       // terminado —volver a Focus más tarde— no vuelve a celebrarlo.
       if (wasLast) celebrate();
     },
-    [queue, timer, load, bumpData],
+    [queue, timer, load, bumpData, visible],
   );
 
   /**
@@ -317,7 +323,7 @@ export function FocusView() {
 
   if (loading) return <div className="focus" />;
 
-  if (!multi && !current) {
+  if (!multi && !shown) {
     const completadas = dia?.done.length ?? 0;
     const trabajado = dia?.workedSeconds ?? 0;
     const planificado = dia?.plannedMinutes ?? 0;
@@ -397,14 +403,14 @@ export function FocusView() {
           })}
         </div>
       ) : (
-        current && (
+        shown && (
           <FocusTaskCard
-            key={current.id}
-            task={current}
+            key={shown.id}
+            task={shown}
             categories={categories}
             reload={load}
             onComplete={complete}
-            controls={controlsFor(current)}
+            controls={controlsFor(shown)}
           />
         )
       )}

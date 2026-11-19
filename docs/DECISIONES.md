@@ -184,8 +184,10 @@ una tarea corre.
 **Desde el detalle, el paralelo no lleva a Focus.** El play clásico cierra el modal
 y navega, porque es "paso a trabajar en esto". El paralelo se queda en el detalle
 (que pasa a mostrar la pausa): Focus muestra la más antigua de las que corren, y un
-play en paralelo no la mueve, así que navegar llevaba a **otra** tarea. Cuando
-Focus muestre columnas (#21) se puede revisar.
+play en paralelo no la mueve, así que navegar llevaba a **otra** tarea. Con
+Focus en columnas (#21) navegar ya llevaría a la correcta, pero **se mantiene**:
+el paralelo es "sumar esto sin dejar lo que estoy haciendo", y llevarte a Focus
+sería justamente dejarlo. El clásico sí navega.
 
 ### Jornada y paralelismo (#22)
 

@@ -147,9 +147,9 @@ Cuatro reglas con test propio:
 
 - **El color en sí no se redefine por tema.** El punto de un canal siendo de dos colores
   según el tema rompe lo único que sirve para reconocerlo.
-- **Un fondo sólido con texto blanco encima no puede salir del `-ink`.** Siete bloques
-  hacen `background: var(--mint-ink)` con `color: #fff` (la pausa de `PlayControls`, que
-  también es la de Focus desde #21, y los cuatro checks): con el ink claro en oscuro, blanco sobre claro no se lee. Usan
+- **Un fondo sólido con texto blanco encima no puede salir del `-ink`.** Los bloques que
+  hacen `background: var(--mint-ink)` con `color: #fff` (entre ellos la pausa de
+  `PlayControls`, que también es la de Focus desde #21, y los checks): con el ink claro en oscuro, blanco sobre claro no se lee. Usan
   **`--mint-solid`**, fijo en los dos temas. Los fills **sin** texto —el punto pulsante,
   las barras— sí siguen al tema, porque un verde oscuro sobre fondo oscuro desaparece. La
   pregunta al agregar uno es "¿lleva texto encima?", no "¿es un fondo?".

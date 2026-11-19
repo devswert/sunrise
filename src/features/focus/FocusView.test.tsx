@@ -613,6 +613,44 @@ describe("FocusView · una columna por timer", () => {
     expect(within(card("Primera tarea")).queryByText(/Pasaste el tiempo estimado/)).toBeNull();
   });
 
+  it("el rojo compara lo de hoy, no el total que se muestra", async () => {
+    // 50 min de días anteriores + 5 de hoy con estimado de 30: "Real" muestra el
+    // total, pero la promesa es de hoy (como la campana) y no se pinta.
+    queue[0].actualSeconds = 55 * 60;
+    runTimers(1);
+    running[0].baseSeconds = 5 * 60;
+    act(() => {
+      useTimerStore.setState({ ...derive([...running]), loaded: true });
+    });
+    renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+
+    const real = within(card("Primera tarea"))
+      .getByLabelText("Ajustar tiempo real")
+      .querySelector(".focus__time-value");
+    expect(real!.textContent).toMatch(/^0:55:/);
+    expect(real!.className).not.toContain("is-over");
+  });
+
+  it("completar la última de hoy con una columna de otro día no celebra y muestra esa", async () => {
+    const user = userEvent.setup();
+    queue.length = 0;
+    queue.push(task({ id: 1, title: "Primera tarea" }));
+    otherDay.push(task({ id: 99, title: "De ayer", scheduledDate: "2026-08-09" }));
+    runTimers(1, 99);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "De ayer" });
+
+    await user.click(
+      within(card("Primera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    expect(await screen.findByRole("heading", { name: "De ayer" })).toBeInTheDocument();
+    expect(screen.queryByText("Listo por hoy")).toBeNull();
+    expect(celebrate).not.toHaveBeenCalled();
+  });
+
   it("un timer en paralelo con la vista abierta suma una columna al final", async () => {
     runTimers(1);
     const { container } = renderFocus();

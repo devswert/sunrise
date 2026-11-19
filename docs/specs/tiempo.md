@@ -68,8 +68,8 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   base: un `set({ active: null })` borraría de la vista a los que siguen
   corriendo.
 - **El play de una tarea es `PlayControls`** (`src/components/PlayControls.tsx`,
-  #20), el mismo en la card de la semana, Today, Backlog y `TaskModal` (la cola de
-  Focus todavía tiene su propio play: pendiente, #21).
+  #20), el mismo en la card de la semana, Today, Backlog, `TaskModal` y Focus
+  (la tarjeta y la tira de la siguiente, #21).
   Detenida: **play clásico** (`start(id)`, pausa todo) y, pegado a la derecha,
   **play en paralelo** (`ListPlus`, "Iniciar en paralelo", `start(id, { parallel:
   true })`). Corriendo: **solo la pausa** (`stop(id)`, solo esa). Desde el detalle
@@ -296,7 +296,8 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   - **Los controles son `PlayControls`** (#20), a 42 px en las tarjetas
     (`.focus__play` cambia `--pc-h`) y `sm` en la tira de abajo.
   - **Las columnas son estado de la vista**, no del store: salir de Focus y volver
-    las arma de nuevo con lo que corre, y las que estaban en pausa no vuelven.
+    las arma de nuevo con lo que corre, y las que estaban en pausa no vuelven. Lo
+    mismo el aviso de reunión pendiente (`noticeId`).
   - **El orden es el de llegada** y no se reordena al retomar una pausada: que
     una columna salte de lugar obliga a buscarla de nuevo.
   - **Corriendo, una columna muestra solo la pausa**; en pausa, el play.
@@ -307,7 +308,9 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
     es de otro día, Focus vuelve a la tarea de la cola en que estaba: es lo mismo
     que pasa con un solo timer en una tarea de otro día, que nunca se mostró
     acá, y el taxímetro la sigue mostrando. La cola, el resumen y el confeti al
-    vaciarla son los de siempre.
+    vaciarla son los de siempre, con dos precisiones: **no se celebra si queda
+    otra columna** —hay trabajo abierto—, y si la cola de hoy se vació pero queda
+    una columna de otro día, Focus muestra esa tarea y no "Listo por hoy".
   - **Un aviso de reunión con columnas no se pierde** (§4.26, `focusTaskId`): el
     índice no se dibuja, así que la tarea del aviso se guarda (`noticeId`), la
     tira de abajo la muestra como "Aviso" —de ahí se suma con el play en
