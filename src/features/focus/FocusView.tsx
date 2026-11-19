@@ -159,10 +159,20 @@ export function FocusView() {
   // Una columna cuya tarea se completó o se borró en otro lado no se dibuja.
   // `undefined` es "todavía cargando": cuenta, para que la vista no salte a una
   // sola tarea y vuelva a columnas mientras llega.
-  const visible = columns.filter((id) => {
+  const isGone = (id: number) => {
     const t = taskOf(id);
-    return t === undefined || (t !== null && t.status !== "DONE");
-  });
+    return t === null || t?.status === "DONE";
+  };
+  const visible = columns.filter((id) => !isGone(id));
+  // Y se poda de `columns`: si no, se seguiría pidiendo con `get_task` en cada
+  // `dataVersion`, y reabrirla en otra vista la haría reaparecer en pausa sin
+  // que nadie la pidiera.
+  const goneKey = columns.filter(isGone).join(",");
+  useEffect(() => {
+    if (!goneKey) return;
+    const gone = goneKey.split(",").map(Number);
+    setColumns((c) => c.filter((id) => !gone.includes(id)));
+  }, [goneKey]);
   const multi = visible.length >= 2;
 
   // Al volver a una sola tarea —completaste una columna, o un play clásico dejó
@@ -199,7 +209,7 @@ export function FocusView() {
       if (timer.isRunning(task.id)) await timer.stop(task.id);
 
       const inQueue = queue.some((t) => t.id === task.id);
-      const eraLaUltima = inQueue && queue.length === 1;
+      const wasLast = inQueue && queue.length === 1;
       await api.setTaskStatus(task.id, "DONE");
       if (inQueue) {
         const lastPos = queue.reduce((m, t) => Math.max(m, t.position), 0);
@@ -222,7 +232,7 @@ export function FocusView() {
 
       // Solo al vaciar la cola, y solo desde acá: montar la vista con el día ya
       // terminado —volver a Focus más tarde— no vuelve a celebrarlo.
-      if (eraLaUltima) celebrate();
+      if (wasLast) celebrate();
     },
     [queue, timer, load, bumpData],
   );
@@ -235,7 +245,9 @@ export function FocusView() {
    * `<PlayControls taskId={task.id} size="md" />` (play clásico + en paralelo).
    * El play en paralelo es el que suma columnas, y el clásico el que deja una
    * sola; las dos cosas las resuelve `nextColumns` mirando qué corre, así que el
-   * componente se enchufa sin avisarle nada a Focus.
+   * componente se enchufa sin avisarle nada a Focus, **con una excepción**: con
+   * todas las columnas en pausa, Focus no distingue un play en paralelo de uno
+   * clásico —los dos arrancan una sin que siga ninguna— y deja solo esa (§4.7).
    */
   const controlsFor = (task: Task) => {
     if (timer.isRunning(task.id)) {
@@ -335,7 +347,7 @@ export function FocusView() {
   }
 
   return (
-    <div className={`focus${multi ? " focus--columns" : ""}`}>
+    <div className="focus">
       {multi ? (
         <div
           className="focus__columns"

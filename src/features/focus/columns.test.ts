@@ -31,6 +31,11 @@ describe("nextColumns", () => {
     expect(nextColumns([1, 2, 3], [1], [])).toEqual([1, 2, 3]);
   });
 
+  it("con todas en pausa, cualquier play deja solo esa: no se distingue el paralelo del clásico", () => {
+    expect(nextColumns([1, 2], [], [2])).toEqual([2]);
+    expect(nextColumns([1, 2], [], [7])).toEqual([7]);
+  });
+
   it("con un solo timer, pausarlo deja esa sola columna", () => {
     expect(nextColumns([1], [1], [])).toEqual([1]);
   });

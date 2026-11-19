@@ -281,6 +281,11 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
     Focus sin avisarle nada, y una pausa desde el taxímetro se comporta igual que
     una desde la columna. Por eso **se cuentan columnas, no timers**: Focus sigue
     en columnas hasta que completes las demás o des un play clásico.
+  - **La excepción: con todas las columnas en pausa, cualquier play deja solo
+    esa**, también uno en paralelo. Mirando solo el estado no se distinguen —en
+    los dos casos arranca una y no sigue ninguna—, y distinguirlos pediría que el
+    store recordara el modo del último play. Se aceptó así: retomar algo con todo
+    pausado es empezar de nuevo, y las otras siguen en la cola.
   - **Las columnas son estado de la vista**, no del store: salir de Focus y volver
     las arma de nuevo con lo que corre, y las que estaban en pausa no vuelven.
   - **El orden es el de llegada** y no se reordena al retomar una pausada: que
@@ -288,14 +293,16 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   - **Corriendo, una columna muestra solo la pausa**; en pausa, el play.
   - **Completar en una columna la cierra**; las demás siguen corriendo. Al volver
     a una sola, Focus queda en la que sigue **si está en la cola de hoy** (y marca
-    `syncedFor` a mano, porque el salto no corre si esa ya era la más antigua).
-    Al recargar la cola, el foco se conserva **por id** (`focusedId`), no por
-    índice: completar una columna que iba antes en la cola corría el índice a otra
-    tarea. Si
+    `syncedFor` a mano, porque el salto no corre si esa ya era la más antigua). Si
     es de otro día, Focus vuelve a la tarea de la cola en que estaba: es lo mismo
     que pasa con un solo timer en una tarea de otro día, que nunca se mostró
-    acá, y el taxímetro la sigue mostrando. La cola, el resumen y el
-    confeti al vaciarla son los de siempre.
+    acá, y el taxímetro la sigue mostrando. La cola, el resumen y el confeti al
+    vaciarla son los de siempre.
+  - **Al recargar la cola, el foco se conserva por id** (`focusedId`), no por
+    índice: completar una columna que iba antes en la cola corría el índice a otra
+    tarea.
+  - **Una columna cuya tarea se completó o se borró en otra vista se poda**, no
+    solo se esconde: si no, se seguiría pidiendo y reaparecería al reabrirla.
   - **Una columna puede no estar en la cola de hoy** —se arrancó en otro día
     desde la semana—: se pide con `get_task`, y al completarla va **al final de
     su día**, no de hoy (lo mismo que el check del taxímetro).

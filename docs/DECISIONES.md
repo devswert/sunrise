@@ -258,6 +258,12 @@ clásico y queda esa; en cualquier otro caso se conservan todas.** La primera
 versión reiniciaba con "no sigue ninguna" a secas, y completar la única que
 corría se llevaba las columnas en pausa.
 
+Lo que la regla no puede ver: **con todas las columnas en pausa, un play en
+paralelo y uno clásico se ven iguales** (arranca una, no sigue ninguna), y los
+dos dejan solo esa. Distinguirlos pediría que el store expusiera el modo del
+último play, solo para este caso. Se aceptó la excepción y quedó fijada en
+`columns.test.ts`.
+
 Esa regla trae una consecuencia buscada: **se cuentan columnas, no timers**. Con
 dos columnas y una en pausa corre un solo timer, y Focus sigue en columnas.
 Volver a una tarea apenas pausas haría desaparecer la columna bajo el cursor.

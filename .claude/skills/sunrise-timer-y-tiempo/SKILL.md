@@ -302,9 +302,10 @@ Al completar en Focus, la tarea se manda **al final del día** y la cola avanza.
 §4.7). Dos trampas que ya costaron:
 
 - **Las columnas salen de `nextColumns(antes, corrían, corren)`, no del botón
-  que se apretó.** Si sigue alguna de las que corrían, se conservan (la pausada
-  queda en su lugar); si no sigue ninguna, es un play clásico y queda solo lo
-  que corre. No le agregues a Focus lógica por botón: el play compartido y el
+  que se apretó.** Si arrancó una y no sigue ninguna de las que corrían, es un
+  play clásico y queda solo esa; en cualquier otro caso se conservan (la pausada
+  queda en su lugar). Con todo en pausa, un play en paralelo también deja solo
+  esa: el estado no los distingue, y es una excepción aceptada. No le agregues a Focus lógica por botón: el play compartido y el
   taxímetro tienen que dar lo mismo.
 - **Lo que corría antes se lee de la ref *antes* del `setColumns`.** El updater
   corre en el render siguiente, cuando la ref ya apunta a lo de ahora, y

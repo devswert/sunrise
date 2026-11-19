@@ -68,10 +68,17 @@
   font-size: 20px;
   overflow-wrap: anywhere;
 }
-/* Los tiempos y el play pueden bajar de línea bajo el canal cuando no caben: es
- * preferible a recortar el contador. */
-.focus__column .focus__meta {
-  flex-wrap: wrap;
+/* La fila de metadatos no baja de línea: si bajara en una columna, su check y su
+ * título quedarían más abajo que los de las vecinas. Lo que cede es el chip del
+ * canal, que se recorta con elipsis; el contador y la pausa nunca. */
+.focus__column .focus__meta > .chip-wrap:first-child {
+  min-width: 0;
+}
+.focus__column button.focus__canal {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Fila de metadatos: canal a la izquierda, tiempos y play a la derecha. Va

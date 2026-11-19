@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { ActiveTimer, Task } from "../../lib/types";
@@ -82,7 +82,9 @@ function timerOf(id: number): ActiveTimer {
 function runTimers(...ids: number[]) {
   running.length = 0;
   running.push(...ids.map(timerOf));
-  useTimerStore.setState({ ...derive([...running]), loaded: true });
+  act(() => {
+    useTimerStore.setState({ ...derive([...running]), loaded: true });
+  });
 }
 
 vi.mock("../../lib/ipc", () => ({
@@ -453,6 +455,35 @@ describe("FocusView · una columna por timer", () => {
     expect(
       within(card("Tercera tarea")).getByRole("button", { name: "Iniciar" }),
     ).toBeInTheDocument();
+  });
+
+  it("con columnas, las flechas no mueven nada", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+
+    expect(container.querySelectorAll(".focus__column")).toHaveLength(2);
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([
+      "Primera tarea",
+      "Segunda tarea",
+    ]);
+  });
+
+  it("una columna completada en otra vista se va", async () => {
+    runTimers(1, 2, 3);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Tercera tarea" });
+
+    queue[1].status = "DONE";
+    running.splice(1, 1);
+    runTimers(...running.map((r) => r.taskId));
+    act(() => useAppStore.getState().bumpData());
+
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+    expect(screen.queryByRole("heading", { name: "Segunda tarea" })).toBeNull();
   });
 
   it("un timer en paralelo con la vista abierta suma una columna al final", async () => {

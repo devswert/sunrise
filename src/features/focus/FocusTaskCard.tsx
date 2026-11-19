@@ -46,7 +46,7 @@ export function FocusTaskCard({ task, categories, reload, onComplete, controls }
   const plannedRef = useRef<HTMLDivElement>(null);
   const canalRef = useRef<HTMLDivElement>(null);
   const autosave = useAutosave(task.id, reload);
-  const opcionesCanal = useMemo(() => channelOptions(categories), [categories]);
+  const channelOpts = useMemo(() => channelOptions(categories), [categories]);
 
   const running = timer.isRunning(task.id);
   // Acumulado de la tarea + lo que va de la corrida: el mismo criterio que la
@@ -87,7 +87,7 @@ export function FocusTaskCard({ task, categories, reload, onComplete, controls }
           {picker === "canal" && (
             <Popover anchorRef={canalRef} onClose={() => setPicker(null)}>
               <SearchSelect
-                options={opcionesCanal}
+                options={channelOpts}
                 value={task.categoryId != null ? String(task.categoryId) : null}
                 placeholder="Buscar canal…"
                 clearLabel="Sin canal"
