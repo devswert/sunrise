@@ -64,15 +64,22 @@ te convences de que ya está resuelta, dilo como observación y ofrece cerrarla.
    `implementer` y corridas largas a `test-runner` solo cuando ahorre contexto.
 2. Tests a la par: `repo.rs` para la lógica de datos, Vitest + RTL por cada
    comportamiento visible (skill `sunrise-tests`).
-3. `bin/gates` hasta verde.
-4. Revisión: lanza un `reviewer` nuevo con solo la ruta de la worktree, el link de
-   la issue y el plan de QA (nunca la conversación).
+3. Commit (Conventional Commits, en español) en la rama de la issue y `bin/gates`
+   hasta verde. **Es el CI del proyecto**: Actions ya no corre en PRs
+   ni en `main` (`docs/DECISIONES.md` §12), así que nada más va a correr las suites
+   antes de que esto llegue a `main`.
+4. Revisión, **obligatoria**, con todo commiteado (el reviewer lee
+   `git diff origin/main...HEAD`; lo sin commitear no lo ve): lanza un `reviewer`
+   nuevo con solo la ruta de la worktree, el link de la issue y el plan de QA (nunca
+   la conversación). Sin CI remoto es la única segunda mirada antes de mezclar.
    - Verifica cada BLOCKING contra el código. Corrige los reales y vuelve a correr
      gates. Máximo 2 rondas; si sigue con BLOCKING, para y explica.
    - SPEC_DRIFT: para, muestra la línea de la spec y la del código, y pregunta qué
      se actualiza.
-5. Commit (Conventional Commits, en español) en la rama de la issue. En la rama no
-   hace falta pedir permiso para commitear.
+5. Los arreglos del reviewer van en commits nuevos, con gates otra vez. En la rama
+   no hace falta pedir permiso para commitear. Commitea **todo** lo que pasó los
+   gates: el hook compara el sello con el árbol commiteado, y un archivo sin
+   trackear bloquea el push.
 
 ## 4. Entregar para QA
 
