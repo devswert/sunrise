@@ -1232,7 +1232,16 @@ regex no reconocía —un `gh pr merge` sin `cd` pasaba sin mirar el sello, `git
 origin main` desde una rama, `'HEAD:main'` entre comillas, `git -c … push`, un tag
 con `-f`—. Enumerar lo prohibido no converge; enumerar lo permitido sí. Además,
 cualquier error inesperado del hook bloquea (`trap … ERR`): para Claude Code solo el
-código 2 bloquea, y un fallo con otro código dejaba pasar el comando. Lo que queda sin cubrir: dependencias del sistema distintas a las de
+código 2 bloquea, y un fallo con otro código dejaba pasar el comando.
+
+**El hook juzga el estado de antes del comando**, y de ahí salen dos reglas que
+costaron rondas de revisión. Nada que mueva HEAD (`commit`, `pull`, `rebase`,
+`reset`, `checkout`…) puede ir en el mismo comando que un push o un merge: `git pull
+&& git tag vX && git push origin vX` con otro merge entremedio publicaba un commit que
+nadie probó. Y un tag se crea en un comando y se empuja en otro, juzgando
+`refs/tags/vX` tal como ya existe: intentar adivinar a qué commit apuntaría leyendo
+los flags de `git tag` (`-f`, `-a -m … <rev>`, un `vX` local viejo) falló tres veces
+seguidas. Lo que queda sin cubrir: dependencias del sistema distintas a las de
 un macOS limpio (toolchain de Rust, Xcode), y un tag empujado a mano desde una
 terminal, que se salta el hook, igual que `gh api` contra el endpoint de merge, otro
 binario de git o editar el propio hook (el hook frena accidentes, no a alguien
@@ -1240,7 +1249,7 @@ decidido); la carrera de segundos entre el `fetch` del hook y el merge real si o
 sesión mezcla justo entremedio; y un comando con varios `cd` a carpetas distintas,
 donde el hook juzga solo el primero. Al revés, hay falsos bloqueos aceptados: un
 `git commit -m` cuyo texto cite un `git push` literal (por eso los mensajes van con
-`-F <archivo>`) flags después del refspec, `HEAD:<rama>`, y un `--subject` con espacios antes del
+`-F <archivo>`, y el título de un PR no puede citarlo); flags después del refspec, `HEAD:<rama>`, y un `--subject` con espacios antes del
 número del PR (las skills ponen el número primero). Para lo primero está `gh workflow run tests.yml`.
 
 **Fuera de alcance**, desde el MVP y sin issue: recurrentes o rituales generados

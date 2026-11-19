@@ -59,8 +59,8 @@ Conflictos:
 - **Punto de parada** cuando son semánticos: la misma lógica cambiada distinto, dos
   migraciones con el mismo número en `migrations.rs`, timer o `time_entries`, specs
   que se contradicen. Explica qué choca y pregunta.
-- Nunca `git push --force` sobre `main`. En la rama de la issue, tras un rebase:
-  `cd <worktree> && git push --force-with-lease`.
+- Nunca `git push --force` sobre `main`. En la rama de la issue, tras el rebase y
+  los gates del paso 3: `cd <worktree> && git push --force-with-lease`.
 
 ### 3. Gates
 
@@ -89,6 +89,9 @@ mezcla.
 cd <worktree> && git push -u origin HEAD
 cd <worktree> && gh pr create --repo devswert/sunrise --base main --title "<tipo>(<área>): <resumen>" --body-file <scratchpad>/pr-N.md
 ```
+
+El título no puede citar un `git push` literal: el hook lee el texto del comando y lo
+juzgaría como un push. Push y merge, también en comandos separados.
 
 Body (archivo temporal en el scratchpad, nunca en el repo): resumen, plan de QA con
 el test que cubre cada paso, "Validado a mano", `bin/gates` en verde (el hash corto

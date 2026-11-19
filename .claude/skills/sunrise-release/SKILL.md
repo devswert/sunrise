@@ -95,7 +95,8 @@ salió #N?" se responde mirando la issue.
    y otra vez las dos con `TZ=UTC`: **en UTC** aparecen los supuestos de zona que en
    Santiago pasan por casualidad. Así falló el primer tag de la 0.1.0
    (`docs/DECISIONES.md` §10). Un `.dmg` con tests rojos es peor que no publicar.
-8. **Commit** (`chore: versión 0.2.0`), PR y merge, igual que en `sunrise-ship`
+8. **Commit** (`chore: versión 0.2.0`), PR y merge desde el checkout principal en
+   la rama `release-vX.Y.Z` (sin `cd <worktree>`), igual que en `sunrise-ship`
    pasos 3 a 7 (sin `Closes`), **con su reviewer sin contexto**: es obligatorio
    también acá, y el changelog es justo lo que lee todo el equipo. A `main` no se
    empuja directo: el hook lo bloquea.
