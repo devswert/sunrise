@@ -127,8 +127,8 @@ mecanismo está en la skill `sunrise-sync-ventanas`.
   §10, y el segundo pasaba **solo los martes**.
 - **El CI es local: `bin/gates`.** Actions ya no corre las suites ni en PRs, ni en
   `main`, ni en el release (`tests.yml` quedó solo manual; costo de minutos,
-  `docs/DECISIONES.md` §12). `bin/gates` corre tipos, lint, las dos suites y
-  `TZ=UTC pnpm test:rust`, y el hook lo exige sobre el árbol commiteado antes de
+  `docs/DECISIONES.md` §12). `bin/gates` corre tipos, lint y las dos suites, en tu
+  zona y en UTC, y el hook lo exige sobre el árbol commiteado antes de
   push, PR, merge y tag. Un test que solo corre en tu máquina no lo va a volver a
   correr nadie. Detalle en `docs/specs/distribucion.md` §4.19.
 

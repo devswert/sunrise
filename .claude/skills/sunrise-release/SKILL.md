@@ -132,7 +132,9 @@ salió #N?" se responde mirando la issue.
 **Un tag no se mueve.** Si `release.yml` falla o el Release sale incompleto, borra
 los dos y vuelve a taguear el commit corregido (con su `bin/gates` en `main`: el hook
 deja pasar el borrado libre, pero no el tag nuevo). Si falló **antes** del paso que
-publica no hay Release que borrar, solo el tag:
+publica no hay Release que borrar, solo el tag. El borrado pasa libre por el hook
+solo con la forma `:refs/tags/vX` (no `--delete`), y retaguear va en comandos
+aparte (`git tag -d`, luego `bin/gates`, luego el tag nuevo):
 
 ```bash
 gh release delete v0.2.0 --yes && git push origin :refs/tags/v0.2.0 && git tag -d v0.2.0

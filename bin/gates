@@ -7,8 +7,8 @@
 # `gh pr create|merge` y el push de un tag `v*`, sin volver a correrlos.
 #
 # Es lo que corría tests.yml en macOS (tipos, lint, las dos suites), más dos chequeos
-# que tests.yml no hacía, Rust con TZ=UTC —el reloj de los runners, donde salieron dos
-# bugs de fecha— y `pnpm install --frozen-lockfile`, que es lo más cerca de un
+# que tests.yml no hacía, las dos suites otra vez con TZ=UTC —el reloj de los runners,
+# donde salieron dos bugs de fecha— y `pnpm install --frozen-lockfile`, que es lo más cerca de un
 # entorno limpio que se puede pedir sin reinstalar todo.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -47,7 +47,11 @@ step "Tipos";  pnpm --silent typecheck || fail "tsc con errores"
 step "Lint";   pnpm --silent lint      || fail "Biome con errores (pnpm lint:fix arregla el formato)"
 step "Vitest"; pnpm --silent test      || fail "Vitest en rojo"
 step "Rust";   pnpm --silent test:rust || fail "cargo test en rojo"
-step "Rust en UTC (el reloj de los runners)"
+# Las dos suites otra vez en UTC, el reloj de los runners: tests.yml corría todo así, y
+# entre las 20:00 y medianoche de Santiago el "hoy" en UTC ya es mañana (DECISIONES §10).
+step "Vitest en UTC (el reloj de los runners)"
+TZ=UTC pnpm --silent test > /dev/null || fail "Vitest en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"
+step "Rust en UTC"
 TZ=UTC pnpm --silent test:rust > /dev/null || fail "cargo test en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"
 
 tree="$(bin/tree-hash)"

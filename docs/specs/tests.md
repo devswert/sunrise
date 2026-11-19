@@ -8,8 +8,9 @@ Obligatorios por milestone. Cuántos hay lo dice el runner, no este documento.
 pnpm test        # Vitest + RTL
 pnpm test:rust   # cargo test (SQLite en memoria)
 pnpm test:all    # ambos
-TZ=UTC pnpm test:rust   # el reloj de los runners
-bin/gates               # todo lo anterior + tipos y lint: el CI del proyecto
+TZ=UTC pnpm test        # el reloj de los runners
+TZ=UTC pnpm test:rust
+bin/gates               # todo lo anterior + lockfile, tipos y lint: el CI del proyecto
 ```
 
 **El CI es local.** `bin/gates` es lo único que corre las suites antes de que algo
