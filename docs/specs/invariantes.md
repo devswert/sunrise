@@ -69,7 +69,8 @@ cambias una, actualiza este archivo en el mismo commit.
 - **I10. Todo acceso a datos pasa por `src/lib/ipc.ts`**, con su gemelo en `mockDb.ts`.
   Ningún componente llama `invoke` directo.
   **Vale para el front.** El servidor MCP (§4.32) es otro proceso y llama a `repo.rs`
-  directo, que es justamente lo que lo obliga a no tener reglas propias.
+  directo, que es justamente lo que lo obliga a no tener reglas propias **de datos**;
+  lo que sí agrega son topes y rechazos de entrada, documentados en §4.32.
 - **I11. Toda mutación llama `bumpData()`** ([§5.3](sincronizacion.md)). Para invalidar
   **sin** avisar hacia afuera está `markDataStale()`, que existe solo para el listener
   que recibe esos avisos.
