@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight, ChevronDown, ChevronUp, Moon, Pause, Play } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, LogDay, Task } from "../../lib/types";
@@ -184,25 +184,33 @@ export function FocusView() {
   // columnas. `syncedFor` se marca a mano: el salto de arriba no corre si esa
   // tarea ya era la más antigua. **Salvo que haya llegado un aviso** mientras
   // estaba en columnas: gana, por lo mismo que gana al timer en una sola tarea.
+  // `useLayoutEffect`: el índice se corrige antes de pintar. Con un efecto común
+  // se alcanzaba a ver un cuadro con la tarea en que estabas antes de las columnas.
   const wasMulti = useRef(false);
   const visibleKey = visible.join(",");
-  useEffect(() => {
+  useLayoutEffect(() => {
     const ids = visibleKey ? visibleKey.split(",").map(Number) : [];
     if (wasMulti.current && ids.length < 2 && ids.length > 0) {
       const target = noticeId != null && queue.some((t) => t.id === noticeId) ? noticeId : ids[0];
       const i = queue.findIndex((t) => t.id === target);
       if (i >= 0) setIndex(i);
-      syncedFor.current = ids[0];
+      // Solo si es la que corre y es a donde se fue: marcarla en pausa haría
+      // que retomarla después no la trajera.
+      if (target === ids[0] && runningKey.split(",").includes(String(ids[0]))) {
+        syncedFor.current = ids[0];
+      }
     }
     wasMulti.current = ids.length >= 2;
-  }, [visibleKey, queue, noticeId]);
+  }, [visibleKey, queue, noticeId, runningKey]);
 
   // El aviso pendiente se gasta al salir de columnas (arriba lo usó) o cuando su
   // tarea ya tiene columna. Declarado después: los efectos corren en orden.
+  // Con una sola tarea el aviso ya movió el índice y se gasta en el acto: si
+  // quedara guardado, aparecería como "Aviso" al armarse columnas más tarde.
   const noticeDone = !multi || (noticeId != null && visible.includes(noticeId));
   useEffect(() => {
-    if (noticeDone) setNoticeId(null);
-  }, [noticeDone]);
+    if (noticeDone && noticeId != null) setNoticeId(null);
+  }, [noticeDone, noticeId]);
 
   const current = queue[index] ?? null;
   useEffect(() => {
@@ -221,12 +229,13 @@ export function FocusView() {
    */
   const complete = useCallback(
     async (task: Task) => {
-      setColumns((c) => c.filter((id) => id !== task.id));
       if (timer.isRunning(task.id)) await timer.stop(task.id);
 
       const inQueue = queue.some((t) => t.id === task.id);
       const wasLast = inQueue && queue.length === 1;
       await api.setTaskStatus(task.id, "DONE");
+      // Después de completarla y no antes: si falla, la columna sigue ahí.
+      setColumns((c) => c.filter((id) => id !== task.id));
       if (inQueue) {
         const lastPos = queue.reduce((m, t) => Math.max(m, t.position), 0);
         await api.moveTask(task.id, todayISO(), lastPos + 1);

@@ -508,6 +508,31 @@ describe("FocusView · una columna por timer", () => {
     );
   });
 
+  it("un aviso que llegó con una sola tarea no reaparece al armarse columnas", async () => {
+    const user = userEvent.setup();
+    runTimers(1);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    act(() => useAppStore.setState({ focusTaskId: 4 }));
+    await screen.findByRole("heading", { name: "Cuarta tarea" });
+    await user.keyboard("{ArrowUp}{ArrowUp}{ArrowUp}");
+    await screen.findByRole("heading", { name: "Primera tarea" });
+
+    runTimers(1, 2);
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+    expect(screen.queryByText("Aviso")).toBeNull();
+    expect(screen.getByText("Siguiente")).toBeInTheDocument();
+
+    await user.click(
+      within(card("Segunda tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Primera tarea"),
+    );
+  });
+
   it("un timer en paralelo con la vista abierta suma una columna al final", async () => {
     runTimers(1);
     const { container } = renderFocus();
