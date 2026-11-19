@@ -305,8 +305,9 @@ columna de otro día) y la cola avanza.
 - **Las columnas salen de `nextColumns(antes, corrían, corren)`, no del botón
   que se apretó.** Si arrancó una y no sigue ninguna de las que corrían, es un
   play clásico y queda solo esa; en cualquier otro caso se conservan (la pausada
-  queda en su lugar). Con todo en pausa, un play en paralelo también deja solo
-  esa: el estado no los distingue, y es una excepción aceptada. No le agregues a Focus lógica por botón: el play compartido y el
+  queda en su lugar). Con todo en pausa el estado no distingue un play en
+  paralelo de uno clásico: Focus anota el click en su propio play en paralelo
+  en fase de captura (`parallelAt`), porque `onStart` llega tarde. No le agregues a Focus lógica por botón: el play compartido y el
   taxímetro tienen que dar lo mismo.
 - **Lo que corría antes se lee de la ref *antes* del `setColumns`.** El updater
   corre en el render siguiente, cuando la ref ya apunta a lo de ahora, y

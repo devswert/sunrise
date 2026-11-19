@@ -282,11 +282,16 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
     Focus sin avisarle nada, y una pausa desde el taxímetro se comporta igual que
     una desde la columna. Por eso **se cuentan columnas, no timers**: Focus sigue
     en columnas hasta que completes las demás o des un play clásico.
-  - **La excepción: con todas las columnas en pausa, cualquier play deja solo
-    esa**, también uno en paralelo. Mirando solo el estado no se distinguen —en
-    los dos casos arranca una y no sigue ninguna—, y distinguirlos pediría que el
-    store recordara el modo del último play. Se aceptó así: retomar algo con todo
-    pausado es empezar de nuevo, y las otras siguen en la cola.
+  - **Con todas las columnas en pausa, el estado no distingue un play en
+    paralelo de uno clásico** —en los dos casos arranca una y no sigue ninguna—.
+    El que se aprieta **en Focus** sí se sabe: `FocusView` anota en fase de
+    captura el click en `.play-controls__parallel` (`parallelAt`, vence a los 5
+    s) y se lo pasa a `nextColumns`, que entonces conserva las columnas. Un play
+    en paralelo desde otra vista o el taxímetro, con todo en pausa, deja solo
+    esa. No se usa `onStart` de `PlayControls` porque llega después de que el
+    store releyó los timers, cuando las columnas ya se recalcularon.
+  - **Los controles son `PlayControls`** (#20), a 42 px en las tarjetas
+    (`.focus__play` cambia `--pc-h`) y `sm` en la tira de abajo.
   - **Las columnas son estado de la vista**, no del store: salir de Focus y volver
     las arma de nuevo con lo que corre, y las que estaban en pausa no vuelven.
   - **El orden es el de llegada** y no se reordena al retomar una pausada: que

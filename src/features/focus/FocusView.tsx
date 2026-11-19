@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowRight, ChevronDown, ChevronUp, Moon, Pause, Play } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronUp, Moon } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, LogDay, Task } from "../../lib/types";
 import { nowHhmm, todayISO } from "../../lib/date";
@@ -10,7 +10,11 @@ import { SunriseMark } from "../../components/SunriseMark";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
 import { FocusTaskCard } from "./FocusTaskCard";
+import { PlayControls } from "../../components/PlayControls";
 import { nextColumns } from "./columns";
+
+/** Cuánto vale un play en paralelo apretado en Focus para `nextColumns`. */
+const PARALLEL_WINDOW_MS = 5000;
 
 /**
  * Focus Mode: la tarea en la que estás trabajando, o **una columna por cada
@@ -125,13 +129,26 @@ export function FocusView() {
   const runningKey = timer.actives.map((a) => a.taskId).join(",");
   const [columns, setColumns] = useState<number[]>([]);
   const prevRunning = useRef<number[]>([]);
+  /**
+   * Cuándo se apretó un play en paralelo **dentro de Focus**. Mirando solo el
+   * estado, con todas las columnas en pausa un play en paralelo y uno clásico se
+   * ven iguales; el gesto que nace acá sí se sabe, y con eso las columnas en
+   * pausa se conservan. Se anota en la fase de captura —antes de que el botón
+   * llame al store— porque `onStart` de `PlayControls` llega después de que el
+   * store ya releyó los timers. Vence a los pocos segundos: un play que falló no
+   * puede dejar marcado como paralelo el próximo cambio, venga de donde venga.
+   */
+  const parallelAt = useRef(0);
   useEffect(() => {
     const running = runningKey ? runningKey.split(",").map(Number) : [];
     // Leído antes del `set`: el updater corre en el próximo render, cuando la
     // ref ya apunta a lo de ahora, y entonces todo parecería "seguir corriendo".
     const prevIds = prevRunning.current;
+    // Un play en paralelo apretado en Focus hace un rato: ver `parallelAt`.
+    const parallel = Date.now() - parallelAt.current < PARALLEL_WINDOW_MS;
+    parallelAt.current = 0;
     prevRunning.current = running;
-    setColumns((prev) => nextColumns(prev, prevIds, running));
+    setColumns((prev) => nextColumns(prev, prevIds, running, parallel));
   }, [runningKey]);
 
   /**
@@ -263,39 +280,13 @@ export function FocusView() {
   );
 
   /**
-   * Los controles del timer de una tarjeta. **Corriendo, solo la pausa**: la
-   * tarea ya está en marcha y no hay nada que sumar.
-   *
-   * #20: en pausa, este `<button>` se reemplaza por
-   * `<PlayControls taskId={task.id} size="md" />` (play clásico + en paralelo).
-   * El play en paralelo es el que suma columnas, y el clásico el que deja una
-   * sola; las dos cosas las resuelve `nextColumns` mirando qué corre, así que el
-   * componente se enchufa sin avisarle nada a Focus, **con una excepción**: con
-   * todas las columnas en pausa, Focus no distingue un play en paralelo de uno
-   * clásico —los dos arrancan una sin que siga ninguna— y deja solo esa (§4.7).
+   * Los controles del timer de una tarjeta: el play compartido (#20). Corriendo,
+   * solo la pausa; en pausa, el play clásico —deja solo esa— y el play en
+   * paralelo —suma la columna—. Qué columnas quedan lo resuelve `nextColumns`.
    */
-  const controlsFor = (task: Task) => {
-    if (timer.isRunning(task.id)) {
-      return (
-        <button
-          className="focus__play is-running"
-          aria-label="Pausar"
-          onClick={() => void timer.stop(task.id)}
-        >
-          <Pause size={16} />
-        </button>
-      );
-    }
-    return (
-      <button
-        className="focus__play"
-        aria-label="Iniciar"
-        onClick={() => void timer.start(task.id)}
-      >
-        <Play size={16} />
-      </button>
-    );
-  };
+  const controlsFor = (task: Task) => (
+    <PlayControls taskId={task.id} size="md" className="focus__play" />
+  );
 
   // Navegación con flechas entre las tareas del día. Con columnas no hay "la"
   // tarea en foco que mover: cada columna es la de su timer.
@@ -372,7 +363,14 @@ export function FocusView() {
   }
 
   return (
-    <div className="focus">
+    <div
+      className="focus"
+      onClickCapture={(e) => {
+        if ((e.target as Element).closest?.(".play-controls__parallel")) {
+          parallelAt.current = Date.now();
+        }
+      }}
+    >
       {multi ? (
         <div
           className="focus__columns"
@@ -409,9 +407,8 @@ export function FocusView() {
       )}
 
       {/* Solo la siguiente tarea, como referencia. Para moverte, ↑/↓. Con
-       * columnas es la primera de la cola que no tiene columna.
-       * #20: acá va `<PlayControls taskId={next.id} size="sm" />`: su play en
-       * paralelo es el que suma una columna desde la cola. */}
+       * columnas es la primera de la cola que no tiene columna (o la del aviso).
+       * Su play en paralelo es el que suma una columna desde la cola. */}
       <div className="focus__next">
         {next ? (
           <>
@@ -420,6 +417,7 @@ export function FocusView() {
             {next.estimatedMinutes != null && (
               <span className="focus__next-time">{formatMinutes(next.estimatedMinutes)}</span>
             )}
+            <PlayControls taskId={next.id} size="sm" />
           </>
         ) : (
           <span className="focus__next-label">

@@ -342,9 +342,12 @@ describe("FocusView · una columna por timer", () => {
     expect(await screen.findByRole("heading", { name: "Primera tarea" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(container.querySelector(".focus__columns")).toBeNull();
-    // Corriendo, solo la pausa: ni play ni nada que sumar.
-    expect(screen.getByRole("button", { name: "Pausar" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Iniciar" })).toBeNull();
+    // Corriendo, solo la pausa: ni play ni nada que sumar. (El play de la tira
+    // de abajo es de la siguiente.)
+    const c = within(card("Primera tarea"));
+    expect(c.getByRole("button", { name: "Pausar" })).toBeInTheDocument();
+    expect(c.queryByRole("button", { name: "Iniciar" })).toBeNull();
+    expect(c.queryByRole("button", { name: "Iniciar en paralelo" })).toBeNull();
     expect(screen.getByText("Siguiente")).toBeInTheDocument();
     expect(screen.getByText("Segunda tarea")).toBeInTheDocument();
   });
@@ -531,6 +534,43 @@ describe("FocusView · una columna por timer", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Primera tarea"),
     );
+  });
+
+  it("el play en paralelo de la tira suma una columna desde la cola", async () => {
+    const user = userEvent.setup();
+    const { api } = await import("../../lib/ipc");
+    runTimers(1);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    const tira = container.querySelector(".focus__next") as HTMLElement;
+    expect(within(tira).getByText("Segunda tarea")).toBeInTheDocument();
+
+    await user.click(within(tira).getByRole("button", { name: "Iniciar en paralelo" }));
+
+    expect(api.startTimer).toHaveBeenCalledWith(2, true);
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+    expect(running.map((r) => r.taskId)).toEqual([1, 2]);
+  });
+
+  it("con todas en pausa, el play en paralelo de una columna no se lleva las otras", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+    await user.click(within(card("Primera tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Primera tarea")).findByRole("button", { name: "Iniciar" });
+    await user.click(within(card("Segunda tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Segunda tarea")).findByRole("button", { name: "Iniciar" });
+
+    await user.click(
+      within(card("Segunda tarea")).getByRole("button", { name: "Iniciar en paralelo" }),
+    );
+
+    await within(card("Segunda tarea")).findByRole("button", { name: "Pausar" });
+    expect(container.querySelectorAll(".focus__column")).toHaveLength(2);
+    expect(
+      within(card("Primera tarea")).getByRole("button", { name: "Iniciar" }),
+    ).toBeInTheDocument();
   });
 
   it("un timer en paralelo con la vista abierta suma una columna al final", async () => {

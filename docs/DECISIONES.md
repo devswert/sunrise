@@ -259,10 +259,11 @@ versión reiniciaba con "no sigue ninguna" a secas, y completar la única que
 corría se llevaba las columnas en pausa.
 
 Lo que la regla no puede ver: **con todas las columnas en pausa, un play en
-paralelo y uno clásico se ven iguales** (arranca una, no sigue ninguna), y los
-dos dejan solo esa. Distinguirlos pediría que el store expusiera el modo del
-último play, solo para este caso. Se aceptó la excepción y quedó fijada en
-`columns.test.ts`.
+paralelo y uno clásico se ven iguales** (arranca una, no sigue ninguna).
+Distinguirlos desde el store pediría exponer el modo del último play solo para
+esto. Se resolvió en la vista: el click en el play en paralelo de Focus se anota
+en fase de captura, antes de que el store cambie. El `onStart` de `PlayControls`
+no sirve, porque llega tarde. Desde otra vista, el caso sigue dejando solo esa.
 
 Esa regla trae una consecuencia buscada: **se cuentan columnas, no timers**. Con
 dos columnas y una en pausa corre un solo timer, y Focus sigue en columnas.

@@ -193,26 +193,10 @@ button.focus__canal.is-empty {
   color: var(--cap-over);
 }
 
-.focus__play {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  color: var(--ink);
-  flex-shrink: 0;
-}
-.focus__play:hover {
-  border-color: var(--mint-ink);
-  color: var(--mint-ink);
-}
-.focus__play.is-running {
-  background: var(--mint-solid);
-  border-color: var(--mint-solid);
-  color: #fff;
+/* El play compartido (`PlayControls`) a la talla de Focus: los tiempos de al
+ * lado son piezas de 19px, y a 34px el play se veía chico junto a ellos. */
+.play-controls.focus__play {
+  --pc-h: 42px;
 }
 
 .focus__over {
@@ -376,6 +360,12 @@ button.focus__canal.is-empty {
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--faint);
+}
+.focus__next .play-controls {
+  margin-left: auto;
+}
+.focus__next .play-controls + .focus__next-hint {
+  margin-left: 0;
 }
 .focus__next-hint {
   display: inline-flex;
