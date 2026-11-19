@@ -565,28 +565,10 @@ button.tmodal__time:hover {
   z-index: 2;
 }
 
-/* Play/pausa junto a Actual/Planned, sincronizado con el timer global */
+/* Play/pausa junto a Actual/Planned (`PlayControls`, talla `md`) */
 .tmodal__play {
   align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--surface-sunken);
-  color: var(--ink);
   margin-left: var(--space-2);
-}
-.tmodal__play:hover {
-  border-color: var(--mint-ink);
-  color: var(--mint-ink);
-}
-.tmodal__play.is-running {
-  background: var(--mint-solid);
-  border-color: var(--mint-solid);
-  color: #fff;
 }
 .tmodal__time-value.is-over {
   color: var(--cap-over);

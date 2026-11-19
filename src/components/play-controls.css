@@ -1,0 +1,69 @@
+/* El play de una tarea (`PlayControls.tsx`).
+ *
+ * Detenida: botón partido —play clásico a la izquierda, play en paralelo pegado a
+ * la derecha—, del mismo alto y con **un solo borde en la unión**: el segundo
+ * entra con `margin-left: -1px` y el que tiene el mouse sube de `z-index`, así su
+ * borde de hover se ve entero en vez de quedar tapado a medias por el vecino.
+ *
+ * Corriendo: solo la pausa, redonda y en `--mint-solid` (lleva tinta blanca
+ * encima, así que no puede salir del `-ink`: §7, "Color").
+ *
+ * El alto no cambia entre los dos estados, y el ancho sí: quien lo monta lo
+ * pone donde un ancho variable no empuje nada (en la card, los tiempos van con
+ * `margin-left: auto`). */
+.play-controls {
+  --pc-h: 26px;
+  --pc-bg: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: var(--pc-h);
+}
+.play-controls--md {
+  --pc-h: 34px;
+  --pc-bg: var(--surface-sunken);
+}
+
+.play-controls__btn {
+  position: relative;
+  height: var(--pc-h);
+  width: var(--pc-h);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--pc-bg);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.play-controls__btn:hover,
+.play-controls__btn:focus-visible {
+  z-index: 1;
+  border-color: var(--mint-ink);
+  color: var(--mint-ink);
+}
+
+.play-controls.is-split .play-controls__play {
+  border-radius: calc(var(--pc-h) / 2) 0 0 calc(var(--pc-h) / 2);
+}
+/* Un poco más angosto que el play: es el gesto secundario, y el play sigue
+ * leyéndose como el botón de siempre. */
+.play-controls.is-split .play-controls__parallel {
+  width: calc(var(--pc-h) - 4px);
+  margin-left: -1px;
+  border-radius: 0 calc(var(--pc-h) / 2) calc(var(--pc-h) / 2) 0;
+}
+
+.play-controls__pause.is-running {
+  background: var(--mint-solid);
+  border-color: var(--mint-solid);
+  color: #fff;
+}
+.play-controls__pause.is-running:hover,
+.play-controls__pause.is-running:focus-visible {
+  border-color: var(--mint-solid);
+  color: #fff;
+  filter: brightness(0.95);
+}

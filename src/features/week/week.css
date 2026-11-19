@@ -2226,27 +2226,6 @@ button.tc__tag.is-empty {
   margin-top: 4px;
   padding-top: 8px;
 }
-.tc__play {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--ink);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.tc__play:hover {
-  border-color: var(--mint-ink);
-  color: var(--mint-ink);
-}
-.tc__play.is-running {
-  background: var(--mint-solid);
-  border-color: var(--mint-solid);
-  color: #fff;
-}
 .tc__timer-times {
   display: flex;
   align-items: flex-start;

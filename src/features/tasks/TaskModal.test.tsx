@@ -297,6 +297,17 @@ describe("TaskModal · play", () => {
     expect(onClose).toHaveBeenCalled();
     expect(await screen.findByText("VISTA FOCUS")).toBeInTheDocument();
   });
+
+  it("el play en paralelo arranca sin cerrar el modal ni ir a Focus", async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderModal();
+
+    await user.click(screen.getByRole("button", { name: "Iniciar en paralelo" }));
+
+    await waitFor(() => expect(startTimer).toHaveBeenCalledWith(baseTask.id, { parallel: true }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByText("VISTA FOCUS")).toBeNull();
+  });
 });
 
 /**

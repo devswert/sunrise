@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
-import { Check, Flag, Hash, Link2, Pause, Play, Trash2, X } from "lucide-react";
+import { Check, Flag, Hash, Link2, Trash2, X } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, Objective, Task, TaskEvent, TaskPatch, TimeEntry } from "../../lib/types";
 import { Markdown } from "../../components/Markdown";
@@ -21,6 +21,7 @@ import { Popover } from "../../components/Popover";
 import { es } from "date-fns/locale";
 import { parseISODate, shortDate, toISODate } from "../../lib/date";
 import { useNavigate } from "react-router-dom";
+import { PlayControls } from "../../components/PlayControls";
 import { useTimer, hms } from "../timer/useTimer";
 import { useAppStore } from "../../lib/store";
 import { usePrioritiesOn } from "../../lib/settings";
@@ -564,23 +565,21 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                   )}
                 </div>
 
-                <button
-                  className={`tmodal__play${running ? " is-running" : ""}`}
-                  aria-label={running ? "Pausar" : "Iniciar"}
-                  onClick={async () => {
-                    if (running) {
-                      await timer.stop(task.id);
-                      return;
-                    }
-                    // Al arrancar desde el detalle, pasamos a trabajar: cierra el
-                    // modal y lleva a Focus con esa tarea.
-                    await timer.start(task.id);
+                <PlayControls
+                  taskId={task.id}
+                  size="md"
+                  className="tmodal__play"
+                  onStart={(parallel) => {
+                    // El play clásico es pasar a trabajar en esta: cierra el
+                    // modal y lleva a Focus. El paralelo **no navega**: Focus
+                    // muestra la más antigua de las que corren y un play en
+                    // paralelo no la mueve, así que llevaría a otra tarea. Se
+                    // queda en el detalle, que ahora muestra la pausa.
+                    if (parallel) return;
                     onClose();
                     navigate("/focus");
                   }}
-                >
-                  {running ? <Pause size={14} /> : <Play size={14} />}
-                </button>
+                />
               </div>
             )}
           </div>
