@@ -296,7 +296,8 @@ agendadas más tarde, (2) con hora primero dentro del grupo, (3) `scheduled_time
 (4) `position`, (5) `id`. Recibe `now_hhmm` desde el front porque la hora local
 del usuario no le corresponde decidirla a SQLite.
 
-Al completar en Focus, la tarea se manda **al final del día** y la cola avanza.
+Al completar en Focus, la tarea se manda **al final de su día** (hoy, salvo una
+columna de otro día) y la cola avanza.
 
 **Con varios timers, Focus es una columna por timer** (#21, `docs/specs/tiempo.md`
 §4.7). Dos trampas que ya costaron:

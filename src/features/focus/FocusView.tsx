@@ -107,10 +107,15 @@ export function FocusView() {
    * borraron, era de otro día— pero la marca se limpia igual: el aviso ya cumplió y
    * dejarla puesta movería la vista en la próxima carga.
    */
+  const [noticeId, setNoticeId] = useState<number | null>(null);
   useEffect(() => {
     if (focusTaskId == null || queue.length === 0) return;
     const i = queue.findIndex((t) => t.id === focusTaskId);
     if (i >= 0) setIndex(i);
+    // Con columnas el índice no se dibuja: el aviso se guarda para la tira de
+    // abajo —de donde se suma con el play en paralelo— y para cuando Focus
+    // vuelva a una sola tarea (ver `noticeId` más abajo).
+    if (i >= 0) setNoticeId(focusTaskId);
     clearFocusTask();
   }, [queue, focusTaskId, clearFocusTask]);
 
@@ -144,11 +149,10 @@ export function FocusView() {
       .then((ts) => {
         if (alive) setExtra(Object.fromEntries(ids.map((id, i) => [id, ts[i] ?? null])));
       })
-      // Si no se pudo leer, la columna no se dibuja: un hueco vacío para siempre
-      // —y Focus trabado en columnas por él— es peor que no mostrarla.
-      .catch(() => {
-        if (alive) setExtra(Object.fromEntries(ids.map((id) => [id, null])));
-      });
+      // Si no se pudo leer, no se marca como borrada: se podaría una columna
+      // cuyo timer sigue corriendo. Queda su lugar vacío y se reintenta con el
+      // próximo `dataVersion`.
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -178,25 +182,37 @@ export function FocusView() {
   // Al volver a una sola tarea —completaste una columna, o un play clásico dejó
   // una— Focus queda en la que sigue, no en la que mirabas antes de las
   // columnas. `syncedFor` se marca a mano: el salto de arriba no corre si esa
-  // tarea ya era la más antigua.
+  // tarea ya era la más antigua. **Salvo que haya llegado un aviso** mientras
+  // estaba en columnas: gana, por lo mismo que gana al timer en una sola tarea.
   const wasMulti = useRef(false);
   const visibleKey = visible.join(",");
   useEffect(() => {
     const ids = visibleKey ? visibleKey.split(",").map(Number) : [];
     if (wasMulti.current && ids.length < 2 && ids.length > 0) {
-      const i = queue.findIndex((t) => t.id === ids[0]);
+      const target = noticeId != null && queue.some((t) => t.id === noticeId) ? noticeId : ids[0];
+      const i = queue.findIndex((t) => t.id === target);
       if (i >= 0) setIndex(i);
       syncedFor.current = ids[0];
     }
     wasMulti.current = ids.length >= 2;
-  }, [visibleKey, queue]);
+  }, [visibleKey, queue, noticeId]);
+
+  // El aviso pendiente se gasta al salir de columnas (arriba lo usó) o cuando su
+  // tarea ya tiene columna. Declarado después: los efectos corren en orden.
+  const noticeDone = !multi || (noticeId != null && visible.includes(noticeId));
+  useEffect(() => {
+    if (noticeDone) setNoticeId(null);
+  }, [noticeDone]);
 
   const current = queue[index] ?? null;
   useEffect(() => {
     focusedId.current = current?.id ?? null;
   }, [current]);
+  // Con columnas, la tira muestra el aviso pendiente si lo hay; si no, la
+  // primera de la cola sin columna.
+  const notice = multi ? (queue.find((t) => t.id === noticeId) ?? null) : null;
   const next = multi
-    ? (queue.find((t) => !visible.includes(t.id)) ?? null)
+    ? (notice ?? queue.find((t) => !visible.includes(t.id)) ?? null)
     : (queue[index + 1] ?? null);
 
   /**
@@ -390,7 +406,7 @@ export function FocusView() {
       <div className="focus__next">
         {next ? (
           <>
-            <span className="focus__next-label">Siguiente</span>
+            <span className="focus__next-label">{notice ? "Aviso" : "Siguiente"}</span>
             <span className="focus__next-title">{next.title}</span>
             {next.estimatedMinutes != null && (
               <span className="focus__next-time">{formatMinutes(next.estimatedMinutes)}</span>

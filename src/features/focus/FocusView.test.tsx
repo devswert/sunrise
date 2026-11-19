@@ -486,6 +486,28 @@ describe("FocusView · una columna por timer", () => {
     expect(screen.queryByRole("heading", { name: "Segunda tarea" })).toBeNull();
   });
 
+  it("un aviso de reunión con columnas se muestra en la tira y gana al volver a una tarea", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+
+    act(() => useAppStore.setState({ focusTaskId: 4 }));
+
+    expect(await screen.findByText("Aviso")).toBeInTheDocument();
+    expect(screen.getByText("Cuarta tarea")).toBeInTheDocument();
+    expect(useAppStore.getState().focusTaskId).toBeNull();
+
+    await user.click(
+      within(card("Segunda tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Cuarta tarea"),
+    );
+  });
+
   it("un timer en paralelo con la vista abierta suma una columna al final", async () => {
     runTimers(1);
     const { container } = renderFocus();

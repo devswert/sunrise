@@ -227,7 +227,8 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
 - Cola = `focus_queue(date, nowHhmm)`: tareas `TODO` del día ordenadas por
   (1) sin hora o ya empezada antes que agendadas más tarde, (2) con hora
   primero dentro del grupo, (3) `scheduled_time`, (4) `position`, (5) `id`.
-- Check ⇒ completa, **manda la tarea al final del día**, avanza y llama a
+- Check ⇒ completa, **manda la tarea al final de su día** (hoy, salvo una columna
+  de otro día), avanza y llama a
   `bumpData()` (ver §4.6: sin eso la ventana flotante no se entera).
 - **Con la cola vacía, Focus es el cierre del día**: la marca de sunrise saliendo
   sobre el horizonte —el sol, no un check en un círculo: el check ya está en cada
@@ -298,6 +299,14 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
     que pasa con un solo timer en una tarea de otro día, que nunca se mostró
     acá, y el taxímetro la sigue mostrando. La cola, el resumen y el confeti al
     vaciarla son los de siempre.
+  - **Un aviso de reunión con columnas no se pierde** (§4.26, `focusTaskId`): el
+    índice no se dibuja, así que la tarea del aviso se guarda (`noticeId`), la
+    tira de abajo la muestra como "Aviso" —de ahí se suma con el play en
+    paralelo— y, al volver a una sola tarea, Focus queda en ella y no en la
+    columna que sobrevive.
+  - **La regla ve transiciones del store, no gestos.** Dos cambios que llegan en
+    un solo `refresh` desde la otra ventana —un play en paralelo de B y enseguida
+    la pausa de A— se leen como uno ([A]→[B]) y cuentan como play clásico.
   - **Al recargar la cola, el foco se conserva por id** (`focusedId`), no por
     índice: completar una columna que iba antes en la cola corría el índice a otra
     tarea.
