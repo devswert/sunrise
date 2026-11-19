@@ -57,8 +57,7 @@ export function FocusTaskCard({ task, categories, reload, onComplete, controls }
   // que la campana (§4.6), que también suena por tarea—.
   const over = running && isOverEstimate(timer.elapsedById[task.id] ?? 0, task.estimatedMinutes);
   const planned = task.estimatedMinutes;
-  const channel =
-    task.categoryId != null ? categories.find((c) => c.id === task.categoryId) : null;
+  const channel = task.categoryId != null ? categories.find((c) => c.id === task.categoryId) : null;
 
   return (
     <div className="focus__card">

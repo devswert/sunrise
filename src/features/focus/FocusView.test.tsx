@@ -372,7 +372,9 @@ describe("FocusView · una columna por timer", () => {
     const { container } = renderFocus();
     await screen.findByRole("heading", { name: "Segunda tarea" });
 
-    await user.click(within(card("Segunda tarea")).getByRole("button", { name: "Completar tarea" }));
+    await user.click(
+      within(card("Segunda tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
 
     await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
     expect(setStatus).toHaveBeenCalledWith(2, "DONE");
@@ -389,7 +391,9 @@ describe("FocusView · una columna por timer", () => {
     const { container } = renderFocus();
     await screen.findByRole("heading", { name: "Primera tarea" });
 
-    await user.click(within(card("Tercera tarea")).getByRole("button", { name: "Completar tarea" }));
+    await user.click(
+      within(card("Tercera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
 
     await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
@@ -405,7 +409,9 @@ describe("FocusView · una columna por timer", () => {
     await user.click(within(card("Segunda tarea")).getByRole("button", { name: "Pausar" }));
 
     await waitFor(() =>
-      expect(within(card("Segunda tarea")).getByRole("button", { name: "Iniciar" })).toBeInTheDocument(),
+      expect(
+        within(card("Segunda tarea")).getByRole("button", { name: "Iniciar" }),
+      ).toBeInTheDocument(),
     );
     expect(container.querySelectorAll(".focus__column")).toHaveLength(3);
     expect(running.map((r) => r.taskId)).toEqual([1, 3]);
