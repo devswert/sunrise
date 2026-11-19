@@ -3613,9 +3613,43 @@ mod tests {
             local_at(&c, "2026-08-10", 12, 0),
         )
         .unwrap();
-        // Un ajuste manual no tiene hora y no cuenta como corrida.
-        set_actual_seconds(&c, t.id, 99_999).unwrap();
-        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 99_999);
+    }
+
+    #[test]
+    fn log_time_no_cuenta_un_ajuste_manual_como_corrida() {
+        let c = conn();
+        let mut nt = new_task("x", Some("2026-08-10"));
+        nt.scheduled_time = Some("10:00".into());
+        let t = create_task(&c, nt).unwrap();
+        // El ajuste queda sellado a las 10:00 locales (`adjustment_stamp`), pero
+        // es un número sin hora: un tramo que la cubre tiene que entrar.
+        set_actual_seconds(&c, t.id, 600).unwrap();
+        let stamp = list_time_entries(&c, t.id).unwrap()[0].started_at.clone();
+        assert_eq!(stamp, local_at(&c, "2026-08-10", 10, 0).to_rfc3339());
+
+        log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 9, 30),
+            local_at(&c, "2026-08-10", 10, 30),
+        )
+        .unwrap();
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 600 + 3600);
+    }
+
+    #[test]
+    fn log_time_rechaza_una_tarea_que_quito_su_calendario() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        c.execute("UPDATE tasks SET source_state = 'ORPHANED' WHERE id = ?1", [t.id])
+            .unwrap();
+        let r = log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 10, 0),
+            local_at(&c, "2026-08-10", 11, 0),
+        );
+        assert!(matches!(r, Err(LogTimeError::TaskNotFound)));
     }
 
     #[test]

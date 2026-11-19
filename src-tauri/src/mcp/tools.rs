@@ -541,11 +541,21 @@ struct PausedView {
     title: String,
 }
 
+/// El tramo que quedó guardado, en hora local: si el modelo mandó un offset que no
+/// era el del usuario, acá se ve.
+#[derive(Debug, Serialize)]
+struct LoggedView {
+    start: String,
+    end: String,
+}
+
 #[derive(Serialize)]
 struct TimerResult {
     task: TaskView,
     #[serde(skip_serializing_if = "Option::is_none")]
     logged_minutes: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    logged: Option<LoggedView>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     paused: Vec<PausedView>,
     running: Vec<RunningView>,
@@ -590,10 +600,21 @@ fn timer_result(
     logged_minutes: Option<i64>,
     paused: Vec<PausedView>,
 ) -> ToolResult {
+    timer_result_with(conn, id, logged_minutes, None, paused)
+}
+
+fn timer_result_with(
+    conn: &Connection,
+    id: i64,
+    logged_minutes: Option<i64>,
+    logged: Option<LoggedView>,
+    paused: Vec<PausedView>,
+) -> ToolResult {
     let task = trackable(conn, id)?;
     to_json(&TimerResult {
         task: view(task, &channels(conn)?),
         logged_minutes,
+        logged,
         paused,
         running: running(conn)?,
     })
@@ -692,7 +713,11 @@ pub fn log_time(conn: &Connection, p: LogTimeParams) -> ToolResult {
         }
         E::Db(e) => db_err(e),
     })?;
-    timer_result(conn, p.id, Some(secs / 60), Vec::new())
+    let logged = LoggedView {
+        start: local_label(tz, &start.to_rfc3339()),
+        end: local_label(tz, &end.to_rfc3339()),
+    };
+    timer_result_with(conn, p.id, Some(secs / 60), Some(logged), Vec::new())
 }
 
 /// Corrige el total trabajado, como el ajuste a mano de la app
@@ -1067,6 +1092,12 @@ mod tests {
         let c = conn();
         let m = calendar_task(&c, "2026-10-14");
         start(&c, m, true);
+        // Una que su calendario quitó (I7) ya no existe para el MCP.
+        c.execute("UPDATE tasks SET source_state = 'ORPHANED' WHERE id = ?1", [m])
+            .unwrap();
+        assert!(log(&c, m, "2026-10-14 09:00", "2026-10-14 10:00")
+            .unwrap_err()
+            .contains("No existe"));
         assert!(stop_timer(&c, TaskIdParams { id: 999 })
             .unwrap_err()
             .contains("No existe"));
@@ -1090,6 +1121,8 @@ mod tests {
 
         let out = json(&log(&c, a, "2026-10-14 15:41", "2026-10-14T16:41").unwrap());
         assert_eq!(out["logged_minutes"], 60);
+        assert_eq!(out["logged"]["start"], "2026-10-14 15:41");
+        assert_eq!(out["logged"]["end"], "2026-10-14 16:41");
         assert_eq!(out["task"]["tracked_minutes"], 60);
 
         // La entrada quedó en esa hora local, no en UTC.

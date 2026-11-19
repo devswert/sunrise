@@ -1107,8 +1107,10 @@ como conectada aunque se llame distinto**: el caso real fue un `sunrise` puesto 
 mano apuntando a dev, y el botón de dev (`sunrise-dev`) agregaba un segundo
 servidor sobre la misma base.
 
-**Lo que el MCP todavía no hace.** Completar tareas pide que el aviso de
-`external.rs` refresque también el taxímetro (I5), no solo `main`. Borrar
+**Lo que el MCP todavía no hace.** Completar tareas: el argumento del timer ya no
+lo separa de `start_timer` (que también cierra timers), pero completar además
+cambia la tarea en pausa del taxímetro (`last`, `completeAndAdvance`), y eso sí
+necesita que la ventana flotante escuche el aviso de `external.rs`. Borrar
 no se hace directo: va a pasar por un basurero de 30 días con restauración, para
 que un error del agente no sea irreversible (issue #11).
 
