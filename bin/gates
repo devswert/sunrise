@@ -7,7 +7,7 @@
 # `gh pr create|merge` y el push de un tag `v*`, sin volver a correrlos.
 #
 # Es lo que corría tests.yml en macOS (tipos, lint, las dos suites), más dos chequeos
-# que tests.yml no hacía, las dos suites otra vez con TZ=UTC —el reloj de los runners,
+# que tests.yml no hacía, la prueba del hook (bin/test-hook), las dos suites otra vez con TZ=UTC —el reloj de los runners,
 # donde salieron dos bugs de fecha— y `pnpm install --frozen-lockfile`, que es lo más cerca de un
 # entorno limpio que se puede pedir sin reinstalar todo.
 set -euo pipefail
@@ -15,6 +15,10 @@ cd "$(dirname "$0")/.."
 
 fail() { echo "✗ $*" >&2; exit 1; }
 step() { echo "▸ $*"; }
+
+# El árbol se mide al empezar: si algo cambia mientras corren las suites (varios
+# minutos), lo que se sellaría no es lo que se probó.
+tree="$(bin/tree-hash)"
 
 git fetch --quiet origin main 2>/dev/null || echo "  (sin red: uso origin/main local)"
 base="$(git merge-base origin/main HEAD)"
@@ -43,6 +47,7 @@ step "Dependencias según el lockfile"
 pnpm --silent install --frozen-lockfile --prefer-offline \
   || fail "pnpm-lock.yaml no coincide con package.json (o falló la instalación)"
 
+step "Hook"; bin/test-hook > /dev/null || fail "el hook require-gates.sh no pasa bin/test-hook"
 step "Tipos";  pnpm --silent typecheck || fail "tsc con errores"
 step "Lint";   pnpm --silent lint      || fail "Biome con errores (pnpm lint:fix arregla el formato)"
 step "Vitest"; pnpm --silent test      || fail "Vitest en rojo"
@@ -50,10 +55,14 @@ step "Rust";   pnpm --silent test:rust || fail "cargo test en rojo"
 # Las dos suites otra vez en UTC, el reloj de los runners: tests.yml corría todo así, y
 # entre las 20:00 y medianoche de Santiago el "hoy" en UTC ya es mañana (DECISIONES §10).
 step "Vitest en UTC (el reloj de los runners)"
-TZ=UTC pnpm --silent test > /dev/null || fail "Vitest en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"
+# La salida se guarda y solo se muestra si falla: en verde es la misma de arriba.
+utc_log="$(mktemp)"; trap 'rm -f "$utc_log"' EXIT
+TZ=UTC pnpm --silent test > "$utc_log" 2>&1 \
+  || { cat "$utc_log"; fail "Vitest en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"; }
 step "Rust en UTC"
-TZ=UTC pnpm --silent test:rust > /dev/null || fail "cargo test en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"
+TZ=UTC pnpm --silent test:rust > "$utc_log" 2>&1 \
+  || { cat "$utc_log"; fail "cargo test en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"; }
 
-tree="$(bin/tree-hash)"
+[ "$(bin/tree-hash)" = "$tree" ] || fail "El código cambió mientras corrían los gates: no sello. Vuelve a correrlos."
 echo "$tree" > "$(git rev-parse --git-path sunrise-gates-ok)"
 echo "✓ Gates en verde (${tree:0:12})"

@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Prueba .claude/hooks/require-gates.sh en un repo desechable, con un remoto local y un
+# `gh` de mentira. El hook es el CI de sunrise (docs/DECISIONES.md §12): si deja pasar lo
+# que no debe, nada más lo pilla. Lo corre `bin/gates`; a mano: `bin/test-hook`.
+set -uo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+HOOK="$here/.claude/hooks/require-gates.sh"
+T="$(mktemp -d)"
+trap 'rm -rf "$T"' EXIT
+# El texto del push va partido: así el hook real no juzga al que lee o corre este archivo.
+P="git"" push"
+fails=0
+
+# `gh pr view` responde el HEAD de la carpeta, o FAKE_HEAD para simular un PR de otra rama.
+mkdir -p "$T/stub"
+printf '#!/bin/sh\n[ "$1 $2" = "pr view" ] && echo "${FAKE_HEAD:-$(git rev-parse HEAD)}"\n' > "$T/stub/gh"
+chmod +x "$T/stub/gh"
+export PATH="$T/stub:$PATH"
+
+git init -q --bare -b main "$T/remote.git"
+git clone -q "$T/remote.git" "$T/repo" 2> /dev/null
+cd "$T/repo"
+git config user.email t@t; git config user.name t; git config commit.gpgsign false
+mkdir -p bin; cp "$here/bin/tree-hash" bin/
+echo a > a.txt; git add -A; git commit -qm init; $P -q origin main
+stampf="$(git rev-parse --git-path sunrise-gates-ok)"
+seal() { bin/tree-hash > "$stampf"; }
+
+run() { # descripción, código esperado, comando
+  local out code
+  out="$(jq -n --arg c "$3" --arg d "$PWD" '{tool_input:{command:$c},cwd:$d}' | bash "$HOOK" 2>&1)"
+  code=$?
+  if [ "$code" = "$2" ]; then
+    echo "  ok   [$code] $1"
+  else
+    echo "  FAIL [${code}, se esperaba ${2}] $1 :: $out"
+    fails=$((fails + 1))
+  fi
+}
+
+echo "▸ Tags, desde main"
+rm -f "$stampf"
+run "tag sin sello" 2 "$P origin v1.0.0"
+seal
+run "tag que todavía no existe: se juzga HEAD" 0 "git tag v1.0.0 && $P origin v1.0.0"
+git tag v1.0.0
+run "tag existente con sello" 0 "$P origin v1.0.0"
+run "borrar un tag pasa libre" 0 "$P origin :refs/tags/v1.0.0"
+run "tag nuevo sobre otro commit en el mismo comando" 2 "git tag v3.0.0 HEAD~0 && $P origin v3.0.0"
+echo b > b.txt; git add -A; git commit -qm b
+run "tag viejo: se juzga su commit, no HEAD" 0 "$P origin v1.0.0"
+git tag v1.0.1
+run "tag sobre HEAD sin volver a sellar" 2 "$P origin v1.0.1"
+seal
+run "tag sellado pero fuera de origin/main" 2 "$P origin v1.0.1"
+run "push de rama y tag en el mismo comando, desde main" 2 "$P && $P origin v1.0.0"
+run "push pelado desde main" 2 "$P"
+run "tag seguido de otro refspec" 2 "$P origin v1.0.0 main"
+run "--tags" 2 "$P --tags"
+run "--follow-tags" 2 "$P --follow-tags origin"
+run "push … tag vX" 2 "$P origin tag v1.0.0"
+git reset -q --hard origin/main; git tag -d v1.0.1 > /dev/null
+
+echo "▸ Rama de issue"
+git checkout -qb issue-1-x
+echo c > c.txt; git add -A; git commit -qm c; seal
+run "push de la rama sellada" 0 "$P -u origin HEAD"
+$P -q -u origin HEAD
+run "gh pr create sellado" 0 "gh pr create --title x"
+run "tag sobre una rama de issue" 2 "$P origin v4.0.0"
+run "destino main con HEAD:main" 2 "$P origin HEAD:main"
+run "destino main por nombre" 2 "$P origin main"
+run "destino main con +" 2 "$P origin +main"
+run "destino refs/heads/main" 2 "$P origin refs/heads/main"
+run "--all" 2 "$P --all origin"
+run "--mirror" 2 "$P --mirror origin"
+echo junk > untracked.txt; seal
+run "sello con un archivo sin trackear" 2 "$P origin HEAD"
+rm untracked.txt; seal
+echo e >> c.txt
+run "cambio sin commitear después de sellar: lo que viaja sí se probó" 0 "$P origin HEAD"
+git checkout -q -- c.txt
+
+echo "▸ Merge"
+run "merge en orden" 0 "gh pr merge 1 --squash"
+run "flags con valor antes del número" 0 "gh pr merge --subject x 1 --squash"
+FAKE_HEAD=deadbeef run "el PR es de otra rama" 2 "gh pr merge 7 --squash --repo o/r"
+echo d > d.txt; git add -A; git commit -qm d; seal
+run "merge sin empujar" 2 "gh pr merge 1 --squash"
+$P -q origin HEAD
+git checkout -q main; echo m > m.txt; git add -A; git commit -qm m; $P -q origin main
+git checkout -q issue-1-x
+run "merge con main adelantado" 2 "gh pr merge 1 --squash"
+git rebase -q origin/main; $P -q -f origin HEAD; seal
+run "merge tras rebase, gates y push" 0 "gh pr merge 1 --squash"
+REPO="$PWD"; cd /
+run "con cd a la worktree delante" 0 "cd $REPO && gh pr merge 1 --squash"
+run "cd fuera de un repo" 2 "cd / && git -C $REPO push"
+cd "$REPO"
+git checkout -qb issue-2-sin-upstream; seal
+run "rama sin upstream" 2 "gh pr merge 2 --squash"
+run "comando ajeno" 0 "ls -la"
+
+if [ "$fails" -gt 0 ]; then
+  echo "✗ $fails casos del hook fallaron" >&2
+  exit 1
+fi
+echo "✓ Hook en verde"

@@ -42,6 +42,23 @@ stamp="$(git rev-parse --path-format=absolute --git-path sunrise-gates-ok)"
 sealed=""
 [ -f "$stamp" ] && sealed="$(cat "$stamp")"
 
+fetch_main() { # sin red no puede colgar el hook: corta si baja de 1 KB/s por 10 s
+  GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=10 git fetch --quiet origin main 2>/dev/null || true
+}
+
+# Formas de push que el resto del hook no sabría juzgar, o que llegan a main sin PR: un
+# refspec con destino main (`main`, `+main`, `HEAD:main`, `refs/heads/main`), `--all` y
+# `--mirror`, y las que empujan tags sin nombrarlos (`--tags`, `--follow-tags`, `tag vX`).
+# main solo avanza con `gh pr merge`, y un tag solo con `git push origin vX.Y.Z`.
+if grep -Eq "$push[^;&|]*[[:space:]+:](refs/heads/)?main([[:space:];&|]|\$)" <<< "$command"; then
+  echo "Bloqueado: no se empuja a main. Mezcla con \`gh pr merge\`." >&2
+  exit 2
+fi
+if grep -Eq "$push[^;&|]*[[:space:]](--all|--mirror|--tags|--follow-tags|tag)([[:space:];&|=]|\$)" <<< "$command"; then
+  echo "Bloqueado: \`--all\`, \`--mirror\`, \`--tags\`, \`--follow-tags\` y \`push … tag\` no pasan. Un tag se empuja solo, con \`git push origin vX.Y.Z\`." >&2
+  exit 2
+fi
+
 # Empujar un tag de versión es el paso de sunrise-release, y desde main es el único push
 # permitido. Solo si **todo** push del comando es de un tag: `git push && git push origin
 # v1.0.0` se juzga como un push normal. Borrar un tag (`:refs/tags/v…`, al retaguear) pasa
@@ -55,32 +72,37 @@ if ! grep -Eq "gh[[:space:]]+pr[[:space:]]+(create|merge)" <<< "$command" \
     case "$ref" in :*) continue ;; esac
     tag="${ref#refs/tags/}"
     # En `git tag vX && git push origin vX` el hook corre antes que el comando y el tag
-    # todavía no existe: lo que se va a taguear es HEAD.
-    if commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
-      tree="$(git rev-parse "$commit^{tree}")"
-    else
-      tree="$(git rev-parse "HEAD^{tree}")"
+    # todavía no existe: lo que se va a taguear es HEAD. Si el comando taguea otro commit
+    # (`git tag vX <rev>`), no se adivina: comandos separados.
+    if ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
+      if grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]]$tag[[:space:]]+[^[:space:];&|]" <<< "$command"; then
+        echo "Bloqueado: crea el tag $tag en un comando y empújalo en otro, para que el hook vea a qué commit apunta." >&2
+        exit 2
+      fi
+      commit="$(git rev-parse HEAD)" || exit 2
     fi
-    if [ "$sealed" != "$tree" ]; then
+    if [ "$sealed" != "$(git rev-parse "$commit^{tree}")" ]; then
       echo "Bloqueado: $tag no tiene \`bin/gates\` en verde sobre su commit. Desde el checkout principal, en main al día y sin cambios, corre \`bin/gates\` y reintenta." >&2
+      exit 2
+    fi
+    # Se publica lo que está en main, no el HEAD de una rama de issue.
+    fetch_main
+    if ! git merge-base --is-ancestor "$commit" origin/main; then
+      echo "Bloqueado: $tag apunta a un commit que no está en origin/main. Se taguea main ya mezclado." >&2
       exit 2
     fi
   done
   exit 0
 fi
 
-# Un `git push` pelado desde main, o con destino main (`HEAD:main`), se salta el PR: main
-# solo avanza con `gh pr merge`.
-if grep -Eq "$push[^;&|]*:(refs/heads/)?main([[:space:];&|]|\$)" <<< "$command"; then
-  echo "Bloqueado: no se empuja a main. Mezcla con \`gh pr merge\`." >&2
-  exit 2
-fi
+# Un `git push` pelado desde main se salta el PR: main solo avanza con `gh pr merge`.
 if grep -Eq "(^|[;&|[:space:]])$push([[:space:]]|\$)" <<< "$command" && [ "$(git branch --show-current)" = "main" ]; then
   echo "Bloqueado: no se empuja desde main. Trabaja en la rama de la issue y mezcla con \`gh pr merge\`." >&2
   exit 2
 fi
 
-if [ "$sealed" != "$(git rev-parse "HEAD^{tree}")" ]; then
+head_tree="$(git rev-parse "HEAD^{tree}")" || exit 2
+if [ "$sealed" != "$head_tree" ]; then
   if [ -n "$sealed" ] && [ "$sealed" = "$("$root/bin/tree-hash")" ]; then
     echo "Bloqueado: \`bin/gates\` pasó con cambios sin commitear o archivos sin trackear, y eso no viaja en el push. Commitea (o bórralos) y reintenta." >&2
   else
@@ -97,12 +119,18 @@ if grep -Eq "gh[[:space:]]+pr[[:space:]]+merge" <<< "$command"; then
   # Lo juzgado es esta carpeta: el PR que se mezcla tiene que ser el suyo. Si no, desde el
   # checkout principal recién sellado (o desde la worktree de otra issue) se mezclaría
   # cualquier PR sin mirar su sello.
-  selector=""; repo=""; take_repo=""
-  for tok in $(sed -nE 's/.*gh[[:space:]]+pr[[:space:]]+merge([^;&|]*).*/\1/p' <<< "$command"); do
-    if [ -n "$take_repo" ]; then repo="$tok"; take_repo=""; continue; fi
+  selector=""; repo=""; skip=""
+  read -r -a toks <<< "$(sed -nE 's/.*gh[[:space:]]+pr[[:space:]]+merge([^;&|]*).*/\1/p' <<< "$command")" || true
+  for tok in "${toks[@]+"${toks[@]}"}"; do
+    case "$skip" in
+      repo) repo="$tok"; skip=""; continue ;;
+      value) skip=""; continue ;;
+    esac
     case "$tok" in
-      -R|--repo) take_repo=1 ;;
+      -R|--repo) skip=repo ;;
       --repo=*) repo="${tok#--repo=}" ;;
+      # Flags que llevan valor: el valor no es el número del PR.
+      -t|--subject|-b|--body|-F|--body-file|-A|--author-email|--match-head-commit) skip=value ;;
       -*) ;;
       *) [ -z "$selector" ] && selector="$tok" ;;
     esac
@@ -112,13 +140,17 @@ if grep -Eq "gh[[:space:]]+pr[[:space:]]+merge" <<< "$command"; then
     echo "Bloqueado: el PR ${selector:-de esta rama} no tiene como head el HEAD de $(pwd). Mezcla desde su worktree: \`cd <worktree> && gh pr merge …\`." >&2
     exit 2
   fi
-  # Sin red el fetch no puede colgar el hook: corta si baja de 1 KB/s por 10 s.
-  GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=10 git fetch --quiet origin main 2>/dev/null || true
+  fetch_main
   if ! git merge-base --is-ancestor origin/main HEAD; then
     echo "Bloqueado: main avanzó desde el último rebase. \`git rebase origin/main\`, \`bin/gates\`, push y reintenta." >&2
     exit 2
   fi
-  if [ "$(git rev-parse -q --verify '@{upstream}' || true)" != "$(git rev-parse HEAD)" ]; then
+  upstream="$(git rev-parse -q --verify '@{upstream}' || true)"
+  if [ -z "$upstream" ]; then
+    echo "Bloqueado: la rama no tiene upstream. Empújala con \`git push -u origin HEAD\` y reintenta." >&2
+    exit 2
+  fi
+  if [ "$upstream" != "$(git rev-parse HEAD)" ]; then
     echo "Bloqueado: la rama no está empujada tal cual (HEAD distinto de su upstream). Haz push y reintenta." >&2
     exit 2
   fi

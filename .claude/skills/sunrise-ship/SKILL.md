@@ -107,8 +107,11 @@ las suites en macOS limpio. Cuesta ~10 minutos de runner: no es parte del flujo.
 Con la condición de auto-merge cumplida:
 
 ```bash
-gh pr merge <PR> --repo devswert/sunrise --squash
+cd <worktree> && gh pr merge <PR> --repo devswert/sunrise --squash
 ```
+
+Desde la worktree de la issue, siempre: el hook exige que el head del PR sea el
+HEAD de la carpeta que juzga.
 
 Sin `--delete-branch`: desde una worktree, gh intenta cambiarse a `main`, que ya
 está tomada por el checkout principal. La rama (local y remota) la borra

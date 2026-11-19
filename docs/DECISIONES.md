@@ -1020,7 +1020,7 @@ firmar y la app los rechaza sin decir por qué.**
 
 ## 10. Método: cómo se verifica acá
 
-**CI en UTC es una ventaja, no un estorbo.** Encontró dos bugs de fecha que en
+**UTC es una ventaja, no un estorbo.** El CI de Actions, que corría en UTC, encontró dos bugs de fecha que en
 Santiago pasaban por casualidad:
 
 - Un `TZID` que se ignoraba desde el primer commit —el parámetro existía en la firma
@@ -1035,7 +1035,8 @@ Santiago pasaban por casualidad:
   que verifica el número correcto del día equivocado.
 
 La regla quedó en la skill de tests: **si tocas fechas, corre también
-`TZ=UTC pnpm test`.**
+`TZ=UTC pnpm test`.** Desde que el CI es local (§12), `bin/gates` corre las dos
+suites también en UTC, siempre.
 
 **Pero `TZ=` era el único instrumento, y no alcanzaba.** Es global al proceso, así
 que no se puede variar entre casos: un archivo con fixtures en Santiago y otro que
@@ -1220,7 +1221,13 @@ silencio (y si `cargo` reescribe `Cargo.lock`, el árbol deja de ser el commitea
 el hook bloquea). (3) Al mezclar, el hook exige que la rama contenga `origin/main`:
 `main` no tiene protección de rama y GitHub squashearía un PR atrasado, dejando en
 `main` una mezcla que nadie probó; con varias sesiones mezclando en paralelo, eso
-iba a pasar. Lo que queda sin cubrir: dependencias del sistema distintas a las de
+iba a pasar. Como el hook pasó a ser lo único que separa un cambio de `main` y de un `.dmg`
+público, tiene su propia prueba (`bin/test-hook`, dentro de los gates) y bloquea
+las formas de push que no sabe juzgar: destino `main` por cualquier refspec,
+`--all`, `--mirror`, `--tags`, y un tag que no esté en `origin/main`. Las dos
+revisiones sin contexto de este cambio encontraron huecos reales ahí —un
+`gh pr merge` sin `cd` delante pasaba sin mirar el sello, y `git push origin main`
+desde una rama llegaba a main—: el hook tiene que probarse como código. Lo que queda sin cubrir: dependencias del sistema distintas a las de
 un macOS limpio (toolchain de Rust, Xcode), y un tag empujado a mano desde una
 terminal, que se salta el hook. Para lo primero está `gh workflow run tests.yml`.
 

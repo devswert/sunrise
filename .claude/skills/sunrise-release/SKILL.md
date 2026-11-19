@@ -89,7 +89,7 @@ salió #N?" se responde mirando la issue.
    tests que lo vigilan (`la_version_es_semver_y_coincide_en_los_tres_archivos` en
    Rust, y en `src/lib/changelog.test.ts` que la versión tenga su anuncio escrito).
 7. **`bin/gates`**, que corre las dos suites —ahora también validan el changelog—
-   y `TZ=UTC pnpm test:rust`: **en UTC** aparecen los supuestos de zona que en
+   y otra vez las dos con `TZ=UTC`: **en UTC** aparecen los supuestos de zona que en
    Santiago pasan por casualidad. Así falló el primer tag de la 0.1.0
    (`docs/DECISIONES.md` §10). Un `.dmg` con tests rojos es peor que no publicar.
 8. **Commit** (`chore: versión 0.2.0`), PR y merge, igual que en `sunrise-ship`

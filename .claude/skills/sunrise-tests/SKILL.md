@@ -120,7 +120,8 @@ mecanismo está en la skill `sunrise-sync-ventanas`.
 
 - `pnpm` v11 lee su configuración de `pnpm-workspace.yaml`, **no** del campo
   `pnpm` de `package.json`. Ahí está `onlyBuiltDependencies: [esbuild]`.
-- **Corre `TZ=UTC pnpm test` además del normal si tocas algo con fechas.** Los
+- **`bin/gates` corre las dos suites también con `TZ=UTC`**; si tocas fechas,
+  córrelo así mientras escribes (`TZ=UTC pnpm test`), no recién al final. Los
   runners de Actions corren en UTC y tu máquina no, así que entre las 20:00 y
   medianoche de Santiago el "hoy" en UTC ya es el día siguiente. Dos veces seguidas eso encontró bugs de fecha que
   en local pasaban por casualidad; los dos están contados en `docs/DECISIONES.md`

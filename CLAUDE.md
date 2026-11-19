@@ -70,7 +70,7 @@ pnpm test:rust    # cargo test (SQLite en memoria)
 pnpm test:all     # ambos
 pnpm dmg          # build de release + .app y .dmg (specs/distribucion.md §4.19)
 pnpm iconos       # regenera el icon set desde public/app-icon.svg
-bin/gates         # EL CI: antes de push / PR / merge / tag. Lockfile, tipos, lint, suites, Rust en UTC
+bin/gates         # EL CI: antes de push / PR / merge / tag. Lockfile, hook, tipos, lint, suites (y otra vez en UTC)
 bin/worktree N slug   # worktree por issue, con target/ y dependencias compartidos
 ```
 

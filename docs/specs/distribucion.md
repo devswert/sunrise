@@ -349,7 +349,7 @@ horaria que en Santiago pasaba por casualidad (DECISIONES §10).
 Actions **no corre nada en PRs ni al mezclar a `main`** (DECISIONES §12). Lo que
 cumple el papel de CI es `bin/gates`: lockfile congelado (`pnpm install
 --frozen-lockfile`), migraciones intactas, tests no debilitados, tipos, lint,
-Vitest y `cargo test`, y las dos suites otra vez con `TZ=UTC` —el reloj de los
+Vitest y `cargo test`, la prueba del propio hook, y las dos suites otra vez con `TZ=UTC` —el reloj de los
 runners, que ya encontró dos bugs de fecha (DECISIONES §10)—. Si pasa, sella el hash del working
 tree, y el hook `.claude/hooks/require-gates.sh` exige:
 
@@ -357,8 +357,11 @@ tree, y el hook `.claude/hooks/require-gates.sh` exige:
 |---|---|
 | `git push`, `gh pr create` | sello == árbol de `HEAD` (nada sin commitear ni sin trackear) |
 | `gh pr merge` | lo anterior, más el head del PR es `HEAD`, la rama contiene `origin/main` y está empujada tal cual |
-| push de un tag `v*` | sello == árbol del commit tagueado; borrar un tag (`:refs/tags/vX`) pasa libre |
-| cualquier push | ni desde `main` ni con destino `main` (`HEAD:main`) |
+| push de un tag `v*` | `git push origin vX.Y.Z` y nada más; sello == árbol del commit tagueado, que tiene que estar en `origin/main`; borrar (`:refs/tags/vX`) pasa libre |
+| cualquier push | ni desde `main`, ni con destino `main` (`main`, `+main`, `HEAD:main`), ni `--all`, `--mirror`, `--tags`, `--follow-tags` |
+
+El hook tiene su propia prueba, `bin/test-hook` (un repo desechable con remoto local
+y un `gh` de mentira), que corre dentro de `bin/gates`.
 
 Comparar contra el árbol **commiteado** y no contra el working tree es lo que
 sustituye al checkout limpio del runner: un archivo sin trackear con el que los
