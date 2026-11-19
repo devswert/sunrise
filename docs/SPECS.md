@@ -47,7 +47,7 @@ una mirada, gana lo segundo.
 | [§4.8–4.11, 4.24, 4.28 App y ajustes](specs/app-y-ajustes.md) | Settings, atajos, cierre de la app, tema, Dev Tools y Apariencia. |
 | [§4.25–4.27 Notificaciones](specs/notificaciones.md) | Las alertas, el aviso de próxima reunión y qué se configura de ellas. |
 | [§4.17–4.23 Durabilidad y distribución](specs/distribucion.md) | Respaldo y restauración, inicio automático, el `.dmg`, dev vs producción, actualizaciones y el modal "Lo nuevo". |
-| [§4.32 Servidor MCP](specs/mcp.md) | Cómo Claude Desktop lee y crea tareas: el binario con `--mcp`, las tools, la base compartida y cómo se entera la app. |
+| [§4.32 Servidor MCP](specs/mcp.md) | Cómo Claude Desktop lee y crea tareas y registra tiempo: el binario con `--mcp`, las tools, la base compartida y cómo se entera la app. |
 
 ### Cómo se ve y cómo se prueba
 
