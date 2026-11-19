@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { CalendarDays, Check, Clock, Flag, Hash, Pause, Play } from "lucide-react";
+import { CalendarDays, Check, Clock, Flag, Hash } from "lucide-react";
 import type { Category, Task, TaskPatch } from "../../lib/types";
 import { chipVars } from "../tasks/chipVars";
 import { formatMinutes } from "../../lib/capacity";
@@ -9,6 +9,7 @@ import { channelLabel } from "../../lib/channelLabel";
 import { PriorityTag } from "../tasks/PriorityTag";
 import { TimePicker } from "../../components/TimePicker";
 import { Popover } from "../../components/Popover";
+import { PlayControls } from "../../components/PlayControls";
 import { useTimer, hms } from "../timer/useTimer";
 import { api } from "../../lib/ipc";
 import { useAppStore } from "../../lib/store";
@@ -80,11 +81,6 @@ export function TaskCardContent({
   const stop = (e: React.SyntheticEvent) => {
     e.stopPropagation();
   };
-
-  async function togglePlay(e: React.MouseEvent) {
-    stop(e);
-    await timer.toggle(task.id);
-  }
 
   return (
     <>
@@ -218,13 +214,8 @@ export function TaskCardContent({
       {/* Mini footer de tiempos: abierto por defecto en la tarea en curso */}
       {(openFooter || running) && (
         <div className="tc__timer" onPointerDown={stop} onClick={stop}>
-          <button
-            className={`tc__play${running ? " is-running" : ""}`}
-            onClick={togglePlay}
-            aria-label={running ? "Pausar" : "Iniciar"}
-          >
-            {running ? <Pause size={13} /> : <Play size={13} />}
-          </button>
+          {/* Play clásico + paralelo, o solo la pausa si corre (§4.6). */}
+          <PlayControls taskId={task.id} size="sm" />
 
           <div className="tc__timer-times">
             <div className="chip-wrap tc__timer-col" ref={actualRef}>

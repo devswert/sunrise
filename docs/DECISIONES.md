@@ -169,6 +169,24 @@ vuelve a caer en el `busy_timeout`. Dentro de una transacción ajena sigue siend
 superpuestas se oyen como un solo sonido reventado, igual que la campana con su
 propio aviso.
 
+**El play en paralelo es un botón partido, no un menú ni un modificador (#20).**
+`PlayControls` dibuja el play de siempre y, pegado a su derecha, un `ListPlus` del
+mismo alto con el borde compartido. Un menú escondería el gesto detrás de un click
+de más, y una tecla modificadora (⌥-click) no se descubre nunca; el botón partido
+deja el clásico intacto —sigue siendo el de la izquierda, del mismo tamaño— y el
+paralelo a la vista, pero como el secundario: un poco más angosto. **Si la tarea
+corre, solo se ve la pausa**: los dos plays no harían nada sobre ella (`start_timer`
+es no-op si ya corre), y dos botones muertos al lado de la pausa la esconderían. El
+componente es **uno solo** en la card, Today y el detalle (y Focus, #21), y lee el
+timer él mismo: con cada vista armando su play, dos vistas podían discrepar sobre si
+una tarea corre.
+
+**Desde el detalle, el paralelo no lleva a Focus.** El play clásico cierra el modal
+y navega, porque es "paso a trabajar en esto". El paralelo se queda en el detalle
+(que pasa a mostrar la pausa): Focus muestra la más antigua de las que corren, y un
+play en paralelo no la mueve, así que navegar llevaba a **otra** tarea. Cuando
+Focus muestre columnas (#21) se puede revisar.
+
 ### Jornada y paralelismo (#22)
 
 Con timers en paralelo, "trabajado" deja de ser horas de reloj: dos agentes
