@@ -66,6 +66,8 @@ run "tag a una URL en vez de origin" 2 "$P $T/remote.git v1.0.0"
 run "borrado con --delete" 2 "$P --delete origin v1.0.0"
 git reset -q --hard origin/main; git tag -d v1.0.1 > /dev/null
 seal
+run "pull, tag y push en el mismo comando" 2 "git pull --ff-only && git tag v5.0.0 && $P origin v5.0.0"
+run "push -q de un tag" 0 "$P -q origin v5.0.0"
 run "tag anotado con -m, sobre HEAD de main" 0 "git tag -a v5.0.0 -m 'versión' && $P origin v5.0.0"
 echo f > f.txt; git add -A; git commit -qm f; $P -q origin main
 run "git tag -f mueve un tag existente: bloquea" 2 "git tag -f v5.0.0 && $P origin v5.0.0"
@@ -102,6 +104,9 @@ run "push dentro de \$(…)" 2 "x=\$($P origin HEAD:main)"
 run "push a la rama de la issue por nombre" 0 "$P origin issue-1-x"
 run "--force-with-lease tras un rebase" 0 "$P --force-with-lease origin HEAD"
 run "con 2>&1 y tail" 0 "$P -u origin HEAD 2>&1 | tail -3"
+run "commit y push en el mismo comando" 2 "git commit -qam x && $P origin HEAD"
+run "commit, push y merge en el mismo comando" 2 "git commit -qam x && $P origin HEAD && gh pr merge 1 --squash"
+run "rebase y push en el mismo comando" 2 "git rebase origin/main && $P --force-with-lease origin HEAD"
 echo junk > untracked.txt; seal
 run "sello con un archivo sin trackear" 2 "$P origin HEAD"
 rm untracked.txt; seal

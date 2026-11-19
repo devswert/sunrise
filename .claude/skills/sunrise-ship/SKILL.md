@@ -68,8 +68,9 @@ Commitea primero y `bin/gates` después, sobre el estado rebaseado: es el CI. Si
 falla, arregla y repite. El hook bloquea `git push` y `gh pr create|merge` si el
 árbol commiteado no es el que pasó (cambios sin commitear o archivos sin trackear
 también bloquean: no viajarían en el push), así que no lo corras dos veces sobre el
-mismo estado. Commit y push en comandos **separados**: el hook corre antes del
-comando entero, y en `git commit && git push` todavía ve el HEAD anterior. El
+mismo estado. Commit, rebase o pull, y push o merge, en comandos **separados**: el hook juzga el
+HEAD de antes del comando, así que bloquea cualquier cadena que lo mueva antes de
+empujar o mezclar. El
 mensaje de commit va con `git commit -F <archivo del scratchpad>`: el hook lee el
 texto del comando, y un mensaje que cite un `git push` literal se bloquea como push.
 

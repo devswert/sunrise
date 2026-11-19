@@ -12,7 +12,8 @@ trap 'echo "Bloqueado: el hook require-gates.sh falló en la línea $LINENO." >&
 input="$(cat)"
 command="$(jq -r '.tool_input.command // ""' <<< "$input")"
 
-# Cualquier `git … push`: con opciones globales delante (`-C dir`, `-c k=v`, `--no-pager`),
+# Cualquier `git … push` (para detectarlo; las formas válidas son menos, abajo): con
+# opciones globales delante (`-C dir`, `-c k=v`, `--no-pager`),
 # con ruta (`/usr/bin/git`) o dentro de comillas (`sh -c '…'`). Un `git commit -m "… push"`
 # no calza: lo que sigue a `git` tiene que ser opción, no subcomando.
 any_push='(^|[^[:alnum:]_.-])git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([^[:alnum:]_-]|$)'
@@ -29,15 +30,18 @@ fi
 # a main o a un release sin gates (lo encontró la revisión de #25, tres veces).
 dir_opt='([[:space:]]+-C[[:space:]]+[^[:space:];&|"'"'"']+)?'
 branch_form="^git$dir_opt[[:space:]]+push([[:space:]]+(-u|--set-upstream|-q|--quiet|--force-with-lease))*([[:space:]]+origin([[:space:]]+(HEAD|issue-[A-Za-z0-9._-]+|release-v[0-9.]+))?)?\$"
-tag_form="^git$dir_opt[[:space:]]+push[[:space:]]+origin[[:space:]]+:?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+\$"
+tag_form="^git$dir_opt[[:space:]]+push([[:space:]]+(-q|--quiet))?[[:space:]]+origin[[:space:]]+:?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+\$"
 nl=$'\n'
 # Las redirecciones (`2>&1`, `>&2`) no son separadores: fuera antes de partir.
 segments="$(sed -E 's/[0-9]*>&[0-9-]+//g' <<< "$command")"
 segments="${segments//&&/$nl}"; segments="${segments//||/$nl}"
 segments="${segments//;/$nl}"; segments="${segments//|/$nl}"; segments="${segments//&/$nl}"
-push_count=0; tag_count=0; tag_refs=""; dir_target=""
+push_count=0; tag_count=0; tag_refs=""; dir_target=""; moves_head=""
 while IFS= read -r seg; do
   seg="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' <<< "$seg")"
+  if grep -Eq "^git$dir_opt[[:space:]]+(commit|pull|merge|rebase|reset|checkout|switch|cherry-pick|am|revert|stash)([[:space:]]|\$)" <<< "$seg"; then
+    moves_head=1
+  fi
   grep -Eq "$any_push" <<< "$seg" || continue
   push_count=$((push_count + 1))
   if grep -Eq "$tag_form" <<< "$seg"; then
@@ -51,6 +55,15 @@ while IFS= read -r seg; do
     dir_target="$(awk '$2 == "-C" {print $3; exit}' <<< "$seg")"
   fi
 done <<< "$segments"
+
+# El hook juzga el HEAD de *antes* del comando. Un `pull`, `commit`, `reset`… en el mismo
+# comando que un push o un merge lo movería después de juzgado, y lo publicado o
+# mezclado no sería lo que pasó los gates (`git pull && git tag vX && git push origin vX`
+# con otro merge entremedio, o `git commit -am … && git push && gh pr merge`).
+if [ -n "$moves_head" ] && { [ "$push_count" -gt 0 ] || grep -Eq "$gh_merge_re" <<< "$command"; }; then
+  echo "Bloqueado: lo que mueve HEAD (commit, pull, rebase, reset, checkout…) va en un comando aparte del push o el merge: el hook juzga el HEAD de antes del comando." >&2
+  exit 2
+fi
 
 cd "$(jq -r '.cwd // empty' <<< "$input")" 2>/dev/null || cd "${CLAUDE_PROJECT_DIR:-.}"
 # El shell vuelve al checkout principal después de cada comando, así que el trabajo en

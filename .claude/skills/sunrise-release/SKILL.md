@@ -108,6 +108,9 @@ salió #N?" se responde mirando la issue.
    git tag v0.2.0 && git push origin v0.2.0
    ```
 
+   Cada línea es un comando aparte: el hook bloquea un `pull` (o cualquier cosa que
+   mueva HEAD) en el mismo comando que el push del tag, porque juzga el HEAD de antes.
+
    `bin/gates` otra vez, aunque ya pasó en la rama del release: lo que se publica es
    el commit de `main`, y si otra issue se mezcló entremedio ese árbol no lo probó
    nadie. Es el único chequeo antes de publicar —`release.yml` ya no corre las
