@@ -11,12 +11,14 @@ import { useToday } from "../../lib/day";
 import { useAppStore } from "../../lib/store";
 import { useBoard } from "../tasks/useBoard";
 import { useTimer } from "../timer/useTimer";
+import { useTimerStore } from "../timer/timerStore";
 import { Donut } from "../../components/Donut";
 import { TaskCardStatic } from "../week/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
 import { celebrate } from "../../lib/confetti";
 import { MoodPicker } from "./MoodPicker";
-import { highlights, segmentSeconds, workedWithRunning } from "./dailyLog";
+import { clockWithRunning, highlights, segmentSeconds, workedWithRunning } from "./dailyLog";
+import { formatParallelism, parallelism } from "../../lib/workday";
 import "./shutdown.css";
 
 /** `5400` → `'1:30'`. Mismo formato de contador que las cards del tablero. */
@@ -44,6 +46,15 @@ export function DailyShutdownView() {
   const board = useBoard(today, today);
   const bumpData = useAppStore((s) => s.bumpData);
   const { runTotalOf } = useTimer();
+  /** Cuándo llegó el día de Rust: la jornada de hoy avanza desde ahí. */
+  const loadedAt = useRef(Date.now());
+  /**
+   * Cuántos timers estaban abiertos **al cargar**. El `dt` se mide desde la
+   * carga, así que se multiplica por los de ese momento: con los de ahora, un
+   * play dado después sumaría de golpe todo el rato desde la carga hasta que
+   * llegue la recarga que dispara `bumpData`.
+   */
+  const openAtLoad = useRef(0);
 
   const [day, setDia] = useState<LogDay | null>(null);
   const [nota, setNota] = useState("");
@@ -64,6 +75,8 @@ export function DailyShutdownView() {
   const load = useCallback(async () => {
     const [d] = await api.dailyLog(today, 1);
     if (!d) return;
+    loadedAt.current = Date.now();
+    openAtLoad.current = useTimerStore.getState().actives.length;
     setDia(d);
     if (!sucios.current.has("dia")) setNota(d.note ?? "");
     setNotasTarea((previas) => {
@@ -151,6 +164,12 @@ export function DailyShutdownView() {
 
   const isClosed = day?.closedAt != null;
   const worked = day ? workedWithRunning(day, runTotalOf) : 0;
+  // Jornada y paralelismo (#22). Sin paralelismo no aparece ninguno de los dos:
+  // el día se ve como siempre.
+  const clock = day
+    ? clockWithRunning(day, true, openAtLoad.current, (Date.now() - loadedAt.current) / 1000)
+    : null;
+  const ratio = clock ? parallelism(clock.clocked, clock.span) : null;
   const selectedTask = board.tasks.find((t) => t.id === selectedId) ?? null;
 
   return (
@@ -163,6 +182,27 @@ export function DailyShutdownView() {
               <span className="chip-cifra__punto" style={{ background: "var(--sage-ink)" }} />
               <strong>{reloj(worked)}</strong> worked
             </span>
+            {clock && ratio != null && (
+              <>
+                <span
+                  className="chip-cifra"
+                  title="Horas de reloj con al menos un timer o una reunión, sin contar dos veces lo que se solapa"
+                >
+                  <span className="chip-cifra__punto" style={{ background: "var(--sky-ink)" }} />
+                  <strong>{reloj(clock.span)}</strong> jornada
+                </span>
+                <span
+                  className="chip-cifra"
+                  title="Cuántas cosas corrieron a la vez, en promedio, durante la jornada"
+                >
+                  <span
+                    className="chip-cifra__punto"
+                    style={{ background: "var(--lavender-ink)" }}
+                  />
+                  <strong>{formatParallelism(ratio)}</strong> en paralelo
+                </span>
+              </>
+            )}
             <span className="chip-cifra">
               <span className="chip-cifra__punto" style={{ background: "var(--faint)" }} />
               <strong>{formatMinutes(day.plannedMinutes)}</strong> planned

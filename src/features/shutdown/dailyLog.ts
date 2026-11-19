@@ -8,6 +8,7 @@
 import type { LogDay, DoneTask } from "../../lib/types";
 import { SettingKey, noticeOn, type SettingsMap } from "../../lib/settings";
 import { type RunningSeconds, runningFor } from "../timer/runningSeconds";
+import { type ClockDay, liveClock } from "../../lib/workday";
 
 /** Un día sin nada: ni trabajo, ni tareas cerradas, ni nota, ni cierre. */
 export function isEmpty(d: LogDay): boolean {
@@ -112,4 +113,21 @@ export function shouldRemindShutdown(options: {
   if (values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === today) return false;
   // Comparación de strings `HH:mm`, que es lexicográfica y por eso funciona.
   return nowHhmm >= workEnd;
+}
+
+/**
+ * La jornada de un día de la bitácora, con los timers abiertos si es hoy.
+ *
+ * Es el par de `workedWithRunning` para el reloj: Rust la calculó hasta la
+ * consulta, y **solo hoy** sigue corriendo (`liveClock`). Un día pasado es lo que
+ * llegó, tal cual.
+ */
+export function clockWithRunning(
+  d: LogDay,
+  isToday: boolean,
+  openTimers: number,
+  secondsSinceLoad: number,
+): ClockDay {
+  if (!isToday) return { span: d.spanSeconds, clocked: d.clockedSeconds };
+  return liveClock(d, openTimers, secondsSinceLoad);
 }

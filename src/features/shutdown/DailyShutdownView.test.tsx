@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { DailyShutdownView } from "./DailyShutdownView";
 import { DailyHighlightsView } from "./DailyHighlightsView";
 import { api } from "../../lib/ipc";
+import { mock } from "../../lib/mockDb";
 import { todayISO } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
 
@@ -277,5 +278,84 @@ describe("DailyHighlightsView", () => {
     await userEvent.click(await screen.findByRole("button", { name: /algo con tiempo/ }));
 
     expect(await screen.findByLabelText("Detalle de tarea")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Jornada y paralelismo (#22). Los números los arma Rust (y su gemelo en el
+ * mock, probado en `workday.test.ts`); acá se fija lo que la vista hace con
+ * ellos, así que el día se sobrescribe sobre lo que devuelve el mock.
+ */
+describe("jornada y paralelismo en el cierre y la bitácora", () => {
+  // Un `expect` que falla antes del `mockRestore` no puede dejar el spy puesto
+  // para el resto del archivo.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const H = 3600;
+
+  /** Hoy, con la jornada y el reloj sumado que se le pidan. */
+  function withClock(spanSeconds: number, clockedSeconds: number) {
+    const real = mock.dailyLog;
+    return vi
+      .spyOn(api, "dailyLog")
+      .mockImplementation(async (to, n) =>
+        (await real(to, n)).map((d) =>
+          d.date === todayISO() ? { ...d, spanSeconds, clockedSeconds } : d,
+        ),
+      );
+  }
+
+  it("sin paralelismo el cierre se ve como siempre", async () => {
+    const spy = withClock(3 * H, 3 * H);
+    mount();
+
+    expect(await screen.findByText(/worked/)).toBeInTheDocument();
+    expect(screen.queryByText(/jornada/)).toBeNull();
+    expect(screen.queryByText(/en paralelo/)).toBeNull();
+    spy.mockRestore();
+  });
+
+  it("con paralelismo el cierre suma la jornada y el ×", async () => {
+    const spy = withClock(3 * H, 5.4 * H);
+    mount();
+
+    const jornada = await screen.findByText(/jornada/);
+    expect(within(jornada).getByText("3:00")).toBeInTheDocument();
+    const par = screen.getByText(/en paralelo/);
+    expect(within(par).getByText("×1,8")).toBeInTheDocument();
+    spy.mockRestore();
+  });
+
+  it("sin paralelismo la bitácora se ve como siempre", async () => {
+    const spy = withClock(2 * H, 2 * H);
+    mount("/daily-highlights");
+
+    const hoy = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(".dia");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(within(hoy).getByText("Trabajado")).toBeInTheDocument();
+    expect(within(hoy).queryByText("Jornada")).toBeNull();
+    expect(within(hoy).queryByText("En paralelo")).toBeNull();
+    spy.mockRestore();
+  });
+
+  it("con paralelismo la bitácora muestra la jornada y el × del día", async () => {
+    const spy = withClock(2 * H, 4 * H);
+    mount("/daily-highlights");
+
+    const hoy = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(".dia");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const jornada = within(hoy).getByText("Jornada").parentElement!;
+    expect(within(jornada).getByText("2:00")).toBeInTheDocument();
+    const par = within(hoy).getByText("En paralelo").parentElement!;
+    expect(within(par).getByText("×2,0")).toBeInTheDocument();
+    spy.mockRestore();
   });
 });

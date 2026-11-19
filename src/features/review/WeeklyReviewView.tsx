@@ -38,6 +38,7 @@ import {
   ceilingInMinutes,
 } from "./weeklyReview";
 import { GroupBy } from "../../lib/enums";
+import { formatParallelism, parallelism } from "../../lib/workday";
 import { SettingKey, useGroupBy } from "../../lib/settings";
 import "./review.css";
 
@@ -191,6 +192,14 @@ export function WeeklyReviewView() {
   const selectedTask = rollup?.completedTasks.find((t) => t.id === abierta?.id) ?? abierta;
   const esSemanaActual = dates.includes(todayISO());
   const cumplidos = objectives.filter((o) => o.completed).length;
+  // El paralelismo de la semana. Si no lo hubo, ni la jornada ni el "×" salen:
+  // la review se ve como siempre.
+  const weekParallelism = rollup ? parallelism(rollup.clockedSeconds, rollup.spanSeconds) : null;
+  // Las líneas por día se encienden si **algún** día tuvo paralelismo, aunque la
+  // semana quede bajo el umbral: media hora de solape diluida en 40 h no puede
+  // borrar de la review el "×" que el shutdown de ese día sí mostró.
+  const anyDayParallel =
+    rollup?.days.some((d) => parallelism(d.clockedSeconds, d.spanSeconds) != null) ?? false;
 
   return (
     <div className="review">
@@ -211,6 +220,19 @@ export function WeeklyReviewView() {
           <div className="review__cifras">
             <Chip color="var(--mint-ink)" value={rollup.completedTasks.length} label="cerradas" />
             <Chip color="var(--sage-ink)" value={hours(rollup.totalSeconds)} label="trabajado" />
+            {/* Jornada y paralelismo de la semana (#22), solo si hubo trabajo en
+                paralelo. La razón es Σ reloj ÷ Σ jornada, no el promedio de las
+                diarias: un día corto muy paralelo no pesa lo mismo que uno largo. */}
+            {weekParallelism != null && (
+              <>
+                <Chip color="var(--sky-ink)" value={hours(rollup.spanSeconds)} label="jornada" />
+                <Chip
+                  color="var(--lavender-ink)"
+                  value={formatParallelism(weekParallelism)}
+                  label="en paralelo"
+                />
+              </>
+            )}
             {/* El gris es el mismo de la marca punteada del gráfico: el color
                 ata la cifra a lo que representa más abajo. */}
             <Chip
@@ -482,12 +504,31 @@ export function WeeklyReviewView() {
                 const list: Task[] = (closed.get(d.date) ?? []).filter((t: Task) =>
                   matchesFilter(t, filter, catMap),
                 );
+                const ratio = parallelism(d.clockedSeconds, d.spanSeconds);
                 return (
                   <div key={d.date} className="review__dia">
                     <header className="review__dia-head">
                       <span>{shortWeekday(d.date)}</span>
                       <span className="review__dia-h">{d.seconds > 0 ? hours(d.seconds) : ""}</span>
                     </header>
+                    {/* El slot de la jornada está en **todos** los días de una
+                        semana con paralelismo, aunque el día no lo tenga: si solo
+                        lo llevaran algunos, las columnas se desalinearían. */}
+                    {anyDayParallel && (
+                      <p
+                        className="review__dia-jornada"
+                        data-testid={`jornada-${d.date}`}
+                        title="Jornada: horas de reloj con al menos un timer o una reunión"
+                      >
+                        {d.spanSeconds > 0 && `${hours(d.spanSeconds)} jornada`}
+                        {ratio != null && (
+                          <>
+                            {" · "}
+                            <b>{formatParallelism(ratio)}</b>
+                          </>
+                        )}
+                      </p>
+                    )}
                     {list.length === 0 ? (
                       <p className="review__vacio">—</p>
                     ) : (

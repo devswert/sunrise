@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { WeeklyReviewView } from "./WeeklyReviewView";
 import { api } from "../../lib/ipc";
+import { mock } from "../../lib/mockDb";
 import { isoWeekId, shortWeekday, todayISO, weekDates } from "../../lib/date";
 import { hours } from "./weeklyReview";
 
@@ -204,5 +205,82 @@ describe("WeeklyReviewView", () => {
     await waitFor(() => expect(screen.queryByText("de esta semana")).toBeNull());
     // Y el botón de volver deja de estar apagado.
     expect(screen.getByRole("button", { name: "Esta semana" })).toBeEnabled();
+  });
+});
+
+/**
+ * Jornada y paralelismo (#22), por día y en total. Los números los arma Rust (y
+ * el gemelo del mock, probado en `workday.test.ts`); acá se sobrescriben sobre lo
+ * que devuelve el mock para fijar qué hace la vista con ellos.
+ */
+describe("jornada y paralelismo en la review", () => {
+  // Un `expect` que falla antes del `mockRestore` no puede dejar el spy puesto
+  // para el resto del archivo.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const H = 3600;
+
+  function withClock(porDia: Record<string, [number, number]>) {
+    const real = mock.weeklyRollup;
+    return vi.spyOn(api, "weeklyRollup").mockImplementation(async (weekStart) => {
+      const r = await real(weekStart);
+      const days = r.days.map((d) => {
+        const [spanSeconds, clockedSeconds] = porDia[d.date] ?? [0, 0];
+        return { ...d, spanSeconds, clockedSeconds };
+      });
+      return {
+        ...r,
+        days,
+        spanSeconds: days.reduce((a, d) => a + d.spanSeconds, 0),
+        clockedSeconds: days.reduce((a, d) => a + d.clockedSeconds, 0),
+      };
+    });
+  }
+
+  it("sin paralelismo la review se ve como siempre", async () => {
+    const [lunes, martes] = weekDates(new Date());
+    const spy = withClock({ [lunes]: [3 * H, 3 * H], [martes]: [H, H] });
+    mount();
+
+    expect(await screen.findByText(/trabajado/)).toBeInTheDocument();
+    expect(screen.queryByText(/jornada/)).toBeNull();
+    expect(screen.queryByText(/en paralelo/)).toBeNull();
+    expect(document.querySelector(".review__dia-jornada")).toBeNull();
+    spy.mockRestore();
+  });
+
+  it("con paralelismo muestra la jornada y el × de la semana y de cada día", async () => {
+    const [lunes, martes, miercoles] = weekDates(new Date());
+    // Lunes 3h de jornada con 6h de reloj (×2,0); martes 1h sin solape. La
+    // semana es Σ reloj ÷ Σ jornada = 7/4, no el promedio de los días (×1,5).
+    const spy = withClock({ [lunes]: [3 * H, 6 * H], [martes]: [H, H] });
+    mount();
+
+    const jornada = await screen.findByText(/jornada$/, { selector: ".chip-cifra" });
+    expect(within(jornada).getByText("4h")).toBeInTheDocument();
+    const par = screen.getByText(/en paralelo/, { selector: ".chip-cifra" });
+    expect(within(par).getByText("×1,8")).toBeInTheDocument();
+
+    expect(screen.getByTestId(`jornada-${lunes}`)).toHaveTextContent("3h jornada · ×2,0");
+    expect(screen.getByTestId(`jornada-${martes}`)).toHaveTextContent(/^1h jornada$/);
+    // El slot está aunque el día no tenga nada: si no, las columnas se desalinean.
+    expect(screen.getByTestId(`jornada-${miercoles}`)).toHaveTextContent(/^$/);
+    spy.mockRestore();
+  });
+
+  it("un día paralelo en una semana que no lo es igual muestra su ×", async () => {
+    // 8h con 9h de reloj (×1,1) diluidas en 40h de semana: la semana no pasa el
+    // umbral, pero el día sí, y el shutdown de ese día lo mostró.
+    const days = weekDates(new Date());
+    const porDia = Object.fromEntries(
+      days.slice(0, 5).map((d, i) => [d, i === 0 ? [8 * H, 9 * H] : [8 * H, 8 * H]]),
+    ) as Record<string, [number, number]>;
+    withClock(porDia);
+    mount();
+
+    expect(await screen.findByTestId(`jornada-${days[0]}`)).toHaveTextContent("8h jornada · ×1,1");
+    expect(screen.queryByText(/en paralelo/, { selector: ".chip-cifra" })).toBeNull();
   });
 });
