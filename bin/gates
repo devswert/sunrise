@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Gates de calidad de una rama de sunrise, una vez por estado del código, antes de
-# abrir, empujar o mezclar un PR. Si pasan, sella el hash del working tree para que
-# el hook (.claude/hooks/require-gates.sh) deje pasar `git push` y `gh pr create|merge`
-# sin volver a correrlos. Es lo mismo que corre CI (tests.yml), más dos chequeos que
-# CI no hace y TZ=UTC para Rust, que es donde CI ya encontró bugs de fecha.
+# Gates de calidad de sunrise, una vez por estado del código: **son el CI del
+# proyecto**. Actions ya no corre en PRs ni en main (docs/DECISIONES.md §12), así que
+# esto corre antes de abrir, empujar o mezclar un PR, y antes de taguear una versión.
+# Si pasan, sella el hash del working tree; el hook (.claude/hooks/require-gates.sh)
+# exige que ese sello sea el árbol commiteado para dejar pasar `git push`,
+# `gh pr create|merge` y el push de un tag `v*`, sin volver a correrlos.
+#
+# Es lo que corría tests.yml en macOS (tipos, lint, las dos suites), más dos chequeos
+# que tests.yml no hacía, Rust con TZ=UTC —el reloj de los runners, donde salieron dos
+# bugs de fecha— y `pnpm install --frozen-lockfile`, que es lo más cerca de un
+# entorno limpio que se puede pedir sin reinstalar todo.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -30,11 +36,18 @@ if git diff "$base" -- src-tauri/src | grep -Eq '^\+.*#\[ignore'; then
   fail "Se agregó #[ignore] en tests de Rust"
 fi
 
+step "Dependencias según el lockfile"
+# Lo que el entorno limpio de un runner pillaba gratis: un package.json que ya no
+# coincide con pnpm-lock.yaml, o un node_modules viejo con el que todo pasa en local.
+# Con el store al día no baja nada y tarda un par de segundos.
+pnpm --silent install --frozen-lockfile --prefer-offline \
+  || fail "pnpm-lock.yaml no coincide con package.json (o falló la instalación)"
+
 step "Tipos";  pnpm --silent typecheck || fail "tsc con errores"
 step "Lint";   pnpm --silent lint      || fail "Biome con errores (pnpm lint:fix arregla el formato)"
 step "Vitest"; pnpm --silent test      || fail "Vitest en rojo"
 step "Rust";   pnpm --silent test:rust || fail "cargo test en rojo"
-step "Rust en UTC (como CI)"
+step "Rust en UTC (el reloj de los runners)"
 TZ=UTC pnpm --silent test:rust > /dev/null || fail "cargo test en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"
 
 tree="$(bin/tree-hash)"

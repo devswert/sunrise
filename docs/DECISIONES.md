@@ -995,10 +995,10 @@ botones de una versión vieja de macOS mientras en desarrollo se veían los actu
 En los tests: `pnpm test:rust` compila el crate de Tauri entero, y en Linux eso
 arrastra las dependencias de webkit2gtk.
 
-**Los tests corren en cada push, en archivo aparte del release.** `release.yml`
-necesita permiso de escritura y recibe la llave privada del updater por env; un
-workflow que se dispara con cada PR es el último lugar donde se quiere cualquiera de
-las dos.
+**Los tests van en archivo aparte del release.** `release.yml` necesita permiso de
+escritura y recibe la llave privada del updater por env; un workflow de tests es el
+último lugar donde se quiere cualquiera de las dos. Corrían en cada push y en cada
+PR hasta noviembre de 2026; desde entonces el CI es local (§12).
 
 **El workflow de release no se puede correr a mano.** Disparado desde una rama, el
 nombre del tag valía `main` y habría publicado un Release "sunrise main".
@@ -1047,7 +1047,7 @@ zona por argumento donde importa. La suite pasa hoy en `UTC`, `America/Santiago`
 `Pacific/Kiritimati` (+14), `Pacific/Chatham` (+13:45), `Asia/Kathmandu` (+5:45),
 `Africa/Cairo`, `America/Havana`, `Asia/Tokyo` y `Europe/Madrid`.
 
-`TZ=UTC` sigue valiendo como canario —es lo que corre CI— pero ya no es lo único
+`TZ=UTC` sigue valiendo como canario —lo corre `bin/gates`— pero ya no es lo único
 que hay. **La regla nueva: un test sobre fechas declara su zona; si depende de la
 del entorno, todavía no está terminado.**
 
@@ -1181,7 +1181,7 @@ cerrarla sigue viniendo acá, en el mismo PR: la issue no lleva el relato.
 
 **El flujo** son tres skills que se piden con palabras: `sunrise-lifecycle`
 ("¿qué viene?", implementar hasta el QA), `sunrise-shaping` (refinar) y
-`sunrise-ship` ("mándalo": PR, CI y merge). **Mezclar no es publicar**: lo
+`sunrise-ship` ("mándalo": gates, reviewer, PR y merge). **Mezclar no es publicar**: lo
 mezclado queda en `Done`, y "vamos pa prod" es `sunrise-release`, que junta todo lo
 de `Done` en una versión, le pone el milestone `vX.Y.Z` a cada issue y la pasa a
 `Released`. Es la diferencia con un servicio web, donde mezclar es desplegar: acá
@@ -1194,6 +1194,35 @@ tener lockfiles distintos. El QA con `pnpm tauri dev` es de una worktree a la ve
 porque todas usan el puerto 1420 y la misma `sunrise-dev.sqlite`. Por la misma
 razón `target/debug/sunrise` es una sola ruta para todas: el LaunchAgent y el MCP
 registrados desde dev corren lo que haya compilado la última worktree.
+
+**El CI es local, por costo** (#25, noviembre de 2026). `tests.yml` corría en cada PR
+y en cada push a `main` sobre `macos-26`: 10-15 minutos por corrida, dos corridas
+por issue (el PR y el merge), y duplicaba exactamente lo que `bin/gates` ya corría
+antes de cada push. Se acabaron los minutos de Actions, y hubo días sin runners
+macOS, con PRs esperando una cola que no avanzaba. Ubuntu no era salida: `cargo
+test` compila el crate de Tauri entero, y en Linux arrastra webkit2gtk.
+
+Ahora **`bin/gates` es el CI**: cada PR se abre ya en verde y se mezcla en una sola
+ronda, sin nada que esperar. `tests.yml` quedó solo manual, y `release.yml` dejó de
+correr las suites —eran 5 de sus 12,5 minutos, más 46 s de subir un caché de Rust
+que un tag no puede restaurar nunca—: ~6-7 minutos por versión. Lo que asegura que
+lo publicado está en verde es `bin/gates` sobre el commit exacto de `main`, que el
+hook exige para empujar un tag `v*` (antes los tags pasaban libres, porque el
+release corría las suites). Lo que **no** se negoció: un `reviewer` sin contexto
+antes de cada merge, siempre. Sin CI remoto es la única segunda mirada.
+
+**Lo que se pierde es el entorno limpio**, y se mitigó en tres partes. (1) El hook
+compara el sello con el árbol **commiteado**, no con el working tree: un archivo
+sin trackear con el que los gates pasaban no viaja en el push, y un runner lo
+habría notado. (2) `bin/gates` corre `pnpm install --frozen-lockfile`: un
+`package.json` que diverge del lockfile, o un `node_modules` viejo, ya no pasa en
+silencio (y si `cargo` reescribe `Cargo.lock`, el árbol deja de ser el commiteado y
+el hook bloquea). (3) Al mezclar, el hook exige que la rama contenga `origin/main`:
+`main` no tiene protección de rama y GitHub squashearía un PR atrasado, dejando en
+`main` una mezcla que nadie probó; con varias sesiones mezclando en paralelo, eso
+iba a pasar. Lo que queda sin cubrir: dependencias del sistema distintas a las de
+un macOS limpio (toolchain de Rust, Xcode), y un tag empujado a mano desde una
+terminal, que se salta el hook. Para lo primero está `gh workflow run tests.yml`.
 
 **Fuera de alcance**, desde el MVP y sin issue: recurrentes o rituales generados
 solos; sync entre dispositivos (el modelo de datos queda listo, no se implementa);

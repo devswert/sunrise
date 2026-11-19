@@ -53,7 +53,7 @@ recorren, y se piden con palabras:
 |---|---|---|
 | "¿qué viene?", "implementa N" | `sunrise-lifecycle` | elegir, worktree, plan, implementar, gates, reviewer, plan de QA |
 | "iteremos N", "shaping", una idea nueva | `sunrise-shaping` | la issue lista en Backlog |
-| "mándalo", "mezcla" (QA ok) | `sunrise-ship` | PR, CI, merge a `main`, board en `Done` |
+| "mándalo", "mezcla" (QA ok) | `sunrise-ship` | gates, reviewer, PR, merge a `main`, board en `Done` |
 | "vamos pa prod" | `sunrise-release` | versión, tag, Release, milestone, board en `Released` |
 
 **Mezclar no es publicar**: la app instalada solo cambia con un tag, así que una
@@ -70,9 +70,15 @@ pnpm test:rust    # cargo test (SQLite en memoria)
 pnpm test:all     # ambos
 pnpm dmg          # build de release + .app y .dmg (specs/distribucion.md §4.19)
 pnpm iconos       # regenera el icon set desde public/app-icon.svg
-bin/gates         # antes de push / PR / merge: tipos, lint, suites, Rust en UTC
+bin/gates         # EL CI: antes de push / PR / merge / tag. Lockfile, tipos, lint, suites, Rust en UTC
 bin/worktree N slug   # worktree por issue, con target/ y dependencias compartidos
 ```
+
+**El CI es local, no de Actions.** `bin/gates` es lo único que corre las suites
+antes de `main` y antes de publicar: Actions no corre nada en PRs ni al mezclar
+(`tests.yml` es solo manual), y `release.yml` solo compila, firma y publica. Se
+cortó por costo de minutos de runner macOS (DECISIONES §12). Cada PR se abre ya en
+verde y se mezcla en una ronda, con un `reviewer` sin contexto **siempre** antes.
 
 **Publicar una versión la maneja la skill `sunrise-release`.** Son cuatro cosas
 —los tres archivos de versión (`Cargo.toml`, `tauri.conf.json`, `package.json`) y
@@ -86,7 +92,9 @@ tests que se ponen rojos si algo de eso divergió.
   commits y el push son libres. A `main` solo se llega con `gh pr merge`, y solo
   cuando el dev dice "mándalo"; el tag, solo con "vamos pa prod". Nunca se empuja
   a `main` directo: lo bloquea el hook `.claude/hooks/require-gates.sh`, que además
-  exige `bin/gates` en verde sobre el estado exacto antes de push, PR o merge.
+  exige `bin/gates` en verde sobre el árbol **commiteado** antes de push, PR o
+  merge (y, al mezclar, la rama rebaseada sobre `origin/main`), y sobre el commit
+  tagueado antes de empujar un tag `v*`.
   `git reset` y `--force` sobre algo ya empujado siguen pidiendo confirmación.
 - **El código en inglés, el texto en español.** No es gusto: mezclar los dos
   idiomas en la misma línea obliga a traducir mentalmente en cada lectura, y el

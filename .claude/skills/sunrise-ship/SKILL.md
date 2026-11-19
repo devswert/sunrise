@@ -1,6 +1,6 @@
 ---
 name: sunrise-ship
-description: Lleva una issue de sunrise desde QA confirmado hasta main sin intervención — cubre con tests lo que el QA reveló, sincroniza con main, corre gates, abre el PR, vigila CI, mezcla, mueve el board a Done y limpia la worktree. Úsala cuando el dev confirme el QA o diga "mándalo", "mezcla" o "abre el PR". No publica: "vamos pa prod" es sunrise-release.
+description: Lleva una issue de sunrise desde QA confirmado hasta main sin intervención — cubre con tests lo que el QA reveló, sincroniza con main, corre gates (el CI es local), revisa con un reviewer sin contexto, abre el PR, mezcla, mueve el board a Done y limpia la worktree. Úsala cuando el dev confirme el QA o diga "mándalo", "mezcla" o "abre el PR". No publica: "vamos pa prod" es sunrise-release.
 ---
 
 # sunrise ship
@@ -8,6 +8,12 @@ description: Lleva una issue de sunrise desde QA confirmado hasta main sin inter
 Mezclar a `main` **no es publicar**. La app instalada solo cambia cuando se empuja
 un tag (skill `sunrise-release`). Lo mezclado queda en `Done`, esperando versión;
 por eso se pueden juntar varias issues en un mismo release.
+
+**El CI es local.** Actions ya no corre en PRs ni al mezclar (`docs/DECISIONES.md`
+§12): lo que decide es `bin/gates`, y el hook lo exige sobre el árbol **commiteado**
+antes de `git push` y `gh pr create`, y además, antes de `gh pr merge`, que la rama
+contenga `origin/main` y esté empujada tal cual. No hay CI que esperar: el PR se
+abre ya en verde y se mezcla en la misma ronda.
 
 Corre en la worktree de la issue, con el trabajo commiteado. El shell vuelve al
 checkout principal después de cada comando, así que **todo comando de la worktree
@@ -21,10 +27,12 @@ Se mezcla solo si **todo** se cumple:
 
 1. El dev confirmó el QA en esta sesión ("mándalo", "mezcla"). Si antes pidió
    revisar el PR él mismo, pide un "ya revisé, mezcla" explícito.
-2. `bin/gates` en verde.
-3. El reviewer (corrido en `sunrise-lifecycle` paso 3) no dejó BLOCKING ni
-   SPEC_DRIFT sin resolver.
-4. CI en verde.
+2. `bin/gates` en verde sobre el estado **ya rebaseado** en `origin/main` y
+   commiteado (el hook lo comprueba; no lo saltes).
+3. Un `reviewer` sin contexto dio OK —sin BLOCKING ni SPEC_DRIFT sin resolver—
+   sobre el diff final. **Obligatorio siempre**: es la única segunda mirada que
+   queda sin CI remoto. Si después de esa revisión cambió algo que no sea mecánico,
+   va un reviewer nuevo (paso 4).
 
 ## Pasos
 
@@ -56,16 +64,20 @@ Conflictos:
 
 ### 3. Gates
 
-`bin/gates`. Si falla, arregla y repite. El hook bloquea `git push` y
-`gh pr create|merge` si el código cambió desde el último verde, así que no lo corras
-dos veces sobre el mismo estado.
+Commitea primero y `bin/gates` después, sobre el estado rebaseado: es el CI. Si
+falla, arregla y repite. El hook bloquea `git push` y `gh pr create|merge` si el
+árbol commiteado no es el que pasó (cambios sin commitear o archivos sin trackear
+también bloquean: no viajarían en el push), así que no lo corras dos veces sobre el
+mismo estado.
 
-### 4. Revisión (solo si hace falta)
+### 4. Revisión
 
-Lanza un `reviewer` **nuevo** (ruta de la worktree, link de la issue y plan de QA;
-nunca la conversación) solo si después del QA cambió lógica: arreglos por el QA o
-conflictos no mecánicos del rebase. Máximo 2 rondas; BLOCKING persistente o
-SPEC_DRIFT → **punto de parada**.
+El OK del reviewer de `sunrise-lifecycle` paso 3 vale si desde entonces solo hubo
+rebase mecánico y tests nuevos. Si cambió lógica —arreglos por el QA o conflictos
+no mecánicos del rebase—, lanza un `reviewer` **nuevo** (ruta de la worktree, link
+de la issue y plan de QA; nunca la conversación). Máximo 2 rondas; BLOCKING
+persistente o SPEC_DRIFT → **punto de parada**. Sin un OK sobre el diff final no se
+mezcla.
 
 ### 5. PR
 
@@ -75,24 +87,19 @@ gh pr create --repo devswert/sunrise --base main --title "<tipo>(<área>): <resu
 ```
 
 Body (archivo temporal en el scratchpad, nunca en el repo): resumen, plan de QA con
-el test que cubre cada paso, "Validado a mano", resultado del reviewer (NON_BLOCKING
-incluidos) y `Closes #N`.
+el test que cubre cada paso, "Validado a mano", `bin/gates` en verde (el hash corto
+que imprime), resultado del reviewer (NON_BLOCKING incluidos) y `Closes #N`.
 
-### 6. CI
+### 6. Sin CI remoto que esperar
 
-```bash
-gh pr checks <PR> --repo devswert/sunrise --watch
-```
+No hay checks que vigilar: `tests.yml` solo corre a mano. Si `main` avanzó desde el
+rebase (otra issue se mezcló entremedio), el hook bloquea el merge → vuelve al
+paso 2: rebase, gates, push. Si el rebase solo fue mecánico, el OK del reviewer
+sigue valiendo.
 
-Córrelo en segundo plano y espera el aviso: esperar no gasta tokens, el polling sí.
-Los runners son `macos-26` y tardan.
-
-- Rojo → `gh run view <run> --repo devswert/sunrise --log-failed`, arregla,
-  `bin/gates`, push. Máximo 3 intentos; después → **punto de parada** con el
-  diagnóstico.
-- CI corre en **UTC**: un rojo que en local pasa suele ser de zona horaria
-  (`docs/DECISIONES.md` §10). `bin/gates` ya corre `TZ=UTC pnpm test:rust`.
-- Si `main` avanzó y el PR quedó en conflicto → vuelve al paso 2.
+Si sospechas que algo pasa solo en tu máquina (cambio de toolchain, de
+dependencias), `gh workflow run tests.yml --repo devswert/sunrise --ref <rama>` corre
+las suites en macOS limpio. Cuesta ~10 minutos de runner: no es parte del flujo.
 
 ### 7. Merge
 
@@ -131,6 +138,6 @@ que molesta, ofrece "vamos pa prod".
 
 ## Puntos de parada
 
-Conflicto semántico · SPEC_DRIFT · BLOCKING tras 2 rondas · CI rojo tras 3 intentos
-· QA no confirmado · cambio de dependencias sin aprobación. En todos: explica en
+Conflicto semántico · SPEC_DRIFT · BLOCKING tras 2 rondas · gates rojos tras 3
+intentos · QA no confirmado · cambio de dependencias sin aprobación. En todos: explica en
 español simple qué puede romperse, qué tan reversible es, y pregunta.

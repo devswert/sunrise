@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # PreToolUse(Bash): bloquea `git push`, `gh pr create` y `gh pr merge` si `bin/gates` no
-# pasó sobre el working tree exacto de ahora. Nunca corre los gates: así un estado ya
-# verificado no se prueba dos veces.
+# pasó sobre el árbol commiteado de ahora, y el push de un tag `v*` si no pasó sobre el
+# commit que se taguea. Es el CI de sunrise: Actions ya no corre en PRs ni en main
+# (docs/DECISIONES.md §12). Nunca corre los gates: así un estado ya verificado no se
+# prueba dos veces.
 set -euo pipefail
 
 input="$(cat)"
@@ -19,7 +21,10 @@ cd "$(jq -r '.cwd // empty' <<< "$input")" 2>/dev/null || cd "${CLAUDE_PROJECT_D
 # gates se buscaría en la worktree equivocada.
 target="$(sed -nE 's/^[[:space:]]*cd[[:space:]]+([^;&|[:space:]]+).*/\1/p' <<< "$command" | head -1)"
 if [ -z "$target" ]; then
-  target="$(grep -Eo "$push" <<< "$command" | awk '$2 == "-C" {print $3; exit}')"
+  # `|| true`: en un `gh pr …` el grep no encuentra push y, con pipefail, el `set -e`
+  # sacaba al hook con 1, que para Claude Code **no bloquea**. Un `gh pr merge` sin
+  # `cd` delante pasaba sin mirar el sello.
+  target="$(grep -Eo "$push" <<< "$command" | awk '$2 == "-C" {print $3; exit}' || true)"
 fi
 if [ -n "$target" ]; then
   target="${target/#\~/$HOME}"
@@ -28,12 +33,37 @@ if [ -n "$target" ]; then
 fi
 root="$(git rev-parse --show-toplevel)"
 
-# Empujar un tag de versión (o borrarlo, al retaguear) es el paso de sunrise-release:
-# el código ya pasó los gates en el PR de versión, y desde main es el único push permitido.
-# Solo si **todo** push del comando es de un tag: `git push && git push origin v1.0.0` no pasa.
+# El sello es el hash del working tree que pasó `bin/gates`. Lo que viaja en un push o un
+# merge es el commit, así que se exige que el sello sea el árbol **commiteado**: un archivo
+# sin trackear o sin commitear con el que los gates pasaron no llega al remoto, y sin CI
+# remoto nadie más lo notaría (docs/DECISIONES.md §12).
+stamp="$(git rev-parse --path-format=absolute --git-path sunrise-gates-ok)"
+sealed=""
+[ -f "$stamp" ] && sealed="$(cat "$stamp")"
+
+# Empujar un tag de versión es el paso de sunrise-release, y desde main es el único push
+# permitido. Solo si **todo** push del comando es de un tag: `git push && git push origin
+# v1.0.0` se juzga como un push normal. Borrar un tag (`:refs/tags/v…`, al retaguear) pasa
+# libre; crearlo exige `bin/gates` en verde sobre el árbol del commit que se taguea, que
+# es lo único que asegura que lo publicado pasó las suites: `release.yml` ya no las corre.
 tag_push="$push[[:space:]]+origin[[:space:]]+:?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+([[:space:]]|\$)"
 if ! grep -Eq "gh[[:space:]]+pr[[:space:]]+(create|merge)" <<< "$command" \
   && [ "$(grep -Eo "$push" <<< "$command" | wc -l)" -eq "$(grep -Eo "$tag_push" <<< "$command" | wc -l)" ]; then
+  for ref in $(grep -Eo "$tag_push" <<< "$command" | grep -Eo ':?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+'); do
+    case "$ref" in :*) continue ;; esac
+    tag="${ref#refs/tags/}"
+    # En `git tag vX && git push origin vX` el hook corre antes que el comando y el tag
+    # todavía no existe: lo que se va a taguear es HEAD.
+    if commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
+      tree="$(git rev-parse "$commit^{tree}")"
+    else
+      tree="$(git rev-parse "HEAD^{tree}")"
+    fi
+    if [ "$sealed" != "$tree" ]; then
+      echo "Bloqueado: $tag no tiene \`bin/gates\` en verde sobre su commit. Desde el checkout principal, en main al día y sin cambios, corre \`bin/gates\` y reintenta." >&2
+      exit 2
+    fi
+  done
   exit 0
 fi
 
@@ -43,10 +73,29 @@ if grep -Eq "(^|[;&|[:space:]])$push([[:space:]]|\$)" <<< "$command" && [ "$(git
   exit 2
 fi
 
-stamp="$(git rev-parse --path-format=absolute --git-path sunrise-gates-ok)"
-if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$("$root/bin/tree-hash")" ]; then
-  exit 0
+if [ "$sealed" != "$(git rev-parse "HEAD^{tree}")" ]; then
+  if [ -n "$sealed" ] && [ "$sealed" = "$("$root/bin/tree-hash")" ]; then
+    echo "Bloqueado: \`bin/gates\` pasó con cambios sin commitear o archivos sin trackear, y eso no viaja en el push. Commitea (o bórralos) y reintenta." >&2
+  else
+    echo "Bloqueado: el código cambió desde el último \`bin/gates\` en verde. Corre \`bin/gates\` y reintenta." >&2
+  fi
+  exit 2
 fi
 
-echo "Bloqueado: el código cambió desde el último \`bin/gates\` en verde. Corre \`bin/gates\` y reintenta." >&2
-exit 2
+# Mezclar exige que los gates hayan corrido sobre lo que va a quedar en main: la rama
+# contiene `origin/main` y está empujada tal cual. `main` no tiene protección de rama, así
+# que GitHub squashearía igual un PR atrasado, y lo que quedaría en main sería una mezcla
+# que nadie probó.
+if grep -Eq "gh[[:space:]]+pr[[:space:]]+merge" <<< "$command"; then
+  git fetch --quiet origin main 2>/dev/null || true
+  if ! git merge-base --is-ancestor origin/main HEAD; then
+    echo "Bloqueado: main avanzó desde el último rebase. \`git rebase origin/main\`, \`bin/gates\`, push y reintenta." >&2
+    exit 2
+  fi
+  if [ "$(git rev-parse -q --verify '@{upstream}' || true)" != "$(git rev-parse HEAD)" ]; then
+    echo "Bloqueado: la rama no está empujada tal cual (HEAD distinto de su upstream). Haz push y reintenta." >&2
+    exit 2
+  fi
+fi
+
+exit 0

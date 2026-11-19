@@ -295,8 +295,9 @@ no aplican, y pedirlos solo hace que el bundler avise que no puede.
 #### El Release lo publica CI
 
 `.github/workflows/release.yml` se dispara **al empujar un tag `v*`** —no en cada
-push— y publica el `.dmg` en un GitHub Release. Sacar una versión son dos pasos:
-subir el número en los tres archivos y `git push --tags`.
+push— y publica el `.dmg` en un GitHub Release. Sacar una versión es la skill
+`sunrise-release`: subir el número en los tres archivos y el changelog, mezclar,
+`bin/gates` sobre `main` y empujar el tag.
 
 El workflow corre en un runner **fijo** (`macos-26`) y no en `macos-latest`, y hay
 dos razones que no son la misma. La primera es la arquitectura: el proyecto compila
@@ -318,37 +319,60 @@ runner se sube a mano.
 Tiene un paso propio que **compara el tag con los tres archivos** y falla si no
 coinciden. Es el único lugar donde eso se puede pillar: el test de Rust comprueba
 que los tres archivos coincidan **entre sí**, pero no sabe nada del tag, así que un
-`v0.2.0` sobre un repo en `0.1.0` publicaría un `.dmg` llamado `0.1.0`. Y corre
-`pnpm test:all` antes de empaquetar: un `.dmg` publicado con tests rojos es peor
-que no publicar, porque alguien lo instala.
+`v0.2.0` sobre un repo en `0.1.0` publicaría un `.dmg` llamado `0.1.0`.
+
+**No corre las suites.** Un `.dmg` publicado con tests rojos es peor que no
+publicar, porque alguien lo instala; pero eso se asegura antes del tag y en local:
+el hook `require-gates.sh` no deja empujar un tag `v*` si `bin/gates` no pasó sobre
+el árbol del commit tagueado, y la skill de release lo corre en el checkout
+principal, sobre `main` ya mezclado. Hasta la v0.11.0 las suites corrían también
+acá: eran 5 de los 12,5 minutos de la corrida, y compilaban el crate en debug solo
+para volver a compilarlo en release. Los tipos igual pasan por `tsc`, porque
+`tauri build` corre `pnpm build` antes de empaquetar.
+
+**Sin caché de Rust, a propósito.** Una corrida disparada por un tag solo restaura
+cachés de su propio ref o de la rama por defecto, y cada versión es un tag nuevo: el
+caché que guardaba `swatinem/rust-cache` no lo leyó nadie nunca (en la v0.11.0, 1 s
+de restaurar sin acierto y 46 s de subirlo). Tiene `concurrency` por tag sin
+cancelar: borrar y retaguear no publica dos veces en paralelo.
+
+**Costo estimado: ~6-7 minutos de runner por versión** (checkout y toolchains ~30 s,
+`pnpm install` ~10 s, `tauri build` con firma y subida ~5,7 min), contra ~12,5
+antes.
 
 Está ejercitado desde la `v0.1.0`, y las tres versiones publicadas salieron por
 ahí. La primera corrida falló, y no por el workflow: encontró un bug de zona
 horaria que en Santiago pasaba por casualidad (DECISIONES §10).
 
-#### Los tests corren en cada push
+#### El CI es local: `bin/gates`
 
-`.github/workflows/tests.yml` corre `pnpm test:all` **en cada push a `main` y en
-cada pull request**. Es un archivo aparte y no un job más de `release.yml`, por
-dos razones: ese workflow necesita `contents: write` para crear el Release y toca
-la llave del updater, y ninguna de las dos cosas tiene por qué estar al alcance de
-un PR. Éste corre con `contents: read` y no publica nada.
+Actions **no corre nada en PRs ni al mezclar a `main`** (DECISIONES §12). Lo que
+cumple el papel de CI es `bin/gates`: lockfile congelado (`pnpm install
+--frozen-lockfile`), migraciones intactas, tests no debilitados, tipos, lint,
+Vitest, `cargo test` y `cargo test` con `TZ=UTC` —el reloj de los runners, que ya
+encontró dos bugs de fecha (DECISIONES §10)—. Si pasa, sella el hash del working
+tree, y el hook `.claude/hooks/require-gates.sh` exige:
 
-**Lo que agrega es el reloj, no la suite.** `pnpm test:all` ya corría antes de
-empaquetar, así que un tag nunca publicó tests rojos. Lo que faltaba es que
-corrieran **antes**: CI trabaja en UTC y la máquina del dev no, y esa diferencia
-ya encontró dos bugs de fecha (DECISIONES §10) —las dos veces al empujar el
-tag, con el número de versión ya commiteado y el release a medio camino. Ahora el
-mismo hallazgo llega en el push que lo introdujo.
+| Antes de | Qué |
+|---|---|
+| `git push`, `gh pr create` | sello == árbol de `HEAD` (nada sin commitear ni sin trackear) |
+| `gh pr merge` | lo anterior, más la rama contiene `origin/main` y está empujada tal cual |
+| push de un tag `v*` | sello == árbol del commit tagueado; borrar un tag pasa libre |
 
-Corre en `macos-26` como el de release, pero **por otro motivo**: allá manda el
-SDK, que decide la apariencia de la ventana; acá es que `pnpm test:rust` compila
-el crate de Tauri entero, y en Linux eso arrastra las dependencias de sistema de
-webkit2gtk. Además es la plataforma donde la app corre.
+Comparar contra el árbol **commiteado** y no contra el working tree es lo que
+sustituye al checkout limpio del runner: un archivo sin trackear con el que los
+gates pasaron no viaja en el push. Exigir `origin/main` al mezclar sustituye al
+"branch up to date" que `main` no tiene como protección: sin eso GitHub squashea un
+PR atrasado y lo que queda en `main` es una mezcla que nadie probó.
 
-Tiene `concurrency` con `cancel-in-progress`: un push encima de otro cancela la
-corrida anterior, porque los runners de macOS son lentos y una fila de rojos ya
-superados no le sirve a nadie.
+`.github/workflows/tests.yml` sigue existiendo, **solo con `workflow_dispatch`**
+(`gh workflow run tests.yml --ref <rama>`), para cuando haga falta un macOS limpio
+de verdad: sospecha de algo que pasa solo en la máquina del dev, cambio de
+toolchain o de dependencias. Es un archivo aparte de `release.yml` porque ese
+necesita `contents: write` y toca la llave del updater; éste corre con
+`contents: read`. Corre en `macos-26` por otro motivo que el release:
+`pnpm test:rust` compila el crate de Tauri entero, y en Linux eso arrastra las
+dependencias de sistema de webkit2gtk.
 
 ### 4.20 Dev y producción conviviendo
 
