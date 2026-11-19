@@ -410,6 +410,51 @@ describe("FocusView · una columna por timer", () => {
     expect(screen.getByRole("heading", { name: "Primera tarea" })).toBeInTheDocument();
   });
 
+  it("completar una columna que va antes en la cola deja el foco en la que sigue corriendo", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 3);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Tercera tarea" });
+
+    await user.click(
+      within(card("Primera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Tercera tarea"),
+    );
+    expect(
+      within(card("Tercera tarea")).getByRole("button", { name: "Pausar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("completar la única que corre deja las columnas en pausa en su lugar", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2, 3);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Tercera tarea" });
+    await user.click(within(card("Segunda tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Segunda tarea")).findByRole("button", { name: "Iniciar" });
+    await user.click(within(card("Tercera tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Tercera tarea")).findByRole("button", { name: "Iniciar" });
+
+    await user.click(
+      within(card("Primera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Primera tarea" })).toBeNull(),
+    );
+    expect(container.querySelectorAll(".focus__column")).toHaveLength(2);
+    expect(
+      within(card("Segunda tarea")).getByRole("button", { name: "Iniciar" }),
+    ).toBeInTheDocument();
+    expect(
+      within(card("Tercera tarea")).getByRole("button", { name: "Iniciar" }),
+    ).toBeInTheDocument();
+  });
+
   it("un timer en paralelo con la vista abierta suma una columna al final", async () => {
     runTimers(1);
     const { container } = renderFocus();

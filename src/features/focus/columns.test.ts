@@ -26,7 +26,12 @@ describe("nextColumns", () => {
     expect(nextColumns([1, 2], [1, 2], [7])).toEqual([7]);
   });
 
-  it("pausar la última que corría vuelve a ninguna columna", () => {
-    expect(nextColumns([1, 2], [1], [])).toEqual([]);
+  it("pausar o completar la última que corría no se lleva las columnas en pausa", () => {
+    expect(nextColumns([1, 2], [1], [])).toEqual([1, 2]);
+    expect(nextColumns([1, 2, 3], [1], [])).toEqual([1, 2, 3]);
+  });
+
+  it("con un solo timer, pausarlo deja esa sola columna", () => {
+    expect(nextColumns([1], [1], [])).toEqual([1]);
   });
 });

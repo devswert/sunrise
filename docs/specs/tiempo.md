@@ -272,23 +272,26 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   se separan con una línea de 1px, no con tarjetas. Las flechas no hacen nada en
   ese modo: no hay "la" tarea en foco.
   - **Qué columnas hay lo decide `nextColumns`** (`focus/columns.ts`), mirando qué
-    corría y qué corre. Si **sigue corriendo alguna de las que ya corrían**, se
-    conservan todas en su lugar —también la que acabas de pausar, que queda como
-    columna en pausa con su play— y las nuevas se suman al final. Si **no sigue
-    ninguna**, se empieza de cero con lo que corre. Esa sola regla da los tres
-    gestos: el play en paralelo suma una columna, una pausa no hace desaparecer
-    la tuya, y el **play clásico —desde una columna, la cola u otra vista— deja
-    solo esa**. Mirar el estado y no el botón es a propósito: el play compartido
-    (#20) se enchufa en Focus sin avisarle nada, y una pausa desde el taxímetro
-    se comporta igual que una desde la columna. Por eso **se cuentan columnas, no
-    timers**: con dos columnas y una en pausa corre un solo timer, y Focus sigue
-    en columnas hasta que completes una o des un play clásico.
+    corría y qué corre. Si **arrancó una y no sigue ninguna de las que corrían**,
+    fue un play clásico —desde una columna, la cola u otra vista— y queda **solo
+    esa**. En cualquier otro caso las columnas se conservan en su lugar —también
+    las que se pausan, que quedan como columna en pausa con su play, aunque ya no
+    corra ninguna— y las que arrancan en paralelo se suman al final. Mirar el
+    estado y no el botón es a propósito: el play compartido (#20) se enchufa en
+    Focus sin avisarle nada, y una pausa desde el taxímetro se comporta igual que
+    una desde la columna. Por eso **se cuentan columnas, no timers**: Focus sigue
+    en columnas hasta que completes las demás o des un play clásico.
+  - **Las columnas son estado de la vista**, no del store: salir de Focus y volver
+    las arma de nuevo con lo que corre, y las que estaban en pausa no vuelven.
   - **El orden es el de llegada** y no se reordena al retomar una pausada: que
     una columna salte de lugar obliga a buscarla de nuevo.
   - **Corriendo, una columna muestra solo la pausa**; en pausa, el play.
   - **Completar en una columna la cierra**; las demás siguen corriendo. Al volver
     a una sola, Focus queda en la que sigue **si está en la cola de hoy** (y marca
-    `syncedFor` a mano, porque el salto no corre si esa ya era la más antigua). Si
+    `syncedFor` a mano, porque el salto no corre si esa ya era la más antigua).
+    Al recargar la cola, el foco se conserva **por id** (`focusedId`), no por
+    índice: completar una columna que iba antes en la cola corría el índice a otra
+    tarea. Si
     es de otro día, Focus vuelve a la tarea de la cola en que estaba: es lo mismo
     que pasa con un solo timer en una tarea de otro día, que nunca se mostró
     acá, y el taxímetro la sigue mostrando. La cola, el resumen y el

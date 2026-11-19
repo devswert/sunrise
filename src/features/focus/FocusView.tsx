@@ -36,10 +36,18 @@ export function FocusView() {
   const [dia, setDia] = useState<LogDay | null>(null);
   const navigate = useNavigate();
 
+  /**
+   * La tarea en foco, por id. Al recargar, Focus se queda **en esa tarea** aunque
+   * la cola haya cambiado alrededor; si ya no está —la completaste—, el índice se
+   * queda donde estaba y apunta a la siguiente. Con solo el índice, completar una
+   * columna que iba antes en la cola corría el foco a otra tarea.
+   */
+  const focusedId = useRef<number | null>(null);
   const load = useCallback(async () => {
     const q = await api.focusQueue(todayISO(), nowHhmm());
     setQueue(q);
-    setIndex((i) => Math.min(i, Math.max(0, q.length - 1)));
+    const keep = q.findIndex((t) => t.id === focusedId.current);
+    setIndex((i) => (keep >= 0 ? keep : Math.min(i, Math.max(0, q.length - 1))));
     setLoading(false);
   }, []);
 
@@ -174,6 +182,9 @@ export function FocusView() {
   }, [visibleKey, queue]);
 
   const current = queue[index] ?? null;
+  useEffect(() => {
+    focusedId.current = current?.id ?? null;
+  }, [current]);
   const next = multi
     ? (queue.find((t) => !visible.includes(t.id)) ?? null)
     : (queue[index + 1] ?? null);

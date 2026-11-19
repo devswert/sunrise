@@ -253,8 +253,10 @@ clásico de una columna limpia las demás. Se descartó porque **hay más de un
 lugar que pausa o arranca**: el taxímetro, la card de la semana, el play
 compartido de #20. Con esa idea, cada uno tendría que avisarle a Focus, y el que
 no avisa deja columnas fantasma. La regla quedó en `nextColumns`, que solo mira
-el estado: **si sigue corriendo alguna de las que ya corrían, se conservan
-todas; si no sigue ninguna, fue un play clásico y queda lo que corre.**
+el estado: **si arrancó una y no sigue ninguna de las que corrían, fue un play
+clásico y queda esa; en cualquier otro caso se conservan todas.** La primera
+versión reiniciaba con "no sigue ninguna" a secas, y completar la única que
+corría se llevaba las columnas en pausa.
 
 Esa regla trae una consecuencia buscada: **se cuentan columnas, no timers**. Con
 dos columnas y una en pausa corre un solo timer, y Focus sigue en columnas.
