@@ -239,7 +239,8 @@ siguiente corrida.
   altura fija en TODAS las columnas para que las listas queden alineadas
   (regla de UI, ver §7).
 - La card (`TaskCardContent`) permite, sin abrir el modal: completar, cambiar
-  channel, editar planned y actual, y play/pausa. El footer de tiempos se
+  channel, editar planned y actual, y play/pausa con `PlayControls` (play
+  clásico o en paralelo, §4.6). El footer de tiempos se
   abre solo si la tarea está corriendo.
 
 ### 4.4 Modal de detalle (`TaskModal`)
@@ -318,8 +319,9 @@ siguiente corrida.
   porque no eres tú: "sunrise la arrastró sola desde el 12 ago". Sin fecha
   destino la línea cambia de forma ("Moviste la tarea al backlog") en vez de
   meter la palabra "backlog" donde iba una fecha.
-- El play **cierra el modal y navega a `/focus`**: arrancar el timer desde el
-  detalle significa "me pongo a trabajar".
+- El play clásico **cierra el modal y navega a `/focus`**: arrancar el timer
+  desde el detalle significa "me pongo a trabajar". El play en paralelo **no**
+  navega: deja el modal abierto con la pausa (DECISIONES §1, §4.6).
 - **⌘/Ctrl+Enter cierra el modal.** Ya no confirma nada —de eso se encarga el
   autosave—, pero el gesto se mantiene porque estaba en la memoria muscular.
   Antes de cerrar fuerza la escritura de lo que el debounce tuviera pendiente

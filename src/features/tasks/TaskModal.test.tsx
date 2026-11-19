@@ -308,6 +308,24 @@ describe("TaskModal · play", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.queryByText("VISTA FOCUS")).toBeNull();
   });
+
+  it("tras el play en paralelo el modal sigue abierto y muestra la pausa", async () => {
+    const user = userEvent.setup();
+    // El doble del store: arrancar marca la tarea como en curso y avisa, como el
+    // `bumpData()` del store real (el modal escucha `dataVersion`).
+    startTimer.mockImplementationOnce(async () => {
+      estadoTimer = { ...TIMER_DETENIDO, active: { taskId: baseTask.id } };
+      useAppStore.getState().bumpData();
+    });
+    try {
+      renderModal();
+      await user.click(screen.getByRole("button", { name: "Iniciar en paralelo" }));
+      expect(await screen.findByRole("button", { name: "Pausar" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Iniciar en paralelo" })).toBeNull();
+    } finally {
+      estadoTimer = { ...TIMER_DETENIDO };
+    }
+  });
 });
 
 /**

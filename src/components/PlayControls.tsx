@@ -53,6 +53,10 @@ export function PlayControls({ taskId, size = "sm", className, onStart }: Props)
     try {
       await fn();
       after?.();
+    } catch (err) {
+      // Un IPC que falla no puede quedar como promesa sin manejar en un
+      // `onClick`; el estado no cambió, así que el botón sigue como estaba.
+      console.error("PlayControls:", err);
     } finally {
       busy.current = false;
     }
@@ -82,6 +86,7 @@ export function PlayControls({ taskId, size = "sm", className, onStart }: Props)
         type="button"
         className="play-controls__btn play-controls__play"
         aria-label="Iniciar"
+        aria-description="Pausa las demás"
         title="Iniciar (pausa las demás)"
         // Exactamente `start(taskId)`: el default del store es el play clásico.
         onClick={(e) =>

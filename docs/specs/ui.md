@@ -147,7 +147,7 @@ Cuatro reglas con test propio:
 
 - **El color en sí no se redefine por tema.** El punto de un canal siendo de dos colores
   según el tema rompe lo único que sirve para reconocerlo.
-- **Un fondo sólido con texto blanco encima no puede salir del `-ink`.** Nueve bloques
+- **Un fondo sólido con texto blanco encima no puede salir del `-ink`.** Ocho bloques
   hacen `background: var(--mint-ink)` con `color: #fff` (la pausa de `PlayControls` y el play de Focus,
   los cuatro checks): con el ink claro en oscuro, blanco sobre claro no se lee. Usan
   **`--mint-solid`**, fijo en los dos temas. Los fills **sin** texto —el punto pulsante,
@@ -312,14 +312,14 @@ cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcio
   foco en el botón que lo abrió. Enfoca el primer `input`/`textarea` cuando ya hay
   posición; el que no trae campo (paleta, ánimo, calendario) no cambia el foco.
 - **Selects con búsqueda local** vía `SearchSelect.tsx`. Duraciones vía `TimePicker.tsx`.
-- **El play de una tarea es `PlayControls.tsx`**, en todos lados (§4.6): un botón
+- **El play de una tarea es `PlayControls.tsx`** (§4.6; Focus lo adopta en #21): un botón
   partido —el play clásico y, pegado a su derecha, el play en paralelo (`ListPlus`)—
   del mismo alto, con **un solo borde en la unión** (el segundo entra con
   `margin-left: -1px` y el que tiene el hover sube de `z-index` para que su borde se
   vea entero). Corriendo, solo la pausa en `--mint-solid`. Dos tallas: `sm` (26px, la
   card) y `md` (34px, el detalle). **El alto no cambia entre estados y el ancho sí**,
   así que va donde un ancho variable no empuje nada: en la card los tiempos van con
-  `margin-left: auto`. Lee el timer él mismo; no se le pasa "corriendo" por props.
+  `margin-left: auto`, y en el detalle `.tmodal__play` reserva el ancho del split. Lee el timer él mismo; no se le pasa "corriendo" por props.
 - **Slots de altura fija** en vez de renderizar condicionalmente algo que empuje el
   contenido: mantiene las columnas alineadas.
 - **Los controles que aparecen al hover no pueden tener huecos muertos.** Si el panel se

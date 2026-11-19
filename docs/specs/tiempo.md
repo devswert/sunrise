@@ -68,7 +68,8 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   base: un `set({ active: null })` borraría de la vista a los que siguen
   corriendo.
 - **El play de una tarea es `PlayControls`** (`src/components/PlayControls.tsx`,
-  #20), el mismo en la card de la semana, Today, `TaskModal` y la cola de Focus.
+  #20), el mismo en la card de la semana, Today, Backlog y `TaskModal` (la cola de
+  Focus todavía tiene su propio play: pendiente, #21).
   Detenida: **play clásico** (`start(id)`, pausa todo) y, pegado a la derecha,
   **play en paralelo** (`ListPlus`, "Iniciar en paralelo", `start(id, { parallel:
   true })`). Corriendo: **solo la pausa** (`stop(id)`, solo esa). Desde el detalle

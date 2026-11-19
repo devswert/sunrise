@@ -167,6 +167,8 @@ Son dos reglas simétricas, y conviene tratarlas como una sola:
 Ambas viven en `repo.rs` y no en las vistas porque hay **cinco** lugares con
 botón de play (card de la semana, Today, Focus, el modal y el taxímetro):
 ponerlas en el front obliga a repetirlas en los cinco y a que el sexto se olvide.
+La card y el modal ya comparten un solo componente, `PlayControls` (play clásico
++ en paralelo, o solo la pausa); Focus lo adopta en #21.
 
 **Corolario:** quien llame `setTaskStatus` desde el front debe hacer `bumpData()`
 después, porque el estado del timer pudo cambiar sin que la vista lo pidiera.
