@@ -76,7 +76,8 @@ suspende a las 19:00 y despierta a las 9:00— y sin un cambio de estado la vist
 se vuelve a renderizar: Today mostraba ayer, con título y todo.
 
 **Un store recién montado no sabe nada todavía, y "no sé" no es "no".** El
-taxímetro decide si mostrarse a partir de `active || last`, y ahí hay una asimetría
+taxímetro decide si mostrarse según tenga filas (`timerRows`: algún timer en `actives`
+o `last`), y ahí hay una asimetría
 que muerde: `last` sale de `localStorage` en el acto, pero **`active` vive en la
 base** y llega asincrónico. Con el timer *corriendo* —que no deja `last`— el primer
 render se ve idéntico a "no hay nada que mostrar", y la ventana **se escondía a sí

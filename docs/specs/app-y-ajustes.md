@@ -175,9 +175,9 @@ el primero dejaba a los otros contando entre sesiones sin aviso.
 > `false` con el proceso vivo es el arreglo. Un `screencapture` sería la prueba
 > directa, pero necesita permiso de Grabación de pantalla, que no se pide.
 
-**El timer no se detiene al cerrar.** Dejar el taxímetro corriendo entre
-sesiones es el comportamiento esperado: la entrada queda abierta y sigue
-contando. El diálogo lo dice cuando hay uno activo, para que no sorprenda al
+**Los timers no se detienen al cerrar.** Dejarlos corriendo entre
+sesiones es el comportamiento esperado: cada entrada queda abierta y sigue
+contando. El diálogo lo dice, nombrando cada timer que corre, para que no sorprenda al
 volver.
 
 ### 4.11 Tema
