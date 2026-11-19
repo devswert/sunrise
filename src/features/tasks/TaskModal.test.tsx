@@ -350,8 +350,10 @@ describe("TaskModal · play", () => {
     const user = userEvent.setup();
     // El doble del store: arrancar marca la tarea como en curso y avisa, como el
     // `bumpData()` del store real (el modal escucha `dataVersion`).
+    // Otra tarea (la 99) ya corre y es `active`; esta entra en paralelo.
+    estadoTimer = { ...TIMER_DETENIDO, active: { taskId: 99 } };
     startTimer.mockImplementationOnce(async () => {
-      estadoTimer = { ...TIMER_DETENIDO, active: { taskId: baseTask.id } };
+      estadoTimer = { ...TIMER_DETENIDO, active: { taskId: 99 }, alsoRunning: [baseTask.id] };
       useAppStore.getState().bumpData();
     });
     try {

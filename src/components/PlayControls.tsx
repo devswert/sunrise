@@ -45,6 +45,13 @@ export function PlayControls({ taskId, size = "sm", className, onStart }: Props)
   // Viven dentro de cards arrastrables y clickeables: ni el arrastre ni el
   // "abrir detalle" pueden llevarse el gesto.
   const swallow = (e: React.SyntheticEvent) => e.stopPropagation();
+  // Enter/Espacio sobre un botón llegaban a los `listeners` de `useSortable` de la
+  // card, y su `KeyboardSensor` arrancaba un arrastre (con `preventDefault`, así
+  // que el click no llegaba). Solo esas dos teclas y sin modificadores: Escape y
+  // ⌘Enter cierran el detalle desde `window` y tienen que seguir subiendo.
+  const swallowKeys = (e: React.KeyboardEvent) => {
+    if ((e.key === "Enter" || e.key === " ") && !e.metaKey && !e.ctrlKey) e.stopPropagation();
+  };
 
   async function run(e: React.MouseEvent, fn: () => Promise<unknown>, after?: () => void) {
     e.stopPropagation();
@@ -66,7 +73,7 @@ export function PlayControls({ taskId, size = "sm", className, onStart }: Props)
 
   if (running) {
     return (
-      <div className={cls} onPointerDown={swallow}>
+      <div className={cls} role="group" onPointerDown={swallow} onKeyDown={swallowKeys}>
         <button
           type="button"
           className="play-controls__btn play-controls__pause is-running"
@@ -81,7 +88,7 @@ export function PlayControls({ taskId, size = "sm", className, onStart }: Props)
   }
 
   return (
-    <div className={`${cls} is-split`} onPointerDown={swallow}>
+    <div className={`${cls} is-split`} role="group" onPointerDown={swallow} onKeyDown={swallowKeys}>
       <button
         type="button"
         className="play-controls__btn play-controls__play"

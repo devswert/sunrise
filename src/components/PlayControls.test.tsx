@@ -152,6 +152,23 @@ describe("PlayControls", () => {
     expect(onPointerDown).not.toHaveBeenCalled();
   });
 
+  it("Enter y Espacio no llegan a la card; ⌘Enter y Escape sí", async () => {
+    const a = await newTask("una");
+    const onKeyDown = vi.fn();
+    render(
+      <div onKeyDown={onKeyDown}>
+        <PlayControls taskId={a} />
+      </div>,
+    );
+    const btn = screen.getByRole("button", { name: "Iniciar en paralelo" });
+    fireEvent.keyDown(btn, { key: "Enter" });
+    fireEvent.keyDown(btn, { key: " " });
+    expect(onKeyDown).not.toHaveBeenCalled();
+    fireEvent.keyDown(btn, { key: "Enter", metaKey: true });
+    fireEvent.keyDown(btn, { key: "Escape" });
+    expect(onKeyDown).toHaveBeenCalledTimes(2);
+  });
+
   it("el play clásico pausa la que corría", async () => {
     const user = userEvent.setup();
     const a = await newTask("reunión");
