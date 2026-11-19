@@ -105,11 +105,13 @@ salió #N?" se responde mirando la issue.
    git checkout main && git pull --ff-only
    git status --porcelain     # tiene que salir vacío
    bin/gates
-   git tag v0.2.0 && git push origin v0.2.0
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
 
-   Cada línea es un comando aparte: el hook bloquea un `pull` (o cualquier cosa que
-   mueva HEAD) en el mismo comando que el push del tag, porque juzga el HEAD de antes.
+   Cada línea es un comando aparte: el hook juzga el estado de antes del comando, así
+   que bloquea un `pull` (o cualquier cosa que mueva HEAD) y un `git tag` que no sea
+   `-d` en el mismo comando que el push del tag, y juzga el `refs/tags/vX` que ya existe.
 
    `bin/gates` otra vez, aunque ya pasó en la rama del release: lo que se publica es
    el commit de `main`, y si otra issue se mezcló entremedio ese árbol no lo probó
@@ -145,7 +147,9 @@ abajo, también en comandos separados: si el primero falla (no había Release), 
 otros tienen que correr igual:
 
 ```bash
-gh release delete v0.2.0 --yes && git push origin :refs/tags/v0.2.0 && git tag -d v0.2.0
+gh release delete v0.2.0 --yes
+git push origin :refs/tags/v0.2.0
+git tag -d v0.2.0
 ```
 
 Mover un tag que alguien ya bajó deja dos binarios distintos con el mismo número,

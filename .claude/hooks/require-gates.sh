@@ -36,9 +36,14 @@ nl=$'\n'
 segments="$(sed -E 's/[0-9]*>&[0-9-]+//g; s/[0-9]*>>?[[:space:]]*[^[:space:];&|]+//g' <<< "$command")"
 segments="${segments//&&/$nl}"; segments="${segments//||/$nl}"
 segments="${segments//;/$nl}"; segments="${segments//|/$nl}"; segments="${segments//&/$nl}"
-push_count=0; tag_count=0; tag_refs=""; dir_target=""; moves_head=""
+push_count=0; tag_count=0; tag_refs=""; dir_target=""; moves_head=""; tag_cmd=""
 while IFS= read -r seg; do
   seg="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' <<< "$seg")"
+  # Un `git … tag` que no sea solo borrar (`git tag -d vX`) crea o mueve un tag.
+  if grep -Eq "(^|[^[:alnum:]_.-])git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+tag([^[:alnum:]_-]|\$)" <<< "$seg" \
+    && ! grep -Eq "^git$dir_opt[[:space:]]+tag[[:space:]]+-d([[:space:]]+v[0-9]+\.[0-9]+\.[0-9]+)+\$" <<< "$seg"; then
+    tag_cmd=1
+  fi
   # Misma gramática que `any_push`: con opciones globales, ruta, `VAR=x` delante o dentro
   # de comillas. Anclado a `^git` se escapaba `git -c k=v commit`.
   if grep -Eq "(^|[^[:alnum:]_.-])git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(commit|pull|merge|rebase|reset|checkout|switch|cherry-pick|am|revert|stash)([^[:alnum:]_-]|\$)" <<< "$seg"; then
@@ -72,7 +77,7 @@ cd "$(jq -r '.cwd // empty' <<< "$input")" 2>/dev/null || cd "${CLAUDE_PROJECT_D
 # una worktree llega como `cd <worktree> && …` o `git -C <worktree> …`. Lo que se juzga
 # es esa carpeta y no el cwd: si no, la rama sería siempre `main` y el sello de los
 # gates se buscaría en la worktree equivocada.
-target="$(sed -nE 's/^[[:space:]]*cd[[:space:]]+([^;&|[:space:]]+).*/\1/p' <<< "$command" | head -1)"
+target="$(sed -nE '/^[[:space:]]*cd[[:space:]]/{s/^[[:space:]]*cd[[:space:]]+([^;&|[:space:]]+).*/\1/p;q;}' <<< "$command")"
 [ -n "$target" ] || target="$dir_target"
 if [ -n "$target" ]; then
   target="${target/#\~/$HOME}"
@@ -113,28 +118,17 @@ if [ -z "$gh_pr" ] && [ "$push_count" -gt 0 ] && [ "$push_count" -eq "$tag_count
   for ref in $tag_refs; do
     case "$ref" in :*) continue ;; esac
     tag="${ref#refs/tags/}"
-    tag_re="${tag//./\\.}"
-    # El hook corre antes que el comando: en `git tag vX && git push origin vX` lo que se
-    # va a taguear es HEAD, exista o no un `vX` local. Mover un tag (`-f`, `--force`) o
-    # taguear otro commit (`git tag vX <rev>`) no se adivina: comandos separados, como
-    # dice sunrise-release (`git tag -d`, `bin/gates`, el tag nuevo).
-    if grep -Eq "git$dir_opt[[:space:]]+tag[^;&|]*[[:space:]](-[a-zA-Z]*f[a-zA-Z]*|--force)([[:space:];&|]|\$)" <<< "$command" \
-      || grep -Eq "git$dir_opt[[:space:]]+tag[[:space:]]+(-[^[:space:]]+[[:space:]]+)*$tag_re[[:space:]]+[^-[:space:];&|]" <<< "$command"; then
-      echo "Bloqueado: crea (o mueve) el tag $tag en un comando y empújalo en otro, para que el hook vea a qué commit apunta." >&2
+    # El hook corre antes que el comando, así que no puede saber a qué commit apuntará un
+    # tag que el mismo comando crea o mueve: adivinarlo leyendo flags de `git tag` falló
+    # una y otra vez (`-f`, `-a -m … <rev>`, un `vX` local viejo). Crear y empujar van en
+    # comandos separados, y lo juzgado es siempre `refs/tags/vX` tal como ya existe.
+    if [ -n "$tag_cmd" ]; then
+      echo "Bloqueado: crea el tag ($tag) en un comando y empújalo en otro, para que el hook vea a qué commit apunta." >&2
       exit 2
     fi
-    if grep -Eq "git$dir_opt[[:space:]]+tag[^;&|]*[[:space:]]$tag_re([[:space:];&|]|\$)" <<< "$command"; then
-      # El comando crea el tag sobre HEAD. Si ya existe uno local en otro commit y no se
-      # borra antes (`git tag -d`), `git tag` fallaría y con `;` se empujaría el viejo.
-      old="$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)"
-      if [ -n "$old" ] && [ "$old" != "$(git rev-parse HEAD)" ] \
-        && ! grep -Eq "git$dir_opt[[:space:]]+tag[[:space:]]+-d[[:space:]]+$tag_re([[:space:];&|]|\$)" <<< "$command"; then
-        echo "Bloqueado: ya hay un $tag local en otro commit. Bórralo antes (\`git tag -d $tag\`) en un comando aparte." >&2
-        exit 2
-      fi
-      commit="$(git rev-parse HEAD)"
-    elif ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
-      commit="$(git rev-parse HEAD)"
+    if ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
+      echo "Bloqueado: no hay un tag $tag local. Créalo primero (\`git tag $tag\`) y empújalo en otro comando." >&2
+      exit 2
     fi
     if [ "$sealed" != "$(git rev-parse "$commit^{tree}")" ]; then
       echo "Bloqueado: $tag no tiene \`bin/gates\` en verde sobre su commit. Desde el checkout principal, en main al día y sin cambios, corre \`bin/gates\` y reintenta." >&2

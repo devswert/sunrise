@@ -47,8 +47,8 @@ Se mezcla solo si **todo** se cumple:
 ### 2. Sincronizar con main
 
 ```bash
-git fetch origin main
-git rebase origin/main
+cd <worktree> && git fetch origin main
+cd <worktree> && git rebase origin/main
 ```
 
 Conflictos:
@@ -60,7 +60,7 @@ Conflictos:
   migraciones con el mismo número en `migrations.rs`, timer o `time_entries`, specs
   que se contradicen. Explica qué choca y pregunta.
 - Nunca `git push --force` sobre `main`. En la rama de la issue, tras un rebase:
-  `git push --force-with-lease`.
+  `cd <worktree> && git push --force-with-lease`.
 
 ### 3. Gates
 
