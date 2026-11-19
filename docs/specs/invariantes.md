@@ -27,7 +27,8 @@ cambias una, actualiza este archivo en el mismo commit.
      correcto.
   2. **Lo corrido se mide desde la medianoche**, no desde `started_at` (`runSeconds`).
      Si no, un timer abierto toda la noche muestra 15 horas a las 9 AM.
-  3. **`stop_timer` parte la corrida por día local** al cruzar medianoche
+  3. **`stop_timer` (y `log_time_entry`, que pasa por el mismo `close_entry`) parte
+     la corrida por día local** al cruzar medianoche
      (`segments_by_local_day`). El tiempo se atribuye por `started_at`, así que una
      fila de 15h le acreditaría todo al día en que empezó. El rollup diario agrupa
      por día leyendo esta tabla, y con filas que cruzan días esa regla es

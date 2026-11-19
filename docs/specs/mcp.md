@@ -126,7 +126,17 @@ Slack— además de cronometrar en vivo.
   abierta, que se suma al detenerla, así que "déjala en 2 horas" terminaría en 2
   horas más lo que llevaba. La pregunta y la escritura van en la misma transacción.
 - **Las cuatro aceptan reuniones de calendario** (la card tiene play y el tiempo no
-  lo reescribe el reconciler), pero no tareas `ORPHANED` (I7).
+  lo reescribe el reconciler), **incluidas las "solo agenda" (`rail_only`)**, que
+  `list_tasks` no lista pero sí ocupan su hora en el rail; no aceptan tareas
+  `ORPHANED` (I7).
+- **`log_time` devuelve `logged`** con el inicio y el fin **guardados**, en hora
+  local: si el modelo mandó un offset que no era el del usuario, se ve ahí.
+- **Topes**: `log_time` de hasta 24 horas absolutas (el día de otoño, de 25, va en
+  dos partes) y `set_task_time` de 0 a 60 000 minutos.
+- **El rechazo de `set_task_time` con el timer corriendo es una regla solo del
+  MCP.** La app tiene el mismo problema —un ajuste a mano con el timer corriendo
+  termina en el ajuste más lo que llevaba— y no lo mira; ahí el usuario ve el
+  número moverse, y el modelo no.
 
 **Fechas y horas del tiempo**: `start` y `end` son **fecha y hora local**,
 `YYYY-MM-DD HH:MM` (también con `T` o con segundos), en la zona del usuario
@@ -138,8 +148,13 @@ rechaza diciendo por qué. Lo que se guarda es siempre `to_rfc3339()` en UTC.
 
 **Fuera, a propósito:**
 
-- **Completar y borrar.** Por I5, completar una tarea detiene **su** timer en la
-  base, y eso pide que el taxímetro se entere (ver abajo).
+- **Completar y borrar.** El motivo original —completar cierra un timer en la
+  base y el taxímetro no se entera— ya no lo separa del resto: `start_timer` con
+  `parallel: false` cierra timers igual, y se aceptó con el hueco documentado abajo.
+  Lo que queda es que completar además cambia lo que el taxímetro **muestra en
+  pausa** (`last` y `completeAndAdvance`), que la ventana flotante solo revisa en su
+  propio refresco; se abre cuando esa ventana escuche el aviso. Borrar espera el
+  basurero (#11).
 - **Corregir o borrar tramos ya registrados.** `log_time` solo agrega.
 - **Editar o mover las tareas de calendario.** Se leen; su dueño es el reconciler,
   que reescribiría la edición en la próxima sincronización.

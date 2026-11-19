@@ -286,7 +286,8 @@ Las tres reglas que lo definen:
 - **Regla 2 — el tiempo se atribuye por `time_entries.started_at`**, nunca por
   `scheduled_date`. Mover una tarea a otra semana no puede cambiar las horas de
   una semana pasada: ya ocurrieron. Cada entrada cae entera en un día porque
-  `stop_timer` las parte en la medianoche local (I3), así que acá solo se agrupa.
+  `stop_timer` y `log_time_entry` (el tramo pasado del MCP, §4.32) las parten en la
+  medianoche local con `close_entry` (I3), así que acá solo se agrupa.
 - **Regla 3 — una reunión sin ninguna `time_entry` cuenta su duración de
   evento** (`event_end - event_start`): estuviste ahí aunque no encendieras el
   taxímetro. **Las entradas reales priman** —basta una para que deje de usar el

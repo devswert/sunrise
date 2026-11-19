@@ -42,8 +42,11 @@ así que no puede hacer eco. Del lado del front lo escucha `useExternalChanges`,
   cambia.
 - **El listener vive en `Shell`, que solo existe en `main`.** El taxímetro no se
   entera: si Claude renombra la tarea que tiene el timer corriendo, el título
-  flotante puede quedar viejo hasta el próximo cambio de timer. Por eso el MCP no toca ni
-  el estado ni el timer (I5).
+  flotante puede quedar viejo hasta el próximo cambio de timer. Desde #23 el MCP
+  **sí abre y cierra timers** (`start_timer`, `stop_timer`, `log_time`): `main` los
+  relee con `dataVersion`, pero la ventana flotante no se entera hasta su próximo
+  refresco — hueco conocido, ver `docs/specs/mcp.md` ("El timer"). Completar sigue
+  fuera del MCP por lo mismo (I5).
 
 ## Las trampas
 
