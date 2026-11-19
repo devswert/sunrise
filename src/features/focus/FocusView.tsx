@@ -139,13 +139,17 @@ export function FocusView() {
    * puede dejar marcado como paralelo el próximo cambio, venga de donde venga.
    */
   const parallelAt = useRef(0);
+  /** Si en el último render había columnas (lo actualiza el efecto de abajo). */
+  const wasMulti = useRef(false);
   useEffect(() => {
     const running = runningKey ? runningKey.split(",").map(Number) : [];
     // Leído antes del `set`: el updater corre en el próximo render, cuando la
     // ref ya apunta a lo de ahora, y entonces todo parecería "seguir corriendo".
     const prevIds = prevRunning.current;
     // Un play en paralelo apretado en Focus hace un rato: ver `parallelAt`.
-    const parallel = Date.now() - parallelAt.current < PARALLEL_WINDOW_MS;
+    // Solo con columnas a la vista: con una sola tarea, las de `columns` que no se
+    // ven —una pausada antes de moverte con las flechas— no pueden revivir.
+    const parallel = wasMulti.current && Date.now() - parallelAt.current < PARALLEL_WINDOW_MS;
     parallelAt.current = 0;
     prevRunning.current = running;
     setColumns((prev) => nextColumns(prev, prevIds, running, parallel));
@@ -203,7 +207,6 @@ export function FocusView() {
   // estaba en columnas: gana, por lo mismo que gana al timer en una sola tarea.
   // `useLayoutEffect`: el índice se corrige antes de pintar. Con un efecto común
   // se alcanzaba a ver un cuadro con la tarea en que estabas antes de las columnas.
-  const wasMulti = useRef(false);
   const visibleKey = visible.join(",");
   useLayoutEffect(() => {
     const ids = visibleKey ? visibleKey.split(",").map(Number) : [];

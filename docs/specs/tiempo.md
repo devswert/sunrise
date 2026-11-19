@@ -286,7 +286,9 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
     paralelo de uno clásico** —en los dos casos arranca una y no sigue ninguna—.
     El que se aprieta **en Focus** sí se sabe: `FocusView` anota en fase de
     captura el click en `.play-controls__parallel` (`parallelAt`, vence a los 5
-    s) y se lo pasa a `nextColumns`, que entonces conserva las columnas. Un play
+    s) y, **solo si había columnas a la vista**, se lo pasa a `nextColumns`, que
+    entonces las conserva. Con una sola tarea a la vista, un play en paralelo no
+    revive columnas pausadas que no se veían. Un play
     en paralelo desde otra vista o el taxímetro, con todo en pausa, deja solo
     esa. No se usa `onStart` de `PlayControls` porque llega después de que el
     store releyó los timers, cuando las columnas ya se recalcularon.
@@ -299,7 +301,8 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   - **Corriendo, una columna muestra solo la pausa**; en pausa, el play.
   - **Completar en una columna la cierra**; las demás siguen corriendo. Al volver
     a una sola, Focus queda en la que sigue **si está en la cola de hoy** (y marca
-    `syncedFor` a mano, porque el salto no corre si esa ya era la más antigua). Si
+    `syncedFor` a mano si esa es la que corre, porque el salto no corre si ya era
+    la más antigua). Si
     es de otro día, Focus vuelve a la tarea de la cola en que estaba: es lo mismo
     que pasa con un solo timer en una tarea de otro día, que nunca se mostró
     acá, y el taxímetro la sigue mostrando. La cola, el resumen y el confeti al

@@ -573,6 +573,46 @@ describe("FocusView · una columna por timer", () => {
     ).toBeInTheDocument();
   });
 
+  it("con una sola tarea a la vista, un play en paralelo no revive una columna pausada", async () => {
+    const user = userEvent.setup();
+    runTimers(1);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    await user.click(within(card("Primera tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Primera tarea")).findByRole("button", { name: "Iniciar" });
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    await screen.findByRole("heading", { name: "Tercera tarea" });
+
+    await user.click(
+      within(card("Tercera tarea")).getByRole("button", { name: "Iniciar en paralelo" }),
+    );
+
+    await within(card("Tercera tarea")).findByRole("button", { name: "Pausar" });
+    expect(container.querySelector(".focus__columns")).toBeNull();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("el rojo del tiempo real y el aviso son de cada columna, no de la más antigua", async () => {
+    // La 2 arrancó después pero ya se pasó de su estimado; la 1 no.
+    runTimers(1, 2);
+    const t2 = running[1];
+    t2.baseSeconds = 31 * 60;
+    act(() => {
+      useTimerStore.setState({ ...derive([...running]), loaded: true });
+    });
+    renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+
+    const real = (t: string) =>
+      within(card(t)).getByLabelText("Ajustar tiempo real").querySelector(".focus__time-value");
+    expect(real("Segunda tarea")!.className).toContain("is-over");
+    expect(real("Primera tarea")!.className).not.toContain("is-over");
+    expect(
+      within(card("Segunda tarea")).getByText(/Pasaste el tiempo estimado/),
+    ).toBeInTheDocument();
+    expect(within(card("Primera tarea")).queryByText(/Pasaste el tiempo estimado/)).toBeNull();
+  });
+
   it("un timer en paralelo con la vista abierta suma una columna al final", async () => {
     runTimers(1);
     const { container } = renderFocus();
