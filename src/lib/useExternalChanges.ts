@@ -14,7 +14,7 @@ export const DATA_CHANGED = "sunrise://data-changed";
  * es un aviso a la otra ventana que nadie pidió (§5.3).
  *
  * Se monta en **las dos ventanas**: en `main` desde `Shell`, y en el taxímetro
- * desde su raíz (`timer.tsx`, con `ExternalChanges`). Cada ventana tiene su propio
+ * desde su raíz (`TimerRoot`, con `ExternalChanges`). Cada ventana tiene su propio
  * store, y desde #23 el MCP abre, cierra y registra timers: sin el aviso, el
  * taxímetro seguía mostrando lo último que leyó. En cada ventana `dataVersion`
  * vuelve a correr `useTimerRuntime`, que relee los timers.

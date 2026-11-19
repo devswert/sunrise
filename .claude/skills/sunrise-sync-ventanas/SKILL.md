@@ -41,11 +41,13 @@ así que no puede hacer eco. Del lado del front lo escucha `useExternalChanges`,
   otra respondería. El test de `useExternalChanges` se pone rojo si alguien lo
   cambia.
 - **El listener se monta una vez por ventana**: en `main` desde `Shell`, en el
-  taxímetro desde su raíz (`timer.tsx`, `<ExternalChanges />`). Desde #23 el MCP
+  taxímetro desde su raíz (`TimerRoot.tsx`, `<ExternalChanges />`). Desde #23 el MCP
   abre, cierra y registra timers, y cada ventana tiene su propio store: sin el de
   la raíz, el taxímetro seguía mostrando lo último que leyó. **No lo muevas dentro
   de `useTimerRuntime`**: `main` lo monta además en `Shell`, y con dos listeners
-  cada aviso invalida dos veces.
+  cada aviso invalida dos veces. Límite conocido: la fila **en pausa** (`last`) la
+  escribe solo el `stop` del store, así que un `stop_timer` o `log_time` del MCP no
+  la actualiza (`docs/specs/mcp.md`, "El timer").
 
 ## Las trampas
 

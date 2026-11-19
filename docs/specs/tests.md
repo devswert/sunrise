@@ -49,7 +49,7 @@ La lista de casos vive en los propios archivos y no se duplica acá; esto es el 
 | Primitivas | `Dialog.test.tsx`, `Popover.test.tsx`, `SearchSelect.test.tsx`, `QuitConfirm.test.tsx`, `Sidebar.test.tsx`, `SunriseMark.test.tsx` |
 | Cruce entre ventanas | `store.test.tsx`, `TodayView.sync.test.tsx` |
 | Contrato IPC | `ipcContract.test.ts` |
-| Servidor MCP | `mcp/tools.rs`, `mcp/store.rs`, `mcp/server.rs` (el esquema publicado), `external.rs`, `claude_desktop.rs`, `useExternalChanges.test.ts`, `McpCard.test.tsx` |
+| Servidor MCP | `mcp/tools.rs`, `mcp/store.rs`, `mcp/server.rs` (el esquema publicado), `external.rs`, `claude_desktop.rs`, `useExternalChanges.test.ts`, `TimerRoot.test.tsx` (el taxímetro escucha el aviso), `McpCard.test.tsx` |
 
 ## Los tests que protegen una decisión, no un código
 

@@ -11,11 +11,8 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
-import { render } from "@testing-library/react";
 import { useAppStore } from "./store";
-import { DATA_CHANGED, ExternalChanges, useExternalChanges } from "./useExternalChanges";
-import { useTimerStore } from "../features/timer/timerStore";
-import { useTimerRuntime } from "../features/timer/useTimer";
+import { DATA_CHANGED, useExternalChanges } from "./useExternalChanges";
 
 describe("useExternalChanges", () => {
   beforeEach(() => {
@@ -54,28 +51,6 @@ describe("useExternalChanges", () => {
     await waitFor(() => expect(handlers.has(DATA_CHANGED)).toBe(true));
     unmount();
     expect(unlisten).toHaveBeenCalled();
-  });
-
-  it("en el taxímetro, un cambio externo relee los timers (#23)", async () => {
-    // La raíz del taxímetro monta `ExternalChanges` junto al runtime del timer:
-    // sin eso, un start/stop que hace Claude por el MCP no llegaba a esa ventana.
-    const refresh = vi.fn(async () => {});
-    const original = useTimerStore.getState().refresh;
-    useTimerStore.setState({ refresh });
-    function Raiz() {
-      useTimerRuntime();
-      return <ExternalChanges />;
-    }
-    const { unmount } = render(<Raiz />);
-    await waitFor(() => expect(handlers.has(DATA_CHANGED)).toBe(true));
-    const before = refresh.mock.calls.length;
-
-    handlers.get(DATA_CHANGED)!();
-    await waitFor(() => expect(refresh.mock.calls.length).toBeGreaterThan(before));
-    // Desmontar antes de restaurar: si no, el efecto corre el `refresh` real, que
-    // con `__TAURI_INTERNALS__` falso intenta un `invoke`.
-    unmount();
-    useTimerStore.setState({ refresh: original });
   });
 
   it("fuera de Tauri no escucha nada", async () => {

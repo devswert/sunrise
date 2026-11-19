@@ -69,7 +69,7 @@ se pruebe en memoria.
 | `start_timer` (`id`, `parallel`) | `start_timer` | escribe, no destructiva, idempotente |
 | `stop_timer` (`id`) | `stop_timer` | escribe, no destructiva, idempotente |
 | `log_time` (`id`, `start`, `end`) | `log_time_entry` | escribe, no destructiva, **no** idempotente |
-| `set_task_time` (`id`, `minutes`) | `set_actual_seconds` en `atomically` | escribe, no destructiva, idempotente |
+| `set_task_time` (`id`, `minutes`) | `set_actual_seconds_unless_running` | escribe, no destructiva, idempotente |
 
 - **`list_tasks` sin fecha es hoy** en la zona del usuario, y toda respuesta trae
   `today`: el modelo no tiene otra forma confiable de saber qué día es acá.
@@ -125,11 +125,16 @@ Slack— además de cronometrar en vivo.
   ajuste a mano (I2): la diferencia queda como entrada de ajuste sin hora.
   **Con el timer de la tarea corriendo se rechaza**: el total no incluye la corrida
   abierta, que se suma al detenerla, así que "déjala en 2 horas" terminaría en 2
-  horas más lo que llevaba. La pregunta y la escritura van en la misma transacción.
+  horas más lo que llevaba. La pregunta y la escritura van en la misma transacción
+  (`repo::set_actual_seconds_unless_running`).
 - **Las cuatro aceptan reuniones de calendario** (la card tiene play y el tiempo no
   lo reescribe el reconciler), **incluidas las "solo agenda" (`rail_only`)**, que
   `list_tasks` no lista pero sí ocupan su hora en el rail; no aceptan tareas
-  `ORPHANED` (I7).
+  `ORPHANED` (I7). **En una reunión, el tiempo registrado reemplaza su duración**
+  en los totales del día (Regla 3 de §4.15: una reunión con entradas cuenta lo
+  trabajado, no lo agendado): un `log_time` de 10 minutos sobre una de 60 deja ese
+  día en 10. Es lo mismo que pasa con el play de la app, y la descripción de la
+  tool lo dice.
 - **`log_time` devuelve `logged`** con el inicio y el fin **guardados**, en hora
   local: si el modelo mandó un offset que no era el del usuario, se ve ahí.
 - **Topes**: `log_time` de hasta 24 horas absolutas (el día de otoño, de 25, va en
@@ -177,10 +182,18 @@ escribe la app no lo mueve y no hay eco posible. Al cambiar emite
 inofensivo. Detalle del canal en [§5](sincronizacion.md).
 
 **El timer** (#23): el aviso llega a las **dos ventanas** y cada una lo escucha —
-`main` desde `Shell`, el taxímetro desde su raíz (`timer.tsx`, `ExternalChanges`)—,
+`main` desde `Shell`, el taxímetro desde su raíz (`TimerRoot`, que monta `timer.tsx`)—,
 porque cada una tiene su propio store. En las dos, `dataVersion` vuelve a correr
-`useTimerRuntime`, que relee los timers: un `start_timer`, `stop_timer` o
-`log_time` del MCP se ve en la vista y en el taxímetro a los ~2 s. Y `external.rs`
+`useTimerRuntime`, que relee los timers: un `start_timer` del MCP, y lo que sigue
+corriendo tras un `stop_timer`, se ve en la vista y en el taxímetro a los ~2 s.
+
+**Lo que no se refleja: la fila en pausa del taxímetro** (`last`). La escribe el
+`stop` del store de la app, con los segundos de hoy de esa tarea; `refresh` solo le
+relee título y estimado. Así que tras un `stop_timer` del MCP el taxímetro no
+ofrece retomar esa tarea (si había otra en pausa, sigue esa, con sus segundos
+viejos), y un `log_time` sobre la tarea en pausa no le cambia el contador. Los
+datos están bien —es lo que se muestra—; arreglarlo es que `refresh` rearme `last`
+con lo que desapareció de la pila y relea sus segundos (`timerStore.ts`, pendiente). Y `external.rs`
 **toca `bell::Armed`** con cada aviso: sin eso, un timer abierto por el MCP cuando
 no corría ninguno esperaba hasta `ESPERA_DORMIDO` (5 min) para armar la campana.
 

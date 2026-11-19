@@ -1146,7 +1146,7 @@ con cada `dataVersion`; faltaba la **ventana flotante**, que no montaba el aviso
 la campana, cuyo vigilante dormido no se enteraba de un timer abierto desde otro
 proceso. Las dos se arreglaron en el mismo PR: la raíz del taxímetro monta
 `ExternalChanges`, y `external.rs` toca `bell::Armed` con cada aviso. El listener
-va en `timer.tsx` y no dentro de `useTimerRuntime` porque `main` ya lo monta en
+va en la raíz del taxímetro (`TimerRoot`) y no dentro de `useTimerRuntime` porque `main` ya lo monta en
 `Shell`: en el hook, `main` quedaría con dos y cada aviso invalidaría dos veces.
 
 **`log_time` es una corrida, no un ajuste.** Se pudo resolver con

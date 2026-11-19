@@ -698,15 +698,15 @@ pub fn log_time(conn: &Connection, p: LogTimeParams) -> ToolResult {
         }
         E::TaskNotFound => format!("No existe una tarea con id {}.", p.id),
         E::Overlaps(a, b) => {
-            let desde = local_label(tz, &a);
+            let since = local_label(tz, &a);
             match b {
                 Some(b) => format!(
-                    "Se pisa con un tramo ya registrado en esa tarea ({desde} a {}): ese tiempo ya \
+                    "Se pisa con un tramo ya registrado en esa tarea ({since} a {}): ese tiempo ya \
                      está contado.",
                     local_label(tz, &b)
                 ),
                 None => format!(
-                    "Se pisa con el timer de esa tarea, que corre desde {desde}: ese tiempo se \
+                    "Se pisa con el timer de esa tarea, que corre desde {since}: ese tiempo se \
                      cuenta al detenerlo."
                 ),
             }
@@ -733,17 +733,9 @@ pub fn set_task_time(conn: &Connection, p: SetTaskTimeParams) -> ToolResult {
             "El total tiene que estar entre 0 y {MAX_TOTAL_MINUTES} minutos."
         ));
     }
-    // La pregunta y la escritura en la misma transacción: entre las dos, la app
-    // podría darle play.
-    let was_running = repo::atomically(conn, || {
-        if repo::get_active_timer(conn, p.id)?.is_some() {
-            return Ok(true);
-        }
-        repo::set_actual_seconds(conn, p.id, p.minutes * 60)?;
-        Ok(false)
-    })
-    .map_err(db_err)?;
-    if was_running {
+    let written =
+        repo::set_actual_seconds_unless_running(conn, p.id, p.minutes * 60).map_err(db_err)?;
+    if !written {
         return Err(
             "El timer de esa tarea está corriendo: detenlo primero con stop_timer, o el total \
              quedaría sumado a lo que lleva."

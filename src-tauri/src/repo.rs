@@ -576,7 +576,8 @@ pub fn list_backlog(conn: &Connection) -> Result<Vec<Task>> {
 /// parámetro**, y el caché solo alimenta a los llamadores públicos.
 ///
 /// `None` = todavía no se leyó. Lo invalida `set_setting`, que es el único camino
-/// por el que el ajuste puede cambiar.
+/// por el que el ajuste cambia **en este proceso**; el servidor MCP, que es otro,
+/// lo olvida en cada llamada (`mcp::server::with_db`).
 static ZONE: std::sync::RwLock<Option<chrono_tz::Tz>> = std::sync::RwLock::new(None);
 
 /// El nombre IANA de la zona del sistema (`America/Santiago`), o UTC si el sistema
@@ -627,7 +628,8 @@ pub(crate) fn zone_cached() -> chrono_tz::Tz {
         .unwrap_or_else(system_zone)
 }
 
-/// Olvida la zona cacheada. La llama `set_setting`, y los tests entre casos.
+/// Olvida la zona cacheada. La llaman `set_setting`, el MCP en cada llamada (el
+/// ajuste lo cambia la app, desde otro proceso) y los tests entre casos.
 pub(crate) fn forget_zone() {
     if let Ok(mut cache) = ZONE.write() {
         *cache = None;
@@ -847,7 +849,7 @@ fn start_timer_in(conn: &Connection, task_id: i64, parallel: bool) -> Result<Act
 ///   `busy_timeout`, como cuando cada sentencia se confirmaba sola.
 /// - **Dentro de otra transacción**, `SAVEPOINT`, que anida:
 ///   `set_task_status` llama a `stop_timer`, y un llamador puede tener la suya.
-pub(crate) fn atomically<T>(conn: &Connection, f: impl FnOnce() -> Result<T>) -> Result<T> {
+fn atomically<T>(conn: &Connection, f: impl FnOnce() -> Result<T>) -> Result<T> {
     let (begin, commit, rollback) = if conn.is_autocommit() {
         ("BEGIN IMMEDIATE", "COMMIT", "ROLLBACK")
     } else {
@@ -1209,6 +1211,27 @@ fn adjustment_stamp(tz: chrono_tz::Tz, date: Option<&str>, time: Option<&str>) -
         Some(dt) => dt.with_timezone(&Utc).to_rfc3339(),
         None => now(),
     }
+}
+
+/// Fija el total como `set_actual_seconds`, **salvo que el timer de la tarea esté
+/// corriendo**: devuelve `false` y no escribe nada. La usa el MCP (#23).
+///
+/// El total no incluye la corrida abierta, que `stop_timer` suma después: "déjala
+/// en dos horas" terminaría en dos horas más lo que llevaba. La pregunta y la
+/// escritura van en la misma transacción, porque entre las dos la app podría darle
+/// play. La app no pasa por acá: ahí el usuario ve el número moverse.
+pub fn set_actual_seconds_unless_running(
+    conn: &Connection,
+    task_id: i64,
+    seconds: i64,
+) -> Result<bool> {
+    atomically(conn, || {
+        if get_active_timer(conn, task_id)?.is_some() {
+            return Ok(false);
+        }
+        set_actual_seconds(conn, task_id, seconds)?;
+        Ok(true)
+    })
 }
 
 /// Por qué `log_time_entry` no registró el tramo.
@@ -3769,6 +3792,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 600 + 3600);
+    }
+
+    #[test]
+    fn el_total_no_se_fija_con_el_timer_de_la_tarea_corriendo() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        assert!(set_actual_seconds_unless_running(&c, t.id, 5400).unwrap());
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 5400);
+
+        start_timer(&c, t.id, true).unwrap();
+        assert!(!set_actual_seconds_unless_running(&c, t.id, 60).unwrap());
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 5400);
+        // Y no dejó entrada de ajuste: solo la del primer total y el timer abierto.
+        assert_eq!(list_time_entries(&c, t.id).unwrap().len(), 2);
     }
 
     #[test]
