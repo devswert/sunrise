@@ -149,13 +149,10 @@ rechaza diciendo por qué. Lo que se guarda es siempre `to_rfc3339()` en UTC.
 
 **Fuera, a propósito:**
 
-- **Completar y borrar.** El motivo original —completar cierra un timer en la
-  base y el taxímetro no se entera— ya no lo separa del resto: `start_timer` con
-  `parallel: false` cierra timers igual, y se aceptó con el hueco documentado abajo.
-  Lo que queda es que completar además cambia lo que el taxímetro **muestra en
-  pausa** (`last` y `completeAndAdvance`), que la ventana flotante solo revisa en su
-  propio refresco; se abre cuando esa ventana escuche el aviso. Borrar espera el
-  basurero (#11).
+- **Completar y borrar.** El motivo original de completar —cierra un timer en la
+  base y el taxímetro no se enteraba— se resolvió en #23 (las dos ventanas escuchan
+  el aviso, ver abajo); queda fuera por alcance, no por un impedimento. Borrar
+  espera el basurero (#11).
 - **Corregir o borrar tramos ya registrados.** `log_time` solo agrega.
 - **Editar o mover las tareas de calendario.** Se leen; su dueño es el reconciler,
   que reescribiría la edición en la próxima sincronización.
@@ -179,17 +176,13 @@ escribe la app no lo mueve y no hay eco posible. Al cambiar emite
 `markDataStale()`. Restaurar un respaldo cambia la conexión y da un aviso de más,
 inofensivo. Detalle del canal en [§5](sincronizacion.md).
 
-**El timer**: en `main`, `useTimerRuntime` relee los timers con cada
-`dataVersion`, así que un `start_timer` del MCP aparece en la vista y `main`
-muestra el taxímetro. Dos huecos conocidos (#23, no bloqueantes):
-
-- **La ventana flotante no escucha `data-changed`** (`useExternalChanges` vive en
-  `Shell`, solo en `main`, y `refresh` no avisa por `localStorage`): su store se
-  queda con lo último que leyó hasta su próximo refresco. Arreglarlo es montar el
-  aviso también ahí.
-- **La campana puede llegar hasta 5 min tarde** si el MCP arranca un timer cuando
-  no había ninguno: nadie toca `bell::Armed` y el vigilante duerme hasta
-  `ESPERA_DORMIDO`. Por diseño se atrasa, no se pierde (cada vuelta relee la base).
+**El timer** (#23): el aviso llega a las **dos ventanas** y cada una lo escucha —
+`main` desde `Shell`, el taxímetro desde su raíz (`timer.tsx`, `ExternalChanges`)—,
+porque cada una tiene su propio store. En las dos, `dataVersion` vuelve a correr
+`useTimerRuntime`, que relee los timers: un `start_timer`, `stop_timer` o
+`log_time` del MCP se ve en la vista y en el taxímetro a los ~2 s. Y `external.rs`
+**toca `bell::Armed`** con cada aviso: sin eso, un timer abierto por el MCP cuando
+no corría ninguno esperaba hasta `ESPERA_DORMIDO` (5 min) para armar la campana.
 
 #### Configs → MCP (`claude_desktop.rs`, `McpCard`)
 

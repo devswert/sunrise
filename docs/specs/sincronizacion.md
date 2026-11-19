@@ -54,7 +54,7 @@ Hoy entran dos:
 | Evento | Lo emite | Lo escucha |
 |---|---|---|
 | `sunrise://calendar-synced` | el poller de calendario | `useCalendarListener` |
-| `sunrise://data-changed` | `external.rs`, cuando **otro proceso** escribió en la base (el MCP, §4.32) | `useExternalChanges` |
+| `sunrise://data-changed` | `external.rs`, cuando **otro proceso** escribió en la base (el MCP, §4.32) | `useExternalChanges`, en las dos ventanas |
 
 El segundo se detecta con `PRAGMA data_version`, que solo se mueve con commits de
 **otra** conexión: lo que escribe la app no lo dispara, así que tampoco puede hacer

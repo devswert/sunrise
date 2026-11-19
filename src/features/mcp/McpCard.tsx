@@ -181,9 +181,10 @@ export function McpCard() {
         <div className="set-field__text">
           <span className="set-field__label">Qué puede hacer Claude</span>
           <span className="set-note">
-            Ver tus tareas de un día o una semana, el backlog y los channels, y crear, editar o
-            mover tareas. No las completa, no toca el timer, no borra nada, y las reuniones del
-            calendario solo las lee.
+            Ver tus tareas de un día o una semana, el backlog y los channels; crear, editar o mover
+            tareas; y registrar tiempo: iniciar y parar timers, anotar un rato que ya trabajaste o
+            corregir el total. No completa tareas, no borra nada, y las reuniones del calendario
+            solo las lee.
           </span>
         </div>
       </div>

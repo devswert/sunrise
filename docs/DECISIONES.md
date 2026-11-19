@@ -1141,13 +1141,13 @@ tarea que tiene el timer corriendo lo detiene en la base (I5), y el taxímetro, 
 `timerStore` de cada ventana y `bell.rs` no se enterarían: el aviso solo invalida
 vistas. Antes de abrir esas tools, el aviso tiene que refrescar también el timer.
 
-**El timer se abrió en #23 con esa condición cumplida a medias.** `main` sí relee
-los timers con cada `dataVersion` (`useTimerRuntime`), y `bell.rs` relee la base en
-cada vuelta; lo que no se entera es la **ventana flotante**, que no monta el aviso.
-Se aceptó porque el caso que motivó la tool —que Claude registre lo que hiciste—
-es sobre todo `log_time`, que no abre timers, y porque `main` muestra el taxímetro
-igual. Arreglarlo es front (montar `useExternalChanges` también ahí). Completar
-sigue fuera: ese sí cambia lo que el taxímetro muestra en pantalla.
+**El timer se abrió en #23 cumpliendo esa condición.** `main` ya releía los timers
+con cada `dataVersion`; faltaba la **ventana flotante**, que no montaba el aviso, y
+la campana, cuyo vigilante dormido no se enteraba de un timer abierto desde otro
+proceso. Las dos se arreglaron en el mismo PR: la raíz del taxímetro monta
+`ExternalChanges`, y `external.rs` toca `bell::Armed` con cada aviso. El listener
+va en `timer.tsx` y no dentro de `useTimerRuntime` porque `main` ya lo monta en
+`Shell`: en el hook, `main` quedaría con dos y cada aviso invalidaría dos veces.
 
 **`log_time` es una corrida, no un ajuste.** Se pudo resolver con
 `set_actual_seconds`, pero el ajuste no tiene hora: el rail no lo dibuja y el
@@ -1201,10 +1201,9 @@ como conectada aunque se llame distinto**: el caso real fue un `sunrise` puesto 
 mano apuntando a dev, y el botón de dev (`sunrise-dev`) agregaba un segundo
 servidor sobre la misma base.
 
-**Lo que el MCP todavía no hace.** Completar tareas: el argumento del timer ya no
-lo separa de `start_timer` (que también cierra timers), pero completar además
-cambia la tarea en pausa del taxímetro (`last`, `completeAndAdvance`), y eso sí
-necesita que la ventana flotante escuche el aviso de `external.rs`. Borrar
+**Lo que el MCP todavía no hace.** Completar tareas: desde #23 el taxímetro
+escucha el aviso de `external.rs`, así que lo que la frenaba ya no está; falta
+pedirla (y probar que `refresh` avance la tarea en pausa, `last`). Borrar
 no se hace directo: va a pasar por un basurero de 30 días con restauración, para
 que un error del agente no sea irreversible (issue #11).
 

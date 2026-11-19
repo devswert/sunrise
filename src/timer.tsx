@@ -8,6 +8,7 @@ import "./styles/tokens.css";
 import "./styles/global.css";
 import "./features/timer/timer.css";
 import { FloatingTimer } from "./features/timer/FloatingTimer";
+import { ExternalChanges } from "./lib/useExternalChanges";
 import { applyTheme, resolveInitialTheme } from "./lib/theme";
 import { followFonts } from "./lib/fonts";
 
@@ -23,6 +24,9 @@ followFonts();
 
 ReactDOM.createRoot(document.getElementById("timer-root") as HTMLElement).render(
   <React.StrictMode>
+    {/* Lo que escribe el MCP desde otro proceso (§4.32): sin esto, un timer que
+     * Claude abre o cierra no llega al taxímetro, que tiene su propio store. */}
+    <ExternalChanges />
     <FloatingTimer />
   </React.StrictMode>,
 );

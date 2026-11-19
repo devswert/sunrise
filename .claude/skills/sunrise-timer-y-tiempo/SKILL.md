@@ -256,7 +256,8 @@ con **la hora**. Dos formas de equivocarse, y las dos ya se pagaron:
   notificación, si está prendida, sale una por tarea.
 - **La espera y el timbre son optimizaciones, no la decisión.** Duerme hasta el
   momento en que tiene que sonar (`next_wake`, techo 30 s); sin timer espera el
-  timbre `Armed` —que toca `start_timer`— con un techo de 5 min; y **cada vuelta
+  timbre `Armed` —que tocan `start_timer` y, por lo que escribe el MCP,
+  `external.rs`— con un techo de 5 min; y **cada vuelta
   relee la base**. No conviertas eso en un `sleep` de una sola vez ni cuelgues la
   campana del timbre: habría que invalidar el momento al bajar el estimado, al
   ajustar tiempo a mano, al pausar, al cambiar de tarea y al despertar la máquina
