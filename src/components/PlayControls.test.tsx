@@ -4,7 +4,7 @@
  * `repo.rs`, no el componente. Un doble del store estaría de acuerdo con todo.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { api } from "../lib/ipc";
 import { todayISO } from "../lib/date";
@@ -94,6 +94,62 @@ describe("PlayControls", () => {
     expect(await rb.findByRole("button", { name: "Pausar" })).toBeInTheDocument();
     expect(ra.getByRole("button", { name: "Pausar" })).toBeInTheDocument();
     expect(await runningIds()).toEqual([a, b]);
+  });
+
+  it("el play clásico pausa todas las que corrían", async () => {
+    const user = userEvent.setup();
+    const a = await newTask("agente 1");
+    const b = await newTask("agente 2");
+    const c = await newTask("reunión");
+    render(
+      <div>
+        {[a, b, c].map((id, i) => (
+          <section key={id} aria-label={"ABC"[i]}>
+            <PlayControls taskId={id} />
+          </section>
+        ))}
+      </div>,
+    );
+    const r = (n: string) => within(screen.getByRole("region", { name: n }));
+
+    await user.click(r("A").getByRole("button", { name: "Iniciar" }));
+    await r("A").findByRole("button", { name: "Pausar" });
+    await user.click(r("B").getByRole("button", { name: "Iniciar en paralelo" }));
+    await r("B").findByRole("button", { name: "Pausar" });
+    await user.click(r("C").getByRole("button", { name: "Iniciar" }));
+
+    await r("C").findByRole("button", { name: "Pausar" });
+    expect(await r("A").findByRole("button", { name: "Iniciar" })).toBeInTheDocument();
+    expect(await r("B").findByRole("button", { name: "Iniciar" })).toBeInTheDocument();
+    expect(await runningIds()).toEqual([c]);
+  });
+
+  it("un doble click abre un solo timer", async () => {
+    const a = await newTask("una");
+    const spy = vi.spyOn(api, "startTimer");
+    try {
+      render(<PlayControls taskId={a} />);
+      const btn = screen.getByRole("button", { name: "Iniciar en paralelo" });
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+      await screen.findByRole("button", { name: "Pausar" });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("el pointerdown no llega a la card (no arranca el arrastre)", async () => {
+    const a = await newTask("una");
+    const onPointerDown = vi.fn();
+    render(
+      <div onPointerDown={onPointerDown}>
+        <PlayControls taskId={a} />
+      </div>,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Iniciar en paralelo" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Iniciar" }));
+    expect(onPointerDown).not.toHaveBeenCalled();
   });
 
   it("el play clásico pausa la que corría", async () => {

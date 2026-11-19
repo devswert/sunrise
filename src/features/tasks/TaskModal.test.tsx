@@ -35,7 +35,12 @@ const TIMER_DETENIDO = {
   start: startTimer,
   stop: stopTimer,
   // Derivados de `active`, como en el store real: corre la que está en `active`.
-  isRunning: (taskId: number) => estadoTimer.active?.taskId === taskId,
+  /** Lo de hoy por tarea, como `elapsedById` del store. */
+  elapsedById: {} as Record<number, number>,
+  /** Tareas que corren en paralelo además de `active`. */
+  alsoRunning: [] as number[],
+  isRunning: (taskId: number) =>
+    estadoTimer.active?.taskId === taskId || estadoTimer.alsoRunning.includes(taskId),
   runTotalOf: (taskId: number) =>
     estadoTimer.active?.taskId === taskId ? estadoTimer.runTotal : 0,
 };
@@ -247,6 +252,38 @@ describe("TaskModal · ACTUAL siempre es el total", () => {
 
     expect(await screen.findByText("2:40:30")).toBeInTheDocument();
     expect(screen.queryByText("0:00:30")).toBeNull();
+  });
+});
+
+describe("TaskModal · pasada del estimado con timers en paralelo", () => {
+  const realValue = () =>
+    screen.getByRole("button", { name: "Ajustar tiempo real" }).lastElementChild;
+
+  it("no se pinta con el exceso de otra tarea que corre", async () => {
+    // A (la 99) es `active` y se pasó; la del modal corre en paralelo y no.
+    estadoTimer = {
+      ...TIMER_DETENIDO,
+      active: { taskId: 99 },
+      overEstimate: true,
+      alsoRunning: [baseTask.id],
+      elapsedById: { 99: 3 * 3600, [baseTask.id]: 60 },
+    };
+    renderModal();
+    await screen.findByRole("button", { name: "Pausar" });
+    expect(realValue()).not.toHaveClass("is-over");
+  });
+
+  it("se pinta con el exceso propio aunque no sea la más antigua", async () => {
+    estadoTimer = {
+      ...TIMER_DETENIDO,
+      active: { taskId: 99 },
+      overEstimate: false,
+      alsoRunning: [baseTask.id],
+      elapsedById: { 99: 60, [baseTask.id]: 2 * 3600 },
+    };
+    renderModal();
+    await screen.findByRole("button", { name: "Pausar" });
+    expect(realValue()).toHaveClass("is-over");
   });
 });
 

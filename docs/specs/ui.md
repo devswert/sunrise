@@ -319,7 +319,8 @@ cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcio
   vea entero). Corriendo, solo la pausa en `--mint-solid`. Dos tallas: `sm` (26px, la
   card) y `md` (34px, el detalle). **El alto no cambia entre estados y el ancho sí**,
   así que va donde un ancho variable no empuje nada: en la card los tiempos van con
-  `margin-left: auto`, y en el detalle `.tmodal__play` reserva el ancho del split. Lee el timer él mismo; no se le pasa "corriendo" por props.
+  `margin-left: auto`, y en el detalle `.tmodal__play` reserva el ancho del split.
+  Lee el timer él mismo; no se le pasa "corriendo" por props.
 - **Slots de altura fija** en vez de renderizar condicionalmente algo que empuje el
   contenido: mantiene las columnas alineadas.
 - **Los controles que aparecen al hover no pueden tener huecos muertos.** Si el panel se

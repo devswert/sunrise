@@ -23,6 +23,7 @@ import { parseISODate, shortDate, toISODate } from "../../lib/date";
 import { useNavigate } from "react-router-dom";
 import { PlayControls } from "../../components/PlayControls";
 import { useTimer, hms } from "../timer/useTimer";
+import { isOverEstimate } from "../timer/timerStore";
 import { useAppStore } from "../../lib/store";
 import { usePrioritiesOn } from "../../lib/settings";
 import { PRIORITIES, type Priority } from "../../lib/enums";
@@ -60,6 +61,12 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const navigate = useNavigate();
   const running = timer.isRunning(task.id);
   const runTotal = timer.runTotalOf(task.id);
+  // Pasada de su estimado **esta** tarea, con lo de hoy (como la campana).
+  // `timer.overEstimate` es el de `active` —la más antigua de las que corren—, y
+  // con el play en paralelo el detalle de otra tarea queda abierto mientras corre:
+  // pintaba el "Real" de una tarea con el exceso de otra.
+  const overEstimate =
+    running && isOverEstimate(timer.elapsedById?.[task.id] ?? 0, task.estimatedMinutes);
   /**
    * Una tarea ignorada (§4.12) no es trabajo: **el detalle esconde todo lo que
    * la trataría como tal** —completar, el play y los dos ajustes de tiempo—.
@@ -521,9 +528,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                   >
                     <span className="tmodal__time-label">Real</span>
                     <span
-                      className={`tmodal__time-value is-actual${
-                        running && timer.overEstimate ? " is-over" : ""
-                      }`}
+                      className={`tmodal__time-value is-actual${overEstimate ? " is-over" : ""}`}
                     >
                       {running ? hms(liveSeconds) : formatMinutes(Math.round(liveSeconds / 60))}
                     </span>
