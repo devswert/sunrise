@@ -139,6 +139,9 @@ Cerrar con ⌘Q, el menú Quit o el botón de la ventana **pide confirmación**.
 Rust cancela el cierre y emite `sunrise://close-requested`; el front abre el
 diálogo (`QuitConfirm`) y solo al confirmar llama a `confirm_quit`, que cierra.
 No protege datos —todo se autoguarda—: evita que un ⌘Q accidental baje la app.
+Los timers **no** se detienen al cerrar; el diálogo nombra **cada uno** de los
+que siguen corriendo, con lo de hoy (#19): con timers en paralelo, nombrar solo
+el primero dejaba a los otros contando entre sesiones sin aviso.
 
 - **En macOS hay que reemplazar el ítem Quit del menú.** El predefinido mapea a
   `NSApplication terminate:`, que mata el proceso **sin pasar por el event
@@ -172,9 +175,9 @@ No protege datos —todo se autoguarda—: evita que un ⌘Q accidental baje la 
 > `false` con el proceso vivo es el arreglo. Un `screencapture` sería la prueba
 > directa, pero necesita permiso de Grabación de pantalla, que no se pide.
 
-**El timer no se detiene al cerrar.** Dejar el taxímetro corriendo entre
-sesiones es el comportamiento esperado: la entrada queda abierta y sigue
-contando. El diálogo lo dice cuando hay uno activo, para que no sorprenda al
+**Los timers no se detienen al cerrar.** Dejarlos corriendo entre
+sesiones es el comportamiento esperado: cada entrada queda abierta y sigue
+contando. El diálogo lo dice, nombrando cada timer que corre, para que no sorprenda al
 volver.
 
 ### 4.11 Tema

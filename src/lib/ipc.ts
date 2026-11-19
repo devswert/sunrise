@@ -114,6 +114,10 @@ export const api = {
         })
       : mock.setTaximeterVisible(visible, pos),
 
+  /** Alto del taxímetro en pixeles lógicos, según cuántas filas apila (#19). */
+  setTaximeterHeight: (height: number) =>
+    isTauri() ? invoke<void>("set_taximeter_height", { height }) : mock.setTaximeterHeight(height),
+
   listTaskEvents: (taskId: number) =>
     isTauri() ? invoke<TaskEvent[]>("list_task_events", { taskId }) : mock.listTaskEvents(taskId),
 

@@ -7,7 +7,7 @@ Vuelve al [índice de SPECS](../SPECS.md).
 | Label | Entrypoint | Qué es |
 |---|---|---|
 | `main` | `index.html` → `src/main.tsx` | La app completa (sidebar + vistas) |
-| `floating-timer` | `timer.html` → `src/timer.tsx` | Taxímetro flotante, 228×70, sin decoración, transparente, always-on-top, `skipTaskbar`, arranca invisible |
+| `floating-timer` | `timer.html` → `src/timer.tsx` | Taxímetro flotante, 228 de ancho; 70 de alto con una fila y 56 más por cada fila de la pila (§4.6), sin decoración, transparente, always-on-top, `skipTaskbar`, arranca invisible |
 
 Declaradas en `src-tauri/tauri.conf.json`; sus permisos, en
 `src-tauri/capabilities/default.json`. **Una API de ventana nueva sin su permiso

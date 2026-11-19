@@ -1189,6 +1189,9 @@ export const mock = {
     _pos?: { x: number; y: number } | null,
   ): Promise<boolean> => false,
 
+  /** Fuera de Tauri no hay ventana flotante que estirar. */
+  setTaximeterHeight: async (_height: number): Promise<void> => {},
+
   previewNoticeSound: async (_name: string): Promise<void> => {},
 
   /** Y tampoco hay carpeta que borrar. */

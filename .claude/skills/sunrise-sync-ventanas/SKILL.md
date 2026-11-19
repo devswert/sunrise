@@ -76,7 +76,8 @@ suspende a las 19:00 y despierta a las 9:00— y sin un cambio de estado la vist
 se vuelve a renderizar: Today mostraba ayer, con título y todo.
 
 **Un store recién montado no sabe nada todavía, y "no sé" no es "no".** El
-taxímetro decide si mostrarse a partir de `active || last`, y ahí hay una asimetría
+taxímetro decide si mostrarse según tenga filas (`timerRows`: algún timer en `actives`
+o `last`), y ahí hay una asimetría
 que muerde: `last` sale de `localStorage` en el acto, pero **`active` vive en la
 base** y llega asincrónico. Con el timer *corriendo* —que no deja `last`— el primer
 render se ve idéntico a "no hay nada que mostrar", y la ventana **se escondía a sí
@@ -85,6 +86,15 @@ oculto en macOS se estrangula y el `show()` posterior podía no correr nunca. Po
 `timerStore.loaded`: mientras sea false **no se llama ni a mostrar ni a esconder**.
 Si agregas otro controlador de visibilidad, dale el mismo guard — y si tu estado
 inicial se puede confundir con una respuesta legítima, ponle su propia bandera.
+
+**El alto del taxímetro lo pone solo el taxímetro, por Rust y calculado** (#19,
+§5.4.7): `set_taximeter_height(windowHeight(filas))`, con el **número** de filas
+como dependencia (no las filas, que cambian de identidad cada tick), nada antes de
+`loaded` ni con cero filas. Las medidas de `windowHeight` son contrato con
+`timer.css`: si cambias el alto de `.tax__row` o los márgenes de `.tax`, cambia las
+constantes de `FloatingTimer.tsx` en el mismo commit. Y el hover del panel es **por
+fila** (`useCursorHover` devuelve la clave de la fila): una envolvente sobre toda la
+pila abría el panel de todas.
 
 **Una API de ventana nueva necesita su permiso** en
 `src-tauri/capabilities/default.json`, **en el mismo cambio**. Si falta, falla en

@@ -213,6 +213,7 @@ pub fn run() {
             commands::preview_notice_sound,
             commands::system_fonts,
             commands::set_taximeter_visible,
+            commands::set_taximeter_height,
             commands::get_task,
             commands::set_actual_seconds,
             // categories

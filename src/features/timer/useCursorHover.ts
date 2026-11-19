@@ -35,6 +35,27 @@ export function insideEnvelope(x: number, y: number, cajas: Caja[]): boolean {
 /** Cada cuánto se le pregunta al sistema dónde está el puntero. */
 const INTERVALO_MS = 120;
 
+/** El atributo con el que cada fila del taxímetro se identifica ante el sondeo. */
+export const HOVER_KEY_ATTR = "data-hover-key";
+
+/** Una fila para el hit-test: su clave y las cajas de su zona de hover. */
+export interface HoverRow {
+  key: string | null;
+  boxes: Caja[];
+}
+
+/**
+ * La clave de la fila cuya envolvente tiene el puntero, o `null`. La envolvente
+ * es **por fila**: una sola sobre los botones de toda la pila se tragaría la
+ * pila entera (#19).
+ */
+export function rowUnderCursor(x: number, y: number, rows: HoverRow[]): string | null {
+  for (const row of rows) {
+    if (insideEnvelope(x, y, row.boxes)) return row.key;
+  }
+  return null;
+}
+
 /**
  * Hover que funciona con la ventana **sin foco**, que para el taxímetro es lo
  * normal: vive encima de todo y casi nunca es la ventana activa.
@@ -52,13 +73,26 @@ const INTERVALO_MS = 120;
  * Solo corre mientras hay algo que mostrar (`activo`): el webview del taxímetro
  * sigue vivo aunque la ventana esté oculta, y si no, esto sondearía para siempre
  * sin nada en pantalla.
+ *
+ * **Responde qué fila, no si hay hover** (#19). Con la pila de timers hay un
+ * botón por fila, y una envolvente sobre todos los botones cubría la pila
+ * entera: pasar por cualquier pausa abría el panel de todas las filas. Por eso
+ * la envolvente se calcula **dentro de cada fila** (`rowSelector`, que llevan
+ * `data-hover-key`) con los `selectores` de su zona, y se devuelve la clave de
+ * la que tiene el puntero, o `null`. Sigue siendo **un** sondeo para toda la
+ * pila: cada vuelta son cuatro llamadas a la ventana, y uno por fila las
+ * multiplicaría.
  */
-export function useCursorHover(active: boolean, selectores: string): boolean {
-  const [dentro, setDentro] = useState(false);
+export function useCursorHover(
+  active: boolean,
+  rowSelector: string,
+  selectores: string,
+): string | null {
+  const [dentro, setDentro] = useState<string | null>(null);
 
   useEffect(() => {
     if (!active || !isTauri()) {
-      setDentro(false);
+      setDentro(null);
       return;
     }
 
@@ -114,14 +148,18 @@ export function useCursorHover(active: boolean, selectores: string): boolean {
             const x = cursor.x / escalaCursor - origen.x / escalaVentana;
             const y = cursor.y / escalaCursor - origen.y / escalaVentana;
 
-            const cajas = Array.from(document.querySelectorAll(selectores)).map((el) =>
-              el.getBoundingClientRect(),
-            );
-            setDentro(insideEnvelope(x, y, cajas));
+            const rows = Array.from(document.querySelectorAll(rowSelector)).map((el) => ({
+              key: el.getAttribute(HOVER_KEY_ATTR),
+              boxes: Array.from(el.querySelectorAll(selectores)).map((b) =>
+                b.getBoundingClientRect(),
+              ),
+            }));
+            const hit = rowUnderCursor(x, y, rows);
+            setDentro(hit);
           } catch (err) {
             // Si el sondeo falla no dejamos el panel clavado abierto.
             if (cancelled) return;
-            setDentro(false);
+            setDentro(null);
             notify(err);
           }
         };
@@ -139,7 +177,7 @@ export function useCursorHover(active: boolean, selectores: string): boolean {
       cancelled = true;
       if (intervalo) clearInterval(intervalo);
     };
-  }, [active, selectores]);
+  }, [active, rowSelector, selectores]);
 
   return dentro;
 }
