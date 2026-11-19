@@ -310,7 +310,9 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
     acá, y el taxímetro la sigue mostrando. La cola, el resumen y el confeti al
     vaciarla son los de siempre, con dos precisiones: **no se celebra si queda
     otra columna** —hay trabajo abierto—, y si la cola de hoy se vació pero queda
-    una columna de otro día, Focus muestra esa tarea y no "Listo por hoy".
+    **un timer de otro día corriendo**, Focus muestra esa tarea y no "Listo por
+    hoy". Sin columnas a la vista, cuentan solo las que corren: una pausada que
+    nunca se vio no impide el confeti ni reemplaza el cierre.
   - **Un aviso de reunión con columnas no se pierde** (§4.26, `focusTaskId`): el
     índice no se dibuja, así que la tarea del aviso se guarda (`noticeId`), la
     tira de abajo la muestra como "Aviso" —de ahí se suma con el play en

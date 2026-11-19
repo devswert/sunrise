@@ -651,6 +651,25 @@ describe("FocusView · una columna por timer", () => {
     expect(celebrate).not.toHaveBeenCalled();
   });
 
+  it("una columna de otro día pausada que no se ve no impide el cierre ni el confeti", async () => {
+    const user = userEvent.setup();
+    queue.length = 0;
+    queue.push(task({ id: 1, title: "Primera tarea" }));
+    otherDay.push(task({ id: 99, title: "De ayer", scheduledDate: "2026-08-09" }));
+    runTimers(99);
+    renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    // Se pausa desde el taxímetro: Focus nunca la mostró.
+    runTimers();
+
+    await user.click(
+      within(card("Primera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    expect(await screen.findByText("Listo por hoy")).toBeInTheDocument();
+    expect(celebrate).toHaveBeenCalledTimes(1);
+  });
+
   it("un timer en paralelo con la vista abierta suma una columna al final", async () => {
     runTimers(1);
     const { container } = renderFocus();

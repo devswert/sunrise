@@ -235,7 +235,13 @@ export function FocusView() {
   const current = queue[index] ?? null;
   // Con la cola de hoy vacía pero una columna de otro día todavía en Focus, se
   // muestra esa: "Listo por hoy" con un timer corriendo escondía su pausa.
-  const lone = !multi && visible.length === 1 ? (taskOf(visible[0]) ?? null) : null;
+  // Solo si **corre**: una columna pausada que en modo de una tarea nunca se vio
+  // no puede reemplazar el cierre del día.
+  const runningIds = runningKey ? runningKey.split(",").map(Number) : [];
+  const lone =
+    !multi && visible.length === 1 && runningIds.includes(visible[0])
+      ? (taskOf(visible[0]) ?? null)
+      : null;
   const shown = current ?? lone;
   useEffect(() => {
     focusedId.current = current?.id ?? null;
@@ -257,8 +263,11 @@ export function FocusView() {
 
       const inQueue = queue.some((t) => t.id === task.id);
       // "La única": la última de la cola y sin otra columna al lado. Con una de
-      // otro día corriendo todavía hay trabajo abierto, y no se celebra.
-      const wasLast = inQueue && queue.length === 1 && !visible.some((id) => id !== task.id);
+      // otro día corriendo todavía hay trabajo abierto, y no se celebra. Sin
+      // columnas a la vista se cuentan solo las que corren: una pausada que no se
+      // ve no es trabajo abierto.
+      const others = multi ? visible : runningIds;
+      const wasLast = inQueue && queue.length === 1 && !others.some((id) => id !== task.id);
       await api.setTaskStatus(task.id, "DONE");
       // Después de completarla y no antes: si falla, la columna sigue ahí.
       setColumns((c) => c.filter((id) => id !== task.id));
@@ -285,7 +294,7 @@ export function FocusView() {
       // terminado —volver a Focus más tarde— no vuelve a celebrarlo.
       if (wasLast) celebrate();
     },
-    [queue, timer, load, bumpData, visible],
+    [queue, timer, load, bumpData, visible, multi, runningIds],
   );
 
   /**

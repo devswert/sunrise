@@ -22,10 +22,7 @@ interface Props {
   reload: () => Promise<void>;
   /** Check: completa la tarea. Qué pasa después lo decide `FocusView`. */
   onComplete: (task: Task) => void | Promise<void>;
-  /**
-   * Los controles del timer de esta tarjeta. Los pone `FocusView` porque lo que
-   * hace la pausa depende de cuántas columnas hay (§4.7), no de la tarjeta.
-   */
+  /** Los controles del timer de esta tarjeta (`PlayControls`, los pone `FocusView`). */
   controls: React.ReactNode;
 }
 
@@ -41,10 +38,10 @@ interface Props {
 export function FocusTaskCard({ task, categories, reload, onComplete, controls }: Props) {
   const timer = useTimer();
   const bumpData = useAppStore((s) => s.bumpData);
-  const [picker, setPicker] = useState<null | "actual" | "planned" | "canal">(null);
+  const [picker, setPicker] = useState<null | "actual" | "planned" | "channel">(null);
   const actualRef = useRef<HTMLDivElement>(null);
   const plannedRef = useRef<HTMLDivElement>(null);
-  const canalRef = useRef<HTMLDivElement>(null);
+  const channelRef = useRef<HTMLDivElement>(null);
   const autosave = useAutosave(task.id, reload);
   const channelOpts = useMemo(() => channelOptions(categories), [categories]);
 
@@ -71,7 +68,7 @@ export function FocusTaskCard({ task, categories, reload, onComplete, controls }
          * trabajar y te das cuenta de que la tarea era de otro contexto—.
          * Lo que NO está acá es eliminar: Focus es para trabajar, y un botón
          * de borrar al lado del play es un accidente esperando. */}
-        <div className="chip-wrap" ref={canalRef}>
+        <div className="chip-wrap" ref={channelRef}>
           {/* El mismo chip que la card y el modal —`.cat-tag` + `chipVars`—, no
            * una píldora con el color fijo de la app: el fondo teñido es por lo
            * que se reconoce el canal de reojo en el resto de las vistas. */}
@@ -80,12 +77,12 @@ export function FocusTaskCard({ task, categories, reload, onComplete, controls }
             className={`cat-tag focus__canal${channel ? "" : " is-empty"}`}
             style={chipVars(channel)}
             aria-label="Cambiar canal"
-            onClick={() => setPicker((p) => (p === "canal" ? null : "canal"))}
+            onClick={() => setPicker((p) => (p === "channel" ? null : "channel"))}
           >
             {channel ? channelLabel(channel.name) : <Hash size={13} />}
           </button>
-          {picker === "canal" && (
-            <Popover anchorRef={canalRef} onClose={() => setPicker(null)}>
+          {picker === "channel" && (
+            <Popover anchorRef={channelRef} onClose={() => setPicker(null)}>
               <SearchSelect
                 options={channelOpts}
                 value={task.categoryId != null ? String(task.categoryId) : null}
