@@ -38,6 +38,8 @@ function rollup(parcial: Partial<WeeklyRollup> = {}): WeeklyRollup {
       plannedMinutes: 0,
       done: 0,
       unestimated: 0,
+      spanSeconds: 0,
+      clockedSeconds: 0,
     })),
     cells: [],
     completedTasks: [],
@@ -46,6 +48,8 @@ function rollup(parcial: Partial<WeeklyRollup> = {}): WeeklyRollup {
     unestimated: 0,
     objectiveSeconds: 0,
     byObjective: [],
+    spanSeconds: 0,
+    clockedSeconds: 0,
     ...parcial,
   };
 }
@@ -121,6 +125,8 @@ describe("weeklyReview", () => {
         plannedMinutes: 0,
         done: 0,
         unestimated: 0,
+        spanSeconds: 0,
+        clockedSeconds: 0,
       })),
     });
 

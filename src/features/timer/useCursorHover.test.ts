@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { insideEnvelope, type Caja } from "./useCursorHover";
+import { insideEnvelope, rowUnderCursor, type Caja } from "./useCursorHover";
 
 /** Botón de play: franja de 38px pegada al borde derecho de la tarjeta. */
 const BOTON: Caja = { left: 174, right: 212, top: 3, bottom: 67 };
@@ -45,5 +45,27 @@ describe("dentroDeLaEnvolvente", () => {
     // El puntero cae en coordenadas fraccionarias tras dividir por la escala;
     // excluir el borde deja un píxel muerto justo en el filo del botón.
     expect(insideEnvelope(212, 67, [BOTON])).toBe(true);
+  });
+});
+
+describe("rowUnderCursor", () => {
+  /** La segunda fila: las mismas cajas, 56px más abajo. */
+  const below = (c: Caja): Caja => ({ ...c, top: c.top + 56, bottom: c.bottom + 56 });
+  const rows = [
+    { key: "1", boxes: [BOTON, PANEL] },
+    { key: "2", boxes: [below(BOTON), below(PANEL)] },
+  ];
+
+  it("dice qué fila tiene el puntero, no solo que hay hover", () => {
+    expect(rowUnderCursor(190, 35, rows)).toBe("1");
+    expect(rowUnderCursor(190, 35 + 56, rows)).toBe("2");
+  });
+
+  it("el hueco entre botón y panel sigue contando dentro de su fila", () => {
+    expect(rowUnderCursor(172, 35 + 56, rows)).toBe("2");
+  });
+
+  it("fuera de los controles de todas las filas no hay fila", () => {
+    expect(rowUnderCursor(40, 35, rows)).toBeNull();
   });
 });

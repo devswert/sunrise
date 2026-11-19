@@ -576,7 +576,8 @@ pub fn list_backlog(conn: &Connection) -> Result<Vec<Task>> {
 /// parámetro**, y el caché solo alimenta a los llamadores públicos.
 ///
 /// `None` = todavía no se leyó. Lo invalida `set_setting`, que es el único camino
-/// por el que el ajuste puede cambiar.
+/// por el que el ajuste cambia **en este proceso**; el servidor MCP, que es otro,
+/// lo olvida en cada llamada (`mcp::server::with_db`).
 static ZONE: std::sync::RwLock<Option<chrono_tz::Tz>> = std::sync::RwLock::new(None);
 
 /// El nombre IANA de la zona del sistema (`America/Santiago`), o UTC si el sistema
@@ -627,7 +628,8 @@ pub(crate) fn zone_cached() -> chrono_tz::Tz {
         .unwrap_or_else(system_zone)
 }
 
-/// Olvida la zona cacheada. La llama `set_setting`, y los tests entre casos.
+/// Olvida la zona cacheada. La llaman `set_setting`, el MCP en cada llamada (el
+/// ajuste lo cambia la app, desde otro proceso) y los tests entre casos.
 pub(crate) fn forget_zone() {
     if let Ok(mut cache) = ZONE.write() {
         *cache = None;
@@ -847,7 +849,7 @@ fn start_timer_in(conn: &Connection, task_id: i64, parallel: bool) -> Result<Act
 ///   `busy_timeout`, como cuando cada sentencia se confirmaba sola.
 /// - **Dentro de otra transacción**, `SAVEPOINT`, que anida:
 ///   `set_task_status` llama a `stop_timer`, y un llamador puede tener la suya.
-pub(crate) fn atomically<T>(conn: &Connection, f: impl FnOnce() -> Result<T>) -> Result<T> {
+fn atomically<T>(conn: &Connection, f: impl FnOnce() -> Result<T>) -> Result<T> {
     let (begin, commit, rollback) = if conn.is_autocommit() {
         ("BEGIN IMMEDIATE", "COMMIT", "ROLLBACK")
     } else {
@@ -1211,6 +1213,47 @@ fn adjustment_stamp(tz: chrono_tz::Tz, date: Option<&str>, time: Option<&str>) -
     }
 }
 
+/// Lo que hizo `set_actual_seconds_unless_running`.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SetTotal {
+    Written,
+    /// El timer de la tarea corre: no se escribió nada.
+    Running,
+    /// La tarea no existe o ya no está activa (I7): no se escribió nada.
+    NotActive,
+}
+
+/// Fija el total como `set_actual_seconds`, **salvo que el timer de la tarea esté
+/// corriendo** o que la tarea ya no esté activa (I7). La usa el MCP (#23).
+///
+/// El total no incluye la corrida abierta, que `stop_timer` suma después: "déjala
+/// en dos horas" terminaría en dos horas más lo que llevaba. La pregunta y la
+/// escritura van en la misma transacción, porque entre las dos la app podría darle
+/// play. La app no pasa por acá: ahí el usuario ve el número moverse.
+pub fn set_actual_seconds_unless_running(
+    conn: &Connection,
+    task_id: i64,
+    seconds: i64,
+) -> Result<SetTotal> {
+    atomically(conn, || {
+        // También que siga viva: el reconciler pudo orfanarla (I7) desde que el
+        // llamador la miró.
+        let active: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1 AND source_state = 'ACTIVE')",
+            [task_id],
+            |r| r.get(0),
+        )?;
+        if !active {
+            return Ok(SetTotal::NotActive);
+        }
+        if get_active_timer(conn, task_id)?.is_some() {
+            return Ok(SetTotal::Running);
+        }
+        set_actual_seconds(conn, task_id, seconds)?;
+        Ok(SetTotal::Written)
+    })
+}
+
 /// Por qué `log_time_entry` no registró el tramo.
 #[derive(Debug)]
 pub enum LogTimeError {
@@ -1526,15 +1569,16 @@ struct TrabajoFila {
 /// - **No filtra `source_state`**: las `ORPHANED` son historial (I7).
 /// - **El piso en 0 va por tarea y por día**, porque un ajuste manual hacia
 ///   abajo se guarda como una entrada con delta negativo.
-fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
+fn work_by_day(conn: &Connection, days: &Semana, now: DateTime<Utc>) -> Result<Trabajo> {
     use std::collections::HashMap;
 
     if days.is_empty() {
-        return Ok(Vec::new());
+        return Ok(Trabajo::default());
     }
     let from_date = days[0].1.to_rfc3339();
     let to_date = days[days.len() - 1].2.to_rfc3339();
     let mut acc: HashMap<(usize, i64), TrabajoFila> = HashMap::new();
+    let mut clock: Vec<Span> = Vec::new();
 
     let mut stmt = conn.prepare(
         "SELECT e.task_id, e.started_at, e.ended_at, e.seconds,
@@ -1545,7 +1589,11 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
            FROM time_entries e
            JOIN tasks t ON t.id = e.task_id
            LEFT JOIN categories c ON c.id = t.category_id
-          WHERE e.started_at >= ?1 AND e.started_at < ?2",
+          WHERE (e.started_at >= ?1 AND e.started_at < ?2)
+             -- Una corrida abierta desde antes del rango no se atribuye acá
+             -- (Regla 2), pero sus horas de reloj sí caen en el rango: es la
+             -- jornada de hoy de un timer que quedó corriendo desde anoche.
+             OR (e.ended_at IS NULL AND e.started_at < ?1)",
     )?;
     let rows = stmt.query_map(params![from_date, to_date], |r| {
         Ok((
@@ -1563,6 +1611,19 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
         let (task_id, started_at, ended_at, seconds, title, category_id, objective_id, context_id) =
             row?;
         let Some(t) = to_utc(&started_at) else { continue };
+        // El tramo de reloj, para la jornada. **Solo corridas del taxímetro**: un
+        // ajuste manual se guarda con `ended_at = started_at` y sellado al día de
+        // la tarea, que es contable y no una hora en que se trabajó. Es el mismo
+        // corte que `day_work.tracked_at`.
+        match ended_at.as_deref() {
+            None => clock.push((t, now)),
+            Some(end) if end != started_at => {
+                if let Some(e) = to_utc(end) {
+                    clock.push((t, e));
+                }
+            }
+            Some(_) => {}
+        }
         let Some(i) = day_index(days, t) else { continue };
         let entry = acc.entry((i, task_id)).or_insert(TrabajoFila {
             day: i,
@@ -1587,7 +1648,6 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
     // Regla 3. Va acá y no en la consulta de arriba porque depende de que la
     // tarea no tenga **ninguna** entrada: basta una para que ese respaldo
     // sobre, o la reunión contaría dos veces.
-    let now = Utc::now();
     let mut stmt = conn.prepare(
         "SELECT t.id, t.title AS title, t.event_start, t.event_end,
                 t.category_id AS category_id,
@@ -1598,7 +1658,12 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
           WHERE t.source = 'CALENDAR' AND t.source_state = 'ACTIVE'
             AND t.rail_only = 0
             AND t.event_start IS NOT NULL AND t.event_end IS NOT NULL
-            AND t.event_start >= ?1 AND t.event_start < ?2
+            AND ((t.event_start >= ?1 AND t.event_start < ?2)
+                 -- Una reunión que empezó antes del rango y lo cruza: su tiempo
+                 -- es del día en que empezó (Regla 3), pero su reloj dentro del
+                 -- rango es jornada. Sin esto, el mismo día tenía jornadas
+                 -- distintas según cuántos días se pedían.
+                 OR (t.event_start < ?1 AND t.event_end > ?1))
             AND NOT EXISTS (SELECT 1 FROM time_entries e WHERE e.task_id = t.id)",
     )?;
     let meetings = stmt.query_map(params![from_date, to_date], |r| {
@@ -1618,6 +1683,13 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
         if a > now {
             continue;
         }
+        // La reunión entera, aunque todavía no termine: la Regla 3 ya le acredita
+        // su duración completa al tiempo en tareas, y cortarla en `now` dejaría
+        // la jornada y el reloj de las tareas midiendo cosas distintas.
+        if b > a {
+            clock.push((a, b));
+        }
+        // Las que empezaron antes del rango entran solo al reloj, no a las filas.
         let Some(i) = day_index(days, a) else { continue };
         acc.insert(
             (i, id),
@@ -1645,7 +1717,80 @@ fn work_by_day(conn: &Connection, days: &Semana) -> Result<Vec<TrabajoFila>> {
     // Orden estable: el HashMap no lo tiene, y el timeline se lee en el orden en
     // que se tomó el trabajo.
     rows.sort_by(|x, y| (x.day, &x.start, x.task_id).cmp(&(y.day, &y.start, y.task_id)));
-    Ok(rows)
+    let clock = days
+        .iter()
+        .map(|(_, start, end)| clock_on_day(&clock, *start, *end))
+        .collect();
+    Ok(Trabajo { rows, clock })
+}
+
+/// Un tramo de reloj `[inicio, fin)`, en UTC.
+type Span = (DateTime<Utc>, DateTime<Utc>);
+
+/// Lo que devuelve `work_by_day`: las filas por (día, tarea) y la jornada de
+/// cada día del rango, en el mismo orden que `days`.
+#[derive(Default)]
+struct Trabajo {
+    rows: Vec<TrabajoFila>,
+    clock: Vec<ClockDay>,
+}
+
+/// Las horas de reloj de un día (#22).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ClockDay {
+    /// La **jornada**: las horas de reloj con al menos un timer o una reunión,
+    /// contando una sola vez lo que se solapa.
+    pub span: i64,
+    /// La suma de los mismos tramos **sin** unir. Contra `span` da el
+    /// paralelismo: dos tramos encima del mismo rato suman el doble de reloj.
+    pub clocked: i64,
+}
+
+/// La jornada de un día: los tramos recortados a `[inicio, fin)`, sumados
+/// (`clocked`) y unidos (`span`).
+///
+/// Es pura a propósito —recibe los tramos ya leídos y los bordes del día local
+/// ya resueltos por `local_days`— para que los casos frágiles (solapados,
+/// contiguos, el cruce de medianoche, el salto de horario) se prueben sin base.
+///
+/// **Se recorta al día** y no se atribuye por el inicio, al revés que el tiempo en
+/// tareas (Regla 2): la jornada es reloj, y un timer abierto desde anoche ocupa
+/// las horas de hoy. Las corridas cerradas no cruzan la medianoche (I3), así que
+/// el recorte solo muerde a las abiertas y a una reunión que cruce.
+///
+/// Las cuentas van en milisegundos y se pasan a segundos al final: redondear cada
+/// tramo por su lado puede dejar `clocked` un segundo por debajo de `span` y
+/// mostrar un paralelismo menor que 1.
+fn clock_on_day(spans: &[Span], start: DateTime<Utc>, end: DateTime<Utc>) -> ClockDay {
+    let mut cut: Vec<Span> = spans
+        .iter()
+        .filter_map(|(a, b)| {
+            let (a, b) = ((*a).max(start), (*b).min(end));
+            (a < b).then_some((a, b))
+        })
+        .collect();
+    let clocked: i64 = cut.iter().map(|(a, b)| (*b - *a).num_milliseconds()).sum();
+    cut.sort();
+    let mut span = 0i64;
+    let mut current: Option<Span> = None;
+    for (a, b) in cut {
+        current = match current {
+            // Solapa o toca: se estira. Tocar no suma nada, pero tampoco deja hueco.
+            Some((ca, cb)) if a <= cb => Some((ca, cb.max(b))),
+            Some((ca, cb)) => {
+                span += (cb - ca).num_milliseconds();
+                Some((a, b))
+            }
+            None => Some((a, b)),
+        };
+    }
+    if let Some((ca, cb)) = current {
+        span += (cb - ca).num_milliseconds();
+    }
+    ClockDay {
+        span: span / 1000,
+        clocked: clocked / 1000,
+    }
 }
 
 /// Lo planificado y lo sin estimar de cada día del rango, por `scheduled_date`.
@@ -1704,6 +1849,16 @@ fn plan_by_day(conn: &Connection, days: &Semana) -> Result<Vec<(i64, i64)>> {
 /// se mueven juntos**: replanificar una tarea cambia su barra de plan pero no la
 /// de horas. Es correcto, no un bug (SPECS §4.15).
 pub fn weekly_rollup(conn: &Connection, week_start: &str) -> Result<WeeklyRollup> {
+    weekly_rollup_at(conn, week_start, Utc::now())
+}
+
+/// `weekly_rollup` con el reloj por parámetro: la jornada de hoy cuenta las
+/// corridas abiertas hasta `now`, y un test tiene que poder fijarlo.
+pub(crate) fn weekly_rollup_at(
+    conn: &Connection,
+    week_start: &str,
+    now: DateTime<Utc>,
+) -> Result<WeeklyRollup> {
     use std::collections::HashMap;
 
     let week = local_days(zone(conn), week_start, 7);
@@ -1718,6 +1873,8 @@ pub fn weekly_rollup(conn: &Connection, week_start: &str) -> Result<WeeklyRollup
             unestimated: 0,
             objective_seconds: 0,
             by_objective: Vec::new(),
+            span_seconds: 0,
+            clocked_seconds: 0,
         });
     }
 
@@ -1727,7 +1884,8 @@ pub fn weekly_rollup(conn: &Connection, week_start: &str) -> Result<WeeklyRollup
     // segunda consulta del trabajo: las reglas de atribución viven en
     // `work_by_day` y duplicarlas es cómo se separan.
     let mut per_objective: HashMap<i64, i64> = HashMap::new();
-    for f in work_by_day(conn, &week)? {
+    let work = work_by_day(conn, &week, now)?;
+    for f in work.rows {
         let entry = accumulated
             .entry((f.day, f.category_id))
             .or_insert((f.context_id, 0));
@@ -1794,11 +1952,17 @@ pub fn weekly_rollup(conn: &Connection, week_start: &str) -> Result<WeeklyRollup
             planned_minutes: plan[i].0,
             done: done[i],
             unestimated: plan[i].1,
+            span_seconds: work.clock[i].span,
+            clocked_seconds: work.clock[i].clocked,
         })
         .collect();
 
     Ok(WeeklyRollup {
         week_start: week_start.to_string(),
+        // Los días del rango no se pisan —cada tramo se recortó a su día—, así
+        // que la jornada de la semana es la suma de las diarias.
+        span_seconds: days.iter().map(|d| d.span_seconds).sum(),
+        clocked_seconds: days.iter().map(|d| d.clocked_seconds).sum(),
         total_seconds: days.iter().map(|d| d.seconds).sum(),
         planned_minutes: days.iter().map(|d| d.planned_minutes).sum(),
         unestimated: days.iter().map(|d| d.unestimated).sum(),
@@ -1837,6 +2001,16 @@ fn completed_in_range(conn: &Connection, days: &Semana) -> Result<Vec<Task>> {
 /// así que un día sin fila igual aparece —como borrador— y los días anteriores a
 /// que existiera la tabla también.
 pub fn daily_log(conn: &Connection, to_date: &str, days: i64) -> Result<Vec<LogDay>> {
+    daily_log_at(conn, to_date, days, Utc::now())
+}
+
+/// `daily_log` con el reloj por parámetro, por lo mismo que `weekly_rollup_at`.
+pub(crate) fn daily_log_at(
+    conn: &Connection,
+    to_date: &str,
+    days: i64,
+    now: DateTime<Utc>,
+) -> Result<Vec<LogDay>> {
     use std::collections::HashMap;
 
     let days = days.clamp(1, 90);
@@ -1859,7 +2033,8 @@ pub fn daily_log(conn: &Connection, to_date: &str, days: i64) -> Result<Vec<LogD
     // sumar a la categoría por lo mismo que en la review: el piso en 0 va a esa
     // granularidad.
     let mut by_category: HashMap<(usize, Option<i64>), (Option<i64>, i64)> = HashMap::new();
-    for f in work_by_day(conn, &range)? {
+    let work = work_by_day(conn, &range, now)?;
+    for f in work.rows {
         worked[f.day] += f.seconds;
         let cell = by_category
             .entry((f.day, f.category_id))
@@ -1957,6 +2132,8 @@ pub fn daily_log(conn: &Connection, to_date: &str, days: i64) -> Result<Vec<LogD
                 closed_at,
                 mood,
                 worked_seconds: worked[i],
+                span_seconds: work.clock[i].span,
+                clocked_seconds: work.clock[i].clocked,
                 planned_minutes: plan[i].0,
                 unestimated: plan[i].1,
                 done: done.remove(&i).unwrap_or_default(),
@@ -3635,6 +3812,32 @@ mod tests {
         )
         .unwrap();
         assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 600 + 3600);
+    }
+
+    #[test]
+    fn el_total_no_se_fija_con_el_timer_de_la_tarea_corriendo() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        assert_eq!(set_actual_seconds_unless_running(&c, t.id, 5400).unwrap(), SetTotal::Written);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 5400);
+
+        start_timer(&c, t.id, true).unwrap();
+        assert_eq!(set_actual_seconds_unless_running(&c, t.id, 60).unwrap(), SetTotal::Running);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 5400);
+        // Y no dejó entrada de ajuste: solo la del primer total y el timer abierto.
+        assert_eq!(list_time_entries(&c, t.id).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn el_total_no_se_fija_en_una_tarea_que_ya_no_esta_activa() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        c.execute("UPDATE tasks SET source_state = 'ORPHANED' WHERE id = ?1", [t.id])
+            .unwrap();
+        assert_eq!(set_actual_seconds_unless_running(&c, t.id, 60).unwrap(), SetTotal::NotActive);
+        assert_eq!(set_actual_seconds_unless_running(&c, 9999, 60).unwrap(), SetTotal::NotActive);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 0);
+        assert!(list_time_entries(&c, t.id).unwrap().is_empty());
     }
 
     #[test]
@@ -6368,4 +6571,323 @@ mod tests {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Jornada y paralelismo (#22)
+    // -----------------------------------------------------------------------
+
+    /// Un instante a una hora local de un día, en la zona que se le pasa. Para
+    /// los tests puros de `clock_on_day`, que fijan la zona por parámetro.
+    fn at(tz: chrono_tz::Tz, date: &str, hour: u32, minute: u32) -> DateTime<Utc> {
+        let d = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap();
+        tz.from_local_datetime(&d.and_hms_opt(hour, minute, 0).unwrap())
+            .earliest()
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    /// Los bordes de un día local en una zona fija.
+    fn day_of(tz: chrono_tz::Tz, date: &str) -> (DateTime<Utc>, DateTime<Utc>) {
+        let d = local_days(tz, date, 1);
+        (d[0].1, d[0].2)
+    }
+
+    const SCL: chrono_tz::Tz = chrono_tz::America::Santiago;
+    const H: i64 = 3600;
+
+    #[test]
+    fn la_jornada_cuenta_una_sola_vez_lo_que_se_solapa() {
+        let (a, b) = day_of(SCL, "2026-08-11");
+        let spans = [
+            (at(SCL, "2026-08-11", 9, 0), at(SCL, "2026-08-11", 11, 0)),
+            (at(SCL, "2026-08-11", 10, 0), at(SCL, "2026-08-11", 12, 0)),
+        ];
+        let d = clock_on_day(&spans, a, b);
+        assert_eq!(d.span, 3 * H, "de 9 a 12 son tres horas de reloj");
+        assert_eq!(d.clocked, 4 * H, "pero dos timers de dos horas suman cuatro");
+    }
+
+    #[test]
+    fn un_tramo_dentro_de_otro_no_estira_la_jornada() {
+        let (a, b) = day_of(SCL, "2026-08-11");
+        let spans = [
+            (at(SCL, "2026-08-11", 9, 0), at(SCL, "2026-08-11", 13, 0)),
+            (at(SCL, "2026-08-11", 10, 0), at(SCL, "2026-08-11", 11, 0)),
+        ];
+        let d = clock_on_day(&spans, a, b);
+        assert_eq!((d.span, d.clocked), (4 * H, 5 * H));
+    }
+
+    #[test]
+    fn los_tramos_contiguos_no_son_paralelos() {
+        // Es lo que deja `stop_all_timers` + play: un solo `ended`, que es el
+        // inicio del siguiente. Tocarse no es solaparse.
+        let (a, b) = day_of(SCL, "2026-08-11");
+        let spans = [
+            (at(SCL, "2026-08-11", 10, 0), at(SCL, "2026-08-11", 11, 0)),
+            (at(SCL, "2026-08-11", 9, 0), at(SCL, "2026-08-11", 10, 0)),
+        ];
+        let d = clock_on_day(&spans, a, b);
+        assert_eq!(d.span, 2 * H);
+        assert_eq!(d.clocked, d.span, "sin solape el paralelismo es exactamente 1");
+    }
+
+    #[test]
+    fn los_huecos_no_cuentan_en_la_jornada() {
+        let (a, b) = day_of(SCL, "2026-08-11");
+        let spans = [
+            (at(SCL, "2026-08-11", 9, 0), at(SCL, "2026-08-11", 10, 0)),
+            (at(SCL, "2026-08-11", 15, 0), at(SCL, "2026-08-11", 15, 30)),
+        ];
+        let d = clock_on_day(&spans, a, b);
+        assert_eq!((d.span, d.clocked), (H + H / 2, H + H / 2));
+    }
+
+    #[test]
+    fn un_tramo_que_cruza_la_medianoche_se_reparte_entre_los_dos_dias() {
+        // La jornada es reloj: un timer que quedó corriendo de 23:00 a 01:00
+        // ocupó una hora de cada día, aunque el tiempo en tareas se atribuya
+        // por el inicio (Regla 2).
+        let spans = [(at(SCL, "2026-08-11", 23, 0), at(SCL, "2026-08-12", 1, 0))];
+        let (a, b) = day_of(SCL, "2026-08-11");
+        let (c, d) = day_of(SCL, "2026-08-12");
+        assert_eq!(clock_on_day(&spans, a, b).span, H);
+        assert_eq!(clock_on_day(&spans, c, d).span, H);
+        assert_eq!(clock_on_day(&spans, c, d).clocked, H);
+    }
+
+    #[test]
+    fn el_dia_del_cambio_de_hora_dura_lo_que_dura_en_la_jornada() {
+        // La zona va por parámetro: estos dos días son de Santiago en cualquier
+        // máquina. Un tramo que tapa el día entero mide el día local, que en el
+        // salto de otoño dura 25 horas y en el de primavera 23.
+        for (date, hours) in [("2026-04-04", 25), ("2026-09-06", 23)] {
+            let (a, b) = day_of(SCL, date);
+            let whole = [(a - chrono::Duration::hours(2), b + chrono::Duration::hours(2))];
+            let d = clock_on_day(&whole, a, b);
+            assert_eq!(d.span, hours * H, "{date}");
+            assert_eq!(d.clocked, hours * H, "{date}");
+        }
+    }
+
+    #[test]
+    fn sin_tramos_la_jornada_es_cero() {
+        let (a, b) = day_of(SCL, "2026-08-11");
+        assert_eq!(clock_on_day(&[], a, b), ClockDay::default());
+    }
+
+    /// Una corrida cerrada del taxímetro, de una hora local a otra del mismo día.
+    fn run(c: &Connection, task_id: i64, date: &str, from: u32, to: u32) {
+        let (a, b) = (local(date, from), local(date, to));
+        c.execute(
+            "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![task_id, a, b, (to as i64 - from as i64) * H],
+        )
+        .unwrap();
+    }
+
+    /// Una corrida abierta desde esa hora local.
+    fn open_run(c: &Connection, task_id: i64, date: &str, from: u32) {
+        c.execute(
+            "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
+             VALUES (?1, ?2, NULL, 0)",
+            params![task_id, local(date, from)],
+        )
+        .unwrap();
+    }
+
+    fn instant(date: &str, hour: u32) -> DateTime<Utc> {
+        to_utc(&local(date, hour)).unwrap()
+    }
+
+    fn rollup_day<'a>(r: &'a WeeklyRollup, date: &str) -> &'a RollupDay {
+        r.days.iter().find(|d| d.date == date).unwrap()
+    }
+
+    #[test]
+    fn dos_timers_en_paralelo_suman_en_tareas_y_no_en_la_jornada() {
+        let c = conn();
+        let a = create_task(&c, new_task("agente A", Some("2026-08-11"))).unwrap();
+        let b = create_task(&c, new_task("agente B", Some("2026-08-11"))).unwrap();
+        run(&c, a.id, "2026-08-11", 9, 11);
+        run(&c, b.id, "2026-08-11", 10, 12);
+
+        let r = weekly_rollup(&c, "2026-08-10").unwrap();
+        let d = rollup_day(&r, "2026-08-11");
+        assert_eq!(d.seconds, 4 * H, "en tareas cuenta cada una completa");
+        assert_eq!(d.span_seconds, 3 * H);
+        assert_eq!(d.clocked_seconds, 4 * H);
+        assert_eq!((r.span_seconds, r.clocked_seconds), (3 * H, 4 * H));
+
+        // La bitácora sale del mismo núcleo y dice lo mismo.
+        let log = daily_log(&c, "2026-08-11", 1).unwrap();
+        assert_eq!((log[0].span_seconds, log[0].clocked_seconds), (3 * H, 4 * H));
+        assert_eq!(log[0].worked_seconds, 4 * H);
+    }
+
+    #[test]
+    fn la_jornada_de_la_semana_es_la_suma_de_sus_dias() {
+        let c = conn();
+        let a = create_task(&c, new_task("a", Some("2026-08-11"))).unwrap();
+        let b = create_task(&c, new_task("b", Some("2026-08-12"))).unwrap();
+        run(&c, a.id, "2026-08-11", 9, 10);
+        run(&c, b.id, "2026-08-12", 9, 11);
+
+        let r = weekly_rollup(&c, "2026-08-10").unwrap();
+        assert_eq!(r.span_seconds, 3 * H);
+        assert_eq!(r.clocked_seconds, 3 * H);
+    }
+
+    #[test]
+    fn los_ajustes_manuales_no_cuentan_en_la_jornada() {
+        // Un ajuste no tiene hora: se guarda con `ended_at = started_at`, sellado
+        // al mediodía del día de la tarea. Contarlo inventaría reloj —o
+        // paralelismo— donde no lo hubo. En tareas sí cuenta.
+        let c = conn();
+        let a = create_task(&c, new_task("corrida", Some("2026-08-11"))).unwrap();
+        let b = create_task(&c, new_task("olvidé el timer", Some("2026-08-11"))).unwrap();
+        run(&c, a.id, "2026-08-11", 9, 10);
+        set_actual_seconds(&c, b.id, 3 * H).unwrap();
+
+        let r = weekly_rollup(&c, "2026-08-10").unwrap();
+        let d = rollup_day(&r, "2026-08-11");
+        assert_eq!(d.seconds, 4 * H, "el ajuste sí es tiempo en tareas");
+        assert_eq!(d.span_seconds, H);
+        assert_eq!(d.clocked_seconds, H, "y no aparece como paralelismo");
+    }
+
+    #[test]
+    fn un_dia_solo_con_ajustes_no_tiene_jornada() {
+        let c = conn();
+        let t = create_task(&c, new_task("a mano", Some("2026-08-11"))).unwrap();
+        set_actual_seconds(&c, t.id, 2 * H).unwrap();
+
+        let log = daily_log(&c, "2026-08-11", 1).unwrap();
+        assert_eq!(log[0].worked_seconds, 2 * H);
+        assert_eq!((log[0].span_seconds, log[0].clocked_seconds), (0, 0));
+    }
+
+    #[test]
+    fn una_reunion_sin_entradas_entra_en_la_jornada_junto_a_los_timers() {
+        let c = conn();
+        let f = feed(&c);
+        let mut ev = event("a@x", "Daily", "2026-08-11");
+        ev.start = Some(local("2026-08-11", 9));
+        ev.end = Some(local("2026-08-11", 10));
+        import_events(&c, f.id, &[ev], None).unwrap();
+        let t = create_task(&c, new_task("agente", Some("2026-08-11"))).unwrap();
+        run(&c, t.id, "2026-08-11", 9, 11);
+
+        let r = weekly_rollup(&c, "2026-08-10").unwrap();
+        let d = rollup_day(&r, "2026-08-11");
+        assert_eq!(d.seconds, 3 * H);
+        assert_eq!(d.span_seconds, 2 * H, "la reunión cae dentro de la corrida");
+        assert_eq!(d.clocked_seconds, 3 * H);
+    }
+
+    #[test]
+    fn una_reunion_con_entradas_aporta_sus_corridas_y_no_su_evento() {
+        // Las entradas reales priman (Regla 3): el evento entero no puede entrar
+        // a la jornada si la reunión ya tiene su corrida.
+        let c = conn();
+        let f = feed(&c);
+        let mut ev = event("a@x", "Daily", "2026-08-11");
+        ev.start = Some(local("2026-08-11", 9));
+        ev.end = Some(local("2026-08-11", 11));
+        import_events(&c, f.id, &[ev], None).unwrap();
+        let id = list_tasks_for_date(&c, "2026-08-11").unwrap()[0].id;
+        run(&c, id, "2026-08-11", 9, 10);
+
+        let r = weekly_rollup(&c, "2026-08-10").unwrap();
+        let d = rollup_day(&r, "2026-08-11");
+        assert_eq!((d.span_seconds, d.clocked_seconds), (H, H));
+    }
+
+    #[test]
+    fn una_reunion_en_curso_cuenta_entera_como_en_tareas() {
+        // La Regla 3 le acredita la duración completa apenas empieza; cortar su
+        // tramo en `now` dejaría un paralelismo que no hubo.
+        let c = conn();
+        let f = feed(&c);
+        let mut ev = event("a@x", "Planning", "2026-08-11");
+        ev.start = Some(local("2026-08-11", 9));
+        ev.end = Some(local("2026-08-11", 11));
+        import_events(&c, f.id, &[ev], None).unwrap();
+
+        let r = weekly_rollup_at(&c, "2026-08-10", instant("2026-08-11", 10)).unwrap();
+        let d = rollup_day(&r, "2026-08-11");
+        assert_eq!(d.seconds, 2 * H);
+        assert_eq!((d.span_seconds, d.clocked_seconds), (2 * H, 2 * H));
+    }
+
+    #[test]
+    fn una_reunion_que_cruza_la_medianoche_da_la_misma_jornada_pidiendo_uno_o_dos_dias() {
+        // El shutdown pide un día y la bitácora treinta: el mismo día no puede
+        // tener dos jornadas. La reunión es de ayer en tareas (Regla 3), pero
+        // su media hora de hoy es reloj de hoy.
+        let c = conn();
+        let f = feed(&c);
+        let mut ev = event("a@x", "Tarde", "2026-08-11");
+        ev.start = Some(local("2026-08-11", 23));
+        ev.end = Some(local("2026-08-12", 1));
+        import_events(&c, f.id, &[ev], None).unwrap();
+
+        let now = instant("2026-08-12", 9);
+        let one = daily_log_at(&c, "2026-08-12", 1, now).unwrap();
+        let two = daily_log_at(&c, "2026-08-12", 2, now).unwrap();
+        assert_eq!(one[0].span_seconds, H);
+        assert_eq!(two[0].span_seconds, H);
+        assert_eq!(two[1].span_seconds, H);
+        assert_eq!(one[0].worked_seconds, 0, "en tareas sigue siendo de ayer");
+        assert_eq!(two[1].worked_seconds, 2 * H);
+    }
+
+    #[test]
+    fn las_corridas_abiertas_cuentan_hasta_ahora() {
+        let c = conn();
+        let a = create_task(&c, new_task("a", Some("2026-08-11"))).unwrap();
+        let b = create_task(&c, new_task("b", Some("2026-08-11"))).unwrap();
+        open_run(&c, a.id, "2026-08-11", 9);
+        open_run(&c, b.id, "2026-08-11", 10);
+
+        let log = daily_log_at(&c, "2026-08-11", 1, instant("2026-08-11", 12)).unwrap();
+        assert_eq!(log[0].span_seconds, 3 * H);
+        assert_eq!(log[0].clocked_seconds, 5 * H);
+        // En la base todavía no hay segundos: los suma el front desde el taxímetro.
+        assert_eq!(log[0].worked_seconds, 0);
+    }
+
+    #[test]
+    fn un_timer_abierto_desde_anoche_ocupa_la_jornada_de_hoy() {
+        // No se atribuye a hoy (Regla 2: es una fila de ayer), pero sus horas de
+        // reloj de hoy sí son de hoy.
+        let c = conn();
+        let t = create_task(&c, new_task("se quedó corriendo", Some("2026-08-11"))).unwrap();
+        open_run(&c, t.id, "2026-08-11", 23);
+
+        let log = daily_log_at(&c, "2026-08-12", 2, instant("2026-08-12", 2)).unwrap();
+        let (today, yesterday) = (&log[0], &log[1]);
+        assert_eq!(today.date, "2026-08-12");
+        assert_eq!((today.span_seconds, today.clocked_seconds), (2 * H, 2 * H));
+        assert_eq!((yesterday.span_seconds, yesterday.clocked_seconds), (H, H));
+        assert!(today.timeline.is_empty(), "la fila sigue siendo de ayer");
+        assert!(yesterday.timeline[0].running);
+    }
+
+    #[test]
+    fn una_corrida_abierta_de_antes_del_rango_no_se_cuela_en_las_filas() {
+        // La consulta se ensanchó para traer las abiertas de antes del rango; eso
+        // es solo para el reloj, no para el tiempo en tareas.
+        let c = conn();
+        let t = create_task(&c, new_task("vieja", Some("2026-08-03"))).unwrap();
+        open_run(&c, t.id, "2026-08-03", 9);
+
+        let r = weekly_rollup_at(&c, "2026-08-10", instant("2026-08-11", 9)).unwrap();
+        assert_eq!(r.total_seconds, 0);
+        assert!(r.cells.is_empty());
+        assert_eq!(rollup_day(&r, "2026-08-10").span_seconds, 24 * H);
+        assert_eq!(rollup_day(&r, "2026-08-11").span_seconds, 9 * H);
+        assert_eq!(rollup_day(&r, "2026-08-12").span_seconds, 0);
+    }
 }
+

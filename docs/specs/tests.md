@@ -27,9 +27,9 @@ La lista de casos vive en los propios archivos y no se duplica acá; esto es el 
 | Área | Archivos |
 |---|---|
 | Datos y reglas de negocio | `repo.rs`, `models.rs`, `db/mod.rs`, `mockDb.test.ts` |
-| Tareas y tablero | `useBoard.test.tsx`, `TaskCard.test.tsx`, `TaskModal.test.tsx`, `reorder.test.ts`, `history.test.ts` |
+| Tareas y tablero | `useBoard.test.tsx`, `TaskCard.test.tsx`, `TaskModal.test.tsx`, `PlayControls.test.tsx` (play clásico y en paralelo contra el `mockDb` real), `reorder.test.ts`, `history.test.ts` |
 | Backlog | `BacklogView.test.tsx`, `BacklogPanel.test.tsx`, `BacklogColumn.test.tsx`, `grouping.test.ts` |
-| Tiempo y taxímetro | `repo.rs`, `bell.rs`, `useTimer.test.ts`, `timerStore.test.ts`, `timerStore.parallel.test.ts` (timers en paralelo contra el `mockDb` real), `railLayout.test.ts` y `dailyLog.test.ts` (corrida por tarea), `useDragOrClick.test.tsx`, `useCursorHover.test.ts`, `timeByDay.test.ts` |
+| Tiempo y taxímetro | `repo.rs`, `bell.rs`, `useTimer.test.ts`, `timerStore.test.ts`, `timerStore.parallel.test.ts` (timers en paralelo contra el `mockDb` real), `FloatingTimer.test.tsx` (la pila del taxímetro: filas, pausar y completar una de varias o la última, el ojo, `last` dentro de la pila), `railLayout.test.ts` y `dailyLog.test.ts` (corrida por tarea), `useDragOrClick.test.tsx`, `useCursorHover.test.ts`, `timeByDay.test.ts` |
 | Focus | `FocusView.test.tsx` |
 | Weekly review y rollup | `repo.rs`, `weeklyReview.test.tsx`, `reviewFilter.test.ts`, `WeeklyReviewView.test.tsx` |
 | Bitácora y cierre | `repo.rs`, `dailyLog.test.ts`, `DailyShutdownView.test.tsx`, `useShutdownReminder.test.ts` |
@@ -49,7 +49,7 @@ La lista de casos vive en los propios archivos y no se duplica acá; esto es el 
 | Primitivas | `Dialog.test.tsx`, `Popover.test.tsx`, `SearchSelect.test.tsx`, `QuitConfirm.test.tsx`, `Sidebar.test.tsx`, `SunriseMark.test.tsx` |
 | Cruce entre ventanas | `store.test.tsx`, `TodayView.sync.test.tsx` |
 | Contrato IPC | `ipcContract.test.ts` |
-| Servidor MCP | `mcp/tools.rs`, `mcp/store.rs`, `mcp/server.rs` (el esquema publicado), `external.rs`, `claude_desktop.rs`, `useExternalChanges.test.ts`, `McpCard.test.tsx` |
+| Servidor MCP | `mcp/tools.rs`, `mcp/store.rs`, `mcp/server.rs` (el esquema publicado), `external.rs`, `claude_desktop.rs`, `useExternalChanges.test.ts`, `TimerRoot.test.tsx` (el taxímetro escucha el aviso), `McpCard.test.tsx` |
 
 ## Los tests que protegen una decisión, no un código
 

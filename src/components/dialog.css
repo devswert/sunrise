@@ -40,6 +40,17 @@
   line-height: 1.5;
   color: var(--muted);
 }
+/* La lista de timers que siguen corriendo al cerrar (`QuitConfirm`). Con su
+ * propia clase y no sobre `.dialog__body p`: esa regla le gana por orden de carga
+ * a `.nuevo__texto p` y le quitaba el espacio entre párrafos al modal "Lo nuevo". */
+.dialog__running p,
+.dialog__running ul {
+  margin: 0;
+}
+.dialog__running ul {
+  margin-top: var(--space-1);
+  padding-left: 18px;
+}
 .dialog__body strong {
   color: var(--ink);
   font-weight: 500;

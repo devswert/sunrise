@@ -35,7 +35,12 @@ const TIMER_DETENIDO = {
   start: startTimer,
   stop: stopTimer,
   // Derivados de `active`, como en el store real: corre la que está en `active`.
-  isRunning: (taskId: number) => estadoTimer.active?.taskId === taskId,
+  /** Lo de hoy por tarea, como `elapsedById` del store. */
+  elapsedById: {} as Record<number, number>,
+  /** Tareas que corren en paralelo además de `active`. */
+  alsoRunning: [] as number[],
+  isRunning: (taskId: number) =>
+    estadoTimer.active?.taskId === taskId || estadoTimer.alsoRunning.includes(taskId),
   runTotalOf: (taskId: number) =>
     estadoTimer.active?.taskId === taskId ? estadoTimer.runTotal : 0,
 };
@@ -250,6 +255,38 @@ describe("TaskModal · ACTUAL siempre es el total", () => {
   });
 });
 
+describe("TaskModal · pasada del estimado con timers en paralelo", () => {
+  const realValue = () =>
+    screen.getByRole("button", { name: "Ajustar tiempo real" }).lastElementChild;
+
+  it("no se pinta con el exceso de otra tarea que corre", async () => {
+    // A (la 99) es `active` y se pasó; la del modal corre en paralelo y no.
+    estadoTimer = {
+      ...TIMER_DETENIDO,
+      active: { taskId: 99 },
+      overEstimate: true,
+      alsoRunning: [baseTask.id],
+      elapsedById: { 99: 3 * 3600, [baseTask.id]: 60 },
+    };
+    renderModal();
+    await screen.findByRole("button", { name: "Pausar" });
+    expect(realValue()).not.toHaveClass("is-over");
+  });
+
+  it("se pinta con el exceso propio aunque no sea la más antigua", async () => {
+    estadoTimer = {
+      ...TIMER_DETENIDO,
+      active: { taskId: 99 },
+      overEstimate: false,
+      alsoRunning: [baseTask.id],
+      elapsedById: { 99: 60, [baseTask.id]: 2 * 3600 },
+    };
+    renderModal();
+    await screen.findByRole("button", { name: "Pausar" });
+    expect(realValue()).toHaveClass("is-over");
+  });
+});
+
 describe("TaskModal · tiempo por día", () => {
   beforeEach(() => {
     estadoTimer = { ...TIMER_DETENIDO };
@@ -296,6 +333,37 @@ describe("TaskModal · play", () => {
     await waitFor(() => expect(startTimer).toHaveBeenCalledWith(baseTask.id));
     expect(onClose).toHaveBeenCalled();
     expect(await screen.findByText("VISTA FOCUS")).toBeInTheDocument();
+  });
+
+  it("el play en paralelo arranca sin cerrar el modal ni ir a Focus", async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderModal();
+
+    await user.click(screen.getByRole("button", { name: "Iniciar en paralelo" }));
+
+    await waitFor(() => expect(startTimer).toHaveBeenCalledWith(baseTask.id, { parallel: true }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByText("VISTA FOCUS")).toBeNull();
+  });
+
+  it("tras el play en paralelo el modal sigue abierto y muestra la pausa", async () => {
+    const user = userEvent.setup();
+    // El doble del store: arrancar marca la tarea como en curso y avisa, como el
+    // `bumpData()` del store real (el modal escucha `dataVersion`).
+    // Otra tarea (la 99) ya corre y es `active`; esta entra en paralelo.
+    estadoTimer = { ...TIMER_DETENIDO, active: { taskId: 99 } };
+    startTimer.mockImplementationOnce(async () => {
+      estadoTimer = { ...TIMER_DETENIDO, active: { taskId: 99 }, alsoRunning: [baseTask.id] };
+      useAppStore.getState().bumpData();
+    });
+    try {
+      renderModal();
+      await user.click(screen.getByRole("button", { name: "Iniciar en paralelo" }));
+      expect(await screen.findByRole("button", { name: "Pausar" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Iniciar en paralelo" })).toBeNull();
+    } finally {
+      estadoTimer = { ...TIMER_DETENIDO };
+    }
   });
 });
 

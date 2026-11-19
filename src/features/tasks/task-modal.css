@@ -565,28 +565,16 @@ button.tmodal__time:hover {
   z-index: 2;
 }
 
-/* Play/pausa junto a Actual/Planned, sincronizado con el timer global */
+/* Play/pausa junto a Actual/Planned (`PlayControls`, talla `md`).
+ * El `min-width` reserva el ancho del botón partido (play + paralelo, con el
+ * borde compartido) también cuando solo se ve la pausa: el control va a la
+ * derecha del título y de los tiempos, y sin la reserva, darle play en paralelo
+ * —que deja el modal abierto— corría Real/Estimado y re-partía el título. La
+ * pausa queda donde estaba el play. */
 .tmodal__play {
   align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--surface-sunken);
-  color: var(--ink);
   margin-left: var(--space-2);
-}
-.tmodal__play:hover {
-  border-color: var(--mint-ink);
-  color: var(--mint-ink);
-}
-.tmodal__play.is-running {
-  background: var(--mint-solid);
-  border-color: var(--mint-solid);
-  color: #fff;
+  min-width: calc(var(--pc-h) * 2 - 5px);
 }
 .tmodal__time-value.is-over {
   color: var(--cap-over);

@@ -41,6 +41,13 @@ describe("McpCard", () => {
     expect(screen.queryByRole("button", { name: /Conectar con/ })).not.toBeInTheDocument();
   });
 
+  it("dice que Claude registra tiempo y no que deje el timer en paz (#23)", async () => {
+    vi.spyOn(api, "claudeDesktopStatus").mockResolvedValue(info());
+    render(<McpCard />);
+    expect(await screen.findByText(/registrar tiempo/)).toBeInTheDocument();
+    expect(screen.queryByText(/no toca el timer/)).not.toBeInTheDocument();
+  });
+
   /** La decisión del dev: una entrada que apunta a otro lado no se pisa. */
   it("si ya hay un sunrise apuntando a otro lado, avisa a dónde y no ofrece conectar", async () => {
     vi.spyOn(api, "claudeDesktopStatus").mockResolvedValue(

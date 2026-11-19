@@ -620,6 +620,12 @@ fn timer_result_with(
     })
 }
 
+/// Segundos → minutos **redondeados**: truncar respondía `logged_minutes: 0` a una
+/// corrida de 59 s, y el modelo podía leer "no se registró nada".
+fn minutes(secs: i64) -> i64 {
+    (secs + 30) / 60
+}
+
 /// Una fecha y hora **local** del usuario → UTC.
 ///
 /// Acepta `YYYY-MM-DD HH:MM` (o con `T`, y con segundos). Una hora sola no: no
@@ -674,7 +680,7 @@ pub fn start_timer(conn: &Connection, p: StartTimerParams) -> ToolResult {
 pub fn stop_timer(conn: &Connection, p: TaskIdParams) -> ToolResult {
     trackable(conn, p.id)?;
     let stopped = repo::stop_timer(conn, p.id).map_err(db_err)?;
-    timer_result(conn, p.id, stopped.map(|(_, secs)| secs / 60), Vec::new())
+    timer_result(conn, p.id, stopped.map(|(_, secs)| minutes(secs)), Vec::new())
 }
 
 /// Registra un tramo pasado ya cerrado (`repo::log_time_entry`).
@@ -698,15 +704,15 @@ pub fn log_time(conn: &Connection, p: LogTimeParams) -> ToolResult {
         }
         E::TaskNotFound => format!("No existe una tarea con id {}.", p.id),
         E::Overlaps(a, b) => {
-            let desde = local_label(tz, &a);
+            let since = local_label(tz, &a);
             match b {
                 Some(b) => format!(
-                    "Se pisa con un tramo ya registrado en esa tarea ({desde} a {}): ese tiempo ya \
+                    "Se pisa con un tramo ya registrado en esa tarea ({since} a {}): ese tiempo ya \
                      está contado.",
                     local_label(tz, &b)
                 ),
                 None => format!(
-                    "Se pisa con el timer de esa tarea, que corre desde {desde}: ese tiempo se \
+                    "Se pisa con el timer de esa tarea, que corre desde {since}: ese tiempo se \
                      cuenta al detenerlo."
                 ),
             }
@@ -717,7 +723,7 @@ pub fn log_time(conn: &Connection, p: LogTimeParams) -> ToolResult {
         start: local_label(tz, &start.to_rfc3339()),
         end: local_label(tz, &end.to_rfc3339()),
     };
-    timer_result_with(conn, p.id, Some(secs / 60), Some(logged), Vec::new())
+    timer_result_with(conn, p.id, Some(minutes(secs)), Some(logged), Vec::new())
 }
 
 /// Corrige el total trabajado, como el ajuste a mano de la app
@@ -733,22 +739,16 @@ pub fn set_task_time(conn: &Connection, p: SetTaskTimeParams) -> ToolResult {
             "El total tiene que estar entre 0 y {MAX_TOTAL_MINUTES} minutos."
         ));
     }
-    // La pregunta y la escritura en la misma transacción: entre las dos, la app
-    // podría darle play.
-    let was_running = repo::atomically(conn, || {
-        if repo::get_active_timer(conn, p.id)?.is_some() {
-            return Ok(true);
+    match repo::set_actual_seconds_unless_running(conn, p.id, p.minutes * 60).map_err(db_err)? {
+        repo::SetTotal::Written => {}
+        repo::SetTotal::NotActive => return Err(format!("No existe una tarea con id {}.", p.id)),
+        repo::SetTotal::Running => {
+            return Err(
+                "El timer de esa tarea está corriendo: detenlo primero con stop_timer, o el \
+                 total quedaría sumado a lo que lleva."
+                    .into(),
+            )
         }
-        repo::set_actual_seconds(conn, p.id, p.minutes * 60)?;
-        Ok(false)
-    })
-    .map_err(db_err)?;
-    if was_running {
-        return Err(
-            "El timer de esa tarea está corriendo: detenlo primero con stop_timer, o el total \
-             quedaría sumado a lo que lleva."
-                .into(),
-        );
     }
     timer_result(conn, p.id, None, Vec::new())
 }
@@ -1103,6 +1103,8 @@ mod tests {
         assert!(log(&c, m, "2026-10-14 09:00", "2026-10-14 10:00")
             .unwrap_err()
             .contains("No existe"));
+        assert!(start_timer(&c, StartTimerParams { id: m, parallel: true }).is_err());
+        assert!(set_task_time(&c, SetTaskTimeParams { id: m, minutes: 5 }).is_err());
         assert!(stop_timer(&c, TaskIdParams { id: 999 })
             .unwrap_err()
             .contains("No existe"));
@@ -1192,6 +1194,9 @@ mod tests {
         assert_eq!(entries[0].ended_at.as_deref(), Some(entries[0].started_at.as_str()));
 
         assert!(set_task_time(&c, SetTaskTimeParams { id: a, minutes: -1 }).is_err());
+        assert!(set_task_time(&c, SetTaskTimeParams { id: a, minutes: 60_001 }).is_err());
+        assert!(set_task_time(&c, SetTaskTimeParams { id: a, minutes: 60_000 }).is_ok());
+        set_task_time(&c, SetTaskTimeParams { id: a, minutes: 90 }).unwrap();
 
         start(&c, a, true);
         let err = set_task_time(&c, SetTaskTimeParams { id: a, minutes: 10 }).unwrap_err();

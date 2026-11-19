@@ -177,6 +177,8 @@ Son dos reglas simétricas, y conviene tratarlas como una sola:
 Ambas viven en `repo.rs` y no en las vistas porque hay **cinco** lugares con
 botón de play (card de la semana, Today, Focus, el modal y el taxímetro):
 ponerlas en el front obliga a repetirlas en los cinco y a que el sexto se olvide.
+La card y el modal ya comparten un solo componente, `PlayControls` (play clásico
++ en paralelo, o solo la pausa); Focus lo adopta en #21.
 
 **Corolario:** quien llame `setTaskStatus` desde el front debe hacer `bumpData()`
 después, porque el estado del timer pudo cambiar sin que la vista lo pidiera.
@@ -254,7 +256,8 @@ con **la hora**. Dos formas de equivocarse, y las dos ya se pagaron:
   notificación, si está prendida, sale una por tarea.
 - **La espera y el timbre son optimizaciones, no la decisión.** Duerme hasta el
   momento en que tiene que sonar (`next_wake`, techo 30 s); sin timer espera el
-  timbre `Armed` —que toca `start_timer`— con un techo de 5 min; y **cada vuelta
+  timbre `Armed` —que tocan `start_timer` y, por lo que escribe el MCP,
+  `external.rs`— con un techo de 5 min; y **cada vuelta
   relee la base**. No conviertas eso en un `sleep` de una sola vez ni cuelgues la
   campana del timbre: habría que invalidar el momento al bajar el estimado, al
   ajustar tiempo a mano, al pausar, al cambiar de tarea y al despertar la máquina
@@ -330,6 +333,24 @@ falle:
   timestamps son UTC y en Chile todo lo trabajado después de las 20:00 se iría al
   día siguiente. Se comparan los bordes de cada día local en UTC (`local_days`).
 
+**La jornada (#22) sale de la misma pasada, y tiene su propio corte.**
+`work_by_day` junta, además de las filas, los **tramos de reloj** de cada día
+(`ClockDay { span, clocked }`, unidos por la función pura `clock_on_day`). Al
+editar, cuatro cosas:
+
+- **Solo corridas y reuniones; nunca ajustes.** El corte es el de `tracked_at`
+  (`ended_at` distinto de `started_at`, o abierta). Un ajuste no tiene hora.
+- **Recortado al día, no atribuido por el inicio.** Por eso la consulta de
+  entradas trae también las **abiertas de antes del rango**, y la de reuniones las
+que empezaron antes y lo cruzan: entran al reloj y
+  **no** a las filas (`day_index` las descarta). Si tocas ese `WHERE`, no las
+  sueltes ni las dejes colarse en el tiempo en tareas.
+- **`now` va por parámetro** (`weekly_rollup_at`, `daily_log_at`): las abiertas
+  cuentan hasta ahí y la Regla 3 decide con él qué reunión ya empezó.
+- **El paralelismo es `clocked ÷ span`**, no tiempo en tareas ÷ jornada (los
+  ajustes lo inflarían), y en el front `liveClock` avanza **los dos** lados.
+  Espejado en `mockDb` (`clockByDay` → `clockOnDay` de `lib/workday.ts`).
+
 Y una que solo importa para el día de **hoy**: una tarea con el timer corriendo
 suma **0** en la base hasta que pares, así que el front le agrega lo del
 taxímetro (`workedWithRunning`, `segmentSeconds`), igual que el rail. Sin eso,
@@ -374,6 +395,24 @@ Ojo con esto al escribir tests: un caso que ajuste tiempo y espere verlo en
 `base_seconds` necesita que la tarea sea **de hoy**.
 
 ## Completar desde el taxímetro
+
+**El taxímetro es una pila, una fila por timer que corre (#19)**, y eso cambia
+quién avanza:
+
+- **Completar una de varias solo la saca**; avanzar a la siguiente pendiente es
+  cosa de **la última**. "La última" la decide la base (`getActiveTimers`
+  después del check), no el store. `completeAndAdvance(taskId)` recibe la fila;
+  sin id es la primera.
+- **Pausar una de varias la saca**; la última queda en pausa como siempre.
+- **Mientras corra algo, `last` es una de las que corren** (`lastInStack`, en
+  `stop`, `refresh` y `completeAndAdvance`). Si apuntara a una que ya salió,
+  completar la que quedaba desde una card dejaría en el taxímetro una tarea
+  que pausaste a propósito. Lo cubre `FloatingTimer.test.tsx`.
+- **El ojo es `hideAll`**: cierra todos y deja `last = null` con una sola
+  escritura. Encadenar `stopAll` y `dismissLast` publicaba una pausada intermedia
+  que el `refresh` de la otra ventana podía reescribir encima, y la fila volvía.
+
+Lo de abajo sigue valiendo para la última fila:
 
 **Completar avanza, pero no arranca.** `completeAndAdvance` deja la siguiente
 pendiente del día **en pausa** (título, estimado y el play esperando), con el
@@ -430,12 +469,16 @@ contador del día que ignora lo de ayer, un timer abierto por tarea (el play
 clásico cierra todos, el paralelo suma, el índice rechaza la segunda abierta, la
 migración 18 borra fantasmas), dos en paralelo acumulan cada uno lo suyo,
 `stop_all` en un mismo instante, completar detiene solo su timer, `stop` sin timer activo, `focus_queue`,
-y doce del rollup semanal (una por cada regla de arriba y sus bordes).
+y doce del rollup semanal (una por cada regla de arriba y sus bordes), y los de
+la jornada: la unión pura (solapados, contiguos, anidados, huecos, cruce de
+medianoche, días de 23 y 25 horas con la zona fijada) y por la base (ajustes
+ignorados, reuniones con y sin entradas, en curso, corridas abiertas hasta `now`,
+la abierta desde anoche).
 En `bell.rs`: cada timer suena en su cruce y por su promesa, y la espera es el
 cruce más cercano sin que uno ya excedido la acorte. En el front,
 `timerStore.parallel.test.ts` cubre el contrato de varios timers contra el
 `mockDb` real (`start` paralelo y clásico, `stop` por tarea, `stopAll`, `toggle`,
-el tick por tarea), y `src/features/timer/timerStore.test.ts` cubre `completeAndAdvance`
+el tick por tarea), `FloatingTimer.test.tsx` la pila del taxímetro, y `src/features/timer/timerStore.test.ts` cubre `completeAndAdvance`
 (incluido que **no** arranque la siguiente) y el avance de `refresh`, y
 `FocusView.test.tsx` el `bumpData()` al completar, el resumen del día y que el
 confeti salga solo al vaciar la cola.

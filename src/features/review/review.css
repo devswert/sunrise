@@ -394,6 +394,26 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* La jornada del día (#22), solo en semanas con paralelismo. Alto fijo: va en
+   todos los días de la semana, con o sin dato, para que las columnas no se
+   desalineen. */
+.review__dia-jornada {
+  margin: 0;
+  height: 14px;
+  line-height: 14px;
+  font-size: 10.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.review__dia-jornada b {
+  color: var(--lavender-ink);
+  font-weight: 600;
+}
+
 /* El corte objetivos/resto de la semana (Mej.15). Va arriba de la lista y no
    como cifra suelta: la barra dice de un vistazo qué proporción del tiempo se
    fue en lo que uno se había propuesto, que es la pregunta que trae a esta

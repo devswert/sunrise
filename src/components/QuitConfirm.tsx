@@ -29,14 +29,15 @@ export function useQuitListener() {
 /**
  * Confirmación antes de cerrar, para que un ⌘Q accidental no baje la app.
  *
- * **No detiene el timer**: dejarlo corriendo entre sesiones es el
- * comportamiento esperado. El diálogo solo lo dice, para que nadie se lleve la
+ * **No detiene los timers**: dejarlos corriendo entre sesiones es el
+ * comportamiento esperado. El diálogo solo lo dice —nombrando cada uno, si
+ * corren varios en paralelo—, para que nadie se lleve la
  * sorpresa de volver y encontrar la cuenta más alta de lo que trabajó.
  */
 export function QuitConfirm() {
   const quitOpen = useAppStore((s) => s.quitOpen);
   const setQuitOpen = useAppStore((s) => s.setQuitOpen);
-  const { active, elapsed } = useTimer();
+  const { actives, elapsedById } = useTimer();
   const [saliendo, setSaliendo] = useState(false);
 
   if (!quitOpen) return null;
@@ -68,11 +69,25 @@ export function QuitConfirm() {
         </>
       }
     >
-      {active ? (
+      {actives.length === 1 ? (
         <p className="dialog__body">
-          El timer de <strong>{active.title}</strong> ({hms(elapsed)}) sigue corriendo y va a seguir
-          contando aunque cierres.
+          El timer de <strong>{actives[0].title}</strong> (
+          {hms(elapsedById[actives[0].taskId] ?? 0)}) sigue corriendo y va a seguir contando aunque
+          cierres.
         </p>
+      ) : actives.length > 1 ? (
+        // Con timers en paralelo se nombran **todos**: avisar solo del primero
+        // dejaba a los otros contando entre sesiones sin que nadie lo supiera.
+        <div className="dialog__body dialog__running">
+          <p>Estos timers siguen corriendo y van a seguir contando aunque cierres:</p>
+          <ul>
+            {actives.map((a) => (
+              <li key={a.taskId}>
+                <strong>{a.title}</strong> ({hms(elapsedById[a.taskId] ?? 0)})
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : (
         <p className="dialog__body">Tus cambios ya están guardados.</p>
       )}

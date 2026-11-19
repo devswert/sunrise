@@ -7,7 +7,7 @@ import "@fontsource/manrope/400.css";
 import "./styles/tokens.css";
 import "./styles/global.css";
 import "./features/timer/timer.css";
-import { FloatingTimer } from "./features/timer/FloatingTimer";
+import { TimerRoot } from "./TimerRoot";
 import { applyTheme, resolveInitialTheme } from "./lib/theme";
 import { followFonts } from "./lib/fonts";
 
@@ -23,6 +23,6 @@ followFonts();
 
 ReactDOM.createRoot(document.getElementById("timer-root") as HTMLElement).render(
   <React.StrictMode>
-    <FloatingTimer />
+    <TimerRoot />
   </React.StrictMode>,
 );

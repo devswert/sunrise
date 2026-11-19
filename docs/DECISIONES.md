@@ -169,6 +169,80 @@ vuelve a caer en el `busy_timeout`. Dentro de una transacción ajena sigue siend
 superpuestas se oyen como un solo sonido reventado, igual que la campana con su
 propio aviso.
 
+**El play en paralelo es un botón partido, no un menú ni un modificador (#20).**
+`PlayControls` dibuja el play de siempre y, pegado a su derecha, un `ListPlus` del
+mismo alto con el borde compartido. Un menú escondería el gesto detrás de un click
+de más, y una tecla modificadora (⌥-click) no se descubre nunca; el botón partido
+deja el clásico intacto —sigue siendo el de la izquierda, del mismo tamaño— y el
+paralelo a la vista, pero como el secundario: un poco más angosto. **Si la tarea
+corre, solo se ve la pausa**: los dos plays no harían nada sobre ella (`start_timer`
+es no-op si ya corre), y dos botones muertos al lado de la pausa la esconderían. El
+componente es **uno solo** en la card, Today y el detalle (y Focus, #21), y lee el
+timer él mismo: con cada vista armando su play, dos vistas podían discrepar sobre si
+una tarea corre.
+
+**Desde el detalle, el paralelo no lleva a Focus.** El play clásico cierra el modal
+y navega, porque es "paso a trabajar en esto". El paralelo se queda en el detalle
+(que pasa a mostrar la pausa): Focus muestra la más antigua de las que corren, y un
+play en paralelo no la mueve, así que navegar llevaba a **otra** tarea. Cuando
+Focus muestre columnas (#21) se puede revisar.
+
+### Jornada y paralelismo (#22)
+
+Con timers en paralelo, "trabajado" deja de ser horas de reloj: dos agentes
+corriendo de 9 a 12 suman seis horas en tareas en una mañana de tres. Se decidió
+que **cada tarea cuente su tiempo completo** —es lo que se le dedicó a cada una— y
+agregar dos números al lado en vez de cambiar ése: la **jornada** (las horas de
+reloj con al menos un timer o una reunión, uniendo lo que se solapa) y el
+**paralelismo**.
+
+**La jornada no cuenta los ajustes manuales.** Un ajuste es una fila con
+`ended_at = started_at`, sellada al mediodía del día de la tarea: atribuye el día,
+pero no dice a qué hora se trabajó, así que no tiene reloj que unir. Es el mismo
+corte que `day_work.tracked_at` (Mej.29). Contarlo de alguna forma —como un tramo
+inventado al mediodía, o sumándolo a la jornada— inventaría horas de reloj, y un
+tramo inventado encima de una corrida real inventaría además paralelismo.
+
+**Por eso el paralelismo es reloj sumado ÷ jornada, y no tiempo en tareas ÷
+jornada** como lo decía la issue. El tiempo en tareas incluye los ajustes: un día
+con una hora de timer y tres de ajuste daría "×4" sin que nada haya corrido a la
+vez, y un día solo con ajustes dividiría por cero. Los dos lados de la razón salen
+de los mismos tramos (`clocked_seconds` y `span_seconds`), y el número que se
+muestra como "en tareas" sigue siendo el de siempre. Consecuencia aceptada: con
+ajustes, "en tareas ÷ jornada" no da el "×" que se ve, y está bien — responden
+preguntas distintas.
+
+**Sale solo si hay paralelismo de verdad** (desde ×1,05, que ya se lee "×1,1").
+Sin eso, ni la jornada ni el "×" aparecen y las vistas se ven como antes: un par de
+minutos de solape al cambiar de tarea no es trabajar en paralelo, y la jornada sin
+paralelismo es el mismo número que "trabajado" con otro nombre.
+
+**Campos y no comando.** La jornada viaja en `LogDay`, `RollupDay` y
+`WeeklyRollup`, y se calcula en la **misma pasada** de `work_by_day`: un comando
+aparte habría sido una segunda consulta del trabajo, y la Regla 3 ya estaba escrita
+dos veces (el respaldo de las reuniones).
+
+**La jornada se recorta al día; el tiempo en tareas se atribuye por el inicio.**
+Son reloj y contabilidad: un timer que quedó abierto desde anoche ocupa las horas
+de hoy aunque su fila sea de ayer (Regla 2). Para traer esas corridas, la consulta
+de `work_by_day` se ensanchó a las abiertas de antes del rango, y la de reuniones a
+las que empezaron antes y lo cruzan: entran al reloj pero no a las filas. Sin eso el
+mismo día tenía dos jornadas —la del shutdown, que pide un día, y la de la
+bitácora, que pide treinta—. Borde aceptado: un timer olvidado abierto hace días
+llena de 24 h la jornada de cada día hasta que se pare; es reloj de verdad, y lo
+que corrige el dato es pararlo, no esconderlo. Y **recortarlo a mano no achica la
+jornada**: el recorte es un ajuste, sin hora, y la corrida sigue entera en el reloj.
+Descontarlo obligaría a inventarle una hora al recorte; queda como borde conocido. **Una reunión en curso cuenta entera** en la jornada, igual
+que en tareas: la Regla 3 le acredita la duración completa apenas empieza, y
+cortarla en `now` dejaba un paralelismo que no hubo.
+
+**Hoy, la jornada avanza con el taxímetro** (`liveClock`): Rust la calcula hasta
+la consulta y el tiempo en tareas sigue subiendo. Se avanzan **los dos** lados —un
+segundo de jornada y un segundo por timer abierto de reloj—, porque mover uno solo
+hacía crecer el "×" con el tiempo sin que nada cambiara. Borde aceptado: durante
+una reunión en curso con un timer se suma de más el rato solapado, hasta la
+siguiente recarga.
+
 ---
 
 ## 2. Lo que depende del reloj va en Rust
@@ -533,6 +607,26 @@ condiciones sobre la fecha y no booleanos.
 adelanta el día varias horas antes de medianoche. Y al leer, un string de fecha no
 se pasa por `new Date()`: `new Date('2026-08-21')` es medianoche **UTC**, o sea acá
 el día anterior a las 20:00.
+
+**El taxímetro apilado (#19): el alto se calcula y la pausada vive dentro de la
+pila.** Tres cosas que no eran obvias al pasar de una fila a varias:
+
+- **El alto de la ventana sale del número de filas, no del DOM.** Medir con un
+  `ResizeObserver` ataría el alto a un render, y un webview oculto en macOS no corre
+  sus callbacks; una fila de alto fijo y dos márgenes dan un número estable que
+  además se puede testear sin ventana. Lo pone Rust y reaplica la esquina de
+  arriba, porque cuál esquina se queda quieta al cambiar el tamaño depende de la
+  plataforma.
+- **El hover por envolvente no escala a varias filas.** La envolvente se inventó
+  para tragarse el hueco entre el botón y su panel; sobre los botones de toda la
+  pila se tragaba la pila entera y el panel se abría en todas las filas a la vez.
+  Ahora es por fila y sigue habiendo **un** sondeo: cada vuelta son cuatro
+  llamadas a la ventana.
+- **`last` tenía dos trabajos y con la pila se contradecían**: "la que quedó en
+  pausa" y "la que `refresh` revisa para avanzar si la completaron por otro lado".
+  Con un timer eran la misma. Con varios, pausar A de A+B dejaba `last = A`, y si B
+  se completaba desde una card el taxímetro volvía a ofrecer A, que habías dejado a
+  propósito. La regla es que mientras algo corra `last` es una de las que corren.
 
 **El taxímetro no monta el store de ajustes.** Lo que necesita —el tema, la
 tipografía— se espeja en `localStorage` y sigue el evento `storage`. Sin eso, la
@@ -1047,13 +1141,13 @@ tarea que tiene el timer corriendo lo detiene en la base (I5), y el taxímetro, 
 `timerStore` de cada ventana y `bell.rs` no se enterarían: el aviso solo invalida
 vistas. Antes de abrir esas tools, el aviso tiene que refrescar también el timer.
 
-**El timer se abrió en #23 con esa condición cumplida a medias.** `main` sí relee
-los timers con cada `dataVersion` (`useTimerRuntime`), y `bell.rs` relee la base en
-cada vuelta; lo que no se entera es la **ventana flotante**, que no monta el aviso.
-Se aceptó porque el caso que motivó la tool —que Claude registre lo que hiciste—
-es sobre todo `log_time`, que no abre timers, y porque `main` muestra el taxímetro
-igual. Arreglarlo es front (montar `useExternalChanges` también ahí). Completar
-sigue fuera: ese sí cambia lo que el taxímetro muestra en pantalla.
+**El timer se abrió en #23 cumpliendo esa condición.** `main` ya releía los timers
+con cada `dataVersion`; faltaba la **ventana flotante**, que no montaba el aviso, y
+la campana, cuyo vigilante dormido no se enteraba de un timer abierto desde otro
+proceso. Las dos se arreglaron en el mismo PR: la raíz del taxímetro monta
+`ExternalChanges`, y `external.rs` toca `bell::Armed` con cada aviso. El listener
+va en la raíz del taxímetro (`TimerRoot`) y no dentro de `useTimerRuntime` porque `main` ya lo monta en
+`Shell`: en el hook, `main` quedaría con dos y cada aviso invalidaría dos veces.
 
 **`log_time` es una corrida, no un ajuste.** Se pudo resolver con
 `set_actual_seconds`, pero el ajuste no tiene hora: el rail no lo dibuja y el
@@ -1107,10 +1201,9 @@ como conectada aunque se llame distinto**: el caso real fue un `sunrise` puesto 
 mano apuntando a dev, y el botón de dev (`sunrise-dev`) agregaba un segundo
 servidor sobre la misma base.
 
-**Lo que el MCP todavía no hace.** Completar tareas: el argumento del timer ya no
-lo separa de `start_timer` (que también cierra timers), pero completar además
-cambia la tarea en pausa del taxímetro (`last`, `completeAndAdvance`), y eso sí
-necesita que la ventana flotante escuche el aviso de `external.rs`. Borrar
+**Lo que el MCP todavía no hace.** Completar tareas: desde #23 el taxímetro
+escucha el aviso de `external.rs`, así que lo que la frenaba ya no está; falta
+pedirla (y probar que `refresh` avance la tarea en pausa, `last`). Borrar
 no se hace directo: va a pasar por un basurero de 30 días con restauración, para
 que un error del agente no sea irreversible (issue #11).
 

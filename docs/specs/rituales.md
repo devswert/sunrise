@@ -283,6 +283,14 @@ Las reglas que lo sostienen:
   `daily_log` agrupan por `started_at`, así que un timer abierto desde las 23:50 de
   ayer marca la fila de **ayer** como corriendo: sumarle la corrida en otro día
   que no sea hoy la contaría donde no corresponde.
+- **Jornada y paralelismo (#22).** Si el día tuvo trabajo en paralelo, el cierre
+  suma los chips "jornada" y "×1,8 en paralelo", y la bitácora los contadores
+  **Jornada** y **En paralelo**; sin paralelismo no aparece ninguno y el día se ve
+  como siempre. Salen de `daily_log` (`span_seconds`, `clocked_seconds`, §4.15) y
+  la razón es reloj sumado ÷ jornada, no "trabajado" ÷ jornada: los ajustes no
+  tienen hora. **Hoy avanza con el taxímetro** (`clockWithRunning` → `liveClock`):
+  con `n` timers abiertos, cada segundo suma uno de jornada y `n` de reloj —los dos
+  lados a la vez, o el "×" crecería solo—. Un día pasado es lo que llegó.
 - **Recargar no pisa lo que estás escribiendo.** `load` corre con cada
   invalidación —tildar una tarea, mover una pendiente, un aviso de la otra
   ventana—, y sembrar los campos desde el servidor borraba el texto a medio

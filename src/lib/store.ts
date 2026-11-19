@@ -99,7 +99,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 /**
  * Recibe los avisos de cambio de datos que manda la OTRA ventana e invalida las
  * vistas de esta. Se llama una vez por ventana que tenga vistas de datos
- * (hoy solo `main`, desde `Shell`).
+ * (solo `main`, desde `Shell`).
  *
  * Sin esto, completar una tarea desde el taxímetro quedaba bien guardado pero
  * dejaba la semana, Today, el backlog y el sidebar mostrando lo viejo: el
@@ -112,9 +112,11 @@ export const useAppStore = create<AppState>((set, get) => ({
  * respondería a su vez, y las dos quedarían recargándose en ping-pong para
  * siempre.
  *
- * Va aquí y no en `useTimerRuntime` porque ese hook corre en las dos ventanas:
- * el taxímetro no tiene vistas que dependan de `dataVersion` y no necesita
- * recargar nada. Cuando M3 traiga el poller de ICS mutando datos desde Rust,
+ * Va aquí y no en `useTimerRuntime` porque ese hook corre en las dos ventanas, y
+ * el taxímetro ya relee sus timers con los eventos `storage` de ese hook. En el
+ * taxímetro, `dataVersion` lo mueven sus propias mutaciones y el aviso de otro
+ * proceso (`ExternalChanges`, #23). Cuando M3 traiga el poller de ICS mutando
+ * datos desde Rust,
  * el evento de Tauri puede entrar por esta misma puerta llamando a
  * `markDataStale`.
  */

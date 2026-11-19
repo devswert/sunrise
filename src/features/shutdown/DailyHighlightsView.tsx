@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, ChevronDown, Clock, Lock, PenLine, PieChart, Timer } from "lucide-react";
 import { api } from "../../lib/ipc";
 import type { Category, LogDay, Objective, Task } from "../../lib/types";
@@ -17,9 +17,17 @@ import { channelLabel } from "../../lib/channelLabel";
 import { useAppStore } from "../../lib/store";
 import { useToday } from "../../lib/day";
 import { useTimer } from "../timer/useTimer";
+import { useTimerStore } from "../timer/timerStore";
 import { Donut } from "../../components/Donut";
 import { TaskModal } from "../tasks/TaskModal";
-import { highlights, visibleDays, segmentSeconds, workedWithRunning } from "./dailyLog";
+import {
+  clockWithRunning,
+  highlights,
+  visibleDays,
+  segmentSeconds,
+  workedWithRunning,
+} from "./dailyLog";
+import { formatParallelism, parallelism } from "../../lib/workday";
 import "./shutdown.css";
 
 /** Cuántos días se piden de una. Alcanza para un mes de bitácora. */
@@ -55,6 +63,15 @@ export function DailyHighlightsView() {
   const today = useToday();
   // Lo de la corrida en curso todavía no está en la base: lo tiene el taxímetro.
   const { runTotalOf } = useTimer();
+  /** Cuándo llegó la bitácora de Rust: la jornada de hoy avanza desde ahí. */
+  const loadedAt = useRef(Date.now());
+  /**
+   * Cuántos timers estaban abiertos **al cargar**. El `dt` se mide desde la
+   * carga, así que se multiplica por los de ese momento: con los de ahora, un
+   * play dado después sumaría de golpe todo el rato desde la carga hasta que
+   * llegue la recarga que dispara `bumpData`.
+   */
+  const openAtLoad = useRef(0);
 
   const load = useCallback(async () => {
     // Los objetivos van por **rango** y no por semana: la bitácora abarca 30
@@ -69,6 +86,8 @@ export function DailyHighlightsView() {
       api.listCategories(),
       api.listObjectivesRange(desde, isoWeekId(anchor)),
     ]);
+    loadedAt.current = Date.now();
+    openAtLoad.current = useTimerStore.getState().actives.length;
     setDias(b);
     setCategories(cats);
     setObjectives(objs);
@@ -108,6 +127,13 @@ export function DailyHighlightsView() {
           // corriendo, que es justo el caso que sumaría mal.
           const enCurso = d.date === today ? runTotalOf : 0;
           const worked = workedWithRunning(d, enCurso);
+          const clock = clockWithRunning(
+            d,
+            d.date === today,
+            openAtLoad.current,
+            (Date.now() - loadedAt.current) / 1000,
+          );
+          const ratio = parallelism(clock.clocked, clock.span);
           const { shown, others } = highlights(d);
           const channels = groupBy(d.cells, catMap, false);
           const verDonut = analytics.has(d.date);
@@ -183,6 +209,20 @@ export function DailyHighlightsView() {
                       <em>Trabajado</em>
                       <b>{reloj(worked)}</b>
                     </span>
+                    {/* Jornada y paralelismo (#22): solo si hubo trabajo en
+                        paralelo. Sin eso el día se lee como siempre. */}
+                    {ratio != null && (
+                      <>
+                        <span title="Horas de reloj con al menos un timer o una reunión">
+                          <em>Jornada</em>
+                          <b>{reloj(clock.span)}</b>
+                        </span>
+                        <span title="Cuántas cosas corrieron a la vez, en promedio">
+                          <em>En paralelo</em>
+                          <b>{formatParallelism(ratio)}</b>
+                        </span>
+                      </>
+                    )}
                     <span>
                       <em>Planificado</em>
                       <b>{formatMinutes(d.plannedMinutes)}</b>

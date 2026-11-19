@@ -67,7 +67,39 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   `selectIsRunning(id)`. Después de cada mutación la lista **se relee** de la
   base: un `set({ active: null })` borraría de la vista a los que siguen
   corriendo.
-- El taxímetro muestra `actual / planned` con barra de progreso. Click en el
+- **El play de una tarea es `PlayControls`** (`src/components/PlayControls.tsx`,
+  #20), el mismo en la card de la semana, Today, Backlog y `TaskModal` (la cola de
+  Focus todavía tiene su propio play: pendiente, #21).
+  Detenida: **play clásico** (`start(id)`, pausa todo) y, pegado a la derecha,
+  **play en paralelo** (`ListPlus`, "Iniciar en paralelo", `start(id, { parallel:
+  true })`). Corriendo: **solo la pausa** (`stop(id)`, solo esa). Desde el detalle
+  el clásico cierra y lleva a Focus; el paralelo se queda en el detalle (DECISIONES
+  §1). Las cards marcan "en curso" **cada** tarea que corre (`selectIsRunning`), no
+  solo `active`.
+- **El taxímetro es una pila: una fila por timer que corre** (#19), del más
+  antiguo al más nuevo, hacia abajo y sin tope. Si no corre ninguno, una sola
+  fila con la pausada (`last`); una pausada nunca convive con filas que corren.
+  Las filas salen de `timerRows(s)` en `timerStore.ts`. Cada fila es el
+  taxímetro de siempre (abajo) y se pone roja al pasarse de **su** estimado. Una
+  fila que corre muestra **solo la pausa** —no lleva play en paralelo, porque ya
+  corre—; la pausada, solo el play clásico.
+  - **Pausar una de varias la saca de la pila**; la última en pausarse queda en
+    pausa, como con un timer. Para eso `last` cumple una regla: **mientras haya
+    timers corriendo, `last` es uno de ellos** (`lastInStack`). Si apuntara a una
+    que ya salió —pausaste A de A+B y después B se completó desde una card—, la
+    pila vacía mostraría A en vez de avanzar. `stop` y `refresh` lo reparan.
+  - **Completar una de varias la saca sin adelantar nada**
+    (`completeAndAdvance(taskId)`); si era la última, avanza a la siguiente
+    pendiente en pausa o el taxímetro se oculta, como abajo. "La última" la
+    decide la base (`getActiveTimers` después del check), no el store.
+  - **El ojo pausa y esconde toda la pila** (`hideAll`: cierra todos y escribe
+    `last = null` una sola vez, con un solo aviso; encadenar `stopAll` y
+    `dismissLast` publicaba una pausada intermedia que la otra ventana podía
+    reescribir encima, y la fila oculta volvía). La campana no depende de esto: la toca Rust (I6).
+  - **La ventana crece y encoge en alto con la pila** (`set_taximeter_height`,
+    §5.4.7). El alto se **calcula** del número de filas (`windowHeight` en
+    `FloatingTimer.tsx`: 14 + 56 por fila, 70 con una, el de siempre), no se mide.
+- Cada fila muestra `actual / planned` con barra de progreso. Click en el
   título → enfoca `main` y emite `sunrise://goto` con `/focus`. Mantener y
   mover → arrastra la ventana (`useDragOrClick` distingue click de drag).
 - Botones: play/pausa siempre visible; ocultar (ojo) y **completar-y-avanzar**
@@ -79,7 +111,9 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   pone `useCursorHover` sondeando la posición global del puntero: en esta
   ventana el `:hover` de CSS no sirve y además se queda pegado (ver §5.4.5).
   El hit-test usa la envolvente del botón y el panel, así que los 4px de
-  separación visual entre ambos no cortan el recorrido. Ver también §5.4.4 y
+  separación visual entre ambos no cortan el recorrido. Con la pila, la
+  envolvente es **por fila** y el sondeo devuelve qué fila (`data-hover-key`): una
+  sola envolvente para todos los botones abría el panel de todas las filas. Ver también §5.4.4 y
   §7. Al
   completar, la tarea se manda al final de **su propio día**, no de hoy: el
   taxímetro puede estar cronometrando una tarea de otro día (arrancada desde la
@@ -171,7 +205,8 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   > al arrancar el día. Las dos usan `repo::start_of_today()` para que "hoy"
   > signifique lo mismo en los dos lados.
 - `last` (última tarea pausada) se persiste en `localStorage` para poder
-  reanudar; el taxímetro se muestra mientras haya `active` **o** `last`.
+  reanudar; el taxímetro se muestra mientras tenga filas (`timerRows`: algún
+  timer corriendo **o** `last`).
 - **`refresh` avanza igual que el check.** Re-lee la tarea pausada y, si la
   completaron desde otro lado (Focus, la card, el modal), pasa a la siguiente
   pendiente en pausa o se oculta. Antes quedaba en pantalla la tarea ya cerrada
@@ -265,6 +300,34 @@ Las tres reglas que lo definen:
 
 Las tres viven en **`work_by_day`**, el núcleo compartido con la bitácora
 (§4.16): la semana lo agrupa en celdas día × categoría, la bitácora en timelines.
+
+**Jornada y paralelismo (#22).** Con timers en paralelo hay tres números, y
+`work_by_day` los saca de la misma pasada:
+
+- **Tiempo en tareas** — lo de siempre (`seconds`, `total_seconds`): cada tarea
+  cuenta su tiempo completo, ajustes incluidos.
+- **Jornada** (`span_seconds`) — las horas de reloj con al menos un timer o una
+  reunión, uniendo lo que se solapa. Los tramos son las **corridas del
+  taxímetro** (`ended_at` distinto de `started_at`, o abiertas **hasta ahora**) y
+  las **reuniones de la Regla 3, enteras** aunque sigan en curso. **Los ajustes
+  manuales no cuentan**: no tienen hora (DECISIONES §1). Cada tramo se **recorta
+  al día local** —es reloj, no atribución—, así que un timer abierto desde anoche
+  ocupa la jornada de hoy aunque su fila sea de ayer, y una reunión de 23:30 a 00:30
+pone su media hora en cada día. Por eso `work_by_day` trae también las abiertas y
+las reuniones que empezaron **antes** del rango: solo para el reloj, nunca para las
+filas.
+- **Paralelismo** — `clocked_seconds ÷ span_seconds`, donde `clocked_seconds` es la
+  suma de los mismos tramos sin unir. **No** es tiempo en tareas ÷ jornada: los
+  ajustes la inflarían. Se escribe "×1,8".
+
+Por día van en `RollupDay`; en total, `span_seconds`/`clocked_seconds` de
+`WeeklyRollup` son la **suma** de los días (no se pisan, por el recorte), y el "×"
+de la semana es Σ reloj ÷ Σ jornada, no el promedio de los días. **Solo se muestran
+si hay paralelismo** (desde ×1,05, `lib/workday.ts`): la cabecera suma los chips
+"jornada" y "en paralelo" (con el "×" de la semana), y cada columna de "lo que se
+cerró" una línea de alto fijo si **algún** día tuvo paralelismo —en **todos** los
+días de esa semana, para no desalinear—. Sin paralelismo la
+review se ve como antes. La unión espejada en el mock es `clockOnDay`.
 
 **Lo planificado sí sale de `scheduled_date`, y esa asimetría es correcta**:
 replanificar una tarea mueve su barra de plan pero no la de horas. Son dos

@@ -69,7 +69,7 @@ se pruebe en memoria.
 | `start_timer` (`id`, `parallel`) | `start_timer` | escribe, no destructiva, idempotente |
 | `stop_timer` (`id`) | `stop_timer` | escribe, no destructiva, idempotente |
 | `log_time` (`id`, `start`, `end`) | `log_time_entry` | escribe, no destructiva, **no** idempotente |
-| `set_task_time` (`id`, `minutes`) | `set_actual_seconds` en `atomically` | escribe, no destructiva, idempotente |
+| `set_task_time` (`id`, `minutes`) | `set_actual_seconds_unless_running` | escribe, no destructiva, idempotente |
 
 - **`list_tasks` sin fecha es hoy** en la zona del usuario, y toda respuesta trae
   `today`: el modelo no tiene otra forma confiable de saber qué día es acá.
@@ -125,11 +125,16 @@ Slack— además de cronometrar en vivo.
   ajuste a mano (I2): la diferencia queda como entrada de ajuste sin hora.
   **Con el timer de la tarea corriendo se rechaza**: el total no incluye la corrida
   abierta, que se suma al detenerla, así que "déjala en 2 horas" terminaría en 2
-  horas más lo que llevaba. La pregunta y la escritura van en la misma transacción.
+  horas más lo que llevaba. La pregunta y la escritura van en la misma transacción
+  (`repo::set_actual_seconds_unless_running`).
 - **Las cuatro aceptan reuniones de calendario** (la card tiene play y el tiempo no
   lo reescribe el reconciler), **incluidas las "solo agenda" (`rail_only`)**, que
   `list_tasks` no lista pero sí ocupan su hora en el rail; no aceptan tareas
-  `ORPHANED` (I7).
+  `ORPHANED` (I7). **En una reunión, el tiempo registrado reemplaza su duración**
+  en los totales del día (Regla 3 de §4.15: una reunión con entradas cuenta lo
+  trabajado, no lo agendado): un `log_time` de 10 minutos sobre una de 60 deja ese
+  día en 10. Es lo mismo que pasa con el play de la app, y la descripción de la
+  tool lo dice.
 - **`log_time` devuelve `logged`** con el inicio y el fin **guardados**, en hora
   local: si el modelo mandó un offset que no era el del usuario, se ve ahí.
 - **Topes**: `log_time` de hasta 24 horas absolutas (el día de otoño, de 25, va en
@@ -145,17 +150,16 @@ Slack— además de cronometrar en vivo.
 puede leer sin una regla que choca con "fin antes del inicio se rechaza". Un RFC
 3339 **con offset** se respeta tal cual. En el salto de horario, una hora que
 ocurre dos veces toma la primera (como `local_midnight`) y una que no existe se
-rechaza diciendo por qué. Lo que se guarda es siempre `to_rfc3339()` en UTC.
+rechaza diciendo por qué; para un tramo dentro de la **segunda** pasada de la
+hora repetida hay que mandar RFC 3339 con offset. Lo que se guarda es siempre
+`to_rfc3339()` en UTC.
 
 **Fuera, a propósito:**
 
-- **Completar y borrar.** El motivo original —completar cierra un timer en la
-  base y el taxímetro no se entera— ya no lo separa del resto: `start_timer` con
-  `parallel: false` cierra timers igual, y se aceptó con el hueco documentado abajo.
-  Lo que queda es que completar además cambia lo que el taxímetro **muestra en
-  pausa** (`last` y `completeAndAdvance`), que la ventana flotante solo revisa en su
-  propio refresco; se abre cuando esa ventana escuche el aviso. Borrar espera el
-  basurero (#11).
+- **Completar y borrar.** El motivo original de completar —cierra un timer en la
+  base y el taxímetro no se enteraba— se resolvió en #23 (las dos ventanas escuchan
+  el aviso, ver abajo); queda fuera por alcance, no por un impedimento. Borrar
+  espera el basurero (#11).
 - **Corregir o borrar tramos ya registrados.** `log_time` solo agrega.
 - **Editar o mover las tareas de calendario.** Se leen; su dueño es el reconciler,
   que reescribiría la edición en la próxima sincronización.
@@ -179,17 +183,24 @@ escribe la app no lo mueve y no hay eco posible. Al cambiar emite
 `markDataStale()`. Restaurar un respaldo cambia la conexión y da un aviso de más,
 inofensivo. Detalle del canal en [§5](sincronizacion.md).
 
-**El timer**: en `main`, `useTimerRuntime` relee los timers con cada
-`dataVersion`, así que un `start_timer` del MCP aparece en la vista y `main`
-muestra el taxímetro. Dos huecos conocidos (#23, no bloqueantes):
+**El timer** (#23): el aviso llega a las **dos ventanas** y cada una lo escucha —
+`main` desde `Shell`, el taxímetro desde su raíz (`TimerRoot`, montado por `timer.tsx`)—,
+porque cada una tiene su propio store. En las dos, `dataVersion` vuelve a correr
+`useTimerRuntime`, que relee los timers: un `start_timer` del MCP, y lo que sigue
+corriendo tras un `stop_timer`, se ve en la vista y en el taxímetro a los ~2 s.
 
-- **La ventana flotante no escucha `data-changed`** (`useExternalChanges` vive en
-  `Shell`, solo en `main`, y `refresh` no avisa por `localStorage`): su store se
-  queda con lo último que leyó hasta su próximo refresco. Arreglarlo es montar el
-  aviso también ahí.
-- **La campana puede llegar hasta 5 min tarde** si el MCP arranca un timer cuando
-  no había ninguno: nadie toca `bell::Armed` y el vigilante duerme hasta
-  `ESPERA_DORMIDO`. Por diseño se atrasa, no se pierde (cada vuelta relee la base).
+**Lo que no se refleja bien: el contador de la fila en pausa del taxímetro**
+(`last`). Mientras una tarea corre, `last` queda en ella con los segundos de hoy
+**de cuando arrancó**; el `stop` del store de la app los actualiza, pero `refresh`
+solo relee título y estimado. Así que tras un `stop_timer` del MCP el taxímetro
+ofrece retomar esa misma tarea **con el contador de antes de la corrida** (se ve
+retroceder), y un `log_time` sobre la tarea en pausa no le cambia el contador. Los
+datos están bien —es lo que se muestra—; arreglarlo es que `refresh` relea los
+segundos de hoy de `last` (`timerStore.ts`, pendiente).
+
+Y `external.rs`
+**toca `bell::Armed`** con cada aviso: sin eso, un timer abierto por el MCP cuando
+no corría ninguno esperaba hasta `ESPERA_DORMIDO` (5 min) para armar la campana.
 
 #### Configs → MCP (`claude_desktop.rs`, `McpCard`)
 

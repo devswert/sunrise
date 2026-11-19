@@ -43,6 +43,9 @@ impl SunriseServer {
         // escribe tiempo una zona vieja dejaría tramos mal fechados para siempre:
         // se relee en cada llamada, que ya abre su propia conexión.
         crate::repo::forget_zone();
+        // Y se recalienta ya: `zone_cached()` (`start_of_today`, `seconds_today`)
+        // caería a la del sistema con el caché frío.
+        crate::repo::zone(&conn);
         f(&conn)
     }
 }
@@ -147,7 +150,7 @@ impl SunriseServer {
     }
 
     #[tool(
-        description = "Registra un tramo de trabajo que ya pasó, con su inicio y su fin (YYYY-MM-DD HH:MM en la zona del usuario), como si el timer hubiera corrido en ese rato: aparece en su hora en el día y se suma al tiempo trabajado. El fin no puede estar en el futuro y el tramo no puede pisar otro tramo ni el timer en curso de la misma tarea. Repetirla registra el tiempo dos veces.",
+        description = "Registra un tramo de trabajo que ya pasó, con su inicio y su fin (YYYY-MM-DD HH:MM en la zona del usuario), como si el timer hubiera corrido en ese rato: aparece en su hora en el día y se suma al tiempo trabajado. El fin no puede estar en el futuro y el tramo no puede pisar otro tramo ni el timer en curso de la misma tarea. Repetirla registra el tiempo dos veces. En una reunión del calendario, el tiempo registrado reemplaza la duración del evento en los totales del día.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,

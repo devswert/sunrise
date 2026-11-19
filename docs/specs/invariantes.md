@@ -70,7 +70,9 @@ cambias una, actualiza este archivo en el mismo commit.
   Ningún componente llama `invoke` directo.
   **Vale para el front.** El servidor MCP (§4.32) es otro proceso y llama a `repo.rs`
   directo, que es justamente lo que lo obliga a no tener reglas propias **de datos**;
-  lo que sí agrega son topes y rechazos de entrada, documentados en §4.32.
+  lo que sí agrega son topes y rechazos de entrada, documentados en §4.32. Lo que
+  decide sobre datos (como no fijar el total con el timer corriendo) va igual en
+  `repo.rs`.
 - **I11. Toda mutación llama `bumpData()`** ([§5.3](sincronizacion.md)). Para invalidar
   **sin** avisar hacia afuera está `markDataStale()`, que existe solo para el listener
   que recibe esos avisos.
