@@ -620,6 +620,12 @@ fn timer_result_with(
     })
 }
 
+/// Segundos → minutos **redondeados**: truncar respondía `logged_minutes: 0` a una
+/// corrida de 59 s, y el modelo podía leer "no se registró nada".
+fn minutes(secs: i64) -> i64 {
+    (secs + 30) / 60
+}
+
 /// Una fecha y hora **local** del usuario → UTC.
 ///
 /// Acepta `YYYY-MM-DD HH:MM` (o con `T`, y con segundos). Una hora sola no: no
@@ -674,7 +680,7 @@ pub fn start_timer(conn: &Connection, p: StartTimerParams) -> ToolResult {
 pub fn stop_timer(conn: &Connection, p: TaskIdParams) -> ToolResult {
     trackable(conn, p.id)?;
     let stopped = repo::stop_timer(conn, p.id).map_err(db_err)?;
-    timer_result(conn, p.id, stopped.map(|(_, secs)| secs / 60), Vec::new())
+    timer_result(conn, p.id, stopped.map(|(_, secs)| minutes(secs)), Vec::new())
 }
 
 /// Registra un tramo pasado ya cerrado (`repo::log_time_entry`).
@@ -717,7 +723,7 @@ pub fn log_time(conn: &Connection, p: LogTimeParams) -> ToolResult {
         start: local_label(tz, &start.to_rfc3339()),
         end: local_label(tz, &end.to_rfc3339()),
     };
-    timer_result_with(conn, p.id, Some(secs / 60), Some(logged), Vec::new())
+    timer_result_with(conn, p.id, Some(minutes(secs)), Some(logged), Vec::new())
 }
 
 /// Corrige el total trabajado, como el ajuste a mano de la app
@@ -733,14 +739,16 @@ pub fn set_task_time(conn: &Connection, p: SetTaskTimeParams) -> ToolResult {
             "El total tiene que estar entre 0 y {MAX_TOTAL_MINUTES} minutos."
         ));
     }
-    let written =
-        repo::set_actual_seconds_unless_running(conn, p.id, p.minutes * 60).map_err(db_err)?;
-    if !written {
-        return Err(
-            "El timer de esa tarea está corriendo: detenlo primero con stop_timer, o el total \
-             quedaría sumado a lo que lleva."
-                .into(),
-        );
+    match repo::set_actual_seconds_unless_running(conn, p.id, p.minutes * 60).map_err(db_err)? {
+        repo::SetTotal::Written => {}
+        repo::SetTotal::NotActive => return Err(format!("No existe una tarea con id {}.", p.id)),
+        repo::SetTotal::Running => {
+            return Err(
+                "El timer de esa tarea está corriendo: detenlo primero con stop_timer, o el \
+                 total quedaría sumado a lo que lleva."
+                    .into(),
+            )
+        }
     }
     timer_result(conn, p.id, None, Vec::new())
 }

@@ -150,7 +150,9 @@ Slack— además de cronometrar en vivo.
 puede leer sin una regla que choca con "fin antes del inicio se rechaza". Un RFC
 3339 **con offset** se respeta tal cual. En el salto de horario, una hora que
 ocurre dos veces toma la primera (como `local_midnight`) y una que no existe se
-rechaza diciendo por qué. Lo que se guarda es siempre `to_rfc3339()` en UTC.
+rechaza diciendo por qué; para un tramo dentro de la **segunda** pasada de la
+hora repetida hay que mandar RFC 3339 con offset. Lo que se guarda es siempre
+`to_rfc3339()` en UTC.
 
 **Fuera, a propósito:**
 
@@ -187,13 +189,16 @@ porque cada una tiene su propio store. En las dos, `dataVersion` vuelve a correr
 `useTimerRuntime`, que relee los timers: un `start_timer` del MCP, y lo que sigue
 corriendo tras un `stop_timer`, se ve en la vista y en el taxímetro a los ~2 s.
 
-**Lo que no se refleja: la fila en pausa del taxímetro** (`last`). La escribe el
-`stop` del store de la app, con los segundos de hoy de esa tarea; `refresh` solo le
-relee título y estimado. Así que tras un `stop_timer` del MCP el taxímetro no
-ofrece retomar esa tarea (si había otra en pausa, sigue esa, con sus segundos
-viejos), y un `log_time` sobre la tarea en pausa no le cambia el contador. Los
-datos están bien —es lo que se muestra—; arreglarlo es que `refresh` rearme `last`
-con lo que desapareció de la pila y relea sus segundos (`timerStore.ts`, pendiente). Y `external.rs`
+**Lo que no se refleja bien: el contador de la fila en pausa del taxímetro**
+(`last`). Mientras una tarea corre, `last` queda en ella con los segundos de hoy
+**de cuando arrancó**; el `stop` del store de la app los actualiza, pero `refresh`
+solo relee título y estimado. Así que tras un `stop_timer` del MCP el taxímetro
+ofrece retomar esa misma tarea **con el contador de antes de la corrida** (se ve
+retroceder), y un `log_time` sobre la tarea en pausa no le cambia el contador. Los
+datos están bien —es lo que se muestra—; arreglarlo es que `refresh` relea los
+segundos de hoy de `last` (`timerStore.ts`, pendiente).
+
+Y `external.rs`
 **toca `bell::Armed`** con cada aviso: sin eso, un timer abierto por el MCP cuando
 no corría ninguno esperaba hasta `ESPERA_DORMIDO` (5 min) para armar la campana.
 

@@ -1213,9 +1213,18 @@ fn adjustment_stamp(tz: chrono_tz::Tz, date: Option<&str>, time: Option<&str>) -
     }
 }
 
+/// Lo que hizo `set_actual_seconds_unless_running`.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SetTotal {
+    Written,
+    /// El timer de la tarea corre: no se escribió nada.
+    Running,
+    /// La tarea no existe o ya no está activa (I7): no se escribió nada.
+    NotActive,
+}
+
 /// Fija el total como `set_actual_seconds`, **salvo que el timer de la tarea esté
-/// corriendo** (o que la tarea ya no esté activa, I7): devuelve `false` y no
-/// escribe nada. La usa el MCP (#23).
+/// corriendo** o que la tarea ya no esté activa (I7). La usa el MCP (#23).
 ///
 /// El total no incluye la corrida abierta, que `stop_timer` suma después: "déjala
 /// en dos horas" terminaría en dos horas más lo que llevaba. La pregunta y la
@@ -1225,7 +1234,7 @@ pub fn set_actual_seconds_unless_running(
     conn: &Connection,
     task_id: i64,
     seconds: i64,
-) -> Result<bool> {
+) -> Result<SetTotal> {
     atomically(conn, || {
         // También que siga viva: el reconciler pudo orfanarla (I7) desde que el
         // llamador la miró.
@@ -1234,11 +1243,14 @@ pub fn set_actual_seconds_unless_running(
             [task_id],
             |r| r.get(0),
         )?;
-        if !active || get_active_timer(conn, task_id)?.is_some() {
-            return Ok(false);
+        if !active {
+            return Ok(SetTotal::NotActive);
+        }
+        if get_active_timer(conn, task_id)?.is_some() {
+            return Ok(SetTotal::Running);
         }
         set_actual_seconds(conn, task_id, seconds)?;
-        Ok(true)
+        Ok(SetTotal::Written)
     })
 }
 
@@ -3806,14 +3818,26 @@ mod tests {
     fn el_total_no_se_fija_con_el_timer_de_la_tarea_corriendo() {
         let c = conn();
         let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
-        assert!(set_actual_seconds_unless_running(&c, t.id, 5400).unwrap());
+        assert_eq!(set_actual_seconds_unless_running(&c, t.id, 5400).unwrap(), SetTotal::Written);
         assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 5400);
 
         start_timer(&c, t.id, true).unwrap();
-        assert!(!set_actual_seconds_unless_running(&c, t.id, 60).unwrap());
+        assert_eq!(set_actual_seconds_unless_running(&c, t.id, 60).unwrap(), SetTotal::Running);
         assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 5400);
         // Y no dejó entrada de ajuste: solo la del primer total y el timer abierto.
         assert_eq!(list_time_entries(&c, t.id).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn el_total_no_se_fija_en_una_tarea_que_ya_no_esta_activa() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        c.execute("UPDATE tasks SET source_state = 'ORPHANED' WHERE id = ?1", [t.id])
+            .unwrap();
+        assert_eq!(set_actual_seconds_unless_running(&c, t.id, 60).unwrap(), SetTotal::NotActive);
+        assert_eq!(set_actual_seconds_unless_running(&c, 9999, 60).unwrap(), SetTotal::NotActive);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 0);
+        assert!(list_time_entries(&c, t.id).unwrap().is_empty());
     }
 
     #[test]

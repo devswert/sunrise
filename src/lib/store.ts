@@ -113,8 +113,10 @@ export const useAppStore = create<AppState>((set, get) => ({
  * siempre.
  *
  * Va aquí y no en `useTimerRuntime` porque ese hook corre en las dos ventanas, y
- * el taxímetro ya relee sus timers con los eventos `storage` de ese hook. Su
- * `dataVersion` solo lo mueve el aviso de otro proceso (`ExternalChanges`, #23). Cuando M3 traiga el poller de ICS mutando datos desde Rust,
+ * el taxímetro ya relee sus timers con los eventos `storage` de ese hook. En el
+ * taxímetro, `dataVersion` lo mueven sus propias mutaciones y el aviso de otro
+ * proceso (`ExternalChanges`, #23). Cuando M3 traiga el poller de ICS mutando
+ * datos desde Rust,
  * el evento de Tauri puede entrar por esta misma puerta llamando a
  * `markDataStale`.
  */
