@@ -1028,10 +1028,10 @@ botones de una versión vieja de macOS mientras en desarrollo se veían los actu
 En los tests: `pnpm test:rust` compila el crate de Tauri entero, y en Linux eso
 arrastra las dependencias de webkit2gtk.
 
-**Los tests corren en cada push, en archivo aparte del release.** `release.yml`
-necesita permiso de escritura y recibe la llave privada del updater por env; un
-workflow que se dispara con cada PR es el último lugar donde se quiere cualquiera de
-las dos.
+**Los tests van en archivo aparte del release.** `release.yml` necesita permiso de
+escritura y recibe la llave privada del updater por env; un workflow de tests es el
+último lugar donde se quiere cualquiera de las dos. Corrían en cada push y en cada
+PR hasta noviembre de 2026; desde entonces el CI es local (§12).
 
 **El workflow de release no se puede correr a mano.** Disparado desde una rama, el
 nombre del tag valía `main` y habría publicado un Release "sunrise main".
@@ -1053,7 +1053,7 @@ firmar y la app los rechaza sin decir por qué.**
 
 ## 10. Método: cómo se verifica acá
 
-**CI en UTC es una ventaja, no un estorbo.** Encontró dos bugs de fecha que en
+**UTC es una ventaja, no un estorbo.** El CI de Actions, que corría en UTC, encontró dos bugs de fecha que en
 Santiago pasaban por casualidad:
 
 - Un `TZID` que se ignoraba desde el primer commit —el parámetro existía en la firma
@@ -1068,7 +1068,8 @@ Santiago pasaban por casualidad:
   que verifica el número correcto del día equivocado.
 
 La regla quedó en la skill de tests: **si tocas fechas, corre también
-`TZ=UTC pnpm test`.**
+`TZ=UTC pnpm test`.** Desde que el CI es local (§12), `bin/gates` corre las dos
+suites también en UTC, siempre.
 
 **Pero `TZ=` era el único instrumento, y no alcanzaba.** Es global al proceso, así
 que no se puede variar entre casos: un archivo con fixtures en Santiago y otro que
@@ -1080,7 +1081,7 @@ zona por argumento donde importa. La suite pasa hoy en `UTC`, `America/Santiago`
 `Pacific/Kiritimati` (+14), `Pacific/Chatham` (+13:45), `Asia/Kathmandu` (+5:45),
 `Africa/Cairo`, `America/Havana`, `Asia/Tokyo` y `Europe/Madrid`.
 
-`TZ=UTC` sigue valiendo como canario —es lo que corre CI— pero ya no es lo único
+`TZ=UTC` sigue valiendo como canario —lo corre `bin/gates`— pero ya no es lo único
 que hay. **La regla nueva: un test sobre fechas declara su zona; si depende de la
 del entorno, todavía no está terminado.**
 
@@ -1174,6 +1175,42 @@ tarea que tiene el timer corriendo lo detiene en la base (I5), y el taxímetro, 
 `timerStore` de cada ventana y `bell.rs` no se enterarían: el aviso solo invalida
 vistas. Antes de abrir esas tools, el aviso tiene que refrescar también el timer.
 
+**El timer se abrió en #23 cumpliendo esa condición.** `main` ya releía los timers
+con cada `dataVersion`; faltaba la **ventana flotante**, que no montaba el aviso, y
+la campana, cuyo vigilante dormido no se enteraba de un timer abierto desde otro
+proceso. Las dos se arreglaron en el mismo PR: la raíz del taxímetro monta
+`ExternalChanges`, y `external.rs` toca `bell::Armed` con cada aviso. El listener
+va en la raíz del taxímetro (`TimerRoot`) y no dentro de `useTimerRuntime` porque `main` ya lo monta en
+`Shell`: en el hook, `main` quedaría con dos y cada aviso invalidaría dos veces.
+
+**`log_time` es una corrida, no un ajuste.** Se pudo resolver con
+`set_actual_seconds`, pero el ajuste no tiene hora: el rail no lo dibuja y el
+rollup lo fecha en el día de la tarea, no en el que se trabajó. El tramo entra como
+lo habría dejado el taxímetro y **pasa por `close_entry`**, que es donde viven I1 e
+I3; insertarlo ya cerrado (y no abrirlo para cerrarlo) evita chocar con el índice
+de I4 cuando la tarea tiene su timer corriendo.
+
+**`log_time` rechaza pisar otra corrida de la misma tarea.** La issue no lo pedía,
+pero el uso esperado es reconstruir un día desde una conversación, y un modelo que
+lo hace dos veces —o que registra el rato que el timer ya está contando— duplica
+horas sin que nada lo muestre. Rechazar es más barato que corregir tramos, que
+está fuera de alcance. Entre tareas distintas no se mira: con timers en paralelo,
+dos tareas a la vez es legítimo.
+
+**Fecha y hora completas, no `HH:MM`.** Con la hora sola, "23:00 a 00:30" obliga a
+inventar una regla (¿el fin es del día siguiente?) que choca con "fin antes del
+inicio se rechaza". `YYYY-MM-DD HH:MM` local es lo que el modelo ya maneja con
+`list_tasks`, y no es ambiguo salvo en el salto de horario, donde se toma la
+primera ocurrencia o se rechaza la hora que no existe.
+
+**`parallel` sin valor por defecto.** `false` pausa lo que el usuario tiene
+corriendo en la app; dejarlo implícito habría hecho que "anota que empecé X"
+cortara el timer de otra cosa sin que nadie lo decidiera.
+
+**`set_task_time` se rechaza con el timer corriendo.** El total no incluye la
+corrida abierta y `stop_timer` la suma después: "déjala en dos horas" terminaba en
+dos horas más lo que llevaba.
+
 **Las tareas de calendario se leen y no se editan.** Su dueño es el reconciler, que
 vuelve cada quince minutos y reescribe título, día y hora desde el feed. Una edición
 desde Claude duraría hasta la próxima sincronización, y el usuario no sabría por
@@ -1198,8 +1235,9 @@ como conectada aunque se llame distinto**: el caso real fue un `sunrise` puesto 
 mano apuntando a dev, y el botón de dev (`sunrise-dev`) agregaba un segundo
 servidor sobre la misma base.
 
-**Lo que el MCP todavía no hace.** Completar tareas y manejar el timer piden que el
-aviso de `external.rs` refresque también el timer (I5), no solo las vistas. Borrar
+**Lo que el MCP todavía no hace.** Completar tareas: desde #23 el taxímetro
+escucha el aviso de `external.rs`, así que lo que la frenaba ya no está; falta
+pedirla (y probar que `refresh` avance la tarea en pausa, `last`). Borrar
 no se hace directo: va a pasar por un basurero de 30 días con restauración, para
 que un error del agente no sea irreversible (issue #11).
 
@@ -1214,7 +1252,7 @@ cerrarla sigue viniendo acá, en el mismo PR: la issue no lleva el relato.
 
 **El flujo** son tres skills que se piden con palabras: `sunrise-lifecycle`
 ("¿qué viene?", implementar hasta el QA), `sunrise-shaping` (refinar) y
-`sunrise-ship` ("mándalo": PR, CI y merge). **Mezclar no es publicar**: lo
+`sunrise-ship` ("mándalo": gates, reviewer, PR y merge). **Mezclar no es publicar**: lo
 mezclado queda en `Done`, y "vamos pa prod" es `sunrise-release`, que junta todo lo
 de `Done` en una versión, le pone el milestone `vX.Y.Z` a cada issue y la pasa a
 `Released`. Es la diferencia con un servicio web, donde mezclar es desplegar: acá
@@ -1227,6 +1265,62 @@ tener lockfiles distintos. El QA con `pnpm tauri dev` es de una worktree a la ve
 porque todas usan el puerto 1420 y la misma `sunrise-dev.sqlite`. Por la misma
 razón `target/debug/sunrise` es una sola ruta para todas: el LaunchAgent y el MCP
 registrados desde dev corren lo que haya compilado la última worktree.
+
+**El CI es local, por costo** (#25, noviembre de 2026). `tests.yml` corría en cada PR
+y en cada push a `main` sobre `macos-26`: 10-15 minutos por corrida, dos corridas
+por issue (el PR y el merge), y duplicaba exactamente lo que `bin/gates` ya corría
+antes de cada push. Se acabaron los minutos de Actions, y hubo días sin runners
+macOS, con PRs esperando una cola que no avanzaba. Ubuntu no era salida: `cargo
+test` compila el crate de Tauri entero, y en Linux arrastra webkit2gtk.
+
+Ahora **`bin/gates` es el CI**: cada PR se abre ya en verde y se mezcla en una sola
+ronda, sin nada que esperar. `tests.yml` quedó solo manual, y `release.yml` dejó de
+correr las suites —eran 5 de sus 12,5 minutos, más 46 s de subir un caché de Rust
+que un tag no puede restaurar nunca—: ~6-7 minutos por versión. Lo que asegura que
+lo publicado está en verde es `bin/gates` sobre el commit exacto de `main`, que el
+hook exige para empujar un tag `v*` (antes los tags pasaban libres, porque el
+release corría las suites). Lo que **no** se negoció: un `reviewer` sin contexto
+antes de cada merge, siempre. Sin CI remoto es la única segunda mirada.
+
+**Lo que se pierde es el entorno limpio**, y se mitigó en tres partes. (1) El hook
+compara el sello con el árbol **commiteado**, no con el working tree: un archivo
+sin trackear con el que los gates pasaban no viaja en el push, y un runner lo
+habría notado. (2) `bin/gates` corre `pnpm install --frozen-lockfile`: un
+`package.json` que diverge del lockfile, o un `node_modules` viejo, ya no pasa en
+silencio (y si `cargo` reescribe `Cargo.lock`, el árbol deja de ser el commiteado y
+el hook bloquea). (3) Al mezclar, el hook exige que la rama contenga `origin/main`:
+`main` no tiene protección de rama y GitHub squashearía un PR atrasado, dejando en
+`main` una mezcla que nadie probó; con varias sesiones mezclando en paralelo, eso
+iba a pasar. Como el hook pasó a ser lo único que separa un cambio de `main` y de un `.dmg`
+público, tiene su propia prueba (`bin/test-hook`, dentro de los gates) y funciona por **lista
+blanca**: cada `git … push` del comando tiene que ser exactamente `git push`
+con `-u`, `-q` o `--force-with-lease` y, opcional, `origin` y `HEAD` (o la rama de la
+issue o del release), o `git push origin vX.Y.Z`, y lo demás se bloquea, y un tag tiene que apuntar a un commit
+de `origin/main`. Se llegó ahí después de tres revisiones sin contexto que
+encontraron, cada una, formas nuevas de llegar a `main` o a un release que el
+regex no reconocía —un `gh pr merge` sin `cd` pasaba sin mirar el sello, `git push
+origin main` desde una rama, `'HEAD:main'` entre comillas, `git -c … push`, un tag
+con `-f`—. Enumerar lo prohibido no converge; enumerar lo permitido sí. Además,
+cualquier error inesperado del hook bloquea (`trap … ERR`): para Claude Code solo el
+código 2 bloquea, y un fallo con otro código dejaba pasar el comando.
+
+**El hook juzga el estado de antes del comando**, y de ahí salen dos reglas que
+costaron rondas de revisión. Nada que mueva HEAD (`commit`, `pull`, `rebase`,
+`reset`, `checkout`…) puede ir en el mismo comando que un push o un merge: `git pull
+&& git tag vX && git push origin vX` con otro merge entremedio publicaba un commit que
+nadie probó. Y un tag se crea en un comando y se empuja en otro, juzgando
+`refs/tags/vX` tal como ya existe: intentar adivinar a qué commit apuntaría leyendo
+los flags de `git tag` (`-f`, `-a -m … <rev>`, un `vX` local viejo) falló tres veces
+seguidas. Lo que queda sin cubrir: dependencias del sistema distintas a las de
+un macOS limpio (toolchain de Rust, Xcode), y un tag empujado a mano desde una
+terminal, que se salta el hook, igual que `gh api` contra el endpoint de merge, otro
+binario de git o editar el propio hook (el hook frena accidentes, no a alguien
+decidido); la carrera de segundos entre el `fetch` del hook y el merge real si otra
+sesión mezcla justo entremedio; y un comando con varios `cd` a carpetas distintas,
+donde el hook juzga solo el primero. Al revés, hay falsos bloqueos aceptados: un
+`git commit -m` cuyo texto cite un `git push` literal (por eso los mensajes van con
+`-F <archivo>`, y el título de un PR no puede citarlo); flags después del refspec, `HEAD:<rama>`, y un `--subject` con espacios antes del
+número del PR (las skills ponen el número primero). Para lo primero está `gh workflow run tests.yml`.
 
 **Fuera de alcance**, desde el MVP y sin issue: recurrentes o rituales generados
 solos; sync entre dispositivos (el modelo de datos queda listo, no se implementa);

@@ -576,7 +576,8 @@ pub fn list_backlog(conn: &Connection) -> Result<Vec<Task>> {
 /// parámetro**, y el caché solo alimenta a los llamadores públicos.
 ///
 /// `None` = todavía no se leyó. Lo invalida `set_setting`, que es el único camino
-/// por el que el ajuste puede cambiar.
+/// por el que el ajuste cambia **en este proceso**; el servidor MCP, que es otro,
+/// lo olvida en cada llamada (`mcp::server::with_db`).
 static ZONE: std::sync::RwLock<Option<chrono_tz::Tz>> = std::sync::RwLock::new(None);
 
 /// El nombre IANA de la zona del sistema (`America/Santiago`), o UTC si el sistema
@@ -627,7 +628,8 @@ pub(crate) fn zone_cached() -> chrono_tz::Tz {
         .unwrap_or_else(system_zone)
 }
 
-/// Olvida la zona cacheada. La llama `set_setting`, y los tests entre casos.
+/// Olvida la zona cacheada. La llaman `set_setting`, el MCP en cada llamada (el
+/// ajuste lo cambia la app, desde otro proceso) y los tests entre casos.
 pub(crate) fn forget_zone() {
     if let Ok(mut cache) = ZONE.write() {
         *cache = None;
@@ -1209,6 +1211,184 @@ fn adjustment_stamp(tz: chrono_tz::Tz, date: Option<&str>, time: Option<&str>) -
         Some(dt) => dt.with_timezone(&Utc).to_rfc3339(),
         None => now(),
     }
+}
+
+/// Lo que hizo `set_actual_seconds_unless_running`.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SetTotal {
+    Written,
+    /// El timer de la tarea corre: no se escribió nada.
+    Running,
+    /// La tarea no existe o ya no está activa (I7): no se escribió nada.
+    NotActive,
+}
+
+/// Fija el total como `set_actual_seconds`, **salvo que el timer de la tarea esté
+/// corriendo** o que la tarea ya no esté activa (I7). La usa el MCP (#23).
+///
+/// El total no incluye la corrida abierta, que `stop_timer` suma después: "déjala
+/// en dos horas" terminaría en dos horas más lo que llevaba. La pregunta y la
+/// escritura van en la misma transacción, porque entre las dos la app podría darle
+/// play. La app no pasa por acá: ahí el usuario ve el número moverse.
+pub fn set_actual_seconds_unless_running(
+    conn: &Connection,
+    task_id: i64,
+    seconds: i64,
+) -> Result<SetTotal> {
+    atomically(conn, || {
+        // También que siga viva: el reconciler pudo orfanarla (I7) desde que el
+        // llamador la miró.
+        let active: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1 AND source_state = 'ACTIVE')",
+            [task_id],
+            |r| r.get(0),
+        )?;
+        if !active {
+            return Ok(SetTotal::NotActive);
+        }
+        if get_active_timer(conn, task_id)?.is_some() {
+            return Ok(SetTotal::Running);
+        }
+        set_actual_seconds(conn, task_id, seconds)?;
+        Ok(SetTotal::Written)
+    })
+}
+
+/// Por qué `log_time_entry` no registró el tramo.
+#[derive(Debug)]
+pub enum LogTimeError {
+    /// El fin no es posterior al inicio.
+    EndNotAfterStart,
+    /// El fin está en el futuro: un tramo pasado ya terminó.
+    EndInFuture,
+    /// La tarea no existe (o la quitó su calendario, I7).
+    TaskNotFound,
+    /// Se pisa con una corrida de la misma tarea, cerrada o en curso:
+    /// `(started_at, ended_at)` de esa corrida, con `None` si sigue abierta.
+    Overlaps(String, Option<String>),
+    Db(rusqlite::Error),
+}
+
+impl From<rusqlite::Error> for LogTimeError {
+    fn from(e: rusqlite::Error) -> Self {
+        Self::Db(e)
+    }
+}
+
+/// Registra un **tramo pasado y ya cerrado** de trabajo en una tarea (#23): lo
+/// que hace `stop_timer` si el timer se hubiera encendido a `start` y apagado a
+/// `end`.
+///
+/// - Se escribe como **corrida** (`ended_at` ≠ `started_at`), no como ajuste: el
+///   rail la dibuja en su hora (`day_work.tracked_at`) y el rollup la atribuye a
+///   su día por `started_at`.
+/// - **Pasa por `close_entry`**, así que hereda el corte por día local (I3) y la
+///   acumulación en `actual_seconds` (I1) sin copiarlas. La fila se inserta ya
+///   cerrada y `close_entry` la reescribe: una fila **abierta** chocaría con el
+///   índice de I4 si la tarea tiene su timer corriendo.
+/// - **No reabre una tarea `DONE`**: registrar trabajo pasado no es volver a
+///   trabajar en ella (I5 habla del play).
+/// - **Rechaza pisar otra corrida de la misma tarea**, incluida la que está en
+///   curso: ese tiempo ya está contado (o se va a contar al parar) y sumarlo de
+///   nuevo infla el total. Los ajustes (`started_at = ended_at`) no cuentan como
+///   corrida: no tienen hora.
+pub fn log_time_entry(
+    conn: &Connection,
+    task_id: i64,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+) -> std::result::Result<(i64, i64), LogTimeError> {
+    log_time_entry_at(conn, task_id, start, end, Utc::now())
+}
+
+/// `log_time_entry` con el "ahora" inyectado, para los tests.
+fn log_time_entry_at(
+    conn: &Connection,
+    task_id: i64,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    now_utc: DateTime<Utc>,
+) -> std::result::Result<(i64, i64), LogTimeError> {
+    if end <= start {
+        return Err(LogTimeError::EndNotAfterStart);
+    }
+    if end > now_utc {
+        return Err(LogTimeError::EndInFuture);
+    }
+    let mut refused: Option<LogTimeError> = None;
+    let logged = atomically(conn, || {
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1 AND source_state = 'ACTIVE')",
+            [task_id],
+            |r| r.get(0),
+        )?;
+        if !exists {
+            refused = Some(LogTimeError::TaskNotFound);
+            return Ok(None);
+        }
+        if let Some((a, b)) = overlapping_run(conn, task_id, start, end, now_utc)? {
+            refused = Some(LogTimeError::Overlaps(a, b));
+            return Ok(None);
+        }
+        // Siempre `to_rfc3339()` de un `DateTime<Utc>`: `day_work`,
+        // `seconds_today` y el rollup comparan `started_at` como texto, y un
+        // offset distinto de `+00:00` atribuiría el tramo a otro día.
+        let started_at = start.to_rfc3339();
+        conn.execute(
+            "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
+             VALUES (?1, ?2, ?3, 0)",
+            params![task_id, started_at, end.to_rfc3339()],
+        )?;
+        let row = ActiveTimer {
+            entry_id: conn.last_insert_rowid(),
+            task_id,
+            title: String::new(),
+            started_at,
+            base_seconds: 0,
+            estimated_minutes: None,
+            bell_rung_for: None,
+        };
+        close_entry(conn, &row, &end.to_rfc3339()).map(Some)
+    })?;
+    match (logged, refused) {
+        (Some(done), _) => Ok(done),
+        (None, Some(why)) => Err(why),
+        (None, None) => Err(LogTimeError::TaskNotFound),
+    }
+}
+
+/// La primera corrida de `task_id` que se pisa con `[start, end)`, si hay. La
+/// abierta corre hasta `now_utc`.
+fn overlapping_run(
+    conn: &Connection,
+    task_id: i64,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    now_utc: DateTime<Utc>,
+) -> Result<Option<(String, Option<String>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT started_at, ended_at FROM time_entries
+         WHERE task_id = ?1 AND (ended_at IS NULL OR ended_at <> started_at)
+         ORDER BY started_at",
+    )?;
+    let runs = stmt.query_map([task_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+    })?;
+    for run in runs {
+        let (a, b) = run?;
+        let from = to_utc(&a);
+        let to = match b.as_deref() {
+            None => Some(now_utc),
+            Some(t) => to_utc(t),
+        };
+        let (Some(from), Some(to)) = (from, to) else {
+            continue;
+        };
+        if from < end && start < to {
+            return Ok(Some((a, b)));
+        }
+    }
+    Ok(None)
 }
 
 pub fn list_time_entries(conn: &Connection, task_id: i64) -> Result<Vec<TimeEntry>> {
@@ -3462,6 +3642,272 @@ mod tests {
             seconds_today(&c, t.id).unwrap() > 0,
             "el tramo de hoy tiene que contar para hoy"
         );
+    }
+
+    // --- log_time_entry (#23): un tramo pasado ya cerrado -------------------
+
+    /// Un instante fijo y "ahora" una hora después, anclados a la medianoche
+    /// **local** de un día pasado en la zona que usa `close_entry`: así el test
+    /// dice lo mismo en Santiago y en UTC (`bin/gates`).
+    fn local_at(c: &Connection, day: &str, h: u32, m: u32) -> DateTime<Utc> {
+        let tz = zone(c);
+        let d = chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
+        tz.from_local_datetime(&d.and_hms_opt(h, m, 0).unwrap())
+            .earliest()
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn log_time_registra_un_tramo_pasado_como_corrida_en_su_hora() {
+        let c = conn();
+        let t = create_task(&c, new_task("revisar PR", Some("2026-08-10"))).unwrap();
+        let start = local_at(&c, "2026-08-10", 15, 41);
+        let end = local_at(&c, "2026-08-10", 16, 41);
+
+        let (task_id, secs) = log_time_entry(&c, t.id, start, end).unwrap();
+        assert_eq!((task_id, secs), (t.id, 3600));
+
+        let entries = list_time_entries(&c, t.id).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].started_at, start.to_rfc3339());
+        assert_eq!(entries[0].ended_at.as_deref(), Some(end.to_rfc3339().as_str()));
+        // El rail lo dibuja en su hora: es una corrida, no un ajuste.
+        let work = day_work(&c, "2026-08-10").unwrap();
+        assert_eq!(work.len(), 1);
+        assert_eq!(work[0].tracked_at.as_deref(), Some(start.to_rfc3339().as_str()));
+        assert_eq!(work[0].seconds, 3600);
+    }
+
+    #[test]
+    fn log_time_suma_al_total_sin_pisar_el_ajuste_manual() {
+        let c = conn();
+        let t = create_task(&c, new_task("informe", Some("2026-08-10"))).unwrap();
+        set_actual_seconds(&c, t.id, 600).unwrap();
+
+        log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 9, 0),
+            local_at(&c, "2026-08-10", 9, 30),
+        )
+        .unwrap();
+
+        // I1: acumula. Un SUM sobre las entradas daría lo mismo acá, pero la
+        // columna es la que manda.
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 600 + 1800);
+    }
+
+    #[test]
+    fn log_time_parte_el_tramo_que_cruza_la_medianoche() {
+        let c = conn();
+        let t = create_task(&c, new_task("deploy nocturno", Some("2026-08-12"))).unwrap();
+        let start = local_at(&c, "2026-08-12", 23, 0);
+        let end = local_at(&c, "2026-08-13", 0, 30);
+
+        let (_, total) = log_time_entry(&c, t.id, start, end).unwrap();
+        assert_eq!(total, 5400);
+
+        let entries = list_time_entries(&c, t.id).unwrap();
+        assert_eq!(entries.len(), 2, "un tramo por día local, como stop_timer");
+        assert_eq!(entries.iter().map(|e| e.seconds).sum::<i64>(), total);
+        let midnight = local_at(&c, "2026-08-13", 0, 0).to_rfc3339();
+        assert_eq!(entries[0].ended_at.as_deref(), Some(midnight.as_str()));
+        assert_eq!(entries[1].started_at, midnight);
+        assert_eq!(day_work(&c, "2026-08-12").unwrap()[0].seconds, 3600);
+        assert_eq!(day_work(&c, "2026-08-13").unwrap()[0].seconds, 1800);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 5400);
+    }
+
+    #[test]
+    fn log_time_rechaza_un_fin_que_no_es_posterior_al_inicio() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        let a = local_at(&c, "2026-08-10", 10, 0);
+        let b = local_at(&c, "2026-08-10", 9, 0);
+
+        assert!(matches!(
+            log_time_entry(&c, t.id, a, b),
+            Err(LogTimeError::EndNotAfterStart)
+        ));
+        assert!(matches!(
+            log_time_entry(&c, t.id, a, a),
+            Err(LogTimeError::EndNotAfterStart)
+        ));
+        assert!(list_time_entries(&c, t.id).unwrap().is_empty());
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 0);
+    }
+
+    #[test]
+    fn log_time_rechaza_un_fin_en_el_futuro() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        let now = local_at(&c, "2026-08-10", 12, 0);
+
+        let r = log_time_entry_at(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 11, 0),
+            local_at(&c, "2026-08-10", 12, 1),
+            now,
+        );
+        assert!(matches!(r, Err(LogTimeError::EndInFuture)));
+        // Y con el reloj real: mañana todavía no pasó.
+        let r = log_time_entry(
+            &c,
+            t.id,
+            Utc::now() - chrono::Duration::minutes(10),
+            Utc::now() + chrono::Duration::minutes(10),
+        );
+        assert!(matches!(r, Err(LogTimeError::EndInFuture)));
+        assert!(list_time_entries(&c, t.id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn log_time_rechaza_pisar_una_corrida_de_la_misma_tarea() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 10, 0),
+            local_at(&c, "2026-08-10", 11, 0),
+        )
+        .unwrap();
+
+        let r = log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 10, 30),
+            local_at(&c, "2026-08-10", 11, 30),
+        );
+        assert!(matches!(r, Err(LogTimeError::Overlaps(_, Some(_)))));
+        // Pegado al anterior sí entra: [10, 11) y [11, 12) no se pisan.
+        log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 11, 0),
+            local_at(&c, "2026-08-10", 12, 0),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn log_time_no_cuenta_un_ajuste_manual_como_corrida() {
+        let c = conn();
+        let mut nt = new_task("x", Some("2026-08-10"));
+        nt.scheduled_time = Some("10:00".into());
+        let t = create_task(&c, nt).unwrap();
+        // El ajuste queda sellado a las 10:00 locales (`adjustment_stamp`), pero
+        // es un número sin hora: un tramo que la cubre tiene que entrar.
+        set_actual_seconds(&c, t.id, 600).unwrap();
+        let stamp = list_time_entries(&c, t.id).unwrap()[0].started_at.clone();
+        assert_eq!(stamp, local_at(&c, "2026-08-10", 10, 0).to_rfc3339());
+
+        log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 9, 30),
+            local_at(&c, "2026-08-10", 10, 30),
+        )
+        .unwrap();
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 600 + 3600);
+    }
+
+    #[test]
+    fn el_total_no_se_fija_con_el_timer_de_la_tarea_corriendo() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        assert_eq!(set_actual_seconds_unless_running(&c, t.id, 5400).unwrap(), SetTotal::Written);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 5400);
+
+        start_timer(&c, t.id, true).unwrap();
+        assert_eq!(set_actual_seconds_unless_running(&c, t.id, 60).unwrap(), SetTotal::Running);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 5400);
+        // Y no dejó entrada de ajuste: solo la del primer total y el timer abierto.
+        assert_eq!(list_time_entries(&c, t.id).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn el_total_no_se_fija_en_una_tarea_que_ya_no_esta_activa() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        c.execute("UPDATE tasks SET source_state = 'ORPHANED' WHERE id = ?1", [t.id])
+            .unwrap();
+        assert_eq!(set_actual_seconds_unless_running(&c, t.id, 60).unwrap(), SetTotal::NotActive);
+        assert_eq!(set_actual_seconds_unless_running(&c, 9999, 60).unwrap(), SetTotal::NotActive);
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 0);
+        assert!(list_time_entries(&c, t.id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn log_time_rechaza_una_tarea_que_quito_su_calendario() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        c.execute("UPDATE tasks SET source_state = 'ORPHANED' WHERE id = ?1", [t.id])
+            .unwrap();
+        let r = log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 10, 0),
+            local_at(&c, "2026-08-10", 11, 0),
+        );
+        assert!(matches!(r, Err(LogTimeError::TaskNotFound)));
+    }
+
+    #[test]
+    fn log_time_rechaza_pisar_el_timer_en_curso_y_lo_deja_abierto() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        let since = (Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
+        c.execute(
+            "INSERT INTO time_entries (task_id, started_at, ended_at, seconds)
+             VALUES (?1, ?2, NULL, 0)",
+            params![t.id, since],
+        )
+        .unwrap();
+
+        let r = log_time_entry(
+            &c,
+            t.id,
+            Utc::now() - chrono::Duration::minutes(90),
+            Utc::now() - chrono::Duration::minutes(60),
+        );
+        assert!(matches!(r, Err(LogTimeError::Overlaps(_, None))));
+        // Antes de que arrancara sí se puede, y el timer sigue corriendo: la
+        // fila se inserta ya cerrada y no choca con el índice de I4.
+        log_time_entry(
+            &c,
+            t.id,
+            Utc::now() - chrono::Duration::hours(4),
+            Utc::now() - chrono::Duration::hours(3),
+        )
+        .unwrap();
+        assert!(get_active_timer(&c, t.id).unwrap().is_some());
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().actual_seconds, 3600);
+    }
+
+    #[test]
+    fn log_time_no_reabre_una_tarea_completada_ni_acepta_una_inexistente() {
+        let c = conn();
+        let t = create_task(&c, new_task("x", Some("2026-08-10"))).unwrap();
+        set_task_status(&c, t.id, "DONE").unwrap();
+        log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 10, 0),
+            local_at(&c, "2026-08-10", 11, 0),
+        )
+        .unwrap();
+        assert_eq!(get_task(&c, t.id).unwrap().unwrap().status, "DONE");
+
+        let r = log_time_entry(
+            &c,
+            9999,
+            local_at(&c, "2026-08-10", 10, 0),
+            local_at(&c, "2026-08-10", 11, 0),
+        );
+        assert!(matches!(r, Err(LogTimeError::TaskNotFound)));
     }
 
     /// Inserta una entrada cerrada en una hora **local** concreta del día dado.

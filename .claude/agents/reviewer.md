@@ -19,7 +19,7 @@ Recibes: ruta de la worktree, link de la issue (puede faltar) y plan de QA.
 
 ## Revisa (cita `archivo:línea` en cada hallazgo)
 
-1. **Correctitud**: lógica, bordes, nulls, fechas y zonas horarias (CI corre en UTC), comportamiento que cambia en silencio para datos existentes.
+1. **Correctitud**: lógica, bordes, nulls, fechas y zonas horarias (los gates corren las dos suites también en UTC), comportamiento que cambia en silencio para datos existentes.
 2. **Specs**: comportamiento, texto, campo o regla que contradice o falta en `docs/specs/`. Cita la línea. Marca también specs que el cambio deja obsoletas, y skills que habría que actualizar en el mismo PR.
 3. **Capa de datos**: migración editada en vez de nueva, comando sin su gemelo en `mockDb.ts`, tipos Rust↔TS desalineados, enums fuera de MAYÚSCULAS o no espejados, claves de `invoke` que no son el parámetro de Rust en camelCase, lógica de datos fuera de `repo.rs`, escrituras múltiples sin transacción.
 4. **Tiempo**: cualquier cambio a `actual_seconds`, `time_entries`, campana o rollup contra las invariantes de `sunrise-timer-y-tiempo`.

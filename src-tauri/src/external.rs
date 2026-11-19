@@ -45,6 +45,10 @@ pub fn start_watcher(app: AppHandle) {
                     // log, si una tarea que no aparece se escribió o no.
                     eprintln!("[sunrise] otro proceso escribió en la base; recargo las vistas");
                     let _ = app.emit(crate::DATA_CHANGED, ());
+                    // El MCP puede haber abierto un timer (#23): sin el timbre, el
+                    // vigilante de la campana seguiría dormido hasta su techo de
+                    // 5 minutos. Avisar de más no cuesta nada: relee y vuelve a dormir.
+                    crate::bell::Armed::poke(&app);
                 }
             }
             if now.is_some() {

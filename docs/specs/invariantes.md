@@ -27,7 +27,8 @@ cambias una, actualiza este archivo en el mismo commit.
      correcto.
   2. **Lo corrido se mide desde la medianoche**, no desde `started_at` (`runSeconds`).
      Si no, un timer abierto toda la noche muestra 15 horas a las 9 AM.
-  3. **`stop_timer` parte la corrida por día local** al cruzar medianoche
+  3. **`stop_timer` (y `log_time_entry`, que pasa por el mismo `close_entry`) parte
+     la corrida por día local** al cruzar medianoche
      (`segments_by_local_day`). El tiempo se atribuye por `started_at`, así que una
      fila de 15h le acreditaría todo al día en que empezó. El rollup diario agrupa
      por día leyendo esta tabla, y con filas que cruzan días esa regla es
@@ -68,7 +69,10 @@ cambias una, actualiza este archivo en el mismo commit.
 - **I10. Todo acceso a datos pasa por `src/lib/ipc.ts`**, con su gemelo en `mockDb.ts`.
   Ningún componente llama `invoke` directo.
   **Vale para el front.** El servidor MCP (§4.32) es otro proceso y llama a `repo.rs`
-  directo, que es justamente lo que lo obliga a no tener reglas propias.
+  directo, que es justamente lo que lo obliga a no tener reglas propias **de datos**;
+  lo que sí agrega son topes y rechazos de entrada, documentados en §4.32. Lo que
+  decide sobre datos (como no fijar el total con el timer corriendo) va igual en
+  `repo.rs`.
 - **I11. Toda mutación llama `bumpData()`** ([§5.3](sincronizacion.md)). Para invalidar
   **sin** avisar hacia afuera está `markDataStale()`, que existe solo para el listener
   que recibe esos avisos.

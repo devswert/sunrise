@@ -13,8 +13,11 @@ export const DATA_CHANGED = "sunrise://data-changed";
  * `useCalendarListener`: `bumpData` además escribiría en `localStorage`, y eso
  * es un aviso a la otra ventana que nadie pidió (§5.3).
  *
- * Se monta desde `Shell`, que solo existe en `main`: el taxímetro no se entera.
- * Por eso el MCP no toca ni el estado ni el timer (I5).
+ * Se monta en **las dos ventanas**: en `main` desde `Shell`, y en el taxímetro
+ * desde su raíz (`TimerRoot`, con `ExternalChanges`). Cada ventana tiene su propio
+ * store, y desde #23 el MCP abre, cierra y registra timers: sin el aviso, el
+ * taxímetro seguía mostrando lo último que leyó. En cada ventana `dataVersion`
+ * vuelve a correr `useTimerRuntime`, que relee los timers.
  */
 export function useExternalChanges(): void {
   const markDataStale = useAppStore((s) => s.markDataStale);
@@ -36,4 +39,10 @@ export function useExternalChanges(): void {
       unlisten?.();
     };
   }, [markDataStale]);
+}
+
+/** El mismo aviso como componente, para la raíz del taxímetro, que no tiene `Shell`. */
+export function ExternalChanges(): null {
+  useExternalChanges();
+  return null;
 }

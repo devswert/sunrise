@@ -57,7 +57,7 @@ feature:
     valor es flotante y ahí sí se lee en local, que es lo que manda el estándar.
     Esto estuvo roto desde el primer commit y no se notó porque la máquina de
     desarrollo y las fixtures comparten zona; lo delató el primer tag, porque **CI
-    corre en UTC**.
+    corría en UTC** (hoy lo hace `bin/gates`).
 - **Todo se convierte a hora local** (`ics::to_local`), y las tres formas de ICS
   —UTC con `Z`, con `TZID`, y flotante— tienen que aterrizar en la misma regla.
   Cortar el timestamp por los primeros 10 caracteres da el día UTC: un evento de

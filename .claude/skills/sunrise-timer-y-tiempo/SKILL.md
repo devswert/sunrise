@@ -19,7 +19,8 @@ Acá está lo que hay que saber para **editar** esto sin romperlo.
 
 | Archivo | Qué |
 |---|---|
-| `src-tauri/src/repo.rs` | `start_timer`, `stop_timer`, `stop_all_timers`, `get_active_timers`, `seconds_today`, `set_actual_seconds`, `focus_queue` |
+| `src-tauri/src/repo.rs` | `start_timer`, `stop_timer`, `stop_all_timers`, `get_active_timers`, `seconds_today`, `set_actual_seconds`, `log_time_entry`, `focus_queue` |
+| `src-tauri/src/mcp/tools.rs` | las tools de tiempo del MCP (`start_timer`, `stop_timer`, `log_time`, `set_task_time`) |
 | `src-tauri/src/bell.rs` | **decide y toca** la campana del estimado (vigilante) |
 | `src-tauri/src/sound.rs` | síntesis de la campana con `rodio` |
 | `src/features/timer/timerStore.ts` | store del timer (por ventana), `isOverEstimate`, `hms` |
@@ -152,6 +153,15 @@ otro proceso y va a abrir timers sin pasar por `start_timer`.
   transacción abierta usa `BEGIN IMMEDIATE` —una diferida que lee y después
   escribe falla con `SQLITE_BUSY_SNAPSHOT` si el MCP confirmó en el medio—; dentro
   de otra, `SAVEPOINT`, que anida.
+- **Un tramo pasado (`log_time_entry`, la tool `log_time` del MCP) es una corrida
+  más, no un ajuste**: inserta la fila **ya cerrada** y la pasa por `close_entry`,
+  así hereda el corte por día local (I3) y la suma de I1 sin copiarlas. No la
+  insertes abierta para cerrarla: si la tarea tiene su timer corriendo choca con
+  el índice de I4. Rechaza pisar otra corrida de la misma tarea (incluida la que
+  corre: se contaría dos veces), fin ≤ inicio y fin en el futuro, y **no reabre**
+  una tarea `DONE` (I5 es del play, no del registro). Si agregas otra forma de
+  escribir tiempo con hora, que pase por `close_entry` igual. Detalle en
+  `docs/specs/mcp.md` (§4.32, "El tiempo").
 
 **Estado y timer se mueven juntos, y eso vive en Rust.**
 Son dos reglas simétricas, y conviene tratarlas como una sola:
@@ -246,7 +256,8 @@ con **la hora**. Dos formas de equivocarse, y las dos ya se pagaron:
   notificación, si está prendida, sale una por tarea.
 - **La espera y el timbre son optimizaciones, no la decisión.** Duerme hasta el
   momento en que tiene que sonar (`next_wake`, techo 30 s); sin timer espera el
-  timbre `Armed` —que toca `start_timer`— con un techo de 5 min; y **cada vuelta
+  timbre `Armed` —que tocan `start_timer` y, por lo que escribe el MCP,
+  `external.rs`— con un techo de 5 min; y **cada vuelta
   relee la base**. No conviertas eso en un `sleep` de una sola vez ni cuelgues la
   campana del timbre: habría que invalidar el momento al bajar el estimado, al
   ajustar tiempo a mano, al pausar, al cambiar de tarea y al despertar la máquina
