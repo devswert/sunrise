@@ -69,7 +69,9 @@ falla, arregla y repite. El hook bloquea `git push` y `gh pr create|merge` si el
 árbol commiteado no es el que pasó (cambios sin commitear o archivos sin trackear
 también bloquean: no viajarían en el push), así que no lo corras dos veces sobre el
 mismo estado. Commit y push en comandos **separados**: el hook corre antes del
-comando entero, y en `git commit && git push` todavía ve el HEAD anterior.
+comando entero, y en `git commit && git push` todavía ve el HEAD anterior. El
+mensaje de commit va con `git commit -F <archivo del scratchpad>`: el hook lee el
+texto del comando, y un mensaje que cite un `git push` literal se bloquea como push.
 
 ### 4. Revisión
 

@@ -73,6 +73,11 @@ git tag v6.0.0 HEAD~1; seal
 run "tag local viejo pero el comando taguea HEAD sellado: se juzga HEAD" 0 "git tag -d v6.0.0; git tag v6.0.0 && $P origin v6.0.0"
 git tag -d v6.0.0 > /dev/null
 run "commit cuyo mensaje dice push no es un push" 0 "git commit -m 'commit y push separados'"
+run "git -C … tag sobre otro rev en el mismo comando" 2 "git -C $PWD tag v7.0.0 HEAD~1 && git -C $PWD push origin v7.0.0"
+run "git -C … tag -f en el mismo comando" 2 "git -C $PWD tag -f v5.0.0 && git -C $PWD push origin v5.0.0"
+# Falso bloqueo conocido y aceptado: el texto de un mensaje se lee como comando. Por eso
+# los mensajes de commit van con `git commit -F <archivo>`.
+run "mensaje que cita un git push literal (usar -F)" 2 "git commit -m 'antes: $P origin HEAD:main'"
 
 echo "▸ Rama de issue"
 git checkout -qb issue-1-x
@@ -103,6 +108,11 @@ rm untracked.txt; seal
 echo e >> c.txt
 run "cambio sin commitear después de sellar: lo que viaja sí se probó" 0 "$P origin HEAD"
 git checkout -q -- c.txt
+
+git checkout -qb release-v0.2.0; seal
+run "rama y tag en el mismo comando, desde una rama" 2 "git tag v0.2.0 && $P -u origin HEAD && $P origin v0.2.0"
+run "tag y gh pr create en el mismo comando" 2 "git tag v0.2.0 && $P origin v0.2.0 && gh pr create --title x"
+git checkout -q issue-1-x; git branch -qD release-v0.2.0; seal
 
 echo "▸ Merge"
 run "merge en orden" 0 "gh pr merge 1 --squash"

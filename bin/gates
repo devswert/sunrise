@@ -50,7 +50,8 @@ step "Dependencias según el lockfile"
 pnpm --silent install --frozen-lockfile --prefer-offline \
   || fail "pnpm-lock.yaml no coincide con package.json (o falló la instalación)"
 
-step "Hook"; bin/test-hook > /dev/null || fail "el hook require-gates.sh no pasa bin/test-hook"
+step "Hook"
+hook_log="$(bin/test-hook 2>&1)" || { grep -v '^  ok' <<< "$hook_log"; fail "el hook require-gates.sh no pasa bin/test-hook"; }
 step "Tipos";  pnpm --silent typecheck || fail "tsc con errores"
 step "Lint";   pnpm --silent lint      || fail "Biome con errores (pnpm lint:fix arregla el formato)"
 step "Vitest"; pnpm --silent test      || fail "Vitest en rojo"

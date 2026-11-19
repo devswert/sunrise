@@ -86,20 +86,29 @@ fetch_main() { # sin red no puede colgar el hook: corta si baja de 1 KB/s por 10
 # es lo único que asegura que lo publicado pasó las suites: `release.yml` ya no las corre.
 gh_pr=""
 if grep -Eq "$gh_pr_re" <<< "$command"; then gh_pr=1; fi
+# Un tag nuevo va en su propio comando. Mezclado con una rama o un `gh pr`, el comando
+# caería en el camino de rama, que no mira a qué commit apunta el tag.
+creates_tag=""
+for ref in $tag_refs; do case "$ref" in :*) ;; *) creates_tag=1 ;; esac; done
+if [ -n "$creates_tag" ] && { [ "$push_count" -ne "$tag_count" ] || [ -n "$gh_pr" ]; }; then
+  echo "Bloqueado: empuja el tag en su propio comando (\`git push origin vX.Y.Z\`), no junto con una rama ni un \`gh pr\`." >&2
+  exit 2
+fi
 if [ -z "$gh_pr" ] && [ "$push_count" -gt 0 ] && [ "$push_count" -eq "$tag_count" ]; then
   for ref in $tag_refs; do
     case "$ref" in :*) continue ;; esac
     tag="${ref#refs/tags/}"
+    tag_re="${tag//./\\.}"
     # El hook corre antes que el comando: en `git tag vX && git push origin vX` lo que se
     # va a taguear es HEAD, exista o no un `vX` local. Mover un tag (`-f`, `--force`) o
     # taguear otro commit (`git tag vX <rev>`) no se adivina: comandos separados, como
     # dice sunrise-release (`git tag -d`, `bin/gates`, el tag nuevo).
-    if grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]](-[a-zA-Z]*f[a-zA-Z]*|--force)([[:space:];&|]|\$)" <<< "$command" \
-      || grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]]$tag[[:space:]]+[^-[:space:];&|]" <<< "$command"; then
+    if grep -Eq "git$dir_opt[[:space:]]+tag[^;&|]*[[:space:]](-[a-zA-Z]*f[a-zA-Z]*|--force)([[:space:];&|]|\$)" <<< "$command" \
+      || grep -Eq "git$dir_opt[[:space:]]+tag[[:space:]]+(-[^[:space:]]+[[:space:]]+)*$tag_re[[:space:]]+[^-[:space:];&|]" <<< "$command"; then
       echo "Bloqueado: crea (o mueve) el tag $tag en un comando y empújalo en otro, para que el hook vea a qué commit apunta." >&2
       exit 2
     fi
-    if grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]]$tag([[:space:];&|]|\$)" <<< "$command" \
+    if grep -Eq "git$dir_opt[[:space:]]+tag[^;&|]*[[:space:]]$tag_re([[:space:];&|]|\$)" <<< "$command" \
       || ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
       commit="$(git rev-parse HEAD)"
     fi

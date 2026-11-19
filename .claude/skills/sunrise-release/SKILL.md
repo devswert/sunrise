@@ -69,7 +69,10 @@ salió #N?" se responde mirando la issue.
 4. **Pídele al usuario el anuncio.** No lo inventes solo: es el texto que lee todo
    el equipo. Propón un borrador desde los títulos de las issues del paso 2, y que
    él lo corrija. El detalle sí puedes armarlo tú.
-5. **Rama `release-vX.Y.Z`** y escribe la sección al principio de
+5. **Rama `release-vX.Y.Z`**, en el checkout principal (`git checkout -b`; no es
+   una issue, así que no lleva worktree, y `bin/worktree --clean-merged` no la
+   limpia: tras mezclar, `git branch -D` y
+   `gh api -X DELETE repos/devswert/sunrise/git/refs/heads/release-vX.Y.Z`). Escribe la sección al principio de
    `docs/CHANGELOG.md`, arriba de la anterior, con este formato exacto —lo lee un
    `awk` en CI y un parser en `src/lib/changelog.ts`—:
 
