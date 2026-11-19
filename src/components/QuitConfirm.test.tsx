@@ -2,7 +2,8 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useAppStore } from "../lib/store";
-import { useTimerStore } from "../features/timer/timerStore";
+import { derive, useTimerStore } from "../features/timer/timerStore";
+import type { ActiveTimer } from "../lib/types";
 import { QuitConfirm } from "./QuitConfirm";
 
 const confirmQuit = vi.fn(async () => {});
@@ -18,6 +19,20 @@ vi.mock("../lib/ipc", () => ({
   },
 }));
 
+const NOW = Date.parse("2026-08-11T12:00:00Z");
+
+function timer(taskId: number, title: string, startedAtMs: number): ActiveTimer {
+  return {
+    entryId: taskId,
+    taskId,
+    title,
+    startedAt: new Date(startedAtMs).toISOString(),
+    baseSeconds: 0,
+    estimatedMinutes: 30,
+    bellRungFor: null,
+  };
+}
+
 function abrirDialogo() {
   act(() => useAppStore.getState().setQuitOpen(true));
 }
@@ -26,7 +41,7 @@ describe("QuitConfirm", () => {
   beforeEach(() => {
     confirmQuit.mockClear();
     useAppStore.setState({ quitOpen: false });
-    useTimerStore.setState({ active: null, elapsed: 0 });
+    useTimerStore.setState(derive([]));
   });
 
   it("no se ve hasta que Rust pide cerrar", () => {
@@ -45,24 +60,37 @@ describe("QuitConfirm", () => {
   });
 
   it("con timer corriendo avisa qué tarea y que va a seguir contando", () => {
-    useTimerStore.setState({
-      active: {
-        entryId: 1,
-        taskId: 7,
-        title: "Revisar PRs",
-        startedAt: "2026-08-11T10:00:00Z",
-        baseSeconds: 0,
-        estimatedMinutes: 30,
-        bellRungFor: null,
-      },
-      elapsed: 754,
-    });
+    // 754 s corridos hoy: lo que mide `derive` desde `startedAt`.
+    // Un mediodía fijo: `derive` corta en la medianoche, y con `Date.now()` el
+    // test caía en los primeros minutos del día.
+    const now = NOW;
+    useTimerStore.setState(derive([timer(7, "Revisar PRs", now - 754_000)], now));
     render(<QuitConfirm />);
     abrirDialogo();
 
     expect(screen.getByText("Revisar PRs")).toBeInTheDocument();
     expect(screen.getByText(/0:12:34/)).toBeInTheDocument();
     expect(screen.getByText(/sigue\s+corriendo y va a seguir contando/i)).toBeInTheDocument();
+  });
+
+  it("con varios timers en paralelo nombra todos los que siguen corriendo", () => {
+    // Un mediodía fijo: `derive` corta en la medianoche, y con `Date.now()` el
+    // test caía en los primeros minutos del día.
+    const now = NOW;
+    useTimerStore.setState(
+      derive(
+        [timer(7, "Revisar PRs", now - 754_000), timer(8, "Agente de migraciones", now - 61_000)],
+        now,
+      ),
+    );
+    render(<QuitConfirm />);
+    abrirDialogo();
+
+    expect(screen.getByText("Revisar PRs")).toBeInTheDocument();
+    expect(screen.getByText("Agente de migraciones")).toBeInTheDocument();
+    expect(screen.getByText(/0:12:34/)).toBeInTheDocument();
+    expect(screen.getByText(/0:01:01/)).toBeInTheDocument();
+    expect(screen.getByText(/siguen corriendo y van a seguir contando/i)).toBeInTheDocument();
   });
 
   it("Cancelar cierra el diálogo sin salir", async () => {

@@ -534,6 +534,26 @@ adelanta el día varias horas antes de medianoche. Y al leer, un string de fecha
 se pasa por `new Date()`: `new Date('2026-08-21')` es medianoche **UTC**, o sea acá
 el día anterior a las 20:00.
 
+**El taxímetro apilado (#19): el alto se calcula y la pausada vive dentro de la
+pila.** Tres cosas que no eran obvias al pasar de una fila a varias:
+
+- **El alto de la ventana sale del número de filas, no del DOM.** Medir con un
+  `ResizeObserver` ataría el alto a un render, y un webview oculto en macOS no corre
+  sus callbacks; una fila de alto fijo y dos márgenes dan un número estable que
+  además se puede testear sin ventana. Lo pone Rust y reaplica la esquina de
+  arriba, porque cuál esquina se queda quieta al cambiar el tamaño depende de la
+  plataforma.
+- **El hover por envolvente no escala a varias filas.** La envolvente se inventó
+  para tragarse el hueco entre el botón y su panel; sobre los botones de toda la
+  pila se tragaba la pila entera y el panel se abría en todas las filas a la vez.
+  Ahora es por fila y sigue habiendo **un** sondeo: cada vuelta son cuatro
+  llamadas a la ventana.
+- **`last` tenía dos trabajos y con la pila se contradecían**: "la que quedó en
+  pausa" y "la que `refresh` revisa para avanzar si la completaron por otro lado".
+  Con un timer eran la misma. Con varios, pausar A de A+B dejaba `last = A`, y si B
+  se completaba desde una card el taxímetro volvía a ofrecer A, que habías dejado a
+  propósito. La regla es que mientras algo corra `last` es una de las que corren.
+
 **El taxímetro no monta el store de ajustes.** Lo que necesita —el tema, la
 tipografía— se espeja en `localStorage` y sigue el evento `storage`. Sin eso, la
 app en una fuente y el taxímetro en otra se ven partidos.

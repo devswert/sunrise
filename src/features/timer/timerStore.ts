@@ -90,6 +90,35 @@ function broadcast() {
   }
 }
 
+/** La foto de un timer que corre, para dejarla como `last`. */
+function snapshot(a: ActiveTimer): LastTask {
+  return {
+    taskId: a.taskId,
+    title: a.title,
+    estimatedMinutes: a.estimatedMinutes,
+    // `baseSeconds` y no lo corrido: es estable entre lecturas, así que dos
+    // ventanas que reparan `last` a la vez escriben lo mismo y no se contestan.
+    // Al pausarla, `stop` escribe el número de verdad.
+    seconds: a.baseSeconds,
+  };
+}
+
+/**
+ * **Mientras haya timers corriendo, `last` es uno de ellos** (#19).
+ *
+ * `last` es la fila que queda en pausa cuando la pila se vacía, y también lo que
+ * `refresh` revisa para avanzar si la completaron desde otro lado. Si apuntara a
+ * una que ya salió de la pila —pausaste A de A+B, y después B se completó desde
+ * una card—, la pila vacía mostraría A en pausa en vez de avanzar: una tarea que
+ * dejaste a propósito vuelve sola al taxímetro. Por eso, si `last` no está entre
+ * las que corren, pasa a ser la primera de ellas.
+ */
+function lastInStack(last: LastTask | null, actives: ActiveTimer[]): LastTask | null {
+  if (actives.length === 0) return last;
+  if (last && actives.some((a) => a.taskId === last.taskId)) return last;
+  return snapshot(actives[0]);
+}
+
 /**
  * ¿Se pasó del tiempo estimado? Pinta el taxímetro en rojo y da el aviso de
  * Focus. Sin estimado (null o <= 0) nunca se considera excedido.
@@ -236,9 +265,21 @@ export interface TimerState {
   /** Si el timer de esa tarea está corriendo (lectura puntual; en un render usa `selectIsRunning`). */
   isRunning: (taskId: number) => boolean;
   dismissLast: () => void;
+  /**
+   * El ojo del taxímetro: pausa **toda la pila** y la esconde, con una sola
+   * escritura de `last` (`null`) y un solo aviso. Si pasara por `stopAll` y
+   * después `dismissLast`, `stopAll` escribiría una pausada intermedia y la
+   * avisaría: la otra ventana podría leerla, y su `refresh` reescribirla encima
+   * del `null` — la fila oculta volvía en pausa.
+   */
+  hideAll: () => Promise<void>;
   tick: () => void;
-  /** Completa la tarea del taxímetro y deja lista la siguiente del día. */
-  completeAndAdvance: () => Promise<void>;
+  /**
+   * Completa una tarea del taxímetro; **sin id, la primera fila** (la que
+   * corre más antigua, o la pausada). Si quedan otras corriendo solo la saca de
+   * la pila; si era la última, deja lista la siguiente del día en pausa.
+   */
+  completeAndAdvance: (taskId?: number) => Promise<void>;
 }
 
 /** Selector para suscribirse a "¿corre esta tarea?" desde un componente. */
@@ -291,6 +332,13 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       // Sin `broadcast()`: refrescar no es mutar, y avisarle a la otra ventana
       // la haría refrescar y avisar de vuelta.
       persistLast(last);
+    } else if (actives.length > 0 && last) {
+      // Una pausa o un check que llegó por otro camino (Rust al completar, la
+      // otra ventana) pudo dejar `last` fuera de la pila. Ver `lastInStack`.
+      // Un `last` en `null` **no** se repara: es el ojo (`hideAll`), y un
+      // `refresh` que leyó la pila justo antes de que se pausara la resucitaría.
+      last = lastInStack(last, actives);
+      persistLast(last);
     }
 
     set({ ...derive(actives), last, loaded: true });
@@ -325,12 +373,18 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       const [stoppedId, seconds] = res;
       const guardada = readLast();
       const sameSaved = guardada?.taskId === stoppedId ? guardada : null;
-      const last: LastTask = {
-        taskId: stoppedId,
-        title: prev?.title ?? sameSaved?.title ?? "",
-        estimatedMinutes: prev?.estimatedMinutes ?? sameSaved?.estimatedMinutes ?? null,
-        seconds: (prev?.baseSeconds ?? 0) + seconds,
-      };
+      // Pausar una de varias la **saca** de la pila: las que siguen corriendo
+      // son las filas, y `last` sigue apuntando a una de ellas. Solo la última
+      // en pausarse queda en el taxímetro esperando su play, como con un timer.
+      const last: LastTask | null =
+        actives.length > 0
+          ? lastInStack(guardada, actives)
+          : {
+              taskId: stoppedId,
+              title: prev?.title ?? sameSaved?.title ?? "",
+              estimatedMinutes: prev?.estimatedMinutes ?? sameSaved?.estimatedMinutes ?? null,
+              seconds: (prev?.baseSeconds ?? 0) + seconds,
+            };
       writeLast(last);
       set({ ...derive(actives), last });
     } else {
@@ -384,12 +438,28 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     broadcast();
   },
 
-  completeAndAdvance: async () => {
-    const { active, last, stop } = get();
-    const taskId = active?.taskId ?? last?.taskId;
+  hideAll: async () => {
+    try {
+      await api.stopAllTimers();
+    } catch (err) {
+      // Esconder igual: un ojo que no responde es peor que una pausa que falló,
+      // y la pila se relee de la base abajo, así que lo que siga corriendo se ve.
+      console.error("[sunrise] taxímetro: no pude pausar al ocultar:", err);
+    }
+    writeLast(null);
+    set({ ...derive(await api.getActiveTimers()), last: null });
+    useAppStore.getState().bumpData();
+    broadcast();
+  },
+
+  completeAndAdvance: async (target) => {
+    const { active, last, stop, isRunning } = get();
+    // `typeof`, igual que en `stop`: pasado directo a un `onClick`, el primer
+    // argumento sería el evento.
+    const taskId = typeof target === "number" ? target : (active?.taskId ?? last?.taskId);
     if (taskId == null) return;
 
-    if (active) await stop(taskId);
+    if (isRunning(taskId)) await stop(taskId);
 
     // Manda la completada al final de SU día, no de hoy: el taxímetro puede
     // estar cronometrando una tarea de otro día (se arrancó desde la semana, o
@@ -404,14 +474,26 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       await api.moveTask(taskId, doneDate, lastPos + 1);
     }
 
+    // **Completar una de varias no adelanta nada**: las otras siguen
+    // corriendo y son las filas del taxímetro. Se mira la base y no el store,
+    // porque es la base la que sabe qué quedó abierto después del check.
+    const remaining = await api.getActiveTimers();
+    if (remaining.length > 0) {
+      const kept = lastInStack(readLast(), remaining);
+      writeLast(kept);
+      set({ ...derive(remaining), last: kept });
+      broadcast();
+      useAppStore.getState().bumpData();
+      return;
+    }
+
     // Avanzar no es empezar: la siguiente queda **en pausa**, esperando su play.
     // Arrancarla sola hacía que el tiempo de una tarea que ni miraste empezara a
     // correr por haber completado la anterior. Si no queda ninguna, el taxímetro
     // se oculta: no queda nada que cronometrar.
     const next = await nextPaused(taskId);
     writeLast(next);
-    // Los que corrían en paralelo siguen corriendo: se releen, no se borran.
-    set({ ...derive(await api.getActiveTimers()), last: next });
+    set({ ...derive(remaining), last: next });
     broadcast();
     useAppStore.getState().bumpData();
   },
@@ -428,6 +510,23 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     set(derive(actives));
   },
 }));
+
+/**
+ * Las filas del taxímetro (#19): **una por timer que corre**, del más antiguo al
+ * más nuevo; si no corre ninguno, la pausada (`last`); si tampoco hay, ninguna.
+ * Una pausada nunca convive con filas que corren: pausar una de varias la saca.
+ */
+export function timerRows(s: Pick<TimerState, "actives" | "elapsedById" | "last">): LastTask[] {
+  if (s.actives.length > 0) {
+    return s.actives.map((a) => ({
+      taskId: a.taskId,
+      title: a.title,
+      estimatedMinutes: a.estimatedMinutes,
+      seconds: s.elapsedById[a.taskId] ?? a.baseSeconds,
+    }));
+  }
+  return s.last ? [s.last] : [];
+}
 
 /** Tarea a mostrar en el taxímetro: la activa, o la última pausada. */
 export function timerDisplay(s: TimerState): LastTask | null {

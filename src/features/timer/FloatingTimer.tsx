@@ -1,42 +1,71 @@
 import { useEffect } from "react";
 import { Check, EyeOff, Pause, Play } from "lucide-react";
-import { useTimer, useTimerRuntime, hms } from "./useTimer";
-import { useTimerStore } from "./timerStore";
+import { useTimer, useTimerRuntime, hms, isOverEstimate } from "./useTimer";
+import { timerRows, useTimerStore, type LastTask } from "./timerStore";
 import { useDragOrClick } from "./useDragOrClick";
-import { useCursorHover } from "./useCursorHover";
+import { HOVER_KEY_ATTR, useCursorHover } from "./useCursorHover";
 import { formatMinutes } from "../../lib/capacity";
 import { api, isTauri } from "../../lib/ipc";
 
 /**
- * Zona que mantiene abierto el panel de opciones: el botón de play/pausa y el
- * propio panel. Constante de módulo para que su identidad no cambie en cada
- * render y `useCursorHover` no reinicie el sondeo.
+ * Zona que mantiene abierto el panel de opciones **de una fila**: su botón de
+ * play/pausa y su propio panel. Constantes de módulo para que su identidad no
+ * cambie en cada render y `useCursorHover` no reinicie el sondeo.
  */
 const ZONA_HOVER = ".tax__controls, .tax__opts";
+const ROWS_SELECTOR = ".tax__row";
 
 /**
- * Taxímetro flotante.
+ * Medidas de la pila, en pixeles lógicos. **Son contrato con `timer.css`**
+ * (`.tax` y `.tax__row`): el alto de la ventana se calcula, no se mide, para
+ * que dependa solo del número de filas — un número estable, que es lo que
+ * §5.4.2 exige de cualquier cosa que llame a la ventana.
+ *
+ * Con una fila da 70, el alto de siempre (`tauri.conf.json`).
+ */
+export const ROW_HEIGHT = 56;
+/** Margen transparente arriba (6) y abajo (8) de la tarjeta, para la sombra. */
+export const WINDOW_CHROME = 14;
+
+/** Alto de la ventana para `rows` filas. Nunca menos de una. */
+export function windowHeight(rows: number): number {
+  return WINDOW_CHROME + ROW_HEIGHT * Math.max(1, rows);
+}
+
+/**
+ * Taxímetro flotante: **una fila por timer que corre**, apiladas hacia abajo y
+ * sin tope (#19). Si no corre ninguno, una sola fila con la pausada.
  *
  *   ┌──────────────────────────┬────┐
  *   │ Título de la tarea       │ ⏸  │
  *   │ 0:11:10 / 1:00           │    │
  *   │▬▬▬▬▬▬▬                   │    │
+ *   ├──────────────────────────┼────┤
+ *   │ Otra que corre en paralelo│ ⏸  │
+ *   │ 0:02:41 / 0:30           │    │
+ *   │▬▬                        │    │
  *   └──────────────────────────┴────┘
  *
- * Siempre muestra título y tiempos (sin colapsar), con una barra de progreso
- * respecto del estimado. Click en el título abre Focus Mode.
+ * Cada fila es el taxímetro de siempre: título, hoy contra el estimado, barra,
+ * rojo al pasarse y el panel con el ojo y el check. Una fila que corre muestra
+ * **solo la pausa** (el play en paralelo no tiene sentido sobre algo que ya
+ * corre), y la pausada, que solo existe cuando la pila se vació, solo el play
+ * clásico. Click en un título abre Focus Mode.
  */
 export function FloatingTimer() {
   useTimerRuntime();
-  const { active, display, overEstimate, stop, start, dismissLast, completeAndAdvance } =
-    useTimer();
+  const { actives, elapsedById, last, stop, start, completeAndAdvance } = useTimer();
+  const hideAll = useTimerStore((s) => s.hideAll);
   // Si ya se leyó el timer de la base. Hasta entonces esta ventana no decide
   // nada sobre su propia visibilidad — ver `useSelfVisibility`.
   const loaded = useTimerStore((s) => s.loaded);
+  const rows = timerRows({ actives, elapsedById, last });
+  const running = actives.length > 0;
   useKeepOnTop();
   // La ventana se muestra/oculta a sí misma según su contenido. Es más fiable
   // que depender de que la ventana principal la muestre.
-  useSelfVisibility(!!display, loaded);
+  useSelfVisibility(rows.length > 0, loaded);
+  useWindowHeight(rows.length, loaded);
 
   async function openFocus() {
     if (!isTauri()) return;
@@ -55,27 +84,69 @@ export function FloatingTimer() {
     }
   }
 
-  const running = !!active;
-  const seconds = display?.seconds ?? 0;
-  const planned = display?.estimatedMinutes ?? null;
-  const pct = planned && planned > 0 ? Math.min(100, (seconds / (planned * 60)) * 100) : 0;
-
   const drag = useDragOrClick(openFocus);
 
   // Hover del botón de opciones sondeado a mano, porque el `:hover` de CSS
-  // depende del foco de la ventana y el taxímetro casi nunca lo tiene.
-  const hoverControles = useCursorHover(!!display, ZONA_HOVER);
+  // depende del foco de la ventana y el taxímetro casi nunca lo tiene. Dice
+  // **qué fila**: el panel se abre solo en esa.
+  const hoverRow = useCursorHover(rows.length > 0, ROWS_SELECTOR, ZONA_HOVER);
 
   return (
     // Click simple abre Focus; mantener pulsado y mover arrastra la ventana.
-    <div className={`tax${hoverControles ? " is-hover-controls" : ""}`} {...drag}>
+    <div className="tax" {...drag}>
+      {rows.length === 0 ? (
+        <TaxRow row={null} running={false} hover={false} />
+      ) : (
+        rows.map((row) => (
+          <TaxRow
+            key={row.taskId}
+            row={row}
+            running={running}
+            hover={hoverRow === String(row.taskId)}
+            onToggle={() => {
+              if (running) void stop(row.taskId);
+              else void start(row.taskId);
+            }}
+            onHide={() => void hideAll()}
+            onComplete={() => void completeAndAdvance(row.taskId)}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+interface TaxRowProps {
+  row: LastTask | null;
+  /** Si la fila corre. Todas corren o ninguna: la pausada nunca convive con otras. */
+  running: boolean;
+  hover: boolean;
+  onToggle?: () => void;
+  onHide?: () => void;
+  onComplete?: () => void;
+}
+
+function TaxRow({ row, running, hover, onToggle, onHide, onComplete }: TaxRowProps) {
+  const seconds = row?.seconds ?? 0;
+  const planned = row?.estimatedMinutes ?? null;
+  const pct = planned && planned > 0 ? Math.min(100, (seconds / (planned * 60)) * 100) : 0;
+  // Por fila: cada tarea se pasa de **su** estimado.
+  const over = isOverEstimate(seconds, planned);
+
+  return (
+    <div
+      className={`tax__row${hover ? " is-hover-controls" : ""}`}
+      role="group"
+      aria-label={row?.title || "Sin tarea activa"}
+      {...{ [HOVER_KEY_ATTR]: row ? String(row.taskId) : undefined }}
+    >
       <div className="tax__body">
         <div className="tax__title" title="Click: abrir en Focus · Arrastrar: mover">
-          {display?.title || "Sin tarea activa"}
+          {row?.title || "Sin tarea activa"}
         </div>
 
         <div className="tax__time">
-          <span className={`tax__actual${overEstimate ? " is-over" : ""}`}>{hms(seconds)}</span>
+          <span className={`tax__actual${over ? " is-over" : ""}`}>{hms(seconds)}</span>
           <span className="tax__sep"> / </span>
           <span className="tax__planned">{planned != null ? formatMinutes(planned) : "--:--"}</span>
         </div>
@@ -84,17 +155,14 @@ export function FloatingTimer() {
       {/* Controles: solo el play/pausa es visible en reposo. Las opciones (ojo
        * y check) entran deslizándose desde la derecha al pasar el mouse por
        * ese botón, superpuestas al contenido para no alterar el tamaño de la
-       * caja. El detalle está en `timer.css`. */}
+       * fila. El detalle está en `timer.css`. */}
       <div className="tax__controls">
         <div className="tax__opts">
           <button
             className="tax__opt"
             aria-label="Ocultar taxímetro"
             title="Ocultar"
-            onClick={() => {
-              if (running) void stop();
-              dismissLast();
-            }}
+            onClick={onHide}
           >
             <EyeOff size={14} />
           </button>
@@ -103,8 +171,8 @@ export function FloatingTimer() {
             className="tax__opt"
             aria-label="Completar y pasar a la siguiente"
             title="Completar tarea"
-            disabled={!display}
-            onClick={() => void completeAndAdvance()}
+            disabled={!row}
+            onClick={onComplete}
           >
             <Check size={14} />
           </button>
@@ -113,26 +181,41 @@ export function FloatingTimer() {
         <button
           className="tax__btn"
           aria-label={running ? "Pausar" : "Reanudar"}
-          disabled={!display}
-          onClick={() => {
-            if (running) void stop();
-            else if (display) void start(display.taskId);
-          }}
+          disabled={!row}
+          onClick={onToggle}
         >
           {running ? <Pause size={15} /> : <Play size={15} />}
         </button>
       </div>
 
-      {/* Barra de progreso: ocupa todo el ancho de la tarjeta, por debajo de
-       * los controles (los iconos del hover nunca la tapan). */}
+      {/* Barra de progreso: ocupa todo el ancho de la fila, por debajo de los
+       * controles (los iconos del hover nunca la tapan). */}
       <div className="tax__progress">
         <div
-          className={`tax__progress-fill${overEstimate ? " is-over" : ""}`}
+          className={`tax__progress-fill${over ? " is-over" : ""}`}
           style={{ width: `${pct}%` }}
         />
       </div>
     </div>
   );
+}
+
+/**
+ * Ajusta el alto de la ventana a la pila (#19). Depende del **número** de
+ * filas, no de las filas: su identidad cambia en cada tick, y llamar a la
+ * ventana una vez por segundo es la trampa de §5.4.2.
+ *
+ * Con cero filas no toca nada: la ventana se va a esconder, y al volver a
+ * mostrarse lo hará con el alto que corresponda. Tampoco antes de `loaded`, por
+ * la misma razón que `useSelfVisibility`: "todavía no sé" no es "una fila".
+ */
+function useWindowHeight(rows: number, loaded: boolean) {
+  useEffect(() => {
+    if (!isTauri() || !loaded || rows === 0) return;
+    api.setTaximeterHeight(windowHeight(rows)).catch((err) => {
+      console.error("[sunrise] taxímetro: no pude ajustar el alto:", err);
+    });
+  }, [rows, loaded]);
 }
 
 /**

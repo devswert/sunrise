@@ -99,7 +99,9 @@ describe("timerStore con timers en paralelo", () => {
     expect(res?.[0]).toBe(b);
     expect(ids()).toEqual([a]);
     expect(useTimerStore.getState().isRunning(b)).toBe(false);
-    expect(useTimerStore.getState().last?.taskId).toBe(b);
+    // Pausar una de varias la saca de la pila (#19): `last` sigue apuntando a
+    // una que corre, no a la que se fue.
+    expect(useTimerStore.getState().last?.taskId).toBe(a);
     expect((await api.getActiveTimers()).map((t) => t.taskId)).toEqual([a]);
   });
 

@@ -86,6 +86,15 @@ oculto en macOS se estrangula y el `show()` posterior podía no correr nunca. Po
 Si agregas otro controlador de visibilidad, dale el mismo guard — y si tu estado
 inicial se puede confundir con una respuesta legítima, ponle su propia bandera.
 
+**El alto del taxímetro lo pone solo el taxímetro, por Rust y calculado** (#19,
+§5.4.7): `set_taximeter_height(windowHeight(filas))`, con el **número** de filas
+como dependencia (no las filas, que cambian de identidad cada tick), nada antes de
+`loaded` ni con cero filas. Las medidas de `windowHeight` son contrato con
+`timer.css`: si cambias el alto de `.tax__row` o los márgenes de `.tax`, cambia las
+constantes de `FloatingTimer.tsx` en el mismo commit. Y el hover del panel es **por
+fila** (`useCursorHover` devuelve la clave de la fila): una envolvente sobre toda la
+pila abría el panel de todas.
+
 **Una API de ventana nueva necesita su permiso** en
 `src-tauri/capabilities/default.json`, **en el mismo cambio**. Si falta, falla en
 runtime y no al compilar, y el síntoma es una ventana que no aparece sin ningún

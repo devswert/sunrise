@@ -365,6 +365,24 @@ Ojo con esto al escribir tests: un caso que ajuste tiempo y espere verlo en
 
 ## Completar desde el taxímetro
 
+**El taxímetro es una pila, una fila por timer que corre (#19)**, y eso cambia
+quién avanza:
+
+- **Completar una de varias solo la saca**; avanzar a la siguiente pendiente es
+  cosa de **la última**. "La última" la decide la base (`getActiveTimers`
+  después del check), no el store. `completeAndAdvance(taskId)` recibe la fila;
+  sin id es la primera.
+- **Pausar una de varias la saca**; la última queda en pausa como siempre.
+- **Mientras corra algo, `last` es una de las que corren** (`lastInStack`, en
+  `stop`, `refresh` y `completeAndAdvance`). Si apuntara a una que ya salió,
+  completar la que quedaba desde una card dejaría en el taxímetro una tarea
+  que pausaste a propósito. Lo cubre `FloatingTimer.test.tsx`.
+- **El ojo es `hideAll`**: cierra todos y deja `last = null` con una sola
+  escritura. Encadenar `stopAll` y `dismissLast` publicaba una pausada intermedia
+  que el `refresh` de la otra ventana podía reescribir encima, y la fila volvía.
+
+Lo de abajo sigue valiendo para la última fila:
+
 **Completar avanza, pero no arranca.** `completeAndAdvance` deja la siguiente
 pendiente del día **en pausa** (título, estimado y el play esperando), con el
 contador en `0:00:00` porque el taxímetro cuenta lo de hoy. Arrancarla sola
@@ -425,7 +443,7 @@ En `bell.rs`: cada timer suena en su cruce y por su promesa, y la espera es el
 cruce más cercano sin que uno ya excedido la acorte. En el front,
 `timerStore.parallel.test.ts` cubre el contrato de varios timers contra el
 `mockDb` real (`start` paralelo y clásico, `stop` por tarea, `stopAll`, `toggle`,
-el tick por tarea), y `src/features/timer/timerStore.test.ts` cubre `completeAndAdvance`
+el tick por tarea), `FloatingTimer.test.tsx` la pila del taxímetro, y `src/features/timer/timerStore.test.ts` cubre `completeAndAdvance`
 (incluido que **no** arranque la siguiente) y el avance de `refresh`, y
 `FocusView.test.tsx` el `bumpData()` al completar, el resumen del día y que el
 confeti salga solo al vaciar la cola.

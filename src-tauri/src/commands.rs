@@ -351,6 +351,9 @@ pub fn set_taximeter_visible(
             let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
         }
         ensure_on_screen(&win);
+        // La posición guardada es la de una pila quizás más corta: con más filas,
+        // el borde de abajo puede quedar debajo del Dock o fuera del monitor.
+        keep_bottom_inside(&win);
     } else {
         win.hide().map_err(e)?;
     }
@@ -360,6 +363,64 @@ pub fn set_taximeter_visible(
         eprintln!("[sunrise] taxímetro: pedí mostrarlo pero sigue oculto");
     }
     Ok(shown)
+}
+
+/// Ajusta el alto del taxímetro a su pila de filas (#19), en pixeles lógicos.
+///
+/// Lo llama solo la ventana del taxímetro, que es la que sabe cuántas filas
+/// dibuja. Va por Rust y no por `setSize` del webview por lo mismo que
+/// `set_taximeter_visible`: no depende de un permiso de capabilities —que si
+/// falta falla en runtime, callado— y queda en el log.
+///
+/// **Crece hacia abajo, con la esquina de arriba quieta**, y eso se fija a mano:
+/// cuál esquina se queda en su lugar al cambiar el tamaño depende de la
+/// plataforma (en macOS el origen de una ventana es el de abajo), y una pila que
+/// salta hacia arriba al sumar un timer se siente como si se moviera sola.
+/// Después, si el borde de abajo se sale del área útil del monitor, sube lo
+/// justo.
+#[tauri::command]
+pub fn set_taximeter_height(app: tauri::AppHandle, height: f64) -> Result<(), String> {
+    let Some(win) = app.get_webview_window("floating-timer") else {
+        return Err("ventana no encontrada".into());
+    };
+    if !(height.is_finite() && height > 0.0) {
+        return Err(format!("alto inválido: {height}"));
+    }
+    let scale = win.scale_factor().map_err(e)?;
+    let width = win.inner_size().map_err(e)?.to_logical::<f64>(scale).width;
+    let before = win.outer_position().ok();
+    win.set_size(tauri::LogicalSize::new(width, height)).map_err(e)?;
+    if let Some(p) = before {
+        let _ = win.set_position(p);
+    }
+    keep_bottom_inside(&win);
+    Ok(())
+}
+
+/// La `y` de arriba para que una ventana de alto `h` no pase de `bottom`, sin
+/// subir más allá de `top`. Todo en las mismas unidades (físicas).
+fn clamp_top(y: i32, h: i32, top: i32, bottom: i32) -> i32 {
+    if y + h <= bottom {
+        y
+    } else {
+        (bottom - h).max(top)
+    }
+}
+
+/// Sube el taxímetro si su borde de abajo quedó fuera del área útil (sin el
+/// Dock ni la barra de menú) del monitor en el que está.
+fn keep_bottom_inside(win: &tauri::WebviewWindow) {
+    let (Ok(pos), Ok(size), Ok(Some(m))) = (win.outer_position(), win.outer_size(), win.current_monitor())
+    else {
+        return;
+    };
+    let area = m.work_area();
+    let top = area.position.y;
+    let bottom = top + area.size.height as i32;
+    let y = clamp_top(pos.y, size.height as i32, top, bottom);
+    if y != pos.y {
+        let _ = win.set_position(tauri::PhysicalPosition::new(pos.x, y));
+    }
 }
 
 /// Reubica el taxímetro si quedó fuera de todos los monitores.
@@ -1396,6 +1457,23 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn el_taximetro_que_cabe_no_se_mueve() {
+        assert_eq!(clamp_top(100, 70, 0, 900), 100);
+        assert_eq!(clamp_top(830, 70, 0, 900), 830);
+    }
+
+    #[test]
+    fn el_taximetro_que_crece_bajo_el_borde_sube_lo_justo() {
+        // Tres filas desde abajo a la derecha: el borde quedaba en 1012.
+        assert_eq!(clamp_top(830, 182, 0, 900), 718);
+    }
+
+    #[test]
+    fn el_taximetro_mas_alto_que_el_monitor_queda_pegado_arriba() {
+        assert_eq!(clamp_top(500, 1200, 25, 900), 25);
+    }
 
     /// Sin telemetría, el texto que la persona copia es todo lo que vuelve, y
     /// `to_string()` pelado deja fuera la capa que dice qué pasó de verdad.

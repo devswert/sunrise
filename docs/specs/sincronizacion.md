@@ -128,8 +128,12 @@ En `useFloatingWindow.ts`, ya pagadas:
    Manda `useCursorHover`: sondea `cursorPosition()` —global, independiente del
    foco— cada 120ms y prende `is-hover-controls` con hit-test contra la
    **envolvente** de los rects del botón y del panel (la envolvente, para que el
-   hueco de 4px entre ambos no cuente como afuera). Solo corre mientras hay algo que
-   mostrar: el webview sigue vivo con la ventana oculta.
+   hueco de 4px entre ambos no cuente como afuera). Con la pila de #19 la
+   envolvente es **por fila** (`rowUnderCursor`): el sondeo devuelve la
+   `data-hover-key` de la fila y la clase va en esa `.tax__row`; una envolvente
+   sobre todos los botones abría el panel de todas las filas. Sigue siendo un solo
+   sondeo. Solo corre mientras hay algo que mostrar: el webview sigue vivo con la
+   ventana oculta.
 
    **Las dos coordenadas no vienen en la misma escala.** `cursorPosition()`
    multiplica por la escala del monitor **principal**; `outerPosition()`, por la de
@@ -146,3 +150,30 @@ En `useFloatingWindow.ts`, ya pagadas:
    consola. Ya pasó una vez; por eso el `catch` avisa una vez y no cada 120ms. Y las
    capabilities se compilan dentro de la app: tocarlas obliga a reiniciar
    `pnpm tauri dev`, recargar el webview no basta.
+
+7. **El alto de la ventana lo pone solo el taxímetro, y por Rust**
+   (`set_taximeter_height`, #19). Cuatro cosas, cada una con su motivo:
+   - **Depende del número de filas**, no de las filas: su identidad cambia en
+     cada tick, y llamar a la ventana una vez por segundo es la trampa 2. Ni
+     antes de `loaded` (trampa 4), ni con cero filas: la ventana se va a
+     esconder, y al volver a mostrarse ajusta el alto que corresponda.
+   - **Se calcula, no se mide**: `windowHeight(n)` sale de constantes que son
+     contrato con `timer.css` (`.tax` anclada arriba, `.tax__row` de alto fijo).
+     Medir el DOM ataría el alto a un render y a un `ResizeObserver` que en un
+     webview estrangulado no corre.
+   - **Va por Rust** por lo mismo que la visibilidad: `setSize` desde el webview
+     pide `core:window:allow-set-size`, y un permiso que falta falla en runtime y
+     callado.
+   - **La esquina de arriba queda quieta, y después se sube lo justo.** Cuál
+     esquina se queda en su lugar al cambiar el tamaño depende de la plataforma
+     (en macOS el origen de una ventana es el de abajo), así que Rust reaplica la
+     posición previa. Luego `keep_bottom_inside` sube la ventana si el borde de
+     abajo se sale del área útil del monitor (el taxímetro nace abajo a la
+     derecha, justo donde crecer se sale); `set_taximeter_visible` lo aplica
+     también, porque la posición guardada es la de una pila quizás más corta.
+     Mover la ventana dispara `onMoved`, que guarda la posición nueva: es lo
+     esperado, y tiene una consecuencia deliberada: **al encoger, la ventana no
+     vuelve a bajar** a donde estaba. Recordar "dónde la habría dejado el usuario"
+     aparte de dónde está obligaría a una segunda posición guardada; un taxímetro
+     que se queda donde lo ves es más predecible que uno que baja solo. Por lo
+     mismo, una sola fila dejada sobre la franja del Dock sube al mostrarse.

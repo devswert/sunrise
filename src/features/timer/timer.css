@@ -3,16 +3,21 @@
  * así la sombra redondeada se dibuja completa y no se ve un borde cuadrado.
  * Usa los tokens de tema, por lo que sigue el modo claro/oscuro de la app. */
 
+/* La tarjeta es la pila: una `.tax__row` por timer (#19), hacia abajo.
+ * Anclada ARRIBA a propósito: al sumar un timer la ventana crece hacia abajo, y
+ * mientras el cambio de alto llega, lo que se recorta es el pie y no la fila
+ * que ya estabas mirando. Los márgenes (6 arriba, 8 abajo) y el alto de la fila
+ * son contrato con `WINDOW_CHROME` y `ROW_HEIGHT` de `FloatingTimer.tsx`. */
 .tax {
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
   position: fixed;
+  top: 6px;
   right: 8px;
-  bottom: 8px;
   left: 8px;
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
   background: var(--surface-raised);
   border-radius: 14px;
   /* Sombra compacta: apenas despega la tarjeta del fondo. */
@@ -20,7 +25,21 @@
     0 1px 2px rgba(0, 0, 0, 0.10),
     0 4px 10px rgba(0, 0, 0, 0.14);
   overflow: hidden;
+}
+
+/* Una fila = el taxímetro de siempre. Alto fijo (ROW_HEIGHT): el alto de la
+ * ventana se calcula a partir de él. */
+.tax__row {
+  position: relative;
+  box-sizing: border-box;
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
   padding-bottom: 3px; /* carril reservado para la barra de progreso */
+}
+.tax__row + .tax__row {
+  border-top: 1px solid var(--border);
 }
 
 .tax:active {
@@ -35,7 +54,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 2px;
-  padding: 8px 12px;
+  padding: 7px 12px;
   overflow: hidden;
 }
 
@@ -108,9 +127,10 @@
  * era un panel que a veces se encendía y **no se apagaba nunca**, porque el
  * evento de salida no llegaba: quedaba pegado hasta que volvías a pasarle el
  * mouse por encima. Un hover que sabe prender pero no apagar es peor que
- * ninguno. Quien manda es `.tax.is-hover-controls`, que pone `useCursorHover`
- * sondeando la posición global del puntero — esa sí funciona sin foco, y en
- * los dos sentidos.
+ * ninguno. Quien manda es `.tax__row.is-hover-controls`, que pone
+ * `useCursorHover` sondeando la posición global del puntero — esa sí funciona
+ * sin foco, y en los dos sentidos. La clase va en la **fila**: con la pila, el
+ * panel se abre solo en la fila cuyo botón tiene el puntero.
  *
  * El recorrido es corto a propósito: `.tax` tiene `overflow: hidden`, así que
  * arrancar fuera de la tarjeta se vería como un barrido recortado, no como un
@@ -136,7 +156,7 @@
 }
 /* `focus-within` no es decorativo: sin él estos botones siguen siendo
  * alcanzables con Tab estando invisibles. */
-.tax.is-hover-controls .tax__opts,
+.tax__row.is-hover-controls .tax__opts,
 .tax__opts:focus-within {
   opacity: 1;
   pointer-events: auto;
