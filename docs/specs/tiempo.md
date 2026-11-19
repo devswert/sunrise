@@ -274,6 +274,34 @@ Las tres reglas que lo definen:
 Las tres viven en **`work_by_day`**, el núcleo compartido con la bitácora
 (§4.16): la semana lo agrupa en celdas día × categoría, la bitácora en timelines.
 
+**Jornada y paralelismo (#22).** Con timers en paralelo hay tres números, y
+`work_by_day` los saca de la misma pasada:
+
+- **Tiempo en tareas** — lo de siempre (`seconds`, `total_seconds`): cada tarea
+  cuenta su tiempo completo, ajustes incluidos.
+- **Jornada** (`span_seconds`) — las horas de reloj con al menos un timer o una
+  reunión, uniendo lo que se solapa. Los tramos son las **corridas del
+  taxímetro** (`ended_at` distinto de `started_at`, o abiertas **hasta ahora**) y
+  las **reuniones de la Regla 3, enteras** aunque sigan en curso. **Los ajustes
+  manuales no cuentan**: no tienen hora (DECISIONES §1). Cada tramo se **recorta
+  al día local** —es reloj, no atribución—, así que un timer abierto desde anoche
+  ocupa la jornada de hoy aunque su fila sea de ayer, y una reunión de 23:30 a 00:30
+pone su media hora en cada día. Por eso `work_by_day` trae también las abiertas y
+las reuniones que empezaron **antes** del rango: solo para el reloj, nunca para las
+filas.
+- **Paralelismo** — `clocked_seconds ÷ span_seconds`, donde `clocked_seconds` es la
+  suma de los mismos tramos sin unir. **No** es tiempo en tareas ÷ jornada: los
+  ajustes la inflarían. Se escribe "×1,8".
+
+Por día van en `RollupDay`; en total, `span_seconds`/`clocked_seconds` de
+`WeeklyRollup` son la **suma** de los días (no se pisan, por el recorte), y el "×"
+de la semana es Σ reloj ÷ Σ jornada, no el promedio de los días. **Solo se muestran
+si hay paralelismo** (desde ×1,05, `lib/workday.ts`): la cabecera suma los chips
+"jornada" y "en paralelo" (con el "×" de la semana), y cada columna de "lo que se
+cerró" una línea de alto fijo si **algún** día tuvo paralelismo —en **todos** los
+días de esa semana, para no desalinear—. Sin paralelismo la
+review se ve como antes. La unión espejada en el mock es `clockOnDay`.
+
 **Lo planificado sí sale de `scheduled_date`, y esa asimetría es correcta**:
 replanificar una tarea mueve su barra de plan pero no la de horas. Son dos
 preguntas distintas —"qué dije que haría ese día" y "qué hice ese día"—, y

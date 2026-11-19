@@ -169,6 +169,13 @@ export interface RollupDay {
   done: number;
   /** Tareas del día sin estimar: se avisan, no se rellenan con un número. */
   unestimated: number;
+  /**
+   * La jornada: horas de reloj con al menos un timer o una reunión, sin contar
+   * dos veces lo que se solapa. Sin los ajustes manuales, que no tienen hora.
+   */
+  spanSeconds: number;
+  /** Los mismos tramos sumados sin unir: contra `spanSeconds` da el paralelismo. */
+  clockedSeconds: number;
 }
 
 /** Un tramo del timeline de un día. Espejo de `models::DaySegment`. */
@@ -201,6 +208,9 @@ export interface LogDay {
   /** Cómo estuvo el día, en un emoji. */
   mood: string | null;
   workedSeconds: number;
+  /** La jornada y el reloj sumado; ver `RollupDay`. Hoy, hasta la consulta. */
+  spanSeconds: number;
+  clockedSeconds: number;
   plannedMinutes: number;
   unestimated: number;
   done: DoneTask[];
@@ -223,6 +233,9 @@ export interface WeeklyRollup {
   objectiveSeconds: number;
   /** El desglose de `objectiveSeconds`, un renglón por objetivo. */
   byObjective: ObjectiveWork[];
+  /** La suma de las jornadas de los 7 días, y la de su reloj sumado. */
+  spanSeconds: number;
+  clockedSeconds: number;
 }
 
 /** Espeja `models::ObjectiveWork`. El objetivo puede ser de otra semana. */

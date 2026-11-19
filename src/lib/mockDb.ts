@@ -29,6 +29,7 @@ import type {
 } from "./types";
 import { ClaudeStatus } from "./enums";
 import { toISODate, todayISO, weekDates } from "./date";
+import { clockOnDay, type ClockDay } from "./workday";
 import { bareName } from "./channelLabel";
 
 let seq = 1;
@@ -427,6 +428,47 @@ function repartirRecorte(taskId: number, cut: number, stamp: string): Array<[str
     }
   }
   return out;
+}
+
+/**
+ * Espeja la jornada de `repo::work_by_day` (#22): los tramos de reloj de cada
+ * día, recortados a su día local.
+ *
+ * Mismas fuentes y mismos cortes que Rust: las corridas del taxímetro
+ * (`endedAt !== startedAt`, o abiertas hasta `now`) —**nunca los ajustes**, que
+ * se guardan con `endedAt === startedAt` y no tienen hora— y las reuniones de la
+ * Regla 3 enteras, aunque sigan en curso. El día local es el mismo que usa el
+ * resto del mock (`new Date("YYYY-MM-DDT00:00:00")`).
+ */
+function clockByDay(dates: string[], now: number): ClockDay[] {
+  const spans: Array<[number, number]> = [];
+  for (const e of entries) {
+    // Rust hace `JOIN tasks`: una entrada huérfana no es jornada.
+    if (!tasks.some((t) => t.id === e.taskId)) continue;
+    const a = new Date(e.startedAt).getTime();
+    if (Number.isNaN(a)) continue;
+    if (e.endedAt === null) spans.push([a, now]);
+    else if (e.endedAt !== e.startedAt) {
+      const b = new Date(e.endedAt).getTime();
+      if (!Number.isNaN(b)) spans.push([a, b]);
+    }
+  }
+  for (const t of tasks) {
+    if (t.source !== "CALENDAR" || t.sourceState !== "ACTIVE" || t.railOnly) continue;
+    if (!t.eventStart || !t.eventEnd) continue;
+    if (entries.some((e) => e.taskId === t.id)) continue;
+    const a = new Date(t.eventStart).getTime();
+    const b = new Date(t.eventEnd).getTime();
+    if (Number.isNaN(a) || Number.isNaN(b) || a > now) continue;
+    spans.push([a, b]);
+  }
+  return dates.map((date) => {
+    const start = new Date(`${date}T00:00:00`);
+    // El cierre es la medianoche siguiente, no `inicio + 24 h`: hay días de 23 y 25.
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return clockOnDay(spans, start.getTime(), end.getTime());
+  });
 }
 
 export const mock = {
@@ -858,6 +900,7 @@ export const mock = {
       .filter((t) => t.status === "DONE" && indice(t.completedAt) >= 0)
       .sort((a, b) => (a.completedAt ?? "").localeCompare(b.completedAt ?? ""));
 
+    const clock = clockByDay(days, now);
     const rows: RollupDay[] = days.map((date, i) => {
       const delDia = tasks.filter(
         (t) => t.sourceState === "ACTIVE" && !t.railOnly && t.scheduledDate === date,
@@ -880,6 +923,8 @@ export const mock = {
         plannedMinutes,
         done: completedTasks.filter((t) => indice(t.completedAt) === i).length,
         unestimated,
+        spanSeconds: clock[i].span,
+        clockedSeconds: clock[i].clocked,
       };
     });
 
@@ -893,6 +938,8 @@ export const mock = {
       unestimated: rows.reduce((a, d) => a + d.unestimated, 0),
       objectiveSeconds: byObjective.reduce((a, o) => a + o.seconds, 0),
       byObjective,
+      spanSeconds: rows.reduce((a, d) => a + d.spanSeconds, 0),
+      clockedSeconds: rows.reduce((a, d) => a + d.clockedSeconds, 0),
     };
   },
 
@@ -937,10 +984,10 @@ export const mock = {
       acc.set(k, previo);
     }
 
-    // Regla 3: reunión sin ninguna entrada.
+    // Regla 3: reunión sin ninguna entrada. `railOnly` fuera, como en Rust.
     const now = Date.now();
     for (const t of tasks) {
-      if (t.source !== "CALENDAR" || t.sourceState !== "ACTIVE") continue;
+      if (t.source !== "CALENDAR" || t.sourceState !== "ACTIVE" || t.railOnly) continue;
       if (!t.eventStart || !t.eventEnd) continue;
       if (entries.some((e) => e.taskId === t.id)) continue;
       const ini = new Date(t.eventStart).getTime();
@@ -958,7 +1005,8 @@ export const mock = {
       });
     }
 
-    const out: LogDay[] = fechas.map((date) => {
+    const clock = clockByDay(fechas, now);
+    const out: LogDay[] = fechas.map((date, i) => {
       const segments = [...acc.values()]
         .filter((x) => x.date === date)
         .sort((a, b) => a.start.localeCompare(b.start) || a.taskId - b.taskId);
@@ -1003,6 +1051,8 @@ export const mock = {
           .filter((c) => c.seconds > 0)
           .sort((a, b) => (a.categoryId ?? 0) - (b.categoryId ?? 0)),
         workedSeconds: segments.reduce((a, x) => a + Math.max(0, x.seconds), 0),
+        spanSeconds: clock[i].span,
+        clockedSeconds: clock[i].clocked,
         plannedMinutes,
         unestimated,
         done: tasks

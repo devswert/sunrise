@@ -187,6 +187,62 @@ y navega, porque es "paso a trabajar en esto". El paralelo se queda en el detall
 play en paralelo no la mueve, así que navegar llevaba a **otra** tarea. Cuando
 Focus muestre columnas (#21) se puede revisar.
 
+### Jornada y paralelismo (#22)
+
+Con timers en paralelo, "trabajado" deja de ser horas de reloj: dos agentes
+corriendo de 9 a 12 suman seis horas en tareas en una mañana de tres. Se decidió
+que **cada tarea cuente su tiempo completo** —es lo que se le dedicó a cada una— y
+agregar dos números al lado en vez de cambiar ése: la **jornada** (las horas de
+reloj con al menos un timer o una reunión, uniendo lo que se solapa) y el
+**paralelismo**.
+
+**La jornada no cuenta los ajustes manuales.** Un ajuste es una fila con
+`ended_at = started_at`, sellada al mediodía del día de la tarea: atribuye el día,
+pero no dice a qué hora se trabajó, así que no tiene reloj que unir. Es el mismo
+corte que `day_work.tracked_at` (Mej.29). Contarlo de alguna forma —como un tramo
+inventado al mediodía, o sumándolo a la jornada— inventaría horas de reloj, y un
+tramo inventado encima de una corrida real inventaría además paralelismo.
+
+**Por eso el paralelismo es reloj sumado ÷ jornada, y no tiempo en tareas ÷
+jornada** como lo decía la issue. El tiempo en tareas incluye los ajustes: un día
+con una hora de timer y tres de ajuste daría "×4" sin que nada haya corrido a la
+vez, y un día solo con ajustes dividiría por cero. Los dos lados de la razón salen
+de los mismos tramos (`clocked_seconds` y `span_seconds`), y el número que se
+muestra como "en tareas" sigue siendo el de siempre. Consecuencia aceptada: con
+ajustes, "en tareas ÷ jornada" no da el "×" que se ve, y está bien — responden
+preguntas distintas.
+
+**Sale solo si hay paralelismo de verdad** (desde ×1,05, que ya se lee "×1,1").
+Sin eso, ni la jornada ni el "×" aparecen y las vistas se ven como antes: un par de
+minutos de solape al cambiar de tarea no es trabajar en paralelo, y la jornada sin
+paralelismo es el mismo número que "trabajado" con otro nombre.
+
+**Campos y no comando.** La jornada viaja en `LogDay`, `RollupDay` y
+`WeeklyRollup`, y se calcula en la **misma pasada** de `work_by_day`: un comando
+aparte habría sido una segunda consulta del trabajo, y la Regla 3 ya estaba escrita
+dos veces (el respaldo de las reuniones).
+
+**La jornada se recorta al día; el tiempo en tareas se atribuye por el inicio.**
+Son reloj y contabilidad: un timer que quedó abierto desde anoche ocupa las horas
+de hoy aunque su fila sea de ayer (Regla 2). Para traer esas corridas, la consulta
+de `work_by_day` se ensanchó a las abiertas de antes del rango, y la de reuniones a
+las que empezaron antes y lo cruzan: entran al reloj pero no a las filas. Sin eso el
+mismo día tenía dos jornadas —la del shutdown, que pide un día, y la de la
+bitácora, que pide treinta—. Borde aceptado: un timer olvidado abierto hace días
+llena de 24 h la jornada de cada día hasta que se pare; es reloj de verdad, y lo
+que corrige el dato es pararlo, no esconderlo. Y **recortarlo a mano no achica la
+jornada**: el recorte es un ajuste, sin hora, y la corrida sigue entera en el reloj.
+Descontarlo obligaría a inventarle una hora al recorte; queda como borde conocido. **Una reunión en curso cuenta entera** en la jornada, igual
+que en tareas: la Regla 3 le acredita la duración completa apenas empieza, y
+cortarla en `now` dejaba un paralelismo que no hubo.
+
+**Hoy, la jornada avanza con el taxímetro** (`liveClock`): Rust la calcula hasta
+la consulta y el tiempo en tareas sigue subiendo. Se avanzan **los dos** lados —un
+segundo de jornada y un segundo por timer abierto de reloj—, porque mover uno solo
+hacía crecer el "×" con el tiempo sin que nada cambiara. Borde aceptado: durante
+una reunión en curso con un timer se suma de más el rato solapado, hasta la
+siguiente recarga.
+
 ---
 
 ## 2. Lo que depende del reloj va en Rust

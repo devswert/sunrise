@@ -148,6 +148,13 @@ pub struct RollupDay {
     pub done: i64,
     /// Tareas del día sin estimación: se avisan, no se rellenan con un número.
     pub unestimated: i64,
+    /// La jornada: horas de reloj con al menos un timer o una reunión, sin
+    /// contar dos veces lo que se solapa. Sin los ajustes manuales, que no
+    /// tienen hora (SPECS §4.15).
+    pub span_seconds: i64,
+    /// Los mismos tramos sumados sin unir. `clocked_seconds / span_seconds` es
+    /// el paralelismo.
+    pub clocked_seconds: i64,
 }
 
 /// Cuánto tiempo se fue en un objetivo durante la semana.
@@ -184,6 +191,10 @@ pub struct WeeklyRollup {
     pub objective_seconds: i64,
     /// El desglose de `objective_seconds`, un renglón por objetivo.
     pub by_objective: Vec<ObjectiveWork>,
+    /// La suma de las jornadas de los 7 días (cada tramo ya va recortado a su
+    /// día, así que no se pisan).
+    pub span_seconds: i64,
+    pub clocked_seconds: i64,
 }
 
 /// Un tramo del timeline de un día: en qué se trabajó, cuánto y desde cuándo.
@@ -223,6 +234,10 @@ pub struct LogDay {
     /// Cómo estuvo el día, en un emoji.
     pub mood: Option<String>,
     pub worked_seconds: i64,
+    /// La jornada y el reloj sumado del día; ver `RollupDay`. Para hoy cuentan
+    /// las corridas abiertas hasta el momento de la consulta.
+    pub span_seconds: i64,
+    pub clocked_seconds: i64,
     pub planned_minutes: i64,
     pub unestimated: i64,
     pub done: Vec<DoneTask>,

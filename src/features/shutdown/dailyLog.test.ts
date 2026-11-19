@@ -5,6 +5,7 @@ import {
   highlights,
   visibleDays,
   dayStatus,
+  clockWithRunning,
   isEmpty,
   segmentSeconds,
   shouldRemindShutdown,
@@ -19,6 +20,8 @@ function day(parcial: Partial<LogDay> = {}): LogDay {
     mood: null,
     cells: [],
     workedSeconds: 0,
+    spanSeconds: 0,
+    clockedSeconds: 0,
     plannedMinutes: 0,
     unestimated: 0,
     done: [],
@@ -156,5 +159,18 @@ describe("tocaAvisarCierre", () => {
         values: { [SettingKey.NOTICE_SHUTDOWN]: "sí" },
       }),
     ).toBe(true);
+  });
+});
+
+describe("clockWithRunning", () => {
+  const withClock = day({ spanSeconds: 3600, clockedSeconds: 5400 });
+
+  it("hoy avanza con los timers abiertos, los dos lados a la vez", () => {
+    expect(clockWithRunning(withClock, true, 2, 60)).toEqual({ span: 3660, clocked: 5520 });
+  });
+
+  it("un día pasado es lo que llegó de Rust, aunque haya timers corriendo", () => {
+    // Los timers abiertos son de hoy: sumarlos a otro día lo inflaría.
+    expect(clockWithRunning(withClock, false, 2, 60)).toEqual({ span: 3600, clocked: 5400 });
   });
 });
