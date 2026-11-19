@@ -1092,7 +1092,12 @@ mod tests {
         let c = conn();
         let m = calendar_task(&c, "2026-10-14");
         start(&c, m, true);
-        // Una que su calendario quitó (I7) ya no existe para el MCP.
+        stop_timer(&c, TaskIdParams { id: m }).unwrap();
+        // También las "solo agenda", que list_tasks no muestra pero ocupan su hora.
+        c.execute("UPDATE tasks SET rail_only = 1 WHERE id = ?1", [m]).unwrap();
+        log(&c, m, "2026-10-14 08:00", "2026-10-14 08:30").unwrap();
+        // Una que su calendario quitó (I7) ya no existe para el MCP. Sin timer
+        // corriendo: el reconciler no orfana una tarea con el timer abierto.
         c.execute("UPDATE tasks SET source_state = 'ORPHANED' WHERE id = ?1", [m])
             .unwrap();
         assert!(log(&c, m, "2026-10-14 09:00", "2026-10-14 10:00")

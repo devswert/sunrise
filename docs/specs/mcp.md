@@ -51,8 +51,9 @@ se pruebe en memoria.
   cada tool responde un error que dice qué hacer (abrir la app, o actualizarla).
 - **`busy_timeout` de 5 s** en `db::open`, que comparten los dos procesos. Sin él,
   una escritura que coincide con un commit del otro falla con `SQLITE_BUSY`.
-- **La zona** es la de `repo::zone`, que se cachea por proceso: si se cambia el
-  ajuste de zona, el MCP la toma cuando Claude Desktop lo relance.
+- **La zona** es la de `repo::zone`, que se cachea por proceso; el MCP **olvida el
+  caché en cada llamada** (`with_db`), porque el ajuste lo cambia la app, que es otro
+  proceso, y desde #23 el MCP escribe tiempo con hora.
 
 #### Las tools
 

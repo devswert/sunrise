@@ -38,6 +38,11 @@ impl SunriseServer {
         f: impl FnOnce(&Connection) -> Result<String, String>,
     ) -> Result<String, String> {
         let conn = store::open(&self.db_path)?;
+        // La zona se cachea por proceso y solo la invalida el `set_setting` de la
+        // app, que es otro proceso. Este vive lo que Claude Desktop, y desde que
+        // escribe tiempo una zona vieja dejaría tramos mal fechados para siempre:
+        // se relee en cada llamada, que ya abre su propia conexión.
+        crate::repo::forget_zone();
         f(&conn)
     }
 }
