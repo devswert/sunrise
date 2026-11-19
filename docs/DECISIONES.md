@@ -1047,6 +1047,42 @@ tarea que tiene el timer corriendo lo detiene en la base (I5), y el taxímetro, 
 `timerStore` de cada ventana y `bell.rs` no se enterarían: el aviso solo invalida
 vistas. Antes de abrir esas tools, el aviso tiene que refrescar también el timer.
 
+**El timer se abrió en #23 con esa condición cumplida a medias.** `main` sí relee
+los timers con cada `dataVersion` (`useTimerRuntime`), y `bell.rs` relee la base en
+cada vuelta; lo que no se entera es la **ventana flotante**, que no monta el aviso.
+Se aceptó porque el caso que motivó la tool —que Claude registre lo que hiciste—
+es sobre todo `log_time`, que no abre timers, y porque `main` muestra el taxímetro
+igual. Arreglarlo es front (montar `useExternalChanges` también ahí). Completar
+sigue fuera: ese sí cambia lo que el taxímetro muestra en pantalla.
+
+**`log_time` es una corrida, no un ajuste.** Se pudo resolver con
+`set_actual_seconds`, pero el ajuste no tiene hora: el rail no lo dibuja y el
+rollup lo fecha en el día de la tarea, no en el que se trabajó. El tramo entra como
+lo habría dejado el taxímetro y **pasa por `close_entry`**, que es donde viven I1 e
+I3; insertarlo ya cerrado (y no abrirlo para cerrarlo) evita chocar con el índice
+de I4 cuando la tarea tiene su timer corriendo.
+
+**`log_time` rechaza pisar otra corrida de la misma tarea.** La issue no lo pedía,
+pero el uso esperado es reconstruir un día desde una conversación, y un modelo que
+lo hace dos veces —o que registra el rato que el timer ya está contando— duplica
+horas sin que nada lo muestre. Rechazar es más barato que corregir tramos, que
+está fuera de alcance. Entre tareas distintas no se mira: con timers en paralelo,
+dos tareas a la vez es legítimo.
+
+**Fecha y hora completas, no `HH:MM`.** Con la hora sola, "23:00 a 00:30" obliga a
+inventar una regla (¿el fin es del día siguiente?) que choca con "fin antes del
+inicio se rechaza". `YYYY-MM-DD HH:MM` local es lo que el modelo ya maneja con
+`list_tasks`, y no es ambiguo salvo en el salto de horario, donde se toma la
+primera ocurrencia o se rechaza la hora que no existe.
+
+**`parallel` sin valor por defecto.** `false` pausa lo que el usuario tiene
+corriendo en la app; dejarlo implícito habría hecho que "anota que empecé X"
+cortara el timer de otra cosa sin que nadie lo decidiera.
+
+**`set_task_time` se rechaza con el timer corriendo.** El total no incluye la
+corrida abierta y `stop_timer` la suma después: "déjala en dos horas" terminaba en
+dos horas más lo que llevaba.
+
 **Las tareas de calendario se leen y no se editan.** Su dueño es el reconciler, que
 vuelve cada quince minutos y reescribe título, día y hora desde el feed. Una edición
 desde Claude duraría hasta la próxima sincronización, y el usuario no sabría por
@@ -1071,8 +1107,8 @@ como conectada aunque se llame distinto**: el caso real fue un `sunrise` puesto 
 mano apuntando a dev, y el botón de dev (`sunrise-dev`) agregaba un segundo
 servidor sobre la misma base.
 
-**Lo que el MCP todavía no hace.** Completar tareas y manejar el timer piden que el
-aviso de `external.rs` refresque también el timer (I5), no solo las vistas. Borrar
+**Lo que el MCP todavía no hace.** Completar tareas pide que el aviso de
+`external.rs` refresque también el taxímetro (I5), no solo `main`. Borrar
 no se hace directo: va a pasar por un basurero de 30 días con restauración, para
 que un error del agente no sea irreversible (issue #11).
 

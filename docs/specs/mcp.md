@@ -1,6 +1,6 @@
 # §4.32 Servidor MCP para Claude Desktop
 
-Leer y crear tareas desde Claude Desktop, sin abrir la app y sin puertos.
+Leer y crear tareas, y registrar tiempo, desde Claude Desktop, sin abrir la app y sin puertos.
 
 Vuelve al [índice de SPECS](../SPECS.md). El porqué de cada decisión está en
 [DECISIONES §11](../DECISIONES.md).
@@ -65,6 +65,10 @@ se pruebe en memoria.
 | `create_task` | `create_task` | escribe, no destructiva |
 | `update_task` | `update_task` | escribe, no destructiva, idempotente |
 | `move_task` (`id`, `date` o null) | `move_task` con índice `i64::MAX` = al final | escribe, no destructiva, idempotente |
+| `start_timer` (`id`, `parallel`) | `start_timer` | escribe, no destructiva, idempotente |
+| `stop_timer` (`id`) | `stop_timer` | escribe, no destructiva, idempotente |
+| `log_time` (`id`, `start`, `end`) | `log_time_entry` | escribe, no destructiva, **no** idempotente |
+| `set_task_time` (`id`, `minutes`) | `set_actual_seconds` en `atomically` | escribe, no destructiva, idempotente |
 
 - **`list_tasks` sin fecha es hoy** en la zona del usuario, y toda respuesta trae
   `today`: el modelo no tiene otra forma confiable de saber qué día es acá.
@@ -89,14 +93,57 @@ se pruebe en memoria.
   español, no como error de protocolo: así el modelo puede explicarle al usuario
   qué hacer.
 
+#### El tiempo (#23)
+
+Para que Claude registre lo que hiciste —por ejemplo, revisando lo que pasó en
+Slack— además de cronometrar en vivo.
+
+- **`start_timer` y `stop_timer` son el play de la app**, sin SQL propio: llaman a
+  `repo::start_timer` / `repo::stop_timer` (I4, I5, atomicidad y `started_at` con
+  `repo::now()` vienen de ahí). **`parallel` es obligatorio**: `false` pausa todo lo
+  que corre —incluido lo que el usuario está cronometrando en la app— y eso tiene
+  que decidirlo el modelo, no un valor por defecto. La respuesta trae `running` (lo
+  que queda corriendo, con `since` en hora local) y `paused` (lo que el play
+  clásico pausó). `stop_timer` sin timer no es error: no trae `logged_minutes`.
+- **`log_time` registra un tramo pasado ya cerrado** con `repo::log_time_entry`:
+  es lo que habría dejado el taxímetro encendido a `start` y apagado a `end`.
+  - Es una **corrida** (`ended_at` ≠ `started_at`), no un ajuste: el rail la dibuja
+    en su hora (`day_work.tracked_at`) y el rollup la atribuye por `started_at`.
+  - Pasa por **`close_entry`**: se parte por día local si cruza la medianoche (I3)
+    y se **suma** a `actual_seconds` (I1). La fila se inserta ya cerrada y
+    `close_entry` la reescribe; una abierta chocaría con el índice de I4 si la
+    tarea tiene su timer corriendo.
+  - **Se rechaza**: fin no posterior al inicio, fin en el futuro, más de 24 horas,
+    y **pisar otra corrida de la misma tarea**, cerrada o en curso (ese tiempo ya
+    está contado). Los ajustes no cuentan como corrida: no tienen hora. Pegado a
+    otro tramo (`[10, 11)` y `[11, 12)`) sí entra.
+  - **No reabre una tarea `DONE`**: registrar trabajo pasado no es volver a ella.
+  - **Repetirla duplica** el tiempo salvo que pise (y entonces se rechaza): es la
+    única tool de tiempo sin `idempotent_hint`.
+- **`set_task_time` corrige el total en minutos** con `set_actual_seconds`, como el
+  ajuste a mano (I2): la diferencia queda como entrada de ajuste sin hora.
+  **Con el timer de la tarea corriendo se rechaza**: el total no incluye la corrida
+  abierta, que se suma al detenerla, así que "déjala en 2 horas" terminaría en 2
+  horas más lo que llevaba. La pregunta y la escritura van en la misma transacción.
+- **Las cuatro aceptan reuniones de calendario** (la card tiene play y el tiempo no
+  lo reescribe el reconciler), pero no tareas `ORPHANED` (I7).
+
+**Fechas y horas del tiempo**: `start` y `end` son **fecha y hora local**,
+`YYYY-MM-DD HH:MM` (también con `T` o con segundos), en la zona del usuario
+(`repo::zone`). Una hora sola no entra: no dice el día, y "23:00 a 00:30" no se
+puede leer sin una regla que choca con "fin antes del inicio se rechaza". Un RFC
+3339 **con offset** se respeta tal cual. En el salto de horario, una hora que
+ocurre dos veces toma la primera (como `local_midnight`) y una que no existe se
+rechaza diciendo por qué. Lo que se guarda es siempre `to_rfc3339()` en UTC.
+
 **Fuera, a propósito:**
 
-- **Completar, el timer y borrar.** Por I5, completar una tarea detiene **su** timer en
-  la base (solo el suyo: los que corren en paralelo siguen), y ni `timerStore`, ni el taxímetro, ni `bell.rs` se enterarían:
-  el aviso de §5 solo invalida vistas.
+- **Completar y borrar.** Por I5, completar una tarea detiene **su** timer en la
+  base, y eso pide que el taxímetro se entere (ver abajo).
+- **Corregir o borrar tramos ya registrados.** `log_time` solo agrega.
 - **Editar o mover las tareas de calendario.** Se leen; su dueño es el reconciler,
   que reescribiría la edición en la próxima sincronización.
-- **Objetivos, ajustes y tiempo trabajado.**
+- **Objetivos y ajustes.**
 
 **Lo que devuelve una tool sale de la máquina**: entra a la conversación con
 Claude, que corre en los servidores de Anthropic. Local es el servidor, no los
@@ -115,6 +162,18 @@ escribe la app no lo mueve y no hay eco posible. Al cambiar emite
 `sunrise://data-changed`; `useExternalChanges` (en `Shell`) llama
 `markDataStale()`. Restaurar un respaldo cambia la conexión y da un aviso de más,
 inofensivo. Detalle del canal en [§5](sincronizacion.md).
+
+**El timer**: en `main`, `useTimerRuntime` relee los timers con cada
+`dataVersion`, así que un `start_timer` del MCP aparece en la vista y `main`
+muestra el taxímetro. Dos huecos conocidos (#23, no bloqueantes):
+
+- **La ventana flotante no escucha `data-changed`** (`useExternalChanges` vive en
+  `Shell`, solo en `main`, y `refresh` no avisa por `localStorage`): su store se
+  queda con lo último que leyó hasta su próximo refresco. Arreglarlo es montar el
+  aviso también ahí.
+- **La campana puede llegar hasta 5 min tarde** si el MCP arranca un timer cuando
+  no había ninguno: nadie toca `bell::Armed` y el vigilante duerme hasta
+  `ESPERA_DORMIDO`. Por diseño se atrasa, no se pierde (cada vuelta relee la base).
 
 #### Configs → MCP (`claude_desktop.rs`, `McpCard`)
 

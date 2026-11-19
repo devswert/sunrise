@@ -456,8 +456,8 @@ pub fn update_task(conn: &Connection, p: UpdateTaskParams) -> ToolResult {
             .priority
             .map(|v| v.as_deref().map(priority).transpose())
             .transpose()?,
-        // Ni objetivo ni tiempo trabajado: el tiempo pasa por `set_actual_seconds`
-        // (I2) y no está en el alcance del MCP.
+        // Ni objetivo ni tiempo trabajado: el tiempo tiene sus tools (`log_time`,
+        // `set_task_time`), que pasan por `log_time_entry` y `set_actual_seconds` (I2).
         objective_id: None,
         actual_seconds: None,
     };
@@ -481,6 +481,251 @@ pub fn move_task(conn: &Connection, p: MoveTaskParams) -> ToolResult {
         .map_err(db_err)?
         .ok_or_else(|| format!("No existe una tarea con id {}.", p.id))?;
     to_json(&view(task, &channels(conn)?))
+}
+
+// ---------------------------------------------------------------------------
+// El tiempo (#23): timers en vivo, tramos pasados y el total
+// ---------------------------------------------------------------------------
+
+/// El tramo más largo que acepta `log_time`. Un día entero ya es raro; más que
+/// eso casi seguro es un error del modelo al armar las fechas.
+const MAX_LOG_HOURS: i64 = 24;
+/// El total más alto que acepta `set_task_time`, en minutos (1000 horas).
+const MAX_TOTAL_MINUTES: i64 = 60_000;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(transform = no_defaults)]
+pub struct StartTimerParams {
+    /// El id de la tarea.
+    pub id: i64,
+    /// false pausa todos los demás timers (el play de la app); true la suma a los
+    /// que ya corren sin tocarlos. Obligatorio: pausar lo que el usuario está
+    /// cronometrando tiene que ser una decisión.
+    pub parallel: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(transform = no_defaults)]
+pub struct LogTimeParams {
+    /// El id de la tarea.
+    pub id: i64,
+    /// Inicio del tramo, fecha y hora en la zona del usuario: YYYY-MM-DD HH:MM.
+    pub start: String,
+    /// Fin del tramo, YYYY-MM-DD HH:MM en la zona del usuario. Posterior al
+    /// inicio y no en el futuro; puede ser del día siguiente.
+    pub end: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(transform = no_defaults)]
+pub struct SetTaskTimeParams {
+    /// El id de la tarea.
+    pub id: i64,
+    /// El tiempo trabajado total de la tarea, en minutos. Reemplaza al actual.
+    pub minutes: i64,
+}
+
+/// Un timer que corre, como lo lee el modelo.
+#[derive(Debug, Serialize)]
+struct RunningView {
+    id: i64,
+    title: String,
+    /// Desde cuándo, `YYYY-MM-DD HH:MM` en la zona del usuario.
+    since: String,
+    running_minutes: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct PausedView {
+    id: i64,
+    title: String,
+}
+
+#[derive(Serialize)]
+struct TimerResult {
+    task: TaskView,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    logged_minutes: Option<i64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    paused: Vec<PausedView>,
+    running: Vec<RunningView>,
+}
+
+/// La tarea existe y se ve en la app. A diferencia de `editable`, **acepta las de
+/// calendario**: el tiempo de una reunión se trackea como el de cualquier tarea
+/// (la card tiene play), y eso no lo reescribe el reconciler.
+fn trackable(conn: &Connection, id: i64) -> Result<Task, String> {
+    repo::get_task(conn, id)
+        .map_err(db_err)?
+        .filter(|t| t.source_state == "ACTIVE")
+        .ok_or_else(|| format!("No existe una tarea con id {id}."))
+}
+
+fn local_label(tz: chrono_tz::Tz, rfc: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(rfc)
+        .map(|d| d.with_timezone(&tz).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|_| rfc.to_string())
+}
+
+fn running(conn: &Connection) -> Result<Vec<RunningView>, String> {
+    let tz = repo::zone(conn);
+    let now = Utc::now();
+    Ok(repo::get_active_timers(conn)
+        .map_err(db_err)?
+        .into_iter()
+        .map(|a| RunningView {
+            running_minutes: chrono::DateTime::parse_from_rfc3339(&a.started_at)
+                .map(|s| (now - s.with_timezone(&Utc)).num_minutes().max(0))
+                .unwrap_or(0),
+            since: local_label(tz, &a.started_at),
+            id: a.task_id,
+            title: a.title,
+        })
+        .collect())
+}
+
+fn timer_result(
+    conn: &Connection,
+    id: i64,
+    logged_minutes: Option<i64>,
+    paused: Vec<PausedView>,
+) -> ToolResult {
+    let task = trackable(conn, id)?;
+    to_json(&TimerResult {
+        task: view(task, &channels(conn)?),
+        logged_minutes,
+        paused,
+        running: running(conn)?,
+    })
+}
+
+/// Una fecha y hora **local** del usuario → UTC.
+///
+/// Acepta `YYYY-MM-DD HH:MM` (o con `T`, y con segundos). Una hora sola no: no
+/// dice el día, y "23:00 a 00:30" no se puede leer sin inventar una regla que
+/// choca con "el fin antes del inicio se rechaza". Un RFC 3339 **con offset**
+/// también entra y se respeta tal cual, porque ese no es ambiguo.
+///
+/// Del salto de horario: una hora que ocurre dos veces toma la primera (como
+/// `local_midnight`), y una que no existe se rechaza con su motivo.
+fn local_datetime(tz: chrono_tz::Tz, raw: &str) -> Result<chrono::DateTime<Utc>, String> {
+    use chrono::{LocalResult, NaiveDateTime, TimeZone};
+    let s = raw.trim();
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    let naive = ["%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]
+        .iter()
+        .find_map(|f| NaiveDateTime::parse_from_str(s, f).ok())
+        .ok_or_else(|| {
+            format!("«{raw}» no es una fecha y hora válida: usa YYYY-MM-DD HH:MM, en la zona del usuario.")
+        })?;
+    match tz.from_local_datetime(&naive) {
+        LocalResult::Single(dt) => Ok(dt.with_timezone(&Utc)),
+        LocalResult::Ambiguous(first, _) => Ok(first.with_timezone(&Utc)),
+        LocalResult::None => Err(format!(
+            "«{raw}» no existe en la zona del usuario ({tz}): cae en el salto del cambio de horario."
+        )),
+    }
+}
+
+/// Inicia el timer de una tarea, con las mismas reglas que el play de la app
+/// (`repo::start_timer`): si ya corre no hace nada, y si estaba completada la
+/// reabre (I5).
+pub fn start_timer(conn: &Connection, p: StartTimerParams) -> ToolResult {
+    trackable(conn, p.id)?;
+    let before = repo::get_active_timers(conn).map_err(db_err)?;
+    repo::start_timer(conn, p.id, p.parallel).map_err(db_err)?;
+    let after = repo::get_active_timers(conn).map_err(db_err)?;
+    let paused = before
+        .into_iter()
+        .filter(|b| !after.iter().any(|a| a.task_id == b.task_id))
+        .map(|b| PausedView {
+            id: b.task_id,
+            title: b.title,
+        })
+        .collect();
+    timer_result(conn, p.id, None, paused)
+}
+
+/// Detiene el timer de una tarea; los demás siguen. Si no corría no es un error:
+/// el resultado lo dice con `logged_minutes` ausente.
+pub fn stop_timer(conn: &Connection, p: TaskIdParams) -> ToolResult {
+    trackable(conn, p.id)?;
+    let stopped = repo::stop_timer(conn, p.id).map_err(db_err)?;
+    timer_result(conn, p.id, stopped.map(|(_, secs)| secs / 60), Vec::new())
+}
+
+/// Registra un tramo pasado ya cerrado (`repo::log_time_entry`).
+pub fn log_time(conn: &Connection, p: LogTimeParams) -> ToolResult {
+    trackable(conn, p.id)?;
+    let tz = repo::zone(conn);
+    let start = local_datetime(tz, &p.start)?;
+    let end = local_datetime(tz, &p.end)?;
+    if end - start > chrono::Duration::hours(MAX_LOG_HOURS) {
+        return Err(format!(
+            "El tramo dura más de {MAX_LOG_HOURS} horas; revisa las fechas o regístralo en partes."
+        ));
+    }
+    use repo::LogTimeError as E;
+    let (_, secs) = repo::log_time_entry(conn, p.id, start, end).map_err(|e| match e {
+        E::EndNotAfterStart => "El fin tiene que ser posterior al inicio.".to_string(),
+        E::EndInFuture => {
+            "El fin está en el futuro: log_time es para tramos que ya terminaron. Para lo que \
+             está pasando ahora usa start_timer."
+                .to_string()
+        }
+        E::TaskNotFound => format!("No existe una tarea con id {}.", p.id),
+        E::Overlaps(a, b) => {
+            let desde = local_label(tz, &a);
+            match b {
+                Some(b) => format!(
+                    "Se pisa con un tramo ya registrado en esa tarea ({desde} a {}): ese tiempo ya \
+                     está contado.",
+                    local_label(tz, &b)
+                ),
+                None => format!(
+                    "Se pisa con el timer de esa tarea, que corre desde {desde}: ese tiempo se \
+                     cuenta al detenerlo."
+                ),
+            }
+        }
+        E::Db(e) => db_err(e),
+    })?;
+    timer_result(conn, p.id, Some(secs / 60), Vec::new())
+}
+
+/// Corrige el total trabajado, como el ajuste a mano de la app
+/// (`repo::set_actual_seconds`, I2): la diferencia queda como entrada de ajuste.
+///
+/// **Con el timer de la tarea corriendo se rechaza.** El total no incluye la
+/// corrida abierta, que se suma al detenerla: "déjala en 2 horas" terminaría en
+/// 2 horas más lo que llevaba corriendo.
+pub fn set_task_time(conn: &Connection, p: SetTaskTimeParams) -> ToolResult {
+    trackable(conn, p.id)?;
+    if !(0..=MAX_TOTAL_MINUTES).contains(&p.minutes) {
+        return Err(format!(
+            "El total tiene que estar entre 0 y {MAX_TOTAL_MINUTES} minutos."
+        ));
+    }
+    // La pregunta y la escritura en la misma transacción: entre las dos, la app
+    // podría darle play.
+    let was_running = repo::atomically(conn, || {
+        if repo::get_active_timer(conn, p.id)?.is_some() {
+            return Ok(true);
+        }
+        repo::set_actual_seconds(conn, p.id, p.minutes * 60)?;
+        Ok(false)
+    })
+    .map_err(db_err)?;
+    if was_running {
+        return Err(
+            "El timer de esa tarea está corriendo: detenlo primero con stop_timer, o el total \
+             quedaría sumado a lo que lleva."
+                .into(),
+        );
+    }
+    timer_result(conn, p.id, None, Vec::new())
 }
 
 #[cfg(test)]
@@ -752,5 +997,167 @@ mod tests {
             .find(|ch| ch["id"].as_i64() == Some(child.id))
             .unwrap();
         assert!(found["parent"].is_string());
+    }
+
+    // --- El tiempo (#23) ----------------------------------------------------
+
+    fn ids(v: &Value, key: &str) -> Vec<i64> {
+        v[key]
+            .as_array()
+            .map(|a| a.iter().map(|x| x["id"].as_i64().unwrap()).collect())
+            .unwrap_or_default()
+    }
+
+    fn start(c: &Connection, id: i64, parallel: bool) -> Value {
+        json(&start_timer(c, StartTimerParams { id, parallel }).unwrap())
+    }
+
+    #[test]
+    fn start_timer_respeta_parallel_y_dice_que_pauso() {
+        let c = conn();
+        let a = create(&c, "a", Some("2026-10-14"));
+        let b = create(&c, "b", Some("2026-10-14"));
+        let d = create(&c, "d", Some("2026-10-14"));
+
+        start(&c, a, false);
+        let out = start(&c, b, true);
+        assert_eq!(ids(&out, "running"), vec![a, b], "paralelo no toca al otro");
+        assert!(out.get("paused").is_none());
+
+        let out = start(&c, d, false);
+        assert_eq!(ids(&out, "running"), vec![d]);
+        let mut paused = ids(&out, "paused");
+        paused.sort();
+        assert_eq!(paused, vec![a, b], "el play clásico pausa todo y lo dice");
+
+        // Ya corre: no hace nada, ni pausa a nadie.
+        start(&c, a, true);
+        let out = start(&c, d, false);
+        assert_eq!(ids(&out, "running"), vec![d, a]);
+        assert!(out.get("paused").is_none());
+    }
+
+    #[test]
+    fn start_timer_reabre_una_completada_como_el_play_de_la_app() {
+        let c = conn();
+        let a = create(&c, "a", Some("2026-10-14"));
+        repo::set_task_status(&c, a, "DONE").unwrap();
+        let out = start(&c, a, true);
+        assert_eq!(out["task"]["status"], "TODO");
+    }
+
+    #[test]
+    fn stop_timer_para_solo_esa_y_sin_timer_no_es_error() {
+        let c = conn();
+        let a = create(&c, "a", Some("2026-10-14"));
+        let b = create(&c, "b", Some("2026-10-14"));
+
+        let out = json(&stop_timer(&c, TaskIdParams { id: a }).unwrap());
+        assert!(out.get("logged_minutes").is_none(), "no corría: nada registrado");
+
+        start(&c, a, true);
+        start(&c, b, true);
+        let out = json(&stop_timer(&c, TaskIdParams { id: a }).unwrap());
+        assert_eq!(out["logged_minutes"], 0);
+        assert_eq!(ids(&out, "running"), vec![b]);
+    }
+
+    #[test]
+    fn las_tools_de_tiempo_aceptan_reuniones_pero_no_tareas_inexistentes() {
+        let c = conn();
+        let m = calendar_task(&c, "2026-10-14");
+        start(&c, m, true);
+        assert!(stop_timer(&c, TaskIdParams { id: 999 })
+            .unwrap_err()
+            .contains("No existe"));
+    }
+
+    fn log(c: &Connection, id: i64, start: &str, end: &str) -> ToolResult {
+        log_time(
+            c,
+            LogTimeParams {
+                id,
+                start: start.into(),
+                end: end.into(),
+            },
+        )
+    }
+
+    #[test]
+    fn log_time_registra_en_la_zona_del_usuario_y_suma_al_total() {
+        let c = conn();
+        let a = create(&c, "a", Some("2026-10-14"));
+
+        let out = json(&log(&c, a, "2026-10-14 15:41", "2026-10-14T16:41").unwrap());
+        assert_eq!(out["logged_minutes"], 60);
+        assert_eq!(out["task"]["tracked_minutes"], 60);
+
+        // La entrada quedó en esa hora local, no en UTC.
+        let entry = &repo::list_time_entries(&c, a).unwrap()[0];
+        assert_eq!(local_label(repo::zone(&c), &entry.started_at), "2026-10-14 15:41");
+        assert_eq!(local_label(repo::zone(&c), entry.ended_at.as_ref().unwrap()), "2026-10-14 16:41");
+    }
+
+    #[test]
+    fn log_time_rechaza_lo_que_no_es_un_tramo_pasado() {
+        let c = conn();
+        let a = create(&c, "a", Some("2026-10-14"));
+        let tomorrow = (Utc::now() + chrono::Duration::days(2)).format("%Y-%m-%d");
+
+        assert!(log(&c, a, "15:41", "16:41").unwrap_err().contains("YYYY-MM-DD HH:MM"));
+        assert!(log(&c, a, "2026-10-14 16:00", "2026-10-14 15:00")
+            .unwrap_err()
+            .contains("posterior"));
+        assert!(log(&c, a, &format!("{tomorrow} 09:00"), &format!("{tomorrow} 10:00"))
+            .unwrap_err()
+            .contains("futuro"));
+        assert!(log(&c, a, "2026-10-12 09:00", "2026-10-14 09:00")
+            .unwrap_err()
+            .contains("24 horas"));
+
+        log(&c, a, "2026-10-14 09:00", "2026-10-14 10:00").unwrap();
+        let err = log(&c, a, "2026-10-14 09:30", "2026-10-14 10:30").unwrap_err();
+        assert!(err.contains("2026-10-14 09:00 a 2026-10-14 10:00"), "{err}");
+        // Solo quedó el primero.
+        assert_eq!(repo::get_task(&c, a).unwrap().unwrap().actual_seconds, 3600);
+    }
+
+    #[test]
+    fn la_hora_local_sobrevive_al_cambio_de_horario() {
+        let tz: chrono_tz::Tz = "America/Santiago".parse().unwrap();
+        // Primavera 2026: de 00:00 se salta a 01:00 el 6 de septiembre.
+        assert!(local_datetime(tz, "2026-09-06 00:30")
+            .unwrap_err()
+            .contains("cambio de horario"));
+        // Otoño 2026: 23:00–23:59 del 4 de abril ocurre dos veces; va la primera (-03).
+        assert_eq!(
+            local_datetime(tz, "2026-04-04 23:30").unwrap().to_rfc3339(),
+            "2026-04-05T02:30:00+00:00"
+        );
+        // Con offset explícito se respeta tal cual.
+        assert_eq!(
+            local_datetime(tz, "2026-10-14T15:41:00-03:00").unwrap().to_rfc3339(),
+            "2026-10-14T18:41:00+00:00"
+        );
+    }
+
+    #[test]
+    fn set_task_time_fija_el_total_y_no_con_el_timer_corriendo() {
+        let c = conn();
+        let a = create(&c, "a", Some("2026-10-14"));
+
+        let out = json(&set_task_time(&c, SetTaskTimeParams { id: a, minutes: 90 }).unwrap());
+        assert_eq!(out["task"]["tracked_minutes"], 90);
+        // Como el ajuste a mano: la diferencia queda como entrada de ajuste.
+        let entries = repo::list_time_entries(&c, a).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].ended_at.as_deref(), Some(entries[0].started_at.as_str()));
+
+        assert!(set_task_time(&c, SetTaskTimeParams { id: a, minutes: -1 }).is_err());
+
+        start(&c, a, true);
+        let err = set_task_time(&c, SetTaskTimeParams { id: a, minutes: 10 }).unwrap_err();
+        assert!(err.contains("stop_timer"));
+        assert_eq!(repo::get_task(&c, a).unwrap().unwrap().actual_seconds, 90 * 60);
     }
 }
