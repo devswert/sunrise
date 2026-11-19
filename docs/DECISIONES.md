@@ -1222,14 +1222,19 @@ el hook bloquea). (3) Al mezclar, el hook exige que la rama contenga `origin/mai
 `main` no tiene protección de rama y GitHub squashearía un PR atrasado, dejando en
 `main` una mezcla que nadie probó; con varias sesiones mezclando en paralelo, eso
 iba a pasar. Como el hook pasó a ser lo único que separa un cambio de `main` y de un `.dmg`
-público, tiene su propia prueba (`bin/test-hook`, dentro de los gates) y bloquea
-las formas de push que no sabe juzgar: destino `main` por cualquier refspec,
-`--all`, `--mirror`, `--tags`, y un tag que no esté en `origin/main`. Las dos
-revisiones sin contexto de este cambio encontraron huecos reales ahí —un
-`gh pr merge` sin `cd` delante pasaba sin mirar el sello, y `git push origin main`
-desde una rama llegaba a main—: el hook tiene que probarse como código. Lo que queda sin cubrir: dependencias del sistema distintas a las de
+público, tiene su propia prueba (`bin/test-hook`, dentro de los gates) y funciona por **lista
+blanca**: cada `git … push` del comando tiene que ser exactamente `git push
+[-u|--force-with-lease] origin HEAD` (o la rama de la issue o del release) o `git
+push origin vX.Y.Z`, y lo demás se bloquea, y un tag tiene que apuntar a un commit
+de `origin/main`. Se llegó ahí después de tres revisiones sin contexto que
+encontraron, cada una, formas nuevas de llegar a `main` o a un release que el
+regex no reconocía —un `gh pr merge` sin `cd` pasaba sin mirar el sello, `git push
+origin main` desde una rama, `'HEAD:main'` entre comillas, `git -c … push`, un tag
+con `-f`—. Enumerar lo prohibido no converge; enumerar lo permitido sí. Además,
+cualquier error inesperado del hook bloquea (`trap … ERR`): para Claude Code solo el
+código 2 bloquea, y un fallo con otro código dejaba pasar el comando. Lo que queda sin cubrir: dependencias del sistema distintas a las de
 un macOS limpio (toolchain de Rust, Xcode), y un tag empujado a mano desde una
-terminal, que se salta el hook. Para lo primero está `gh workflow run tests.yml`.
+terminal, que se salta el hook, igual que `gh api` contra el endpoint de merge. Para lo primero está `gh workflow run tests.yml`.
 
 **Fuera de alcance**, desde el MVP y sin issue: recurrentes o rituales generados
 solos; sync entre dispositivos (el modelo de datos queda listo, no se implementa);

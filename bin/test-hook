@@ -59,7 +59,15 @@ run "tag seguido de otro refspec" 2 "$P origin v1.0.0 main"
 run "--tags" 2 "$P --tags"
 run "--follow-tags" 2 "$P --follow-tags origin"
 run "push … tag vX" 2 "$P origin tag v1.0.0"
+run "tag con -f" 2 "$P -f origin v1.0.0"
+run "tag como src:dst" 2 "$P origin v1.0.0:v1.0.0"
+run "tag como refs/tags/x:refs/tags/x" 2 "$P origin refs/tags/v1.0.0:refs/tags/v1.0.0"
+run "tag a una URL en vez de origin" 2 "$P $T/remote.git v1.0.0"
+run "borrado con --delete" 2 "$P --delete origin v1.0.0"
 git reset -q --hard origin/main; git tag -d v1.0.1 > /dev/null
+seal
+run "tag anotado con -m, sobre HEAD de main" 0 "git tag -a v5.0.0 -m 'versión' && $P origin v5.0.0"
+run "commit cuyo mensaje dice push no es un push" 0 "git commit -m 'commit y push separados'"
 
 echo "▸ Rama de issue"
 git checkout -qb issue-1-x
@@ -74,6 +82,15 @@ run "destino main con +" 2 "$P origin +main"
 run "destino refs/heads/main" 2 "$P origin refs/heads/main"
 run "--all" 2 "$P --all origin"
 run "--mirror" 2 "$P --mirror origin"
+run "destino main entre comillas simples" 2 "$P origin 'HEAD:main'"
+run "destino main entre comillas dobles" 2 "$P origin \"HEAD:main\""
+run "--delete main" 2 "$P origin --delete main"
+run "git -c … push" 2 "git -c x=y push origin HEAD:main"
+run "git con ruta absoluta" 2 "/usr/bin/$P origin HEAD:main"
+run "push dentro de sh -c" 2 "sh -c '$P origin HEAD:main'"
+run "push dentro de \$(…)" 2 "x=\$($P origin HEAD:main)"
+run "push a la rama de la issue por nombre" 0 "$P origin issue-1-x"
+run "--force-with-lease tras un rebase" 0 "$P --force-with-lease origin HEAD"
 echo junk > untracked.txt; seal
 run "sello con un archivo sin trackear" 2 "$P origin HEAD"
 rm untracked.txt; seal

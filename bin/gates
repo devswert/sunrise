@@ -6,10 +6,13 @@
 # exige que ese sello sea el árbol commiteado para dejar pasar `git push`,
 # `gh pr create|merge` y el push de un tag `v*`, sin volver a correrlos.
 #
-# Es lo que corría tests.yml en macOS (tipos, lint, las dos suites), más dos chequeos
-# que tests.yml no hacía, la prueba del hook (bin/test-hook), las dos suites otra vez con TZ=UTC —el reloj de los runners,
-# donde salieron dos bugs de fecha— y `pnpm install --frozen-lockfile`, que es lo más cerca de un
-# entorno limpio que se puede pedir sin reinstalar todo.
+# Es lo que corría tests.yml en macOS (tipos, lint, las dos suites), y además:
+# - migraciones intactas y tests no debilitados;
+# - `pnpm install --frozen-lockfile`, lo más cerca de un entorno limpio que se puede
+#   pedir sin reinstalar todo;
+# - la prueba del propio hook (bin/test-hook);
+# - las dos suites otra vez con TZ=UTC, el reloj de los runners, donde salieron dos
+#   bugs de fecha.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -63,6 +66,9 @@ step "Rust en UTC"
 TZ=UTC pnpm --silent test:rust > "$utc_log" 2>&1 \
   || { cat "$utc_log"; fail "cargo test en rojo con TZ=UTC: supuesto de zona horaria (DECISIONES §10)"; }
 
-[ "$(bin/tree-hash)" = "$tree" ] || fail "El código cambió mientras corrían los gates: no sello. Vuelve a correrlos."
+if [ "$(bin/tree-hash)" != "$tree" ]; then
+  git status --porcelain >&2
+  fail "El árbol cambió mientras corrían los gates (arriba, qué). Si lo cambió una herramienta —cargo reescribiendo Cargo.lock, por ejemplo— commitéalo y vuelve a correrlos."
+fi
 echo "$tree" > "$(git rev-parse --git-path sunrise-gates-ok)"
 echo "✓ Gates en verde (${tree:0:12})"

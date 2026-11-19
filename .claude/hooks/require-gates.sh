@@ -3,16 +3,50 @@
 # pasó sobre el árbol commiteado de ahora, y el push de un tag `v*` si no pasó sobre el
 # commit que se taguea. Es el CI de sunrise: Actions ya no corre en PRs ni en main
 # (docs/DECISIONES.md §12). Nunca corre los gates: así un estado ya verificado no se
-# prueba dos veces.
+# prueba dos veces. Su prueba es `bin/test-hook`, que corre dentro de los gates.
 set -euo pipefail
+# Para Claude Code solo el 2 bloquea: cualquier otro error inesperado del hook dejaría
+# pasar el comando. Que todo error sea un bloqueo.
+trap 'echo "Bloqueado: el hook require-gates.sh falló en la línea $LINENO." >&2; exit 2' ERR
 
 input="$(cat)"
 command="$(jq -r '.tool_input.command // ""' <<< "$input")"
 
-push='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+push'
-if ! grep -Eq "(^|[;&|[:space:]])($push|gh[[:space:]]+pr[[:space:]]+(create|merge))([[:space:]]|\$)" <<< "$command"; then
+# Cualquier `git … push`: con opciones globales delante (`-C dir`, `-c k=v`, `--no-pager`),
+# con ruta (`/usr/bin/git`) o dentro de comillas (`sh -c '…'`). Un `git commit -m "… push"`
+# no calza: lo que sigue a `git` tiene que ser opción, no subcomando.
+any_push='(^|[^[:alnum:]_.-])git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([^[:alnum:]_-]|$)'
+if ! grep -Eq "$any_push|(^|[;&|[:space:]])gh[[:space:]]+pr[[:space:]]+(create|merge)([[:space:]]|\$)" <<< "$command"; then
   exit 0
 fi
+
+# Lista blanca: cada tramo del comando (separado por `;`, `&&`, `||`, `|`) que empuje tiene
+# que ser una de estas formas, exacta. Lo demás se bloquea en vez de adivinarse: `-f`,
+# refspecs con destino, comillas, `--tags`, `--all`, `--mirror`, `git -c … push`, una URL
+# en vez de `origin`. Con el CI en local, una forma que el hook no reconoce era un camino
+# a main o a un release sin gates (lo encontró la revisión de #25, tres veces).
+dir_opt='([[:space:]]+-C[[:space:]]+[^[:space:];&|"'"'"']+)?'
+branch_form="^git$dir_opt[[:space:]]+push([[:space:]]+(-u|--set-upstream|-q|--quiet|--force-with-lease))*([[:space:]]+origin([[:space:]]+(HEAD|issue-[A-Za-z0-9._-]+|release-v[0-9.]+))?)?\$"
+tag_form="^git$dir_opt[[:space:]]+push[[:space:]]+origin[[:space:]]+:?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+\$"
+nl=$'\n'
+segments="${command//&&/$nl}"; segments="${segments//||/$nl}"
+segments="${segments//;/$nl}"; segments="${segments//|/$nl}"; segments="${segments//&/$nl}"
+push_count=0; tag_count=0; tag_refs=""; dir_target=""
+while IFS= read -r seg; do
+  seg="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' <<< "$seg")"
+  grep -Eq "$any_push" <<< "$seg" || continue
+  push_count=$((push_count + 1))
+  if grep -Eq "$tag_form" <<< "$seg"; then
+    tag_count=$((tag_count + 1))
+    tag_refs="$tag_refs $(grep -Eo ':?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+$' <<< "$seg")"
+  elif ! grep -Eq "$branch_form" <<< "$seg"; then
+    echo "Bloqueado: el hook no reconoce este push: \`$seg\`. Las formas válidas: \`git push [-u|--force-with-lease] origin HEAD\` (o la rama de la issue) y \`git push origin vX.Y.Z\` (o \`:refs/tags/vX.Y.Z\` para borrarlo)." >&2
+    exit 2
+  fi
+  if [ -z "$dir_target" ]; then
+    dir_target="$(awk '$2 == "-C" {print $3; exit}' <<< "$seg")"
+  fi
+done <<< "$segments"
 
 cd "$(jq -r '.cwd // empty' <<< "$input")" 2>/dev/null || cd "${CLAUDE_PROJECT_DIR:-.}"
 # El shell vuelve al checkout principal después de cada comando, así que el trabajo en
@@ -20,12 +54,7 @@ cd "$(jq -r '.cwd // empty' <<< "$input")" 2>/dev/null || cd "${CLAUDE_PROJECT_D
 # es esa carpeta y no el cwd: si no, la rama sería siempre `main` y el sello de los
 # gates se buscaría en la worktree equivocada.
 target="$(sed -nE 's/^[[:space:]]*cd[[:space:]]+([^;&|[:space:]]+).*/\1/p' <<< "$command" | head -1)"
-if [ -z "$target" ]; then
-  # `|| true`: en un `gh pr …` el grep no encuentra push y, con pipefail, el `set -e`
-  # sacaba al hook con 1, que para Claude Code **no bloquea**. Un `gh pr merge` sin
-  # `cd` delante pasaba sin mirar el sello.
-  target="$(grep -Eo "$push" <<< "$command" | awk '$2 == "-C" {print $3; exit}' || true)"
-fi
+[ -n "$target" ] || target="$dir_target"
 if [ -n "$target" ]; then
   target="${target/#\~/$HOME}"
   target="${target%\"}"; target="${target#\"}"
@@ -40,46 +69,32 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" \
 # remoto nadie más lo notaría (docs/DECISIONES.md §12).
 stamp="$(git rev-parse --path-format=absolute --git-path sunrise-gates-ok)"
 sealed=""
-[ -f "$stamp" ] && sealed="$(cat "$stamp")"
+if [ -f "$stamp" ]; then sealed="$(cat "$stamp")"; fi
 
 fetch_main() { # sin red no puede colgar el hook: corta si baja de 1 KB/s por 10 s
   GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=10 git fetch --quiet origin main 2>/dev/null || true
 }
-
-# Formas de push que el resto del hook no sabría juzgar, o que llegan a main sin PR: un
-# refspec con destino main (`main`, `+main`, `HEAD:main`, `refs/heads/main`), `--all` y
-# `--mirror`, y las que empujan tags sin nombrarlos (`--tags`, `--follow-tags`, `tag vX`).
-# main solo avanza con `gh pr merge`, y un tag solo con `git push origin vX.Y.Z`.
-if grep -Eq "$push[^;&|]*[[:space:]+:](refs/heads/)?main([[:space:];&|]|\$)" <<< "$command"; then
-  echo "Bloqueado: no se empuja a main. Mezcla con \`gh pr merge\`." >&2
-  exit 2
-fi
-if grep -Eq "$push[^;&|]*[[:space:]](--all|--mirror|--tags|--follow-tags|tag)([[:space:];&|=]|\$)" <<< "$command"; then
-  echo "Bloqueado: \`--all\`, \`--mirror\`, \`--tags\`, \`--follow-tags\` y \`push … tag\` no pasan. Un tag se empuja solo, con \`git push origin vX.Y.Z\`." >&2
-  exit 2
-fi
 
 # Empujar un tag de versión es el paso de sunrise-release, y desde main es el único push
 # permitido. Solo si **todo** push del comando es de un tag: `git push && git push origin
 # v1.0.0` se juzga como un push normal. Borrar un tag (`:refs/tags/v…`, al retaguear) pasa
 # libre; crearlo exige `bin/gates` en verde sobre el árbol del commit que se taguea, que
 # es lo único que asegura que lo publicado pasó las suites: `release.yml` ya no las corre.
-# El tag tiene que ser lo último del push: `git push origin v1.2.3 main` no es un push de tag.
-tag_push="$push[[:space:]]+origin[[:space:]]+:?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*(\$|[;&|])"
-if ! grep -Eq "gh[[:space:]]+pr[[:space:]]+(create|merge)" <<< "$command" \
-  && [ "$(grep -Eo "$push" <<< "$command" | wc -l)" -eq "$(grep -Eo "$tag_push" <<< "$command" | wc -l)" ]; then
-  for ref in $(grep -Eo "$tag_push" <<< "$command" | grep -Eo ':?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+'); do
+gh_pr=""
+if grep -Eq "gh[[:space:]]+pr[[:space:]]+(create|merge)" <<< "$command"; then gh_pr=1; fi
+if [ -z "$gh_pr" ] && [ "$push_count" -gt 0 ] && [ "$push_count" -eq "$tag_count" ]; then
+  for ref in $tag_refs; do
     case "$ref" in :*) continue ;; esac
     tag="${ref#refs/tags/}"
     # En `git tag vX && git push origin vX` el hook corre antes que el comando y el tag
     # todavía no existe: lo que se va a taguear es HEAD. Si el comando taguea otro commit
     # (`git tag vX <rev>`), no se adivina: comandos separados.
     if ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
-      if grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]]$tag[[:space:]]+[^[:space:];&|]" <<< "$command"; then
+      if grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]]$tag[[:space:]]+[^-[:space:];&|]" <<< "$command"; then
         echo "Bloqueado: crea el tag $tag en un comando y empújalo en otro, para que el hook vea a qué commit apunta." >&2
         exit 2
       fi
-      commit="$(git rev-parse HEAD)" || exit 2
+      commit="$(git rev-parse HEAD)"
     fi
     if [ "$sealed" != "$(git rev-parse "$commit^{tree}")" ]; then
       echo "Bloqueado: $tag no tiene \`bin/gates\` en verde sobre su commit. Desde el checkout principal, en main al día y sin cambios, corre \`bin/gates\` y reintenta." >&2
@@ -95,8 +110,8 @@ if ! grep -Eq "gh[[:space:]]+pr[[:space:]]+(create|merge)" <<< "$command" \
   exit 0
 fi
 
-# Un `git push` pelado desde main se salta el PR: main solo avanza con `gh pr merge`.
-if grep -Eq "(^|[;&|[:space:]])$push([[:space:]]|\$)" <<< "$command" && [ "$(git branch --show-current)" = "main" ]; then
+# Un push desde main se salta el PR: main solo avanza con `gh pr merge`.
+if [ "$push_count" -gt 0 ] && [ "$(git branch --show-current)" = "main" ]; then
   echo "Bloqueado: no se empuja desde main. Trabaja en la rama de la issue y mezcla con \`gh pr merge\`." >&2
   exit 2
 fi
