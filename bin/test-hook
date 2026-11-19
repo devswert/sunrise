@@ -73,6 +73,7 @@ echo f > f.txt; git add -A; git commit -qm f; $P -q origin main
 run "git tag -f mueve un tag existente: bloquea" 2 "git tag -f v5.0.0 && $P origin v5.0.0"
 git tag v6.0.0 HEAD~1; seal
 run "tag local viejo pero el comando taguea HEAD sellado: se juzga HEAD" 0 "git tag -d v6.0.0; git tag v6.0.0 && $P origin v6.0.0"
+run "tag local viejo, crear y empujar con ; sin borrarlo" 2 "git tag v6.0.0; $P origin v6.0.0"
 git tag -d v6.0.0 > /dev/null
 run "commit cuyo mensaje dice push no es un push" 0 "git commit -m 'commit y push separados'"
 run "git -C … tag sobre otro rev en el mismo comando" 2 "git -C $PWD tag v7.0.0 HEAD~1 && git -C $PWD push origin v7.0.0"
@@ -106,6 +107,11 @@ run "--force-with-lease tras un rebase" 0 "$P --force-with-lease origin HEAD"
 run "con 2>&1 y tail" 0 "$P -u origin HEAD 2>&1 | tail -3"
 run "commit y push en el mismo comando" 2 "git commit -qam x && $P origin HEAD"
 run "commit, push y merge en el mismo comando" 2 "git commit -qam x && $P origin HEAD && gh pr merge 1 --squash"
+run "commit con git -c, push y merge" 2 "git -c commit.gpgsign=false commit -qam x && $P origin HEAD && gh pr merge 1 --squash"
+run "commit con VAR=x delante y push" 2 "HUSKY=0 git commit -qam x && $P origin HEAD"
+run "commit con --no-pager y push" 2 "git --no-pager commit -qam x && $P origin HEAD"
+run "commit con ruta absoluta y push" 2 "/usr/bin/git commit -qam x && $P origin HEAD"
+run "redirección a archivo no parte el push" 0 "$P -u origin HEAD > /dev/null 2>&1"
 run "rebase y push en el mismo comando" 2 "git rebase origin/main && $P --force-with-lease origin HEAD"
 echo junk > untracked.txt; seal
 run "sello con un archivo sin trackear" 2 "$P origin HEAD"

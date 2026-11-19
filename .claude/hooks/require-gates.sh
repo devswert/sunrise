@@ -33,13 +33,15 @@ branch_form="^git$dir_opt[[:space:]]+push([[:space:]]+(-u|--set-upstream|-q|--qu
 tag_form="^git$dir_opt[[:space:]]+push([[:space:]]+(-q|--quiet))?[[:space:]]+origin[[:space:]]+:?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+\$"
 nl=$'\n'
 # Las redirecciones (`2>&1`, `>&2`) no son separadores: fuera antes de partir.
-segments="$(sed -E 's/[0-9]*>&[0-9-]+//g' <<< "$command")"
+segments="$(sed -E 's/[0-9]*>&[0-9-]+//g; s/[0-9]*>>?[[:space:]]*[^[:space:];&|]+//g' <<< "$command")"
 segments="${segments//&&/$nl}"; segments="${segments//||/$nl}"
 segments="${segments//;/$nl}"; segments="${segments//|/$nl}"; segments="${segments//&/$nl}"
 push_count=0; tag_count=0; tag_refs=""; dir_target=""; moves_head=""
 while IFS= read -r seg; do
   seg="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' <<< "$seg")"
-  if grep -Eq "^git$dir_opt[[:space:]]+(commit|pull|merge|rebase|reset|checkout|switch|cherry-pick|am|revert|stash)([[:space:]]|\$)" <<< "$seg"; then
+  # Misma gramática que `any_push`: con opciones globales, ruta, `VAR=x` delante o dentro
+  # de comillas. Anclado a `^git` se escapaba `git -c k=v commit`.
+  if grep -Eq "(^|[^[:alnum:]_.-])git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(commit|pull|merge|rebase|reset|checkout|switch|cherry-pick|am|revert|stash)([^[:alnum:]_-]|\$)" <<< "$seg"; then
     moves_head=1
   fi
   grep -Eq "$any_push" <<< "$seg" || continue
@@ -121,8 +123,17 @@ if [ -z "$gh_pr" ] && [ "$push_count" -gt 0 ] && [ "$push_count" -eq "$tag_count
       echo "Bloqueado: crea (o mueve) el tag $tag en un comando y empújalo en otro, para que el hook vea a qué commit apunta." >&2
       exit 2
     fi
-    if grep -Eq "git$dir_opt[[:space:]]+tag[^;&|]*[[:space:]]$tag_re([[:space:];&|]|\$)" <<< "$command" \
-      || ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
+    if grep -Eq "git$dir_opt[[:space:]]+tag[^;&|]*[[:space:]]$tag_re([[:space:];&|]|\$)" <<< "$command"; then
+      # El comando crea el tag sobre HEAD. Si ya existe uno local en otro commit y no se
+      # borra antes (`git tag -d`), `git tag` fallaría y con `;` se empujaría el viejo.
+      old="$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)"
+      if [ -n "$old" ] && [ "$old" != "$(git rev-parse HEAD)" ] \
+        && ! grep -Eq "git$dir_opt[[:space:]]+tag[[:space:]]+-d[[:space:]]+$tag_re([[:space:];&|]|\$)" <<< "$command"; then
+        echo "Bloqueado: ya hay un $tag local en otro commit. Bórralo antes (\`git tag -d $tag\`) en un comando aparte." >&2
+        exit 2
+      fi
+      commit="$(git rev-parse HEAD)"
+    elif ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
       commit="$(git rev-parse HEAD)"
     fi
     if [ "$sealed" != "$(git rev-parse "$commit^{tree}")" ]; then

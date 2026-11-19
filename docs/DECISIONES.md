@@ -1223,9 +1223,9 @@ el hook bloquea). (3) Al mezclar, el hook exige que la rama contenga `origin/mai
 `main` una mezcla que nadie probó; con varias sesiones mezclando en paralelo, eso
 iba a pasar. Como el hook pasó a ser lo único que separa un cambio de `main` y de un `.dmg`
 público, tiene su propia prueba (`bin/test-hook`, dentro de los gates) y funciona por **lista
-blanca**: cada `git … push` del comando tiene que ser exactamente `git push
-[-u|--force-with-lease] origin HEAD` (o la rama de la issue o del release) o `git
-push origin vX.Y.Z`, y lo demás se bloquea, y un tag tiene que apuntar a un commit
+blanca**: cada `git … push` del comando tiene que ser exactamente `git push`
+con `-u`, `-q` o `--force-with-lease` y, opcional, `origin` y `HEAD` (o la rama de la
+issue o del release), o `git push origin vX.Y.Z`, y lo demás se bloquea, y un tag tiene que apuntar a un commit
 de `origin/main`. Se llegó ahí después de tres revisiones sin contexto que
 encontraron, cada una, formas nuevas de llegar a `main` o a un release que el
 regex no reconocía —un `gh pr merge` sin `cd` pasaba sin mirar el sello, `git push
@@ -1240,7 +1240,8 @@ decidido); la carrera de segundos entre el `fetch` del hook y el merge real si o
 sesión mezcla justo entremedio; y un comando con varios `cd` a carpetas distintas,
 donde el hook juzga solo el primero. Al revés, hay falsos bloqueos aceptados: un
 `git commit -m` cuyo texto cite un `git push` literal (por eso los mensajes van con
-`-F <archivo>`) y flags después del refspec. Para lo primero está `gh workflow run tests.yml`.
+`-F <archivo>`) flags después del refspec, `HEAD:<rama>`, y un `--subject` con espacios antes del
+número del PR (las skills ponen el número primero). Para lo primero está `gh workflow run tests.yml`.
 
 **Fuera de alcance**, desde el MVP y sin issue: recurrentes o rituales generados
 solos; sync entre dispositivos (el modelo de datos queda listo, no se implementa);

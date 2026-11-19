@@ -86,8 +86,8 @@ mezcla.
 ### 5. PR
 
 ```bash
-git push -u origin HEAD
-gh pr create --repo devswert/sunrise --base main --title "<tipo>(<área>): <resumen>" --body-file <scratchpad>/pr-N.md
+cd <worktree> && git push -u origin HEAD
+cd <worktree> && gh pr create --repo devswert/sunrise --base main --title "<tipo>(<área>): <resumen>" --body-file <scratchpad>/pr-N.md
 ```
 
 Body (archivo temporal en el scratchpad, nunca en el repo): resumen, plan de QA con
@@ -127,7 +127,8 @@ Si alguna condición falla → **punto de parada**.
 1. Board → `Done` (ver `../sunrise-lifecycle/board.md`). `Closes #N` cierra la
    issue; si era el último hijo, cierra el padre. **No** le pongas milestone: eso
    lo hace `sunrise-release` al publicar.
-2. Desde el checkout principal (nunca desde la worktree que se borra):
+2. Desde el checkout principal (nunca desde la worktree que se borra), en un comando
+   aparte del merge (el hook bloquea un `pull` junto a un `gh pr merge`):
 
 ```bash
 git -C <checkout principal> pull --ff-only
