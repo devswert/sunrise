@@ -265,7 +265,37 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
 - Si el timer arranca en otra tarea, Focus salta a ella **una sola vez por
   tarea** (`syncedFor`), para no pelear con las flechas después. Mira `active`,
   el más antiguo de los que corren: lo cumple el **play clásico**; un play en
-  paralelo no lo mueve (Focus en columnas es #21).
+  paralelo no lo mueve, suma una columna (abajo).
+- **Una columna por timer** (#21). Con uno o ninguno, Focus es exactamente lo de
+  arriba. Con dos o más, cada tarea es una columna —la misma `FocusTaskCard`, con
+  su canal, sus tiempos, su pausa, su check, su aviso de estimado y sus notas— y
+  se separan con una línea de 1px, no con tarjetas. Las flechas no hacen nada en
+  ese modo: no hay "la" tarea en foco.
+  - **Qué columnas hay lo decide `nextColumns`** (`focus/columns.ts`), mirando qué
+    corría y qué corre. Si **sigue corriendo alguna de las que ya corrían**, se
+    conservan todas en su lugar —también la que acabas de pausar, que queda como
+    columna en pausa con su play— y las nuevas se suman al final. Si **no sigue
+    ninguna**, se empieza de cero con lo que corre. Esa sola regla da los tres
+    gestos: el play en paralelo suma una columna, una pausa no hace desaparecer
+    la tuya, y el **play clásico —desde una columna, la cola u otra vista— deja
+    solo esa**. Mirar el estado y no el botón es a propósito: el play compartido
+    (#20) se enchufa en Focus sin avisarle nada, y una pausa desde el taxímetro
+    se comporta igual que una desde la columna.
+  - **El orden es el de llegada** y no se reordena al retomar una pausada: que
+    una columna salte de lugar obliga a buscarla de nuevo.
+  - **Corriendo, una columna muestra solo la pausa**; en pausa, el play.
+  - **Completar en una columna la cierra**; las demás siguen corriendo. Al volver
+    a una sola, Focus queda en la que sigue (y marca `syncedFor` a mano, porque
+    el salto no corre si esa ya era la más antigua). La cola, el resumen y el
+    confeti al vaciarla son los de siempre.
+  - **Una columna puede no estar en la cola de hoy** —se arrancó en otro día
+    desde la semana—: se pide con `get_task`, y al completarla va **al final de
+    su día**, no de hoy (lo mismo que el check del taxímetro).
+  - **El aviso de estimado excedido es por columna**
+    (`isOverEstimate(elapsedById[id], estimado)`), no `timer.overEstimate`, que
+    solo mira el primero: cada tarea avisa por su promesa, como la campana.
+  - La tira de abajo muestra **la primera de la cola sin columna**: es de donde
+    se suma la siguiente con el play en paralelo.
 - **Nunca auto-cierra ni bloquea al pasarse del estimado**: muestra el aviso
   "puedes seguir trabajando". Regla de producto, no detalle de UI.
 

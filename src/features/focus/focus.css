@@ -37,6 +37,43 @@
   gap: var(--space-4);
 }
 
+/* --- Columnas: una por timer (§4.7, #21) ---
+ * Con dos o más timers corriendo, cada tarea es una columna. Se separan con una
+ * línea de 1px y no con tarjetas, como las columnas de la semana: nada de cajas
+ * dentro de cajas. El ancho crece con el número de columnas hasta el de la vista,
+ * y `minmax(0, 1fr)` deja que una columna encoja por debajo de su contenido —un
+ * título largo se parte en vez de empujar a las otras fuera de la pantalla—. */
+.focus__columns {
+  display: grid;
+  width: 100%;
+  max-width: 1320px;
+  align-items: start;
+}
+.focus__column {
+  min-width: 0;
+  padding: 0 var(--space-5);
+}
+.focus__column + .focus__column {
+  border-left: 1px solid var(--border);
+}
+.focus__column:first-child {
+  padding-left: 0;
+}
+.focus__column:last-child {
+  padding-right: 0;
+}
+/* En una columna angosta el título manda igual, pero a menor tamaño: a 24px un
+ * título de tres palabras ya se partía en tres líneas con tres columnas. */
+.focus__column .focus__title {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+/* Los tiempos y el play pueden bajar de línea bajo el canal cuando no caben: es
+ * preferible a recortar el contador. */
+.focus__column .focus__meta {
+  flex-wrap: wrap;
+}
+
 /* Fila de metadatos: canal a la izquierda, tiempos y play a la derecha. Va
  * arriba del título para no comerle ancho — un título largo partido en cuatro
  * líneas mientras sobra espacio a la derecha era el síntoma. */

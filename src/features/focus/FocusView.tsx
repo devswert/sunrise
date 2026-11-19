@@ -1,33 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronUp, Moon, Pause, Play } from "lucide-react";
-import { useRef } from "react";
-import { TimePicker } from "../../components/TimePicker";
-import { Popover } from "../../components/Popover";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowRight, ChevronDown, ChevronUp, Moon, Pause, Play } from "lucide-react";
 import { api } from "../../lib/ipc";
-import type { LogDay, Task } from "../../lib/types";
+import type { Category, LogDay, Task } from "../../lib/types";
 import { nowHhmm, todayISO } from "../../lib/date";
 import { formatMinutes, hours, hoursFromMinutes } from "../../lib/capacity";
 import { celebrate } from "../../lib/confetti";
-import { useTimer, hms } from "../timer/useTimer";
-import { CalendarEventCard, hasCalendarData } from "../calendar/EventoDelCalendario";
-import { NotesEditor } from "../tasks/NotesEditor";
-import { useAutosave } from "../tasks/useAutosave";
-import { SearchSelect } from "../../components/SearchSelect";
+import { useTimer } from "../timer/useTimer";
 import { SunriseMark } from "../../components/SunriseMark";
-import type { Category } from "../../lib/types";
-import { Hash } from "lucide-react";
-import { chipVars } from "../tasks/chipVars";
-import { channelOptions } from "../tasks/channelOptions";
-import { channelLabel } from "../../lib/channelLabel";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
+import { FocusTaskCard } from "./FocusTaskCard";
+import { nextColumns } from "./columns";
 
 /**
- * Focus Mode: solo la tarea actual.
+ * Focus Mode: la tarea en la que estás trabajando, o **una columna por cada
+ * timer** cuando corren varios (§4.7, #21).
  *
- * - Marcar el check la completa y pasa sola a la siguiente.
- * - Las flechas ↑/↓ mueven el foco entre las tareas del día.
- * - Al completar, la tarea se manda al final de la lista del día.
+ * - Con un timer o ninguno es una sola tarea: el check la completa y pasa sola
+ *   a la siguiente, y ↑/↓ mueven el foco entre las del día.
+ * - Con varios, cada una es una columna con su tiempo, su pausa y su check.
+ * - Al completar, la tarea se manda al final de la lista de su día.
  * - Nunca se cierra solo: pasado el estimado puedes seguir trabajando.
  */
 export function FocusView() {
@@ -39,10 +31,6 @@ export function FocusView() {
   const bumpData = useAppStore((s) => s.bumpData);
   const focusTaskId = useAppStore((s) => s.focusTaskId);
   const clearFocusTask = useAppStore((s) => s.clearFocusTask);
-  const [picker, setPicker] = useState<null | "actual" | "planned" | "canal">(null);
-  const actualRef = useRef<HTMLDivElement>(null);
-  const plannedRef = useRef<HTMLDivElement>(null);
-  const canalRef = useRef<HTMLDivElement>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   /** Resumen del día, solo para la vista de "no queda nada". */
   const [dia, setDia] = useState<LogDay | null>(null);
@@ -75,8 +63,6 @@ export function FocusView() {
       alive = false;
     };
   }, [loading, queue.length, dataVersion]);
-
-  const opcionesCanal = useMemo(() => channelOptions(categories), [categories]);
 
   // Al arrancar el timer en otra tarea, Focus salta a ella. El salto ocurre una
   // sola vez por tarea (incluso si la cola aún no había cargado al montar);
@@ -120,38 +106,147 @@ export function FocusView() {
     clearFocusTask();
   }, [queue, focusTaskId, clearFocusTask]);
 
-  const current = queue[index] ?? null;
-
-  // Antes de los returns tempranos: los hooks no pueden ser condicionales. Con
-  // la cola vacía el id es 0 y no se guarda nada, porque no hay qué editar.
-  const autosave = useAutosave(current?.id ?? 0, load);
-  const next = queue[index + 1] ?? null;
-
-  /** Completa la actual, la manda al final del día y avanza. */
-  const complete = useCallback(async () => {
-    if (!current) return;
-    if (timer.isRunning(current.id)) await timer.stop(current.id);
-
-    const eraLaUltima = queue.length === 1;
-    const lastPos = queue.reduce((m, t) => Math.max(m, t.position), 0);
-    await api.setTaskStatus(current.id, "DONE");
-    await api.moveTask(current.id, todayISO(), lastPos + 1);
-
-    // `bumpData` no es cosmético acá: completar puede haber detenido el timer
-    // (lo hace `set_task_status` en Rust), y sin el aviso el taxímetro de la
-    // ventana flotante se quedaba ofreciendo retomar la tarea ya cerrada.
-    bumpData();
-
-    // La completada sale de la cola: el índice ya apunta a la siguiente.
-    await load();
-
-    // Solo al vaciar la cola, y solo desde acá: montar la vista con el día ya
-    // terminado —volver a Focus más tarde— no vuelve a celebrarlo.
-    if (eraLaUltima) celebrate();
-  }, [current, queue, timer, load, bumpData]);
-
-  // Navegación con flechas entre las tareas del día.
+  // --- Columnas: una por timer (§4.7) ---
+  // La clave en string para que el efecto corra cuando cambia **qué** corre, no
+  // en cada tick: `actives` es un arreglo nuevo cada vez que el store relee.
+  const runningKey = timer.actives.map((a) => a.taskId).join(",");
+  const [columns, setColumns] = useState<number[]>([]);
+  const prevRunning = useRef<number[]>([]);
   useEffect(() => {
+    const running = runningKey ? runningKey.split(",").map(Number) : [];
+    // Leído antes del `set`: el updater corre en el próximo render, cuando la
+    // ref ya apunta a lo de ahora, y entonces todo parecería "seguir corriendo".
+    const antes = prevRunning.current;
+    prevRunning.current = running;
+    setColumns((prev) => nextColumns(prev, antes, running));
+  }, [runningKey]);
+
+  /**
+   * Las tareas de las columnas que **no** están en la cola de hoy: una que se
+   * arrancó desde la semana en otro día, o una de hoy agendada más tarde. La
+   * cola no las trae, así que se piden una por una.
+   */
+  const [extra, setExtra] = useState<Record<number, Task | null>>({});
+  const missingKey = columns.filter((id) => !queue.some((t) => t.id === id)).join(",");
+  useEffect(() => {
+    if (!missingKey) return;
+    let alive = true;
+    const ids = missingKey.split(",").map(Number);
+    void Promise.all(ids.map((id) => api.getTask(id))).then((ts) => {
+      if (alive) setExtra(Object.fromEntries(ids.map((id, i) => [id, ts[i] ?? null])));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [missingKey, dataVersion]);
+
+  const taskOf = (id: number): Task | null | undefined =>
+    queue.find((t) => t.id === id) ?? extra[id];
+  // Una columna cuya tarea se completó o se borró en otro lado no se dibuja.
+  // `undefined` es "todavía cargando": cuenta, para que la vista no salte a una
+  // sola tarea y vuelva a columnas mientras llega.
+  const visibles = columns.filter((id) => {
+    const t = taskOf(id);
+    return t === undefined || (t !== null && t.status !== "DONE");
+  });
+  const multi = visibles.length >= 2;
+
+  // Al volver a una sola tarea —completaste una columna, o un play clásico dejó
+  // una— Focus queda en la que sigue, no en la que mirabas antes de las
+  // columnas. `syncedFor` se marca a mano: el salto de arriba no corre si esa
+  // tarea ya era la más antigua.
+  const eraMulti = useRef(false);
+  const visiblesKey = visibles.join(",");
+  useEffect(() => {
+    const ids = visiblesKey ? visiblesKey.split(",").map(Number) : [];
+    if (eraMulti.current && ids.length < 2 && ids.length > 0) {
+      const i = queue.findIndex((t) => t.id === ids[0]);
+      if (i >= 0) setIndex(i);
+      syncedFor.current = ids[0];
+    }
+    eraMulti.current = ids.length >= 2;
+  }, [visiblesKey, queue]);
+
+  const current = queue[index] ?? null;
+  const next = multi
+    ? (queue.find((t) => !visibles.includes(t.id)) ?? null)
+    : (queue[index + 1] ?? null);
+
+  /**
+   * Completa una tarea y la manda al final de su día. Con una sola tarea, la
+   * cola avanza sola; con columnas, la de la tarea se cierra.
+   */
+  const complete = useCallback(
+    async (task: Task) => {
+      setColumns((c) => c.filter((id) => id !== task.id));
+      if (timer.isRunning(task.id)) await timer.stop(task.id);
+
+      const inQueue = queue.some((t) => t.id === task.id);
+      const eraLaUltima = inQueue && queue.length === 1;
+      await api.setTaskStatus(task.id, "DONE");
+      if (inQueue) {
+        const lastPos = queue.reduce((m, t) => Math.max(m, t.position), 0);
+        await api.moveTask(task.id, todayISO(), lastPos + 1);
+      } else if (task.scheduledDate) {
+        // Al final de SU día, no de hoy: es una columna de otro día, y
+        // completarla no debe reprogramarla (lo mismo que el taxímetro).
+        const sameDay = await api.listTasksForDate(task.scheduledDate);
+        const lastPos = sameDay.reduce((m, t) => Math.max(m, t.position), 0);
+        await api.moveTask(task.id, task.scheduledDate, lastPos + 1);
+      }
+
+      // `bumpData` no es cosmético acá: completar puede haber detenido el timer
+      // (lo hace `set_task_status` en Rust), y sin el aviso el taxímetro de la
+      // ventana flotante se quedaba ofreciendo retomar la tarea ya cerrada.
+      bumpData();
+
+      // La completada sale de la cola: el índice ya apunta a la siguiente.
+      await load();
+
+      // Solo al vaciar la cola, y solo desde acá: montar la vista con el día ya
+      // terminado —volver a Focus más tarde— no vuelve a celebrarlo.
+      if (eraLaUltima) celebrate();
+    },
+    [queue, timer, load, bumpData],
+  );
+
+  /**
+   * Los controles del timer de una tarjeta. **Corriendo, solo la pausa**: la
+   * tarea ya está en marcha y no hay nada que sumar.
+   *
+   * #20: en pausa, este `<button>` se reemplaza por
+   * `<PlayControls taskId={task.id} size="md" />` (play clásico + en paralelo).
+   * El play en paralelo es el que suma columnas, y el clásico el que deja una
+   * sola; las dos cosas las resuelve `nextColumns` mirando qué corre, así que el
+   * componente se enchufa sin avisarle nada a Focus.
+   */
+  const controlsFor = (task: Task) => {
+    if (timer.isRunning(task.id)) {
+      return (
+        <button
+          className="focus__play is-running"
+          aria-label="Pausar"
+          onClick={() => void timer.stop(task.id)}
+        >
+          <Pause size={16} />
+        </button>
+      );
+    }
+    return (
+      <button
+        className="focus__play"
+        aria-label="Iniciar"
+        onClick={() => void timer.start(task.id)}
+      >
+        <Play size={16} />
+      </button>
+    );
+  };
+
+  // Navegación con flechas entre las tareas del día. Con columnas no hay "la"
+  // tarea en foco que mover: cada columna es la de su timer.
+  useEffect(() => {
+    if (multi) return;
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement;
       if (
@@ -170,11 +265,11 @@ export function FocusView() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [queue.length]);
+  }, [queue.length, multi]);
 
   if (loading) return <div className="focus" />;
 
-  if (!current) {
+  if (!multi && !current) {
     const completadas = dia?.done.length ?? 0;
     const trabajado = dia?.workedSeconds ?? 0;
     const planificado = dia?.plannedMinutes ?? 0;
@@ -222,156 +317,47 @@ export function FocusView() {
     );
   }
 
-  const running = timer.isRunning(current.id);
-  // Acumulado de la tarea + lo que va de la corrida: el mismo criterio que la
-  // tarjeta y el modal. "Solo hoy" queda en el taxímetro.
-  const elapsed = current.actualSeconds + timer.runTotalOf(current.id);
-  const planned = current.estimatedMinutes;
-  const channel =
-    current.categoryId != null ? categories.find((c) => c.id === current.categoryId) : null;
-
   return (
-    <div className="focus">
-      <div className="focus__card">
-        {/* Dos filas y no una: el título es lo que se lee primero y con el canal
-         * y los tiempos al lado quedaba estrangulado en una columna angosta,
-         * peor mientras más largo. Arriba van los metadatos —canal a la
-         * izquierda, tiempos y play a la derecha—; abajo el título, con todo el
-         * ancho para él. */}
-        <div className="focus__meta">
-          {/* Canal editable: replanificar en Focus es normal —te sientas a
-           * trabajar y te das cuenta de que la tarea era de otro contexto—.
-           * Lo que NO está acá es eliminar: Focus es para trabajar, y un botón
-           * de borrar al lado del play es un accidente esperando. */}
-          <div className="chip-wrap" ref={canalRef}>
-            {/* El mismo chip que la card y el modal —`.cat-tag` + `chipVars`—, no
-             * una píldora con el color fijo de la app: el fondo teñido es por lo
-             * que se reconoce el canal de reojo en el resto de las vistas. */}
-            <button
-              type="button"
-              className={`cat-tag focus__canal${channel ? "" : " is-empty"}`}
-              style={chipVars(channel)}
-              aria-label="Cambiar canal"
-              onClick={() => setPicker((p) => (p === "canal" ? null : "canal"))}
-            >
-              {channel ? channelLabel(channel.name) : <Hash size={13} />}
-            </button>
-            {picker === "canal" && (
-              <Popover anchorRef={canalRef} onClose={() => setPicker(null)}>
-                <SearchSelect
-                  options={opcionesCanal}
-                  value={current.categoryId != null ? String(current.categoryId) : null}
-                  placeholder="Buscar canal…"
-                  clearLabel="Sin canal"
-                  onSelect={async (v) => {
-                    setPicker(null);
-                    await autosave.commit({ categoryId: v ? Number(v) : null });
-                    await load();
-                  }}
+    <div className={`focus${multi ? " focus--columns" : ""}`}>
+      {multi ? (
+        <div
+          className="focus__columns"
+          style={{ gridTemplateColumns: `repeat(${visibles.length}, minmax(0, 1fr))` }}
+        >
+          {visibles.map((id) => {
+            const t = taskOf(id);
+            // Todavía cargando: la columna guarda su lugar vacía.
+            if (!t) return <div key={id} className="focus__column" />;
+            return (
+              <div key={id} className="focus__column">
+                <FocusTaskCard
+                  task={t}
+                  categories={categories}
+                  reload={load}
+                  onComplete={complete}
+                  controls={controlsFor(t)}
                 />
-              </Popover>
-            )}
-          </div>
-
-          {/* Tiempos y play, alineados a la derecha en la misma fila */}
-          <div className="focus__times">
-            <div className="chip-wrap focus__time" ref={actualRef}>
-              <button
-                className="focus__time-btn"
-                aria-label="Ajustar tiempo real"
-                onClick={() => setPicker((p) => (p === "actual" ? null : "actual"))}
-              >
-                <span className="focus__time-label">Real</span>
-                <span
-                  className={`focus__time-value is-actual${
-                    timer.overEstimate && running ? " is-over" : ""
-                  }`}
-                >
-                  {hms(elapsed)}
-                </span>
-              </button>
-              {picker === "actual" && (
-                <Popover anchorRef={actualRef} align="right" onClose={() => setPicker(null)}>
-                  <TimePicker
-                    value={Math.round(current.actualSeconds / 60)}
-                    clearLabel="Sin tiempo"
-                    onSelect={async (mins) => {
-                      setPicker(null);
-                      await api.setActualSeconds(current.id, (mins ?? 0) * 60);
-                      bumpData();
-                      await load();
-                    }}
-                  />
-                </Popover>
-              )}
-            </div>
-
-            <div className="chip-wrap focus__time" ref={plannedRef}>
-              <button
-                className="focus__time-btn"
-                aria-label="Ajustar tiempo estimado"
-                onClick={() => setPicker((p) => (p === "planned" ? null : "planned"))}
-              >
-                <span className="focus__time-label">Estimado</span>
-                <span className="focus__time-value">
-                  {planned != null ? formatMinutes(planned) : "--:--"}
-                </span>
-              </button>
-              {picker === "planned" && (
-                <Popover anchorRef={plannedRef} align="right" onClose={() => setPicker(null)}>
-                  <TimePicker
-                    value={planned}
-                    onSelect={async (mins) => {
-                      setPicker(null);
-                      await api.updateTask(current.id, { estimatedMinutes: mins });
-                      bumpData();
-                      await load();
-                    }}
-                  />
-                </Popover>
-              )}
-            </div>
-
-            <button
-              className={`focus__play${running ? " is-running" : ""}`}
-              aria-label={running ? "Pausar" : "Iniciar"}
-              onClick={() => (running ? timer.stop(current.id) : timer.start(current.id))}
-            >
-              {running ? <Pause size={16} /> : <Play size={16} />}
-            </button>
-          </div>
+              </div>
+            );
+          })}
         </div>
-
-        <div className="focus__head">
-          <button className="focus__check" aria-label="Completar tarea" onClick={complete}>
-            <Check size={18} strokeWidth={3} />
-          </button>
-          <h1 className="focus__title">{current.title}</h1>
-        </div>
-
-        {timer.overEstimate && running && (
-          <div className="focus__over">Pasaste el tiempo estimado — puedes seguir trabajando.</div>
-        )}
-
-        {/* El mismo detalle que el modal de la semana: hora, link de la reunión,
-         * participantes y descripción. Es la vista en la que estás cuando
-         * empieza la reunión, así que tener que abrir otra pantalla para saber
-         * por dónde entrar no tiene sentido. */}
-        <CalendarEventCard task={current} />
-
-        {/* La línea de arriba solo cuando hay tarjeta del calendario que separar:
-         * en una tarea escrita a mano dejaba dos líneas paralelas con nada en
-         * medio. */}
-        <div className={`focus__notas${hasCalendarData(current) ? " has-event" : ""}`}>
-          <NotesEditor
-            value={current.notes ?? ""}
-            onDebounced={(v) => autosave.commitDebounced({ notes: v })}
-            onBlurSave={(v) => void autosave.commit({ notes: v })}
+      ) : (
+        current && (
+          <FocusTaskCard
+            key={current.id}
+            task={current}
+            categories={categories}
+            reload={load}
+            onComplete={complete}
+            controls={controlsFor(current)}
           />
-        </div>
-      </div>
+        )
+      )}
 
-      {/* Solo la siguiente tarea, como referencia. Para moverte, ↑/↓. */}
+      {/* Solo la siguiente tarea, como referencia. Para moverte, ↑/↓. Con
+       * columnas es la primera de la cola que no tiene columna.
+       * #20: acá va `<PlayControls taskId={next.id} size="sm" />`: su play en
+       * paralelo es el que suma una columna desde la cola. */}
       <div className="focus__next">
         {next ? (
           <>
@@ -382,12 +368,16 @@ export function FocusView() {
             )}
           </>
         ) : (
-          <span className="focus__next-label">Es la última de hoy</span>
+          <span className="focus__next-label">
+            {multi ? "No queda nada más en la cola" : "Es la última de hoy"}
+          </span>
         )}
-        <span className="focus__next-hint">
-          <ChevronUp size={12} />
-          <ChevronDown size={12} />
-        </span>
+        {!multi && (
+          <span className="focus__next-hint">
+            <ChevronUp size={12} />
+            <ChevronDown size={12} />
+          </span>
+        )}
       </div>
     </div>
   );
