@@ -266,8 +266,8 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   tarea** (`syncedFor`), para no pelear con las flechas después. Mira `active`,
   el más antiguo de los que corren: lo cumple el **play clásico**; un play en
   paralelo no lo mueve, suma una columna (abajo).
-- **Una columna por timer** (#21). Con uno o ninguno, Focus es exactamente lo de
-  arriba. Con dos o más, cada tarea es una columna —la misma `FocusTaskCard`, con
+- **Una columna por timer** (#21). Con una columna o ninguna, Focus es
+  exactamente lo de arriba. Con dos o más, cada tarea es una columna —la misma `FocusTaskCard`, con
   su canal, sus tiempos, su pausa, su check, su aviso de estimado y sus notas— y
   se separan con una línea de 1px, no con tarjetas. Las flechas no hacen nada en
   ese modo: no hay "la" tarea en foco.
@@ -280,13 +280,18 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
     la tuya, y el **play clásico —desde una columna, la cola u otra vista— deja
     solo esa**. Mirar el estado y no el botón es a propósito: el play compartido
     (#20) se enchufa en Focus sin avisarle nada, y una pausa desde el taxímetro
-    se comporta igual que una desde la columna.
+    se comporta igual que una desde la columna. Por eso **se cuentan columnas, no
+    timers**: con dos columnas y una en pausa corre un solo timer, y Focus sigue
+    en columnas hasta que completes una o des un play clásico.
   - **El orden es el de llegada** y no se reordena al retomar una pausada: que
     una columna salte de lugar obliga a buscarla de nuevo.
   - **Corriendo, una columna muestra solo la pausa**; en pausa, el play.
   - **Completar en una columna la cierra**; las demás siguen corriendo. Al volver
-    a una sola, Focus queda en la que sigue (y marca `syncedFor` a mano, porque
-    el salto no corre si esa ya era la más antigua). La cola, el resumen y el
+    a una sola, Focus queda en la que sigue **si está en la cola de hoy** (y marca
+    `syncedFor` a mano, porque el salto no corre si esa ya era la más antigua). Si
+    es de otro día, Focus vuelve a la tarea de la cola en que estaba: es lo mismo
+    que pasa con un solo timer en una tarea de otro día, que nunca se mostró
+    acá, y el taxímetro la sigue mostrando. La cola, el resumen y el
     confeti al vaciarla son los de siempre.
   - **Una columna puede no estar en la cola de hoy** —se arrancó en otro día
     desde la semana—: se pide con `get_task`, y al completarla va **al final de

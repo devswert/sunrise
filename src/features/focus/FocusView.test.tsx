@@ -79,7 +79,7 @@ function timerOf(id: number): ActiveTimer {
 }
 
 /** Deja corriendo esas tareas, en la base del mock y en el store. */
-function correr(...ids: number[]) {
+function runTimers(...ids: number[]) {
   running.length = 0;
   running.push(...ids.map(timerOf));
   useTimerStore.setState({ ...derive([...running]), loaded: true });
@@ -111,8 +111,8 @@ vi.mock("../../lib/ipc", () => ({
     ),
     startTimer: vi.fn(async (taskId: number, parallel: boolean) => {
       if (!parallel) running.length = 0;
-      const ya = running.find((r) => r.taskId === taskId);
-      if (ya) return ya;
+      const already = running.find((r) => r.taskId === taskId);
+      if (already) return already;
       const t = timerOf(taskId);
       running.push(t);
       return t;
@@ -142,7 +142,11 @@ vi.mock("../../lib/ipc", () => ({
 
 describe("FocusView", () => {
   beforeEach(() => {
-    for (const t of queue) t.status = "TODO";
+    queue.length = 0;
+    queue.push(
+      task({ id: 1, title: "Primera tarea" }),
+      task({ id: 2, title: "Segunda tarea", position: 1 }),
+    );
     running.length = 0;
     useTimerStore.setState(derive([]));
     setStatus.mockClear();
@@ -330,7 +334,7 @@ describe("FocusView · una columna por timer", () => {
   });
 
   it("con un solo timer se ve como siempre: una tarea, su pausa y la siguiente", async () => {
-    correr(1);
+    runTimers(1);
     const { container } = renderFocus();
 
     expect(await screen.findByRole("heading", { name: "Primera tarea" })).toBeInTheDocument();
@@ -344,7 +348,7 @@ describe("FocusView · una columna por timer", () => {
   });
 
   it("con tres timers la pantalla se divide en tres columnas, cada una con su pausa y su check", async () => {
-    correr(1, 2, 3);
+    runTimers(1, 2, 3);
     const { container } = renderFocus();
 
     await screen.findByRole("heading", { name: "Tercera tarea" });
@@ -368,7 +372,7 @@ describe("FocusView · una columna por timer", () => {
 
   it("completar en una columna cierra esa y deja corriendo las otras", async () => {
     const user = userEvent.setup();
-    correr(1, 2, 3);
+    runTimers(1, 2, 3);
     const { container } = renderFocus();
     await screen.findByRole("heading", { name: "Segunda tarea" });
 
@@ -387,9 +391,15 @@ describe("FocusView · una columna por timer", () => {
 
   it("completar dejando una sola columna vuelve a Focus de una tarea, en la que sigue corriendo", async () => {
     const user = userEvent.setup();
-    correr(3, 1);
+    runTimers(1);
     const { container } = renderFocus();
     await screen.findByRole("heading", { name: "Primera tarea" });
+    // Mirando otra tarea con las flechas, para que el salto de `syncedFor` no
+    // alcance: la 1 ya era la más antigua y no vuelve a saltar sola.
+    await user.keyboard("{ArrowDown}");
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+    runTimers(1, 3);
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
 
     await user.click(
       within(card("Tercera tarea")).getByRole("button", { name: "Completar tarea" }),
@@ -400,9 +410,24 @@ describe("FocusView · una columna por timer", () => {
     expect(screen.getByRole("heading", { name: "Primera tarea" })).toBeInTheDocument();
   });
 
+  it("un timer en paralelo con la vista abierta suma una columna al final", async () => {
+    runTimers(1);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    expect(container.querySelector(".focus__columns")).toBeNull();
+
+    runTimers(1, 4);
+
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([
+      "Primera tarea",
+      "Cuarta tarea",
+    ]);
+  });
+
   it("pausar una columna la deja en su lugar, en pausa y con su play", async () => {
     const user = userEvent.setup();
-    correr(1, 2, 3);
+    runTimers(1, 2, 3);
     const { container } = renderFocus();
     await screen.findByRole("heading", { name: "Segunda tarea" });
 
@@ -420,7 +445,7 @@ describe("FocusView · una columna por timer", () => {
   it("el play clásico desde una columna deja solo esa: pausa las demás", async () => {
     const user = userEvent.setup();
     const { api } = await import("../../lib/ipc");
-    correr(1, 2, 3);
+    runTimers(1, 2, 3);
     const { container } = renderFocus();
     await screen.findByRole("heading", { name: "Segunda tarea" });
     await user.click(within(card("Segunda tarea")).getByRole("button", { name: "Pausar" }));
@@ -442,7 +467,7 @@ describe("FocusView · una columna por timer", () => {
       task({ id: 90, title: "Ya en la mañana", scheduledDate: "2026-08-09", position: 4 }),
       task({ id: 99, title: "De ayer", scheduledDate: "2026-08-09", position: 0 }),
     );
-    correr(1, 99);
+    runTimers(1, 99);
     renderFocus();
     await screen.findByRole("heading", { name: "De ayer" });
 

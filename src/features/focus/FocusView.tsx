@@ -116,15 +116,15 @@ export function FocusView() {
     const running = runningKey ? runningKey.split(",").map(Number) : [];
     // Leído antes del `set`: el updater corre en el próximo render, cuando la
     // ref ya apunta a lo de ahora, y entonces todo parecería "seguir corriendo".
-    const antes = prevRunning.current;
+    const prevIds = prevRunning.current;
     prevRunning.current = running;
-    setColumns((prev) => nextColumns(prev, antes, running));
+    setColumns((prev) => nextColumns(prev, prevIds, running));
   }, [runningKey]);
 
   /**
-   * Las tareas de las columnas que **no** están en la cola de hoy: una que se
-   * arrancó desde la semana en otro día, o una de hoy agendada más tarde. La
-   * cola no las trae, así que se piden una por una.
+   * Las tareas de las columnas que **no** están en la cola de hoy: una de otro
+   * día que se arrancó desde la semana, o una del backlog. La cola no las trae,
+   * así que se piden una por una.
    */
   const [extra, setExtra] = useState<Record<number, Task | null>>({});
   const missingKey = columns.filter((id) => !queue.some((t) => t.id === id)).join(",");
@@ -132,9 +132,15 @@ export function FocusView() {
     if (!missingKey) return;
     let alive = true;
     const ids = missingKey.split(",").map(Number);
-    void Promise.all(ids.map((id) => api.getTask(id))).then((ts) => {
-      if (alive) setExtra(Object.fromEntries(ids.map((id, i) => [id, ts[i] ?? null])));
-    });
+    void Promise.all(ids.map((id) => api.getTask(id)))
+      .then((ts) => {
+        if (alive) setExtra(Object.fromEntries(ids.map((id, i) => [id, ts[i] ?? null])));
+      })
+      // Si no se pudo leer, la columna no se dibuja: un hueco vacío para siempre
+      // —y Focus trabado en columnas por él— es peor que no mostrarla.
+      .catch(() => {
+        if (alive) setExtra(Object.fromEntries(ids.map((id) => [id, null])));
+      });
     return () => {
       alive = false;
     };
@@ -145,31 +151,31 @@ export function FocusView() {
   // Una columna cuya tarea se completó o se borró en otro lado no se dibuja.
   // `undefined` es "todavía cargando": cuenta, para que la vista no salte a una
   // sola tarea y vuelva a columnas mientras llega.
-  const visibles = columns.filter((id) => {
+  const visible = columns.filter((id) => {
     const t = taskOf(id);
     return t === undefined || (t !== null && t.status !== "DONE");
   });
-  const multi = visibles.length >= 2;
+  const multi = visible.length >= 2;
 
   // Al volver a una sola tarea —completaste una columna, o un play clásico dejó
   // una— Focus queda en la que sigue, no en la que mirabas antes de las
   // columnas. `syncedFor` se marca a mano: el salto de arriba no corre si esa
   // tarea ya era la más antigua.
-  const eraMulti = useRef(false);
-  const visiblesKey = visibles.join(",");
+  const wasMulti = useRef(false);
+  const visibleKey = visible.join(",");
   useEffect(() => {
-    const ids = visiblesKey ? visiblesKey.split(",").map(Number) : [];
-    if (eraMulti.current && ids.length < 2 && ids.length > 0) {
+    const ids = visibleKey ? visibleKey.split(",").map(Number) : [];
+    if (wasMulti.current && ids.length < 2 && ids.length > 0) {
       const i = queue.findIndex((t) => t.id === ids[0]);
       if (i >= 0) setIndex(i);
       syncedFor.current = ids[0];
     }
-    eraMulti.current = ids.length >= 2;
-  }, [visiblesKey, queue]);
+    wasMulti.current = ids.length >= 2;
+  }, [visibleKey, queue]);
 
   const current = queue[index] ?? null;
   const next = multi
-    ? (queue.find((t) => !visibles.includes(t.id)) ?? null)
+    ? (queue.find((t) => !visible.includes(t.id)) ?? null)
     : (queue[index + 1] ?? null);
 
   /**
@@ -322,9 +328,9 @@ export function FocusView() {
       {multi ? (
         <div
           className="focus__columns"
-          style={{ gridTemplateColumns: `repeat(${visibles.length}, minmax(0, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0, 1fr))` }}
         >
-          {visibles.map((id) => {
+          {visible.map((id) => {
             const t = taskOf(id);
             // Todavía cargando: la columna guarda su lugar vacía.
             if (!t) return <div key={id} className="focus__column" />;

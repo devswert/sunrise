@@ -245,6 +245,28 @@ siguiente recarga.
 
 ---
 
+### Focus en columnas: se mira qué corre, no qué botón se apretó (#21)
+
+Con varios timers, Focus muestra una columna por tarea. La primera idea fue
+decidir las columnas por botón: la pausa de una columna la "fija" y el play
+clásico de una columna limpia las demás. Se descartó porque **hay más de un
+lugar que pausa o arranca**: el taxímetro, la card de la semana, el play
+compartido de #20. Con esa idea, cada uno tendría que avisarle a Focus, y el que
+no avisa deja columnas fantasma. La regla quedó en `nextColumns`, que solo mira
+el estado: **si sigue corriendo alguna de las que ya corrían, se conservan
+todas; si no sigue ninguna, fue un play clásico y queda lo que corre.**
+
+Esa regla trae una consecuencia buscada: **se cuentan columnas, no timers**. Con
+dos columnas y una en pausa corre un solo timer, y Focus sigue en columnas.
+Volver a una tarea apenas pausas haría desaparecer la columna bajo el cursor.
+
+**La trampa que lo costó:** el efecto guardaba "lo que corría antes" en una
+ref, la actualizaba y después llamaba `setColumns(prev => …)` leyéndola adentro.
+Pero el updater corre en el render siguiente, cuando la ref ya apunta a lo de
+ahora, así que todo parecía "seguir corriendo" y el play clásico dejaba todas
+las columnas. Lo detectó el test RTL del play clásico, no el unitario de
+`nextColumns`. Hay que leer la ref antes de llamar al `set`.
+
 ## 2. Lo que depende del reloj va en Rust
 
 Es la invariante I6, y se aprendió dos veces con el mismo síntoma.

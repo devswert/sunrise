@@ -19,7 +19,7 @@ export function nextColumns(
   prevRunning: number[],
   running: number[],
 ): number[] {
-  const sigue = prevRunning.some((id) => running.includes(id));
-  if (!sigue) return [...running];
+  const stillRunning = prevRunning.some((id) => running.includes(id));
+  if (!stillRunning) return [...running];
   return [...prevOrder, ...running.filter((id) => !prevOrder.includes(id))];
 }
