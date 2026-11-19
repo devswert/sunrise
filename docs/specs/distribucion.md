@@ -296,8 +296,8 @@ no aplican, y pedirlos solo hace que el bundler avise que no puede.
 
 `.github/workflows/release.yml` se dispara **al empujar un tag `v*`** —no en cada
 push— y publica el `.dmg` en un GitHub Release. Sacar una versión es la skill
-`sunrise-release`: subir el número en los tres archivos y el changelog, mezclar,
-`bin/gates` sobre `main` y empujar el tag.
+`sunrise-release`: subir el número en los tres archivos y el changelog, mezclar y
+empujar el tag (las suites las corre `release.yml`).
 
 El workflow corre en un runner **fijo** (`macos-26`) y no en `macos-latest`, y hay
 dos razones que no son la misma. La primera es la arquitectura: el proyecto compila

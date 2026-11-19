@@ -1302,8 +1302,8 @@ silencio (y si `cargo` reescribe `Cargo.lock`, el árbol deja de ser el commitea
 el hook bloquea). (3) Al mezclar, el hook exige que la rama contenga `origin/main`:
 `main` no tiene protección de rama y GitHub squashearía un PR atrasado, dejando en
 `main` una mezcla que nadie probó; con varias sesiones mezclando en paralelo, eso
-iba a pasar. Como el hook pasó a ser lo único que separa un cambio de `main` y de un `.dmg`
-público, tiene su propia prueba (`bin/test-hook`, dentro de los gates) y funciona por **lista
+iba a pasar. Como el hook pasó a ser lo único que separa un cambio de `main` (y, hasta
+#32, también de un `.dmg` público), tiene su propia prueba (`bin/test-hook`, dentro de los gates) y funciona por **lista
 blanca**: cada `git … push` del comando tiene que ser exactamente `git push`
 con `-u`, `-q` o `--force-with-lease` y, opcional, `origin` y `HEAD` (o la rama de la
 issue o del release), o `git push origin vX.Y.Z`, y lo demás se bloquea, y un tag tiene que apuntar a un commit

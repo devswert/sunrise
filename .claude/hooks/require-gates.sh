@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse(Bash): bloquea `git push`, `gh pr create` y `gh pr merge` si `bin/gates` no
-# pasó sobre el árbol commiteado de ahora. Un tag `v*` no exige gates: sus suites las
-# corre `release.yml` antes de compilar. Es el CI de sunrise: Actions ya no corre en PRs ni en main
-# (docs/DECISIONES.md §12). Nunca corre los gates: así un estado ya verificado no se
+# pasó sobre el árbol commiteado de ahora. Un tag `v*` no exige gates: sus suites
+# las corre `release.yml` antes de compilar. Es el CI de sunrise: Actions ya no
+# corre en PRs ni en main (docs/DECISIONES.md §12). Nunca corre los gates: así un estado ya verificado no se
 # prueba dos veces. Su prueba es `bin/test-hook`, que corre dentro de los gates.
 set -euo pipefail
 # Para Claude Code solo el 2 bloquea: cualquier otro error inesperado del hook dejaría

@@ -150,6 +150,8 @@ jobs:
       - run: pnpm lint
       - name: suites en UTC
         run: pnpm test:all
+        env:
+          TZ: UTC
       - name: suites en la zona del dev
         run: pnpm test:all
         env:

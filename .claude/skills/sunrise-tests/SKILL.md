@@ -126,11 +126,12 @@ mecanismo está en la skill `sunrise-sync-ventanas`.
   medianoche de Santiago el "hoy" en UTC ya es el día siguiente. Dos veces seguidas eso encontró bugs de fecha que
   en local pasaban por casualidad; los dos están contados en `docs/DECISIONES.md`
   §10, y el segundo pasaba **solo los martes**.
-- **El CI es local: `bin/gates`.** Actions ya no corre las suites ni en PRs, ni en
-  `main`, ni en el release (`tests.yml` quedó solo manual; costo de minutos,
-  `docs/DECISIONES.md` §12). `bin/gates` corre tipos, lint y las dos suites, en tu
-  zona y en UTC, y el hook lo exige sobre el árbol commiteado antes de
-  push, PR, merge y tag. Un test que solo corre en tu máquina no lo va a volver a
+- **El CI es local: `bin/gates`.** Actions ya no corre las suites ni en PRs ni en
+  `main` (`tests.yml` quedó solo manual; costo de minutos, `docs/DECISIONES.md`
+  §12). `bin/gates` corre tipos, lint y las dos suites, en tu zona y en UTC, y el
+  hook lo exige sobre el árbol commiteado antes de push, PR y merge. La excepción
+  es el release: `release.yml` corre las suites con el tag, antes de compilar, y
+  por eso el hook no exige gates para empujar un tag (#32). Un test que solo corre en tu máquina no lo va a volver a
   correr nadie. Detalle en `docs/specs/distribucion.md` §4.19.
 
 ## Idioma: código en inglés, texto en español
