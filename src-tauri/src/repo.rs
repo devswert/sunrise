@@ -1214,7 +1214,8 @@ fn adjustment_stamp(tz: chrono_tz::Tz, date: Option<&str>, time: Option<&str>) -
 }
 
 /// Fija el total como `set_actual_seconds`, **salvo que el timer de la tarea esté
-/// corriendo**: devuelve `false` y no escribe nada. La usa el MCP (#23).
+/// corriendo** (o que la tarea ya no esté activa, I7): devuelve `false` y no
+/// escribe nada. La usa el MCP (#23).
 ///
 /// El total no incluye la corrida abierta, que `stop_timer` suma después: "déjala
 /// en dos horas" terminaría en dos horas más lo que llevaba. La pregunta y la
@@ -1226,7 +1227,14 @@ pub fn set_actual_seconds_unless_running(
     seconds: i64,
 ) -> Result<bool> {
     atomically(conn, || {
-        if get_active_timer(conn, task_id)?.is_some() {
+        // También que siga viva: el reconciler pudo orfanarla (I7) desde que el
+        // llamador la miró.
+        let active: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1 AND source_state = 'ACTIVE')",
+            [task_id],
+            |r| r.get(0),
+        )?;
+        if !active || get_active_timer(conn, task_id)?.is_some() {
             return Ok(false);
         }
         set_actual_seconds(conn, task_id, seconds)?;

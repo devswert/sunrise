@@ -46,7 +46,11 @@ Dos detalles a respetar:
   volviera a escribir en el canal, la otra ventana recibiría el eco, respondería, y
   las dos quedarían recargándose en ping-pong para siempre.
 - **Va en `Shell`, no en `useTimerRuntime`.** Ese hook corre en las dos ventanas, y
-  el taxímetro no tiene vistas que dependan de `dataVersion`.
+  el canal de `localStorage` es entre `main` y el taxímetro: el taxímetro ya relee
+  sus timers con los eventos `storage` de `useTimerRuntime`. Lo que sí escucha el
+  taxímetro por `dataVersion` es el aviso de otro proceso (`ExternalChanges` en
+  `TimerRoot`, #23): `dataVersion` es dependencia de `useTimerRuntime`, así que un
+  `markDataStale` ahí relee los timers.
 
 Un evento de Tauri puede entrar por esta misma puerta llamando a `markDataStale`.
 Hoy entran dos:

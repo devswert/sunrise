@@ -1095,6 +1095,8 @@ mod tests {
         assert!(log(&c, m, "2026-10-14 09:00", "2026-10-14 10:00")
             .unwrap_err()
             .contains("No existe"));
+        assert!(start_timer(&c, StartTimerParams { id: m, parallel: true }).is_err());
+        assert!(set_task_time(&c, SetTaskTimeParams { id: m, minutes: 5 }).is_err());
         assert!(stop_timer(&c, TaskIdParams { id: 999 })
             .unwrap_err()
             .contains("No existe"));
@@ -1184,6 +1186,9 @@ mod tests {
         assert_eq!(entries[0].ended_at.as_deref(), Some(entries[0].started_at.as_str()));
 
         assert!(set_task_time(&c, SetTaskTimeParams { id: a, minutes: -1 }).is_err());
+        assert!(set_task_time(&c, SetTaskTimeParams { id: a, minutes: 60_001 }).is_err());
+        assert!(set_task_time(&c, SetTaskTimeParams { id: a, minutes: 60_000 }).is_ok());
+        set_task_time(&c, SetTaskTimeParams { id: a, minutes: 90 }).unwrap();
 
         start(&c, a, true);
         let err = set_task_time(&c, SetTaskTimeParams { id: a, minutes: 10 }).unwrap_err();

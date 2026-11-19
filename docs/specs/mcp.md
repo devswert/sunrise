@@ -182,7 +182,7 @@ escribe la app no lo mueve y no hay eco posible. Al cambiar emite
 inofensivo. Detalle del canal en [§5](sincronizacion.md).
 
 **El timer** (#23): el aviso llega a las **dos ventanas** y cada una lo escucha —
-`main` desde `Shell`, el taxímetro desde su raíz (`TimerRoot`, que monta `timer.tsx`)—,
+`main` desde `Shell`, el taxímetro desde su raíz (`TimerRoot`, montado por `timer.tsx`)—,
 porque cada una tiene su propio store. En las dos, `dataVersion` vuelve a correr
 `useTimerRuntime`, que relee los timers: un `start_timer` del MCP, y lo que sigue
 corriendo tras un `stop_timer`, se ve en la vista y en el taxímetro a los ~2 s.
