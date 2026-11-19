@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse(Bash): bloquea `git push`, `gh pr create` y `gh pr merge` si `bin/gates` no
-# pasó sobre el árbol commiteado de ahora, y el push de un tag `v*` si no pasó sobre el
-# commit que se taguea. Es el CI de sunrise: Actions ya no corre en PRs ni en main
-# (docs/DECISIONES.md §12). Nunca corre los gates: así un estado ya verificado no se
+# pasó sobre el árbol commiteado de ahora. Un tag `v*` no exige gates: sus suites
+# las corre `release.yml` antes de compilar. Es el CI de sunrise: Actions ya no
+# corre en PRs ni en main (docs/DECISIONES.md §12). Nunca corre los gates: así un estado ya verificado no se
 # prueba dos veces. Su prueba es `bin/test-hook`, que corre dentro de los gates.
 set -euo pipefail
 # Para Claude Code solo el 2 bloquea: cualquier otro error inesperado del hook dejaría
@@ -102,8 +102,9 @@ fetch_main() { # sin red no puede colgar el hook: corta si baja de 1 KB/s por 10
 # Empujar un tag de versión es el paso de sunrise-release, y desde main es el único push
 # permitido. Solo si **todo** push del comando es de un tag: `git push && git push origin
 # v1.0.0` se juzga como un push normal. Borrar un tag (`:refs/tags/v…`, al retaguear) pasa
-# libre; crearlo exige `bin/gates` en verde sobre el árbol del commit que se taguea, que
-# es lo único que asegura que lo publicado pasó las suites: `release.yml` ya no las corre.
+# libre; crearlo **no** exige `bin/gates`: la máquina que taguea puede no tener el entorno
+# (un sandbox), y las suites las corre `release.yml` antes de compilar, así que un tag en
+# rojo no publica nada (#32). Lo que sí se exige: que el tag ya exista y apunte a main.
 gh_pr=""
 if grep -Eq "$gh_pr_re" <<< "$command"; then gh_pr=1; fi
 # Un tag nuevo va en su propio comando. Mezclado con una rama o un `gh pr`, el comando
@@ -128,10 +129,6 @@ if [ -z "$gh_pr" ] && [ "$push_count" -gt 0 ] && [ "$push_count" -eq "$tag_count
     fi
     if ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
       echo "Bloqueado: no hay un tag $tag local. Créalo primero (\`git tag $tag\`) y empújalo en otro comando." >&2
-      exit 2
-    fi
-    if [ "$sealed" != "$(git rev-parse "$commit^{tree}")" ]; then
-      echo "Bloqueado: $tag no tiene \`bin/gates\` en verde sobre su commit. Desde el checkout principal, en main al día y sin cambios, corre \`bin/gates\` y reintenta." >&2
       exit 2
     fi
     # Se publica lo que está en main, no el HEAD de una rama de issue.

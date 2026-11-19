@@ -13,12 +13,11 @@
 # el único lugar donde eso se puede pillar: los tests de Rust comprueban que los
 # tres archivos coincidan **entre sí**, pero no saben nada del tag.
 #
-# **Acá no corren las suites.** Las corre `bin/gates` en local sobre el commit
-# exacto que se taguea, y el hook `.claude/hooks/require-gates.sh` no deja empujar
-# un tag `v*` sin ese sello (docs/DECISIONES.md §12). Antes corrían también acá:
-# eran ~5 de los ~12,5 minutos de runner macOS de cada release, y compilaban el
-# crate entero en perfil debug solo para volver a compilarlo en release. Los tipos
-# igual se revisan: `tauri build` corre `pnpm build`, que empieza con `tsc`.
+# **Acá corren las suites, antes de compilar** (#32). Es el único lugar de Actions
+# donde corren: los PRs y `main` se prueban con `bin/gates` en local. Un release es
+# la excepción porque lo publica la máquina que empuja el tag, y esa máquina puede
+# no tener el entorno para correr los gates (docs/DECISIONES.md §12). Cuestan ~5
+# minutos de runner macOS por versión, una vez por versión y no por issue.
 name: release
 
 on:
@@ -137,6 +136,26 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - run: pnpm install --frozen-lockfile
+
+      # Las suites, **antes** de compilar: si algo falla, el job se corta acá y no
+      # se construye ni se publica el Release. Es la garantía de que lo publicado
+      # está en verde, y vive acá y no en la máquina que empuja el tag porque esa
+      # máquina puede no tener el entorno completo (un sandbox, otra laptop): el
+      # hook ya no exige `bin/gates` para un tag (docs/DECISIONES.md §12).
+      #
+      # Dos zonas, como `bin/gates`: el runner corre en UTC, y la del dev es la otra
+      # mitad de los supuestos de zona que ya rompieron tests (DECISIONES §10). La
+      # segunda vuelta de Rust no recompila: mismo binario, otro `TZ`.
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - name: suites en UTC
+        run: pnpm test:all
+        env:
+          TZ: UTC
+      - name: suites en la zona del dev
+        run: pnpm test:all
+        env:
+          TZ: America/Santiago
 
       # Las dos llaves del updater. Sin ellas `tauri-action` **no falla**: publica
       # artefactos sin firmar, y la app los rechaza al intentar actualizar — un

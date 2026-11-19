@@ -296,8 +296,8 @@ no aplican, y pedirlos solo hace que el bundler avise que no puede.
 
 `.github/workflows/release.yml` se dispara **al empujar un tag `v*`** —no en cada
 push— y publica el `.dmg` en un GitHub Release. Sacar una versión es la skill
-`sunrise-release`: subir el número en los tres archivos y el changelog, mezclar,
-`bin/gates` sobre `main` y empujar el tag.
+`sunrise-release`: subir el número en los tres archivos y el changelog, mezclar y
+empujar el tag (las suites las corre `release.yml`).
 
 El workflow corre en un runner **fijo** (`macos-26`) y no en `macos-latest`, y hay
 dos razones que no son la misma. La primera es la arquitectura: el proyecto compila
@@ -321,14 +321,15 @@ coinciden. Es el único lugar donde eso se puede pillar: el test de Rust comprue
 que los tres archivos coincidan **entre sí**, pero no sabe nada del tag, así que un
 `v0.2.0` sobre un repo en `0.1.0` publicaría un `.dmg` llamado `0.1.0`.
 
-**No corre las suites.** Un `.dmg` publicado con tests rojos es peor que no
-publicar, porque alguien lo instala; pero eso se asegura antes del tag y en local:
-el hook `require-gates.sh` no deja empujar un tag `v*` si `bin/gates` no pasó sobre
-el árbol del commit tagueado, y la skill de release lo corre en el checkout
-principal, sobre `main` ya mezclado. Hasta la v0.11.0 las suites corrían también
-acá: eran 5 de los 12,5 minutos de la corrida, y compilaban el crate en debug solo
-para volver a compilarlo en release. Los tipos igual pasan por `tsc`, porque
-`tauri build` corre `pnpm build` antes de empaquetar.
+**Corre las suites antes de compilar** (#32): typecheck, lint, Vitest y `cargo
+test`, una vez en UTC (el reloj del runner) y otra con `TZ=America/Santiago`. Un
+`.dmg` publicado con tests rojos es peor que no publicar, porque alguien lo
+instala; si una suite falla, el job se corta antes de `tauri-action` y no se
+construye ni se publica nada. Vive acá y no en la máquina que empuja el tag porque
+esa máquina puede no tener el entorno para correr `bin/gates` (un sandbox): durante
+#25 el hook exigía el sello de gates para el tag, y eso ataba el release a una
+máquina con todo instalado. Cuesta ~5 minutos de runner por versión, una vez por
+versión y no por issue.
 
 **Sin caché de Rust, a propósito.** Una corrida disparada por un tag solo restaura
 cachés de su propio ref o de la rama por defecto, y cada versión es un tag nuevo: el
@@ -336,9 +337,9 @@ caché que guardaba `swatinem/rust-cache` no lo leyó nadie nunca (en la v0.11.0
 de restaurar sin acierto y 46 s de subirlo). Tiene `concurrency` por tag sin
 cancelar: borrar y retaguear no publica dos veces en paralelo.
 
-**Costo estimado: ~6-7 minutos de runner por versión** (checkout y toolchains ~30 s,
-`pnpm install` ~10 s, `tauri build` con firma y subida ~5,7 min), contra ~12,5
-antes.
+**Costo estimado: ~11-12 minutos de runner por versión** (checkout y toolchains
+~30 s, `pnpm install` ~10 s, suites ~5 min, `tauri build` con firma y subida
+~5,7 min).
 
 Está ejercitado desde la `v0.1.0`, y las tres versiones publicadas salieron por
 ahí. La primera corrida falló, y no por el workflow: encontró un bug de zona
@@ -357,7 +358,7 @@ tree, y el hook `.claude/hooks/require-gates.sh` exige:
 |---|---|
 | `git push`, `gh pr create` | sello == árbol de `HEAD` (nada sin commitear ni sin trackear) |
 | `gh pr merge` | lo anterior, más el head del PR es `HEAD`, la rama contiene `origin/main` y está empujada tal cual |
-| push de un tag `v*` | `git push origin vX.Y.Z` y nada más, sin un `git tag` (salvo `-d`) en el mismo comando; sello == árbol del commit tagueado, que tiene que estar en `origin/main`; borrar (`:refs/tags/vX`) pasa libre |
+| push de un tag `v*` | `git push origin vX.Y.Z` y nada más, sin un `git tag` (salvo `-d`) en el mismo comando; el commit tagueado tiene que estar en `origin/main`. **No exige sello**: las suites las corre `release.yml` (#32); borrar (`:refs/tags/vX`) pasa libre |
 | push o merge | nada que mueva HEAD (`commit`, `pull`, `rebase`, `reset`, `checkout`…) en el mismo comando: el hook juzga el HEAD de antes |
 | cualquier push | **lista blanca**: solo `git push [-u\|--set-upstream\|-q\|--force-with-lease]… [origin [HEAD\|issue-*\|release-v*]]` y `git push [-q] origin [:][refs/tags/]vX.Y.Z`; cualquier otra forma se bloquea; y nunca una rama desde `main` |
 

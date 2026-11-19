@@ -70,14 +70,16 @@ pnpm test:rust    # cargo test (SQLite en memoria)
 pnpm test:all     # ambos
 pnpm dmg          # build de release + .app y .dmg (specs/distribucion.md §4.19)
 pnpm iconos       # regenera el icon set desde public/app-icon.svg
-bin/gates         # EL CI: antes de push / PR / merge / tag. Lockfile, hook, tipos, lint, suites (y otra vez en UTC)
+bin/gates         # EL CI: antes de push / PR / merge. Lockfile, hook, tipos, lint, suites (y otra vez en UTC)
 bin/worktree N slug   # worktree por issue, con target/ y dependencias compartidos
 ```
 
 **El CI es local, no de Actions.** `bin/gates` es lo único que corre las suites
-antes de `main` y antes de publicar: Actions no corre nada en PRs ni al mezclar
-(`tests.yml` es solo manual), y `release.yml` solo compila, firma y publica. Se
-cortó por costo de minutos de runner macOS (DECISIONES §12). Cada PR se abre ya en
+antes de `main`: Actions no corre nada en PRs ni al mezclar (`tests.yml` es solo
+manual). Se cortó por costo de minutos de runner macOS (DECISIONES §12). La
+excepción es publicar: `release.yml` corre las suites con el tag, antes de
+compilar, porque la máquina que taguea puede no tener el entorno; por eso el hook
+no exige gates para un tag. Cada PR se abre ya en
 verde y se mezcla en una ronda, con un `reviewer` sin contexto **siempre** antes.
 
 **Publicar una versión la maneja la skill `sunrise-release`.** Son cuatro cosas

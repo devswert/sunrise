@@ -1276,11 +1276,22 @@ test` compila el crate de Tauri entero, y en Linux arrastra webkit2gtk.
 Ahora **`bin/gates` es el CI**: cada PR se abre ya en verde y se mezcla en una sola
 ronda, sin nada que esperar. `tests.yml` quedó solo manual, y `release.yml` dejó de
 correr las suites —eran 5 de sus 12,5 minutos, más 46 s de subir un caché de Rust
-que un tag no puede restaurar nunca—: ~6-7 minutos por versión. Lo que asegura que
-lo publicado está en verde es `bin/gates` sobre el commit exacto de `main`, que el
-hook exige para empujar un tag `v*` (antes los tags pasaban libres, porque el
-release corría las suites). Lo que **no** se negoció: un `reviewer` sin contexto
+que un tag no puede restaurar nunca—: ~6-7 minutos por versión. Hasta #32, lo que
+aseguraba que lo publicado estuviera en verde era `bin/gates` sobre el commit exacto
+de `main`, que el hook exigía para empujar un tag `v*` (antes los tags pasaban
+libres, porque el release corría las suites). Lo que **no** se negoció: un `reviewer` sin contexto
 antes de cada merge, siempre. Sin CI remoto es la única segunda mirada.
+
+**Y el release volvió a correr las suites** (#32, un día después). Exigir `bin/gates`
+para el tag ataba la publicación a una máquina con el entorno completo, y la que
+empuja el tag puede no tenerlo: un sandbox, otra laptop, un agente sin Rust. Las
+suites se movieron a `release.yml`, **antes** de `tauri-action`: si una falla, el
+job se corta y no se construye ni se publica nada, así que un tag en rojo no llega
+a nadie. El hook ya no mira el sello para un tag; sigue exigiendo que exista, que
+apunte a `origin/main` y que vaya en su propio comando. Cuesta ~5 minutos de runner
+por versión (~11-12 en total), una vez por versión y no por issue, que era lo caro.
+Corren en dos zonas —UTC, la del runner, y `America/Santiago`— por lo mismo que
+`bin/gates` (§10); la segunda vuelta de Rust reusa el binario.
 
 **Lo que se pierde es el entorno limpio**, y se mitigó en tres partes. (1) El hook
 compara el sello con el árbol **commiteado**, no con el working tree: un archivo
@@ -1291,8 +1302,8 @@ silencio (y si `cargo` reescribe `Cargo.lock`, el árbol deja de ser el commitea
 el hook bloquea). (3) Al mezclar, el hook exige que la rama contenga `origin/main`:
 `main` no tiene protección de rama y GitHub squashearía un PR atrasado, dejando en
 `main` una mezcla que nadie probó; con varias sesiones mezclando en paralelo, eso
-iba a pasar. Como el hook pasó a ser lo único que separa un cambio de `main` y de un `.dmg`
-público, tiene su propia prueba (`bin/test-hook`, dentro de los gates) y funciona por **lista
+iba a pasar. Como el hook pasó a ser lo único que separa un cambio de `main` (y, hasta
+#32, también de un `.dmg` público), tiene su propia prueba (`bin/test-hook`, dentro de los gates) y funciona por **lista
 blanca**: cada `git … push` del comando tiene que ser exactamente `git push`
 con `-u`, `-q` o `--force-with-lease` y, opcional, `origin` y `HEAD` (o la rama de la
 issue o del release), o `git push origin vX.Y.Z`, y lo demás se bloquea, y un tag tiene que apuntar a un commit

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Gates de calidad de sunrise, una vez por estado del código: **son el CI del
 # proyecto**. Actions ya no corre en PRs ni en main (docs/DECISIONES.md §12), así que
-# esto corre antes de abrir, empujar o mezclar un PR, y antes de taguear una versión.
-# Si pasan, sella el hash del working tree; el hook (.claude/hooks/require-gates.sh)
-# exige que ese sello sea el árbol commiteado para dejar pasar `git push`,
-# `gh pr create|merge` y el push de un tag `v*`, sin volver a correrlos.
+# esto corre antes de abrir, empujar o mezclar un PR. Un tag de versión no lo exige:
+# sus suites las corre `release.yml` (#32). Si pasan, sella el hash del working tree;
+# el hook (.claude/hooks/require-gates.sh) exige que ese sello sea el árbol
+# commiteado para dejar pasar `git push` y `gh pr create|merge`, sin volver a correrlos.
 #
 # Es lo que corría tests.yml en macOS (tipos, lint, las dos suites), y además:
 # - migraciones intactas y tests no debilitados;

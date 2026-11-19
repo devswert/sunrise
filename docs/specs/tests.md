@@ -14,10 +14,11 @@ bin/gates               # todo lo anterior + lockfile, tipos y lint: el CI del p
 ```
 
 **El CI es local.** `bin/gates` es lo único que corre las suites antes de que algo
-llegue a `main` o se publique: Actions ya no las corre (`tests.yml` es solo manual y
-`release.yml` solo compila y publica; DECISIONES §12). El hook
+llegue a `main`: Actions no corre nada en PRs ni al mezclar (`tests.yml` es solo
+manual; DECISIONES §12). Lo publicado lo prueba `release.yml`, que corre las suites
+con el tag antes de compilar (#32). El hook
 `.claude/hooks/require-gates.sh` exige su sello sobre el **árbol commiteado** antes
-de `git push`, `gh pr create|merge` y el push de un tag `v*`, y antes del merge que
+de `git push` y `gh pr create|merge` —no para el push de un tag `v*`—, y antes del merge que
 la rama contenga `origin/main`.
 
 **UTC es una ventaja.** El primer tag de la 0.1.0 falló ahí por un
