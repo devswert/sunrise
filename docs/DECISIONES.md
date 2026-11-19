@@ -1276,10 +1276,10 @@ test` compila el crate de Tauri entero, y en Linux arrastra webkit2gtk.
 Ahora **`bin/gates` es el CI**: cada PR se abre ya en verde y se mezcla en una sola
 ronda, sin nada que esperar. `tests.yml` quedó solo manual, y `release.yml` dejó de
 correr las suites —eran 5 de sus 12,5 minutos, más 46 s de subir un caché de Rust
-que un tag no puede restaurar nunca—: ~6-7 minutos por versión. Lo que asegura que
-lo publicado está en verde es `bin/gates` sobre el commit exacto de `main`, que el
-hook exige para empujar un tag `v*` (antes los tags pasaban libres, porque el
-release corría las suites). Lo que **no** se negoció: un `reviewer` sin contexto
+que un tag no puede restaurar nunca—: ~6-7 minutos por versión. Hasta #32, lo que
+aseguraba que lo publicado estuviera en verde era `bin/gates` sobre el commit exacto
+de `main`, que el hook exigía para empujar un tag `v*` (antes los tags pasaban
+libres, porque el release corría las suites). Lo que **no** se negoció: un `reviewer` sin contexto
 antes de cada merge, siempre. Sin CI remoto es la única segunda mirada.
 
 **Y el release volvió a correr las suites** (#32, un día después). Exigir `bin/gates`

@@ -53,7 +53,7 @@ run "borrar el tag local y el remoto en un comando" 0 "git tag -d v1.0.0 ; $P or
 echo b > b.txt; git add -A; git commit -qm b
 run "tag viejo: se juzga su commit, no HEAD" 0 "$P origin v1.0.0"
 git tag v1.0.1
-run "tag sin sello fuera de origin/main" 2 "$P origin v1.0.1"
+run "tag con sello viejo fuera de origin/main" 2 "$P origin v1.0.1"
 seal
 run "tag sellado pero fuera de origin/main" 2 "$P origin v1.0.1"
 run "push de rama y tag en el mismo comando, desde main" 2 "$P && $P origin v1.0.0"

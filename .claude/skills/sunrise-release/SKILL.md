@@ -16,7 +16,14 @@ verde, y vive en Actions y no en la máquina que empuja el tag porque esa máqui
 puede no tener el entorno para correr `bin/gates` (un sandbox, otra laptop). Por
 eso el hook ya no exige el sello de gates para un tag `v*`: solo que el tag exista
 y apunte a un commit de `origin/main`. Las suites cuestan ~5 minutos de runner por
-versión; los PRs siguen probándose solo con `bin/gates` local.
+versión (estimado; corregir con la primera corrida real); los PRs siguen probándose
+solo con `bin/gates` local.
+
+Solo el paso 9 (el tag) queda libre de `bin/gates`: el PR del release (pasos 7 y 8)
+lo sigue exigiendo, así que un release completo no se hace desde una máquina sin
+entorno. Y un tag empujado a mano desde una terminal se salta el hook: no lo hagas,
+porque `release.yml` no comprueba que el commit tagueado esté en `main`; eso solo lo
+asegura el hook.
 
 **El único gatillo es empujar un tag `v*`.** No hay disparo manual del workflow, y
 eso es a propósito: corrido desde una rama, el `tagName` valdría `main` y
