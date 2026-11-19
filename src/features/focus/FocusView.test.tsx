@@ -1,10 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import type { Task } from "../../lib/types";
+import type { ActiveTimer, Task } from "../../lib/types";
 import { FocusView } from "./FocusView";
 import { useAppStore } from "../../lib/store";
+import { derive, useTimerStore } from "../timer/timerStore";
 
 const celebrate = vi.fn();
 vi.mock("../../lib/confetti", () => ({ celebrate: () => celebrate() }));
@@ -53,7 +54,38 @@ const queue: Task[] = [
   task({ id: 2, title: "Segunda tarea", position: 1 }),
 ];
 
-const setStatus = vi.fn(async () => null);
+const setStatus = vi.fn(async (..._args: unknown[]) => null);
+
+/**
+ * Los timers abiertos del mock, del más antiguo al más nuevo. El store los
+ * relee después de cada mutación, así que `startTimer`/`stopTimer` los editan
+ * igual que Rust: el play clásico cierra todos, uno por tarea (I4).
+ */
+const running: ActiveTimer[] = [];
+/** Tareas que no están en la cola de hoy (otro día), para `getTask`. */
+const otherDay: Task[] = [];
+
+function timerOf(id: number): ActiveTimer {
+  const t = [...queue, ...otherDay].find((x) => x.id === id);
+  return {
+    entryId: id * 10,
+    taskId: id,
+    title: t?.title ?? "",
+    startedAt: new Date().toISOString(),
+    baseSeconds: 0,
+    estimatedMinutes: t?.estimatedMinutes ?? null,
+    bellRungFor: null,
+  };
+}
+
+/** Deja corriendo esas tareas, en la base del mock y en el store. */
+function runTimers(...ids: number[]) {
+  running.length = 0;
+  running.push(...ids.map(timerOf));
+  act(() => {
+    useTimerStore.setState({ ...derive([...running]), loaded: true });
+  });
+}
 
 vi.mock("../../lib/ipc", () => ({
   isTauri: () => false,
@@ -63,16 +95,36 @@ vi.mock("../../lib/ipc", () => ({
       const [id] = args as [number];
       const t = queue.find((x) => x.id === id);
       if (t) t.status = "DONE";
-      return setStatus();
+      const o = otherDay.find((x) => x.id === id);
+      if (o) o.status = "DONE";
+      // Como `set_task_status` en Rust: completar detiene solo su timer.
+      const i = running.findIndex((r) => r.taskId === id);
+      if (i >= 0) running.splice(i, 1);
+      return setStatus(...args);
     },
     moveTask: vi.fn(async () => null),
     listCategories: vi.fn(async () => []),
     updateTask: vi.fn(async () => null),
-    getActiveTimers: vi.fn(async () => []),
+    getActiveTimers: vi.fn(async () => [...running]),
     stopAllTimers: vi.fn(async () => []),
-    getTask: vi.fn(async () => null),
-    startTimer: vi.fn(),
-    stopTimer: vi.fn(async () => null),
+    getTask: vi.fn(async (id: number) => otherDay.find((t) => t.id === id) ?? null),
+    listTasksForDate: vi.fn(async (date: string) =>
+      otherDay.filter((t) => t.scheduledDate === date),
+    ),
+    startTimer: vi.fn(async (taskId: number, parallel: boolean) => {
+      if (!parallel) running.length = 0;
+      const already = running.find((r) => r.taskId === taskId);
+      if (already) return already;
+      const t = timerOf(taskId);
+      running.push(t);
+      return t;
+    }),
+    stopTimer: vi.fn(async (taskId: number) => {
+      const i = running.findIndex((r) => r.taskId === taskId);
+      if (i < 0) return null;
+      running.splice(i, 1);
+      return [taskId, 60];
+    }),
     dailyLog: vi.fn(async () => [
       {
         date: "2026-08-10",
@@ -92,7 +144,13 @@ vi.mock("../../lib/ipc", () => ({
 
 describe("FocusView", () => {
   beforeEach(() => {
-    for (const t of queue) t.status = "TODO";
+    queue.length = 0;
+    queue.push(
+      task({ id: 1, title: "Primera tarea" }),
+      task({ id: 2, title: "Segunda tarea", position: 1 }),
+    );
+    running.length = 0;
+    useTimerStore.setState(derive([]));
     setStatus.mockClear();
     celebrate.mockClear();
   });
@@ -248,5 +306,434 @@ describe("FocusView · detalle de la tarea", () => {
     expect(await screen.findByLabelText("Notas")).toBeInTheDocument();
     expect(screen.getByLabelText("Cambiar canal")).toBeInTheDocument();
     expect(screen.queryByLabelText(/Eliminar/i)).toBeNull();
+  });
+});
+
+describe("FocusView · una columna por timer", () => {
+  /** La tarjeta (columna o única) que tiene ese título. */
+  function card(title: string): HTMLElement {
+    const h = screen.getByRole("heading", { name: title });
+    return h.closest(".focus__card") as HTMLElement;
+  }
+
+  beforeEach(async () => {
+    queue.length = 0;
+    queue.push(
+      task({ id: 1, title: "Primera tarea" }),
+      task({ id: 2, title: "Segunda tarea", position: 1 }),
+      task({ id: 3, title: "Tercera tarea", position: 2 }),
+      task({ id: 4, title: "Cuarta tarea", position: 3 }),
+    );
+    otherDay.length = 0;
+    running.length = 0;
+    useTimerStore.setState(derive([]));
+    setStatus.mockClear();
+    celebrate.mockClear();
+    const { api } = await import("../../lib/ipc");
+    vi.mocked(api.startTimer).mockClear();
+    vi.mocked(api.stopTimer).mockClear();
+    vi.mocked(api.moveTask).mockClear();
+  });
+
+  it("con un solo timer se ve como siempre: una tarea, su pausa y la siguiente", async () => {
+    runTimers(1);
+    const { container } = renderFocus();
+
+    expect(await screen.findByRole("heading", { name: "Primera tarea" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(container.querySelector(".focus__columns")).toBeNull();
+    // Corriendo, solo la pausa: ni play ni nada que sumar. (El play de la tira
+    // de abajo es de la siguiente.)
+    const c = within(card("Primera tarea"));
+    expect(c.getByRole("button", { name: "Pausar" })).toBeInTheDocument();
+    expect(c.queryByRole("button", { name: "Iniciar" })).toBeNull();
+    expect(c.queryByRole("button", { name: "Iniciar en paralelo" })).toBeNull();
+    expect(screen.getByText("Siguiente")).toBeInTheDocument();
+    expect(screen.getByText("Segunda tarea")).toBeInTheDocument();
+  });
+
+  it("con tres timers la pantalla se divide en tres columnas, cada una con su pausa y su check", async () => {
+    runTimers(1, 2, 3);
+    const { container } = renderFocus();
+
+    await screen.findByRole("heading", { name: "Tercera tarea" });
+    expect(container.querySelectorAll(".focus__column")).toHaveLength(3);
+    // En el orden en que arrancaron.
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([
+      "Primera tarea",
+      "Segunda tarea",
+      "Tercera tarea",
+    ]);
+    for (const t of ["Primera tarea", "Segunda tarea", "Tercera tarea"]) {
+      const c = within(card(t));
+      expect(c.getByRole("button", { name: "Pausar" })).toBeInTheDocument();
+      expect(c.queryByRole("button", { name: "Iniciar" })).toBeNull();
+      expect(c.getByRole("button", { name: "Completar tarea" })).toBeInTheDocument();
+      expect(c.getByLabelText("Ajustar tiempo real")).toBeInTheDocument();
+    }
+    // La cola sigue abajo, con la primera que no tiene columna.
+    expect(screen.getByText("Cuarta tarea")).toBeInTheDocument();
+  });
+
+  it("completar en una columna cierra esa y deja corriendo las otras", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2, 3);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+
+    await user.click(
+      within(card("Segunda tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+    expect(setStatus).toHaveBeenCalledWith(2, "DONE");
+    expect(screen.queryByRole("heading", { name: "Segunda tarea" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Primera tarea" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Tercera tarea" })).toBeInTheDocument();
+    expect(running.map((r) => r.taskId)).toEqual([1, 3]);
+    expect(celebrate).not.toHaveBeenCalled();
+  });
+
+  it("completar dejando una sola columna vuelve a Focus de una tarea, en la que sigue corriendo", async () => {
+    const user = userEvent.setup();
+    runTimers(1);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    // Mirando otra tarea con las flechas, para que el salto de `syncedFor` no
+    // alcance: la 1 ya era la más antigua y no vuelve a saltar sola.
+    await user.keyboard("{ArrowDown}");
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+    runTimers(1, 3);
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+
+    await user.click(
+      within(card("Tercera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Primera tarea" })).toBeInTheDocument();
+  });
+
+  it("completar una columna que va antes en la cola deja el foco en la que sigue corriendo", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 3);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Tercera tarea" });
+
+    await user.click(
+      within(card("Primera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Tercera tarea"),
+    );
+    expect(
+      within(card("Tercera tarea")).getByRole("button", { name: "Pausar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("completar la única que corre deja las columnas en pausa en su lugar", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2, 3);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Tercera tarea" });
+    await user.click(within(card("Segunda tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Segunda tarea")).findByRole("button", { name: "Iniciar" });
+    await user.click(within(card("Tercera tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Tercera tarea")).findByRole("button", { name: "Iniciar" });
+
+    await user.click(
+      within(card("Primera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Primera tarea" })).toBeNull(),
+    );
+    expect(container.querySelectorAll(".focus__column")).toHaveLength(2);
+    expect(
+      within(card("Segunda tarea")).getByRole("button", { name: "Iniciar" }),
+    ).toBeInTheDocument();
+    expect(
+      within(card("Tercera tarea")).getByRole("button", { name: "Iniciar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("con columnas, las flechas no mueven nada", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+
+    expect(container.querySelectorAll(".focus__column")).toHaveLength(2);
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([
+      "Primera tarea",
+      "Segunda tarea",
+    ]);
+  });
+
+  it("una columna completada en otra vista se va", async () => {
+    runTimers(1, 2, 3);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Tercera tarea" });
+
+    queue[1].status = "DONE";
+    running.splice(1, 1);
+    runTimers(...running.map((r) => r.taskId));
+    act(() => useAppStore.getState().bumpData());
+
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+    expect(screen.queryByRole("heading", { name: "Segunda tarea" })).toBeNull();
+  });
+
+  it("un aviso de reunión con columnas se muestra en la tira y gana al volver a una tarea", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+
+    act(() => useAppStore.setState({ focusTaskId: 4 }));
+
+    expect(await screen.findByText("Aviso")).toBeInTheDocument();
+    expect(screen.getByText("Cuarta tarea")).toBeInTheDocument();
+    expect(useAppStore.getState().focusTaskId).toBeNull();
+
+    await user.click(
+      within(card("Segunda tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Cuarta tarea"),
+    );
+  });
+
+  it("un aviso que llegó con una sola tarea no reaparece al armarse columnas", async () => {
+    const user = userEvent.setup();
+    runTimers(1);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    act(() => useAppStore.setState({ focusTaskId: 4 }));
+    await screen.findByRole("heading", { name: "Cuarta tarea" });
+    await user.keyboard("{ArrowUp}{ArrowUp}{ArrowUp}");
+    await screen.findByRole("heading", { name: "Primera tarea" });
+
+    runTimers(1, 2);
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+    expect(screen.queryByText("Aviso")).toBeNull();
+    expect(screen.getByText("Siguiente")).toBeInTheDocument();
+
+    await user.click(
+      within(card("Segunda tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Primera tarea"),
+    );
+  });
+
+  it("el play en paralelo de la tira suma una columna desde la cola", async () => {
+    const user = userEvent.setup();
+    const { api } = await import("../../lib/ipc");
+    runTimers(1);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    const strip = container.querySelector(".focus__next") as HTMLElement;
+    expect(within(strip).getByText("Segunda tarea")).toBeInTheDocument();
+
+    await user.click(within(strip).getByRole("button", { name: "Iniciar en paralelo" }));
+
+    expect(api.startTimer).toHaveBeenCalledWith(2, true);
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+    expect(running.map((r) => r.taskId)).toEqual([1, 2]);
+  });
+
+  it("con todas en pausa, el play en paralelo de una columna no se lleva las otras", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+    await user.click(within(card("Primera tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Primera tarea")).findByRole("button", { name: "Iniciar" });
+    await user.click(within(card("Segunda tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Segunda tarea")).findByRole("button", { name: "Iniciar" });
+
+    await user.click(
+      within(card("Segunda tarea")).getByRole("button", { name: "Iniciar en paralelo" }),
+    );
+
+    await within(card("Segunda tarea")).findByRole("button", { name: "Pausar" });
+    expect(container.querySelectorAll(".focus__column")).toHaveLength(2);
+    expect(
+      within(card("Primera tarea")).getByRole("button", { name: "Iniciar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("con una sola tarea a la vista, un play en paralelo no revive una columna pausada", async () => {
+    const user = userEvent.setup();
+    runTimers(1);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    await user.click(within(card("Primera tarea")).getByRole("button", { name: "Pausar" }));
+    await within(card("Primera tarea")).findByRole("button", { name: "Iniciar" });
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    await screen.findByRole("heading", { name: "Tercera tarea" });
+
+    await user.click(
+      within(card("Tercera tarea")).getByRole("button", { name: "Iniciar en paralelo" }),
+    );
+
+    await within(card("Tercera tarea")).findByRole("button", { name: "Pausar" });
+    expect(container.querySelector(".focus__columns")).toBeNull();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("el rojo del tiempo real y el aviso son de cada columna, no de la más antigua", async () => {
+    // La 2 arrancó después pero ya se pasó de su estimado; la 1 no.
+    runTimers(1, 2);
+    const t2 = running[1];
+    t2.baseSeconds = 31 * 60;
+    act(() => {
+      useTimerStore.setState({ ...derive([...running]), loaded: true });
+    });
+    renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+
+    const real = (t: string) =>
+      within(card(t)).getByLabelText("Ajustar tiempo real").querySelector(".focus__time-value");
+    expect(real("Segunda tarea")!.className).toContain("is-over");
+    expect(real("Primera tarea")!.className).not.toContain("is-over");
+    expect(
+      within(card("Segunda tarea")).getByText(/Pasaste el tiempo estimado/),
+    ).toBeInTheDocument();
+    expect(within(card("Primera tarea")).queryByText(/Pasaste el tiempo estimado/)).toBeNull();
+  });
+
+  it("el rojo compara lo de hoy, no el total que se muestra", async () => {
+    // 50 min de días anteriores + 5 de hoy con estimado de 30: "Real" muestra el
+    // total, pero la promesa es de hoy (como la campana) y no se pinta.
+    queue[0].actualSeconds = 55 * 60;
+    runTimers(1);
+    running[0].baseSeconds = 5 * 60;
+    act(() => {
+      useTimerStore.setState({ ...derive([...running]), loaded: true });
+    });
+    renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+
+    const real = within(card("Primera tarea"))
+      .getByLabelText("Ajustar tiempo real")
+      .querySelector(".focus__time-value");
+    expect(real!.textContent).toMatch(/^0:55:/);
+    expect(real!.className).not.toContain("is-over");
+  });
+
+  it("completar la última de hoy con una columna de otro día no celebra y muestra esa", async () => {
+    const user = userEvent.setup();
+    queue.length = 0;
+    queue.push(task({ id: 1, title: "Primera tarea" }));
+    otherDay.push(task({ id: 99, title: "De ayer", scheduledDate: "2026-08-09" }));
+    runTimers(1, 99);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "De ayer" });
+
+    await user.click(
+      within(card("Primera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    expect(await screen.findByRole("heading", { name: "De ayer" })).toBeInTheDocument();
+    expect(screen.queryByText("Listo por hoy")).toBeNull();
+    expect(celebrate).not.toHaveBeenCalled();
+  });
+
+  it("una columna de otro día pausada que no se ve no impide el cierre ni el confeti", async () => {
+    const user = userEvent.setup();
+    queue.length = 0;
+    queue.push(task({ id: 1, title: "Primera tarea" }));
+    otherDay.push(task({ id: 99, title: "De ayer", scheduledDate: "2026-08-09" }));
+    runTimers(99);
+    renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    // Se pausa desde el taxímetro: Focus nunca la mostró.
+    runTimers();
+
+    await user.click(
+      within(card("Primera tarea")).getByRole("button", { name: "Completar tarea" }),
+    );
+
+    expect(await screen.findByText("Listo por hoy")).toBeInTheDocument();
+    expect(celebrate).toHaveBeenCalledTimes(1);
+  });
+
+  it("un timer en paralelo con la vista abierta suma una columna al final", async () => {
+    runTimers(1);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Primera tarea" });
+    expect(container.querySelector(".focus__columns")).toBeNull();
+
+    runTimers(1, 4);
+
+    await waitFor(() => expect(container.querySelectorAll(".focus__column")).toHaveLength(2));
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([
+      "Primera tarea",
+      "Cuarta tarea",
+    ]);
+  });
+
+  it("pausar una columna la deja en su lugar, en pausa y con su play", async () => {
+    const user = userEvent.setup();
+    runTimers(1, 2, 3);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+
+    await user.click(within(card("Segunda tarea")).getByRole("button", { name: "Pausar" }));
+
+    await waitFor(() =>
+      expect(
+        within(card("Segunda tarea")).getByRole("button", { name: "Iniciar" }),
+      ).toBeInTheDocument(),
+    );
+    expect(container.querySelectorAll(".focus__column")).toHaveLength(3);
+    expect(running.map((r) => r.taskId)).toEqual([1, 3]);
+  });
+
+  it("el play clásico desde una columna deja solo esa: pausa las demás", async () => {
+    const user = userEvent.setup();
+    const { api } = await import("../../lib/ipc");
+    runTimers(1, 2, 3);
+    const { container } = renderFocus();
+    await screen.findByRole("heading", { name: "Segunda tarea" });
+    await user.click(within(card("Segunda tarea")).getByRole("button", { name: "Pausar" }));
+    const play = await within(card("Segunda tarea")).findByRole("button", { name: "Iniciar" });
+
+    await user.click(play);
+
+    expect(api.startTimer).toHaveBeenCalledWith(2, false);
+    await waitFor(() => expect(container.querySelector(".focus__columns")).toBeNull());
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Segunda tarea" })).toBeInTheDocument();
+    expect(running.map((r) => r.taskId)).toEqual([2]);
+  });
+
+  it("una columna de otro día se completa al final de su día, sin traerla a hoy", async () => {
+    const user = userEvent.setup();
+    const { api } = await import("../../lib/ipc");
+    otherDay.push(
+      task({ id: 90, title: "Ya en la mañana", scheduledDate: "2026-08-09", position: 4 }),
+      task({ id: 99, title: "De ayer", scheduledDate: "2026-08-09", position: 0 }),
+    );
+    runTimers(1, 99);
+    renderFocus();
+    await screen.findByRole("heading", { name: "De ayer" });
+
+    await user.click(within(card("De ayer")).getByRole("button", { name: "Completar tarea" }));
+
+    await waitFor(() => expect(api.moveTask).toHaveBeenCalledWith(99, "2026-08-09", 5));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "De ayer" })).toBeNull());
   });
 });

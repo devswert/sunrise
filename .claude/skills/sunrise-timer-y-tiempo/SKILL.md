@@ -26,7 +26,7 @@ Acá está lo que hay que saber para **editar** esto sin romperlo.
 | `src/features/timer/timerStore.ts` | store del timer (por ventana), `isOverEstimate`, `hms` |
 | `src/features/timer/useTimer.ts` | `useTimerRuntime` (ciclo de vida por ventana) + `useTimer` |
 | `src/features/timer/FloatingTimer.tsx` | el taxímetro |
-| `src/features/focus/FocusView.tsx` | Focus Mode |
+| `src/features/focus/FocusView.tsx` | Focus Mode: una tarea, o una columna por timer (`FocusTaskCard`, `columns.ts`) |
 
 ## Las reglas que no se deben romper
 
@@ -178,7 +178,7 @@ Ambas viven en `repo.rs` y no en las vistas porque hay **cinco** lugares con
 botón de play (card de la semana, Today, Focus, el modal y el taxímetro):
 ponerlas en el front obliga a repetirlas en los cinco y a que el sexto se olvide.
 La card y el modal ya comparten un solo componente, `PlayControls` (play clásico
-+ en paralelo, o solo la pausa); Focus lo adopta en #21.
++ en paralelo, o solo la pausa); Focus también, desde #21.
 
 **Corolario:** quien llame `setTaskStatus` desde el front debe hacer `bumpData()`
 después, porque el estado del timer pudo cambiar sin que la vista lo pidiera.
@@ -307,7 +307,24 @@ agendadas más tarde, (2) con hora primero dentro del grupo, (3) `scheduled_time
 (4) `position`, (5) `id`. Recibe `now_hhmm` desde el front porque la hora local
 del usuario no le corresponde decidirla a SQLite.
 
-Al completar en Focus, la tarea se manda **al final del día** y la cola avanza.
+Al completar en Focus, la tarea se manda **al final de su día** (hoy, salvo una
+columna de otro día) y la cola avanza.
+
+**Con varios timers, Focus es una columna por timer** (#21, `docs/specs/tiempo.md`
+§4.7). Dos trampas que ya costaron:
+
+- **Las columnas salen de `nextColumns(antes, corrían, corren)`, no del botón
+  que se apretó.** Si arrancó una y no sigue ninguna de las que corrían, es un
+  play clásico y queda solo esa; en cualquier otro caso se conservan (la pausada
+  queda en su lugar). Con todo en pausa el estado no distingue un play en
+  paralelo de uno clásico: Focus anota el click en su propio play en paralelo
+  en fase de captura (`parallelAt`), porque `onStart` llega tarde. No le agregues a Focus lógica por botón: el play compartido y el
+  taxímetro tienen que dar lo mismo.
+- **Lo que corría antes se lee de la ref *antes* del `setColumns`.** El updater
+  corre en el render siguiente, cuando la ref ya apunta a lo de ahora, y
+  entonces todo parece "seguir corriendo": el play clásico dejaba las columnas.
+- El aviso de estimado de una columna es **por tarea** (`elapsedById`), no
+  `timer.overEstimate`, que mira solo el primero.
 
 ## Reglas del rollup (`repo::work_by_day`, M3.5/M3.6 — hecho)
 

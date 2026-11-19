@@ -37,6 +37,50 @@
   gap: var(--space-4);
 }
 
+/* --- Columnas: una por timer (§4.7, #21) ---
+ * Con dos o más timers corriendo, cada tarea es una columna. Se separan con una
+ * línea de 1px y no con tarjetas, como las columnas de la semana: nada de cajas
+ * dentro de cajas. El ancho crece con el número de columnas hasta el de la vista,
+ * y `minmax(0, 1fr)` deja que una columna encoja por debajo de su contenido —un
+ * título largo se parte en vez de empujar a las otras fuera de la pantalla—. */
+.focus__columns {
+  display: grid;
+  width: 100%;
+  max-width: 1320px;
+  align-items: start;
+}
+.focus__column {
+  min-width: 0;
+  padding: 0 var(--space-5);
+}
+.focus__column + .focus__column {
+  border-left: 1px solid var(--border);
+}
+.focus__column:first-child {
+  padding-left: 0;
+}
+.focus__column:last-child {
+  padding-right: 0;
+}
+/* En una columna angosta el título manda igual, pero a menor tamaño: a 24px un
+ * título de tres palabras ya se partía en tres líneas con tres columnas. */
+.focus__column .focus__title {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+/* La fila de metadatos no baja de línea: si bajara en una columna, su check y su
+ * título quedarían más abajo que los de las vecinas. Lo que cede es el chip del
+ * canal, que se recorta con elipsis; el contador y la pausa nunca. */
+.focus__column .focus__meta > .chip-wrap:first-child {
+  min-width: 0;
+}
+.focus__column button.focus__canal {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Fila de metadatos: canal a la izquierda, tiempos y play a la derecha. Va
  * arriba del título para no comerle ancho — un título largo partido en cuatro
  * líneas mientras sobra espacio a la derecha era el síntoma. */
@@ -149,26 +193,16 @@ button.focus__canal.is-empty {
   color: var(--cap-over);
 }
 
-.focus__play {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  color: var(--ink);
-  flex-shrink: 0;
-}
-.focus__play:hover {
-  border-color: var(--mint-ink);
-  color: var(--mint-ink);
-}
-.focus__play.is-running {
-  background: var(--mint-solid);
-  border-color: var(--mint-solid);
-  color: #fff;
+/* El play compartido (`PlayControls`) a la talla de Focus: los tiempos de al
+ * lado son piezas de 19px, y a 34px el play se veía chico junto a ellos.
+ *
+ * Reserva el ancho del botón partido también cuando solo se ve la pausa, igual
+ * que `.tmodal__play` en el detalle: va a la derecha de los tiempos, y sin la
+ * reserva cada pausa y cada play corría Real/Estimado ~37px —y en columnas
+ * recortaba y agrandaba el chip del canal—. La pausa queda donde estaba el play. */
+.play-controls.focus__play {
+  --pc-h: 42px;
+  min-width: calc(var(--pc-h) * 2 - 5px);
 }
 
 .focus__over {
@@ -332,6 +366,12 @@ button.focus__canal.is-empty {
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--faint);
+}
+.focus__next .play-controls {
+  margin-left: auto;
+}
+.focus__next .play-controls + .focus__next-hint {
+  margin-left: 0;
 }
 .focus__next-hint {
   display: inline-flex;

@@ -226,7 +226,8 @@ mismo evento y no tiene `taskId`.
 **El ajuste es `notice_meeting_minutes`, con 0 = apagado** (mismo patrón que
 `backup_dir` vacío). Un aviso que no se puede apagar es peor que no tenerlo.
 
-**Focus abre en la tarea del aviso**, y eso tiene un detalle que costó un bug:
+**Focus abre en la tarea del aviso** (con columnas, la muestra en la tira de abajo y
+la abre al volver a una sola tarea: §4.7), y eso tiene un detalle que costó un bug:
 `focusTaskId` se lee como valor y se limpia en un efecto aparte, **no con un "tomar
 y vaciar" dentro de la carga**. En dev React monta los efectos dos veces, así que
 consumirlo en la primera pasada lo dejaba vacío para la segunda, que reseteaba el

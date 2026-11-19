@@ -184,8 +184,10 @@ una tarea corre.
 **Desde el detalle, el paralelo no lleva a Focus.** El play clásico cierra el modal
 y navega, porque es "paso a trabajar en esto". El paralelo se queda en el detalle
 (que pasa a mostrar la pausa): Focus muestra la más antigua de las que corren, y un
-play en paralelo no la mueve, así que navegar llevaba a **otra** tarea. Cuando
-Focus muestre columnas (#21) se puede revisar.
+play en paralelo no la mueve, así que navegar llevaba a **otra** tarea. Con
+Focus en columnas (#21) navegar ya llevaría a la correcta, pero **se mantiene**:
+el paralelo es "sumar esto sin dejar lo que estoy haciendo", y llevarte a Focus
+sería justamente dejarlo. El clásico sí navega.
 
 ### Jornada y paralelismo (#22)
 
@@ -244,6 +246,37 @@ una reunión en curso con un timer se suma de más el rato solapado, hasta la
 siguiente recarga.
 
 ---
+
+### Focus en columnas: se mira qué corre, no qué botón se apretó (#21)
+
+Con varios timers, Focus muestra una columna por tarea. La primera idea fue
+decidir las columnas por botón: la pausa de una columna la "fija" y el play
+clásico de una columna limpia las demás. Se descartó porque **hay más de un
+lugar que pausa o arranca**: el taxímetro, la card de la semana, el play
+compartido de #20. Con esa idea, cada uno tendría que avisarle a Focus, y el que
+no avisa deja columnas fantasma. La regla quedó en `nextColumns`, que solo mira
+el estado: **si arrancó una y no sigue ninguna de las que corrían, fue un play
+clásico y queda esa; en cualquier otro caso se conservan todas.** La primera
+versión reiniciaba con "no sigue ninguna" a secas, y completar la única que
+corría se llevaba las columnas en pausa.
+
+Lo que la regla no puede ver: **con todas las columnas en pausa, un play en
+paralelo y uno clásico se ven iguales** (arranca una, no sigue ninguna).
+Distinguirlos desde el store pediría exponer el modo del último play solo para
+esto. Se resolvió en la vista: el click en el play en paralelo de Focus se anota
+en fase de captura, antes de que el store cambie. El `onStart` de `PlayControls`
+no sirve, porque llega tarde. Desde otra vista, el caso sigue dejando solo esa.
+
+Esa regla trae una consecuencia buscada: **se cuentan columnas, no timers**. Con
+dos columnas y una en pausa corre un solo timer, y Focus sigue en columnas.
+Volver a una tarea apenas pausas haría desaparecer la columna bajo el cursor.
+
+**La trampa que lo costó:** el efecto guardaba "lo que corría antes" en una
+ref, la actualizaba y después llamaba `setColumns(prev => …)` leyéndola adentro.
+Pero el updater corre en el render siguiente, cuando la ref ya apunta a lo de
+ahora, así que todo parecía "seguir corriendo" y el play clásico dejaba todas
+las columnas. Lo detectó el test RTL del play clásico, no el unitario de
+`nextColumns`. Hay que leer la ref antes de llamar al `set`.
 
 ## 2. Lo que depende del reloj va en Rust
 
