@@ -1282,6 +1282,17 @@ hook exige para empujar un tag `v*` (antes los tags pasaban libres, porque el
 release corría las suites). Lo que **no** se negoció: un `reviewer` sin contexto
 antes de cada merge, siempre. Sin CI remoto es la única segunda mirada.
 
+**Y el release volvió a correr las suites** (#32, un día después). Exigir `bin/gates`
+para el tag ataba la publicación a una máquina con el entorno completo, y la que
+empuja el tag puede no tenerlo: un sandbox, otra laptop, un agente sin Rust. Las
+suites se movieron a `release.yml`, **antes** de `tauri-action`: si una falla, el
+job se corta y no se construye ni se publica nada, así que un tag en rojo no llega
+a nadie. El hook ya no mira el sello para un tag; sigue exigiendo que exista, que
+apunte a `origin/main` y que vaya en su propio comando. Cuesta ~5 minutos de runner
+por versión (~11-12 en total), una vez por versión y no por issue, que era lo caro.
+Corren en dos zonas —UTC, la del runner, y `America/Santiago`— por lo mismo que
+`bin/gates` (§10); la segunda vuelta de Rust reusa el binario.
+
 **Lo que se pierde es el entorno limpio**, y se mitigó en tres partes. (1) El hook
 compara el sello con el árbol **commiteado**, no con el working tree: un archivo
 sin trackear con el que los gates pasaban no viaja en el push, y un runner lo

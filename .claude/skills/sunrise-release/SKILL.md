@@ -1,6 +1,6 @@
 ---
 name: sunrise-release
-description: Publica una versión de sunrise — junta las issues en Done, escribe la entrada del changelog, sube la versión en los tres archivos, la mezcla por PR, corre bin/gates sobre el commit exacto de main y empuja el tag que dispara el Release en GitHub y pasa las issues a Released con su milestone. Úsala cuando el usuario diga "vamos pa prod", quiera sacar una versión, publicar un update, subir el número de versión, avisarle al equipo de algo nuevo, o cuando pregunte cómo se publica un release. También cuando haya que corregir un release fallido (retaguear) o cuando el modal "Lo nuevo" muestre el texto equivocado.
+description: Publica una versión de sunrise — junta las issues en Done, escribe la entrada del changelog, sube la versión en los tres archivos, la mezcla por PR y empuja el tag que dispara el Release en GitHub (que corre las suites antes de compilar) y pasa las issues a Released con su milestone. Úsala cuando el usuario diga "vamos pa prod", quiera sacar una versión, publicar un update, subir el número de versión, avisarle al equipo de algo nuevo, o cuando pregunte cómo se publica un release. También cuando haya que corregir un release fallido (retaguear) o cuando el modal "Lo nuevo" muestre el texto equivocado.
 ---
 
 # Publicar una versión de sunrise
@@ -9,12 +9,14 @@ Publicar es **un tag**. El resto lo hace `.github/workflows/release.yml`: compil
 en `macos-26`, firma con la llave del updater y publica el `.dmg`, el
 `.app.tar.gz`, su `.sig` y el `latest.json`.
 
-**`release.yml` no corre las suites**: es el único workflow que gasta minutos de
-Actions, y las suites son ~5 de los ~12 que costaba (`docs/DECISIONES.md` §12). Lo
-que asegura que lo publicado está en verde es **`bin/gates` en el checkout
-principal, sobre el commit exacto de `main` que se taguea** (paso 9). El hook
-`require-gates.sh` no deja empujar un tag `v*` sin ese sello. Un tag empujado a mano
-desde una terminal se salta el hook: no lo hagas.
+**`release.yml` corre las suites antes de compilar** (typecheck, lint, Vitest y
+`cargo test`, en UTC y en la zona del dev): si alguna falla, el job se corta y no se
+publica nada (`docs/DECISIONES.md` §12). Es lo que asegura que lo publicado está en
+verde, y vive en Actions y no en la máquina que empuja el tag porque esa máquina
+puede no tener el entorno para correr `bin/gates` (un sandbox, otra laptop). Por
+eso el hook ya no exige el sello de gates para un tag `v*`: solo que el tag exista
+y apunte a un commit de `origin/main`. Las suites cuestan ~5 minutos de runner por
+versión; los PRs siguen probándose solo con `bin/gates` local.
 
 **El único gatillo es empujar un tag `v*`.** No hay disparo manual del workflow, y
 eso es a propósito: corrido desde una rama, el `tagName` valdría `main` y
@@ -100,27 +102,25 @@ salió #N?" se responde mirando la issue.
    pasos 3 a 7 (sin `Closes`), **con su reviewer sin contexto**: es obligatorio
    también acá, y el changelog es justo lo que lee todo el equipo. A `main` no se
    empuja directo: el hook lo bloquea.
-9. **Gates sobre `main` y el tag**, en el checkout principal:
+9. **El tag sobre `main`**, en el checkout principal:
 
    ```bash
    git checkout main && git pull --ff-only
-   git status --porcelain     # tiene que salir vacío
-   bin/gates
    git tag v0.2.0
    git push origin v0.2.0
    ```
 
    Cada línea es un comando aparte: el hook juzga el estado de antes del comando, así
    que bloquea un `pull` (o cualquier cosa que mueva HEAD) y un `git tag` que no sea
-   `-d` en el mismo comando que el push del tag, y juzga el `refs/tags/vX` que ya existe.
+   `-d` en el mismo comando que el push del tag, y juzga el `refs/tags/vX` que ya existe
+   (tiene que apuntar a un commit de `origin/main`).
 
-   `bin/gates` otra vez, aunque ya pasó en la rama del release: lo que se publica es
-   el commit de `main`, y si otra issue se mezcló entremedio ese árbol no lo probó
-   nadie. Es el único chequeo antes de publicar —`release.yml` ya no corre las
-   suites—, y el hook bloquea el push del tag si el sello no es el árbol del commit
-   tagueado. El tag después del merge: si el tag llega primero, Actions compila un
-   commit que el remoto todavía no tiene.
-10. **Mira la corrida** (`gh run watch`, en segundo plano; tarda ~6-7 minutos) y cuando termine
+   No hace falta `bin/gates` acá: lo que se publica es el commit de `main`, y si otra
+   issue se mezcló entremedio ese árbol lo prueba `release.yml` antes de compilar. Si
+   esta máquina tiene el entorno, correr `bin/gates` antes del tag ahorra una vuelta
+   de runner cuando algo está rojo, pero no es obligatorio. El tag después del merge:
+   si el tag llega primero, Actions compila un commit que el remoto todavía no tiene.
+10. **Mira la corrida** (`gh run watch`, en segundo plano; tarda ~11-12 minutos: ~5 de suites y ~6 de build). Si falla en las suites, no se publicó nada: arregla en una issue, mezcla y retaguea (abajo). Cuando termine
     **comprueba que el Release tenga los cuatro archivos** (`gh release view v0.2.0`).
     Si falta el `latest.json` o el `.sig`, el `.dmg` sirve para instalar pero el
     auto-update no funciona, y el síntoma es el silencioso: "nunca hay
@@ -139,11 +139,10 @@ salió #N?" se responde mirando la issue.
 ## Si algo sale mal
 
 **Un tag no se mueve.** Si `release.yml` falla o el Release sale incompleto, borra
-los dos y vuelve a taguear el commit corregido (con su `bin/gates` en `main`: el hook
-deja pasar el borrado libre, pero no el tag nuevo). Si falló **antes** del paso que
-publica no hay Release que borrar, solo el tag. El borrado pasa libre por el hook
-solo con la forma `:refs/tags/vX` (no `--delete`), y retaguear va en comandos
-aparte (`git tag -d`, luego `bin/gates`, luego el tag nuevo). Los tres borrados de
+los dos y vuelve a taguear el commit corregido. Si falló **antes** del paso que
+publica (por ejemplo, en las suites) no hay Release que borrar, solo el tag. El
+borrado pasa libre por el hook solo con la forma `:refs/tags/vX` (no `--delete`), y
+retaguear va en comandos aparte (`git tag -d`, luego el tag nuevo, luego el push). Los tres borrados de
 abajo, también en comandos separados: si el primero falla (no había Release), los
 otros tienen que correr igual:
 

@@ -40,11 +40,12 @@ run() { # descripción, código esperado, comando
 
 echo "▸ Tags, desde main"
 rm -f "$stampf"
-run "tag sin sello" 2 "$P origin v1.0.0"
-seal
 run "tag que todavía no existe" 2 "$P origin v1.0.0"
 run "crear y empujar el tag en el mismo comando" 2 "git tag v1.0.0 && $P origin v1.0.0"
 git tag v1.0.0
+# Sin sello y pasa: las suites del tag las corre release.yml antes de compilar (#32).
+run "tag existente sin sello, en main" 0 "$P origin v1.0.0"
+seal
 run "tag existente con sello" 0 "$P origin v1.0.0"
 run "borrar un tag pasa libre" 0 "$P origin :refs/tags/v1.0.0"
 run "tag nuevo sobre otro commit en el mismo comando" 2 "git tag v3.0.0 HEAD~0 && $P origin v3.0.0"
@@ -53,7 +54,7 @@ run "borrar el tag local y el remoto en un comando" 0 "git tag -d v1.0.0 ; $P or
 echo b > b.txt; git add -A; git commit -qm b
 run "tag viejo: se juzga su commit, no HEAD" 0 "$P origin v1.0.0"
 git tag v1.0.1
-run "tag sobre HEAD sin volver a sellar" 2 "$P origin v1.0.1"
+run "tag sin sello fuera de origin/main" 2 "$P origin v1.0.1"
 seal
 run "tag sellado pero fuera de origin/main" 2 "$P origin v1.0.1"
 run "push de rama y tag en el mismo comando, desde main" 2 "$P && $P origin v1.0.0"
