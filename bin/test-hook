@@ -67,6 +67,11 @@ run "borrado con --delete" 2 "$P --delete origin v1.0.0"
 git reset -q --hard origin/main; git tag -d v1.0.1 > /dev/null
 seal
 run "tag anotado con -m, sobre HEAD de main" 0 "git tag -a v5.0.0 -m 'versión' && $P origin v5.0.0"
+echo f > f.txt; git add -A; git commit -qm f; $P -q origin main
+run "git tag -f mueve un tag existente: bloquea" 2 "git tag -f v5.0.0 && $P origin v5.0.0"
+git tag v6.0.0 HEAD~1; seal
+run "tag local viejo pero el comando taguea HEAD sellado: se juzga HEAD" 0 "git tag -d v6.0.0; git tag v6.0.0 && $P origin v6.0.0"
+git tag -d v6.0.0 > /dev/null
 run "commit cuyo mensaje dice push no es un push" 0 "git commit -m 'commit y push separados'"
 
 echo "▸ Rama de issue"
@@ -91,6 +96,7 @@ run "push dentro de sh -c" 2 "sh -c '$P origin HEAD:main'"
 run "push dentro de \$(…)" 2 "x=\$($P origin HEAD:main)"
 run "push a la rama de la issue por nombre" 0 "$P origin issue-1-x"
 run "--force-with-lease tras un rebase" 0 "$P --force-with-lease origin HEAD"
+run "con 2>&1 y tail" 0 "$P -u origin HEAD 2>&1 | tail -3"
 echo junk > untracked.txt; seal
 run "sello con un archivo sin trackear" 2 "$P origin HEAD"
 rm untracked.txt; seal
@@ -102,6 +108,9 @@ echo "▸ Merge"
 run "merge en orden" 0 "gh pr merge 1 --squash"
 run "flags con valor antes del número" 0 "gh pr merge --subject x 1 --squash"
 FAKE_HEAD=deadbeef run "el PR es de otra rama" 2 "gh pr merge 7 --squash --repo o/r"
+FAKE_HEAD=deadbeef run "merge dentro de \$(…)" 2 "x=\$(gh pr merge 7 --squash)"
+FAKE_HEAD=deadbeef run "merge dentro de sh -c" 2 "sh -c 'gh pr merge 7 --squash'"
+FAKE_HEAD=deadbeef run "gh con ruta absoluta" 2 "/opt/homebrew/bin/gh pr merge 7 --squash"
 echo d > d.txt; git add -A; git commit -qm d; seal
 run "merge sin empujar" 2 "gh pr merge 1 --squash"
 $P -q origin HEAD
@@ -112,6 +121,7 @@ git rebase -q origin/main; $P -q -f origin HEAD; seal
 run "merge tras rebase, gates y push" 0 "gh pr merge 1 --squash"
 REPO="$PWD"; cd /
 run "con cd a la worktree delante" 0 "cd $REPO && gh pr merge 1 --squash"
+run "con cd entre comillas simples" 0 "cd '$REPO' && gh pr merge 1 --squash"
 run "cd fuera de un repo" 2 "cd / && git -C $REPO push"
 cd "$REPO"
 git checkout -qb issue-2-sin-upstream; seal

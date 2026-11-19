@@ -1234,7 +1234,8 @@ con `-f`—. Enumerar lo prohibido no converge; enumerar lo permitido sí. Adem�
 cualquier error inesperado del hook bloquea (`trap … ERR`): para Claude Code solo el
 código 2 bloquea, y un fallo con otro código dejaba pasar el comando. Lo que queda sin cubrir: dependencias del sistema distintas a las de
 un macOS limpio (toolchain de Rust, Xcode), y un tag empujado a mano desde una
-terminal, que se salta el hook, igual que `gh api` contra el endpoint de merge. Para lo primero está `gh workflow run tests.yml`.
+terminal, que se salta el hook, igual que `gh api` contra el endpoint de merge, y la carrera de segundos entre el
+`fetch` del hook y el merge real si otra sesión mezcla justo entremedio. Para lo primero está `gh workflow run tests.yml`.
 
 **Fuera de alcance**, desde el MVP y sin issue: recurrentes o rituales generados
 solos; sync entre dispositivos (el modelo de datos queda listo, no se implementa);

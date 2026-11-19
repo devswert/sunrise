@@ -16,7 +16,9 @@ command="$(jq -r '.tool_input.command // ""' <<< "$input")"
 # con ruta (`/usr/bin/git`) o dentro de comillas (`sh -c '…'`). Un `git commit -m "… push"`
 # no calza: lo que sigue a `git` tiene que ser opción, no subcomando.
 any_push='(^|[^[:alnum:]_.-])git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([^[:alnum:]_-]|$)'
-if ! grep -Eq "$any_push|(^|[;&|[:space:]])gh[[:space:]]+pr[[:space:]]+(create|merge)([[:space:]]|\$)" <<< "$command"; then
+gh_pr_re='(^|[^[:alnum:]_.-])gh[[:space:]]+pr[[:space:]]+(create|merge)([^[:alnum:]_-]|$)'
+gh_merge_re='(^|[^[:alnum:]_.-])gh[[:space:]]+pr[[:space:]]+merge([^[:alnum:]_-]|$)'
+if ! grep -Eq "$any_push|$gh_pr_re" <<< "$command"; then
   exit 0
 fi
 
@@ -29,7 +31,9 @@ dir_opt='([[:space:]]+-C[[:space:]]+[^[:space:];&|"'"'"']+)?'
 branch_form="^git$dir_opt[[:space:]]+push([[:space:]]+(-u|--set-upstream|-q|--quiet|--force-with-lease))*([[:space:]]+origin([[:space:]]+(HEAD|issue-[A-Za-z0-9._-]+|release-v[0-9.]+))?)?\$"
 tag_form="^git$dir_opt[[:space:]]+push[[:space:]]+origin[[:space:]]+:?(refs/tags/)?v[0-9]+\.[0-9]+\.[0-9]+\$"
 nl=$'\n'
-segments="${command//&&/$nl}"; segments="${segments//||/$nl}"
+# Las redirecciones (`2>&1`, `>&2`) no son separadores: fuera antes de partir.
+segments="$(sed -E 's/[0-9]*>&[0-9-]+//g' <<< "$command")"
+segments="${segments//&&/$nl}"; segments="${segments//||/$nl}"
 segments="${segments//;/$nl}"; segments="${segments//|/$nl}"; segments="${segments//&/$nl}"
 push_count=0; tag_count=0; tag_refs=""; dir_target=""
 while IFS= read -r seg; do
@@ -57,7 +61,7 @@ target="$(sed -nE 's/^[[:space:]]*cd[[:space:]]+([^;&|[:space:]]+).*/\1/p' <<< "
 [ -n "$target" ] || target="$dir_target"
 if [ -n "$target" ]; then
   target="${target/#\~/$HOME}"
-  target="${target%\"}"; target="${target#\"}"
+  target="${target%[\"\']}"; target="${target#[\"\']}"
   cd "$target" 2>/dev/null || { echo "Bloqueado: no encuentro la carpeta $target." >&2; exit 2; }
 fi
 root="$(git rev-parse --show-toplevel 2>/dev/null)" \
@@ -81,19 +85,22 @@ fetch_main() { # sin red no puede colgar el hook: corta si baja de 1 KB/s por 10
 # libre; crearlo exige `bin/gates` en verde sobre el árbol del commit que se taguea, que
 # es lo único que asegura que lo publicado pasó las suites: `release.yml` ya no las corre.
 gh_pr=""
-if grep -Eq "gh[[:space:]]+pr[[:space:]]+(create|merge)" <<< "$command"; then gh_pr=1; fi
+if grep -Eq "$gh_pr_re" <<< "$command"; then gh_pr=1; fi
 if [ -z "$gh_pr" ] && [ "$push_count" -gt 0 ] && [ "$push_count" -eq "$tag_count" ]; then
   for ref in $tag_refs; do
     case "$ref" in :*) continue ;; esac
     tag="${ref#refs/tags/}"
-    # En `git tag vX && git push origin vX` el hook corre antes que el comando y el tag
-    # todavía no existe: lo que se va a taguear es HEAD. Si el comando taguea otro commit
-    # (`git tag vX <rev>`), no se adivina: comandos separados.
-    if ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
-      if grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]]$tag[[:space:]]+[^-[:space:];&|]" <<< "$command"; then
-        echo "Bloqueado: crea el tag $tag en un comando y empújalo en otro, para que el hook vea a qué commit apunta." >&2
-        exit 2
-      fi
+    # El hook corre antes que el comando: en `git tag vX && git push origin vX` lo que se
+    # va a taguear es HEAD, exista o no un `vX` local. Mover un tag (`-f`, `--force`) o
+    # taguear otro commit (`git tag vX <rev>`) no se adivina: comandos separados, como
+    # dice sunrise-release (`git tag -d`, `bin/gates`, el tag nuevo).
+    if grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]](-[a-zA-Z]*f[a-zA-Z]*|--force)([[:space:];&|]|\$)" <<< "$command" \
+      || grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]]$tag[[:space:]]+[^-[:space:];&|]" <<< "$command"; then
+      echo "Bloqueado: crea (o mueve) el tag $tag en un comando y empújalo en otro, para que el hook vea a qué commit apunta." >&2
+      exit 2
+    fi
+    if grep -Eq "git[[:space:]]+tag[^;&|]*[[:space:]]$tag([[:space:];&|]|\$)" <<< "$command" \
+      || ! commit="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")"; then
       commit="$(git rev-parse HEAD)"
     fi
     if [ "$sealed" != "$(git rev-parse "$commit^{tree}")" ]; then
@@ -130,7 +137,7 @@ fi
 # contiene `origin/main` y está empujada tal cual. `main` no tiene protección de rama, así
 # que GitHub squashearía igual un PR atrasado, y lo que quedaría en main sería una mezcla
 # que nadie probó.
-if grep -Eq "gh[[:space:]]+pr[[:space:]]+merge" <<< "$command"; then
+if grep -Eq "$gh_merge_re" <<< "$command"; then
   # Lo juzgado es esta carpeta: el PR que se mezcla tiene que ser el suyo. Si no, desde el
   # checkout principal recién sellado (o desde la worktree de otra issue) se mezclaría
   # cualquier PR sin mirar su sello.
