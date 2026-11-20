@@ -12,7 +12,10 @@ resolver un problema de layout por tu cuenta, búscalo acá.
 propios y no etiquetas traducibles: el **sidebar completo** (Home, Today, Focus,
 Backlog, "Daily rituals" / "Weekly rituals" — "Daily shutdown" es el nombre del
 ritual) y los **títulos de vista que espejan una entrada del sidebar**, que
-traducidos dejarían la página diciendo algo distinto del link que lleva a ella. La
+traducidos dejarían la página diciendo algo distinto del link que lleva a ella. Lo
+mismo vale para los **paneles de la tira de la semana** (Agenda, Backlog, **Trash**):
+su nombre y su título son nombres propios, pero lo que dicen adentro va en español
+("Cerrar basurero", "El basurero está vacío"). La
 única entrada traducida es **Settings → Configs**. Los formatos numéricos (`hms`,
 `formatMinutes`, `shortDuration`) no tienen idioma. El menú nativo de macOS queda en
 inglés: lo genera `Menu::default`, y traducir solo nuestro Quit dejaría el submenú a
