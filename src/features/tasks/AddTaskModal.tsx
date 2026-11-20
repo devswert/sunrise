@@ -189,7 +189,15 @@ export function AddTaskModal() {
     return { text, pos };
   }
 
+  /**
+   * Una creación en curso. `create()` espera a `createTask` antes de cerrar, y un
+   * ⌘Enter doble cae entero en ese hueco —antes de que el modal empiece a salir y
+   * suelte la tecla—: sin el corte, creaba la tarea dos veces.
+   */
+  const creating = useRef(false);
+
   async function create() {
+    if (creating.current) return;
     // Última pasada: un link escrito a mano al final del título no lo cosechó
     // ni el pegado ni el `onChange` —que solo mira links cerrados—, así que sin
     // esto se crearía con el link todavía adentro.
@@ -198,17 +206,24 @@ export function AddTaskModal() {
     // si no, el canal viaja escrito dos veces y se lee en cada card.
     const t = stripChannelTag(text, selectedCat).trim();
     if (!t) return;
+    creating.current = true;
     const todos = [...resources, ...links.filter((l) => !resources.includes(l))];
     const notes = appendResources("", todos);
-    await api.createTask({
-      title: t,
-      notes: notes || undefined,
-      scheduledDate: date,
-      estimatedMinutes: planned,
-      categoryId,
-      objectiveId,
-      priority,
-    });
+    try {
+      await api.createTask({
+        title: t,
+        notes: notes || undefined,
+        scheduledDate: date,
+        estimatedMinutes: planned,
+        categoryId,
+        objectiveId,
+        priority,
+      });
+    } catch (e) {
+      // Falló: el modal sigue abierto y se puede volver a intentar.
+      creating.current = false;
+      throw e;
+    }
     bumpData();
     closeCompose();
   }

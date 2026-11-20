@@ -56,7 +56,7 @@ La lista de casos vive en los propios archivos y no se duplica acá; esto es el 
 | Respaldo | `backup.rs`, `backup.test.ts`, `BackupCard.test.tsx` |
 | Updater y changelog | `update.rs`, `UpdateBanner.test.tsx`, `changelog.test.ts`, `WhatsNew.test.tsx` |
 | Paleta y contraste | `tokens.test.ts` |
-| Primitivas | `Dialog.test.tsx`, `Popover.test.tsx`, `SearchSelect.test.tsx`, `QuitConfirm.test.tsx`, `Sidebar.test.tsx`, `SunriseMark.test.tsx`, `Toast` (en `trash.test.tsx`) |
+| Primitivas | `Dialog.test.tsx`, `ModalPresence.test.tsx`, `reducedMotion.test.ts`, `Popover.test.tsx`, `SearchSelect.test.tsx`, `QuitConfirm.test.tsx`, `Sidebar.test.tsx`, `SunriseMark.test.tsx`, `Toast` (en `trash.test.tsx`) |
 | Cruce entre ventanas | `store.test.tsx`, `TodayView.sync.test.tsx` |
 | Contrato IPC | `ipcContract.test.ts` |
 | Servidor MCP | `mcp/tools.rs`, `mcp/store.rs`, `mcp/server.rs` (el esquema publicado), `external.rs`, `claude_desktop.rs`, `useExternalChanges.test.ts`, `TimerRoot.test.tsx` (el taxímetro escucha el aviso), `McpCard.test.tsx` |
@@ -138,3 +138,11 @@ el plan de QA de la issue que lo toca (skill `sunrise-lifecycle`).
   archivo** — aislar un caso con `-t` lo puede dejar pasar en falso.
 - Los timers falsos con `shouldAdvanceTime` van instalados **antes** de montar: el
   intervalo se crea en el efecto y uno instalado después no lo controla.
+- **Un modal cerrado sigue en el DOM 240 ms** mientras corre su salida
+  (`ModalPresence`, §7), así que su desmontaje se verifica con `waitFor`, igual que
+  el de un panel de la tira. Un assert seco justo después de cerrar falla.
+- **Las copias de `exitAbove` viven en `body`**, fuera del contenedor que limpia
+  RTL, y se borran solas a los 240 ms: un test que cierra navegando termina antes y
+  dejaría la suya en el siguiente. Las barre `src/test/setup.ts` en cada
+  `afterEach`. Son `aria-hidden`, así que `getByRole` no las ve, pero `getByText` o
+  `getByLabelText` sí.

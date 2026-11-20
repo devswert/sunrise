@@ -294,7 +294,11 @@ export function BackupCard() {
 
   async function pickZip() {
     const zip = await elegirEnFinder({ directory: false, title: "Elige el respaldo a restaurar" });
-    if (zip) setToRestore(zip);
+    if (zip) {
+      // Vuelve acá y no al terminar: ver el comentario en `restaurar`.
+      setRestaurando(false);
+      setToRestore(zip);
+    }
   }
 
   async function restaurar() {
@@ -314,9 +318,11 @@ export function BackupCard() {
     } catch (err) {
       setToRestore(null);
       setError({ field: "action", text: String(err) });
-    } finally {
       setRestaurando(false);
     }
+    // Si salió bien, `restaurando` **no** vuelve a `false` acá: la confirmación
+    // todavía está saliendo (§7, "Modales") y su botón volvería a decir
+    // "Restaurar y reemplazar" durante el fundido. Vuelve al abrir la próxima.
   }
 
   const field = (

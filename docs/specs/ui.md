@@ -336,7 +336,9 @@ cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcio
   - **Mientras sale no es de nadie.** El envoltorio lleva `is-leaving`
     (`pointer-events: none`: el click pasa a la vista de abajo) e `inert`, el foco que
     tuviera adentro se suelta con `blur` —que dispara el guardado del campo, como
-    siempre—, los pickers abiertos se cierran, y **cada modal suelta sus teclas** leyendo
+    siempre—, los pickers abiertos se cierran, el detalle escribe **ya** lo que
+    esperaba el debounce (reabrir la misma tarea en plena salida leería el título
+    viejo) y `AddTaskModal` corta la reentrada de `create()` con un ref, y **cada modal suelta sus teclas** leyendo
     `useModalLeaving()`: un segundo Escape no lo vuelve a cerrar, ⌘Enter no guarda dos
     veces y el `capture` + `preventDefault` de `Dialog` no le roba Escape ni Enter a lo
     de abajo. Un modal nuevo que cuelgue teclas de `window` tiene que hacer lo mismo.
@@ -345,10 +347,16 @@ cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcio
     desmonta la vista que sostiene el modal, y ahí no hay presencia que valga. Antes de
     navegar llaman a `exitAbove()`, que deja una **copia del DOM** del modal en `body`,
     marcada `is-leaving`, `inert` y `aria-hidden`, que se borra sola al terminar. La app
-    cambia de vista al instante y el modal se va igual.
+    cambia de vista al instante y el modal se va igual. Una navegación que **no** pasa
+    por `exitAbove` —una notificación, un click en el sidebar con un modal abierto—
+    desmonta el modal de golpe, sin salida.
   - **Con `prefers-reduced-motion` no hay animación**: el modal se desmonta en el acto
     (`usePresence` no espera) y `exitAbove` no deja copia. Los popovers (`pop-in`)
     también respetan la preferencia, solo en su entrada: su salida no se anima.
+  - **En macOS con un WebKit anterior a Safari 15.5 no hay `inert`**: el modal que sale
+    sigue sin puntero (`pointer-events: none`) y sin teclas (los listeners se sueltan),
+    pero el tabulador podría entrar en él durante esos 240 ms. Se acepta como
+    degradación.
 - **Popovers en portal con posición fija** (`Popover.tsx`). Si no, los recorta el
   `overflow` de columnas y modales, y el ancho queda limitado por el contenedor del chip.
   **El foco inicial lo da el `Popover`, no el picker**: monta `visibility: hidden` mientras

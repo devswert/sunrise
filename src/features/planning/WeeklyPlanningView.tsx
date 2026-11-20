@@ -434,9 +434,9 @@ export function WeeklyPlanningView() {
       </section>
 
       <ModalPresence value={objetivoAbierto}>
-        {(objetivo) => (
+        {(objective) => (
           <ObjectiveModal
-            objective={objetivo}
+            objective={objective}
             dates={dates}
             tasks={tasks}
             categories={categories}

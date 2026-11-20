@@ -20,7 +20,7 @@ function Harness({ onClose = () => {} }: { onClose?: () => void }) {
           <Dialog
             title={`Modal ${v}`}
             label="Prueba"
-            actions={<Campo inicial={v} />}
+            actions={<Field initial={v} />}
             onClose={() => {
               onClose();
               setValue(null);
@@ -38,9 +38,9 @@ function Harness({ onClose = () => {} }: { onClose?: () => void }) {
 }
 
 /** Estado propio, inicializado al montarse: delata si una instancia se reusó. */
-function Campo({ inicial }: { inicial: string }) {
-  const [texto] = useState(inicial);
-  return <span data-testid="campo">{texto}</span>;
+function Field({ initial }: { initial: string }) {
+  const [text] = useState(initial);
+  return <span data-testid="field">{text}</span>;
 }
 
 const overlay = () => document.querySelector(".modal-presence");
@@ -85,12 +85,12 @@ describe("ModalPresence", () => {
   it("mientras sale no le roba las teclas a la vista de abajo", async () => {
     // `Dialog` escucha con `capture` y `preventDefault`: colgado durante la
     // salida, se comía el Enter de lo que hubiera debajo.
-    const debajo = vi.fn();
+    const below = vi.fn();
     render(
       <>
         <input
           aria-label="Debajo"
-          onKeyDown={(e) => e.key === "Enter" && debajo(e.defaultPrevented)}
+          onKeyDown={(e) => e.key === "Enter" && below(e.defaultPrevented)}
         />
         <Harness />
       </>,
@@ -101,7 +101,7 @@ describe("ModalPresence", () => {
     screen.getByLabelText("Debajo").focus();
     await userEvent.keyboard("{Enter}");
 
-    expect(debajo).toHaveBeenCalledWith(false);
+    expect(below).toHaveBeenCalledWith(false);
   });
 
   it("reabrir mientras sale monta un modal nuevo, sin el estado del que se iba", async () => {
@@ -115,7 +115,7 @@ describe("ModalPresence", () => {
 
     expect(overlay()).not.toHaveClass("is-leaving");
     expect(overlay()).not.toHaveAttribute("inert");
-    expect(screen.getByTestId("campo")).toHaveTextContent("dos");
+    expect(screen.getByTestId("field")).toHaveTextContent("dos");
   });
 
   it("con movimiento reducido se desmonta al instante", async () => {
@@ -130,7 +130,7 @@ describe("ModalPresence", () => {
 
   it("`exitAbove` deja una copia saliendo en `body`, que se borra sola", async () => {
     let exitAbove = () => {};
-    function Navega() {
+    function Navigates() {
       const [open, setOpen] = useState(true);
       return (
         <>
@@ -152,7 +152,7 @@ describe("ModalPresence", () => {
         </>
       );
     }
-    render(<Navega />);
+    render(<Navigates />);
 
     // Es lo que hace el play del detalle: la copia primero, después la vista que
     // monta el modal se desmonta entera.
@@ -165,6 +165,36 @@ describe("ModalPresence", () => {
     // Fuera del árbol de accesibilidad: no es un modal que se pueda usar.
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(ghost).not.toBeInTheDocument());
+  });
+
+  it("la copia de `exitAbove` lleva lo escrito en los campos", async () => {
+    let exitAbove = () => {};
+    function Form() {
+      const [text, setText] = useState("");
+      return (
+        <ModalPresence value={true}>
+          {(_, exit) => {
+            exitAbove = exit.exitAbove;
+            return (
+              <div className="modal-overlay">
+                <textarea
+                  aria-label="Notas"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                />
+              </div>
+            );
+          }}
+        </ModalPresence>
+      );
+    }
+    render(<Form />);
+    await userEvent.type(screen.getByLabelText("Notas"), "a medio escribir");
+
+    act(() => exitAbove());
+
+    const copy = document.querySelector<HTMLTextAreaElement>(".is-ghost textarea");
+    expect(copy?.value).toBe("a medio escribir");
   });
 
   it("con movimiento reducido `exitAbove` no deja copia", () => {

@@ -30,20 +30,22 @@ export function WhatsNew() {
   const setOpen = useUpdateStore((s) => s.setWhatsNewOpen);
   const version = useUpdateStore((s) => s.updatedTo);
 
-  const anuncio = open && version ? announcementFor(version) : null;
+  const announcement = open && version ? announcementFor(version) : null;
   // Todo lo que dibuja, junto: `ModalPresence` se queda con esto mientras sale.
-  const contenido =
-    anuncio && version ? { version, anuncio, fecha: releaseDateFor(version) } : null;
+  const content =
+    announcement && version
+      ? { version, announcement, releaseDate: releaseDateFor(version) }
+      : null;
 
   return (
-    <ModalPresence value={contenido}>
-      {({ version, anuncio, fecha }) => (
+    <ModalPresence value={content}>
+      {({ version, announcement, releaseDate }) => (
         <Dialog
           variant="announcement"
           title={
             <>
               Lo nuevo en {version}
-              {fecha && <span className="nuevo__fecha">{dateLabel(fecha)}</span>}
+              {releaseDate && <span className="nuevo__fecha">{dateLabel(releaseDate)}</span>}
             </>
           }
           label={`Lo nuevo en la ${version}`}
@@ -61,7 +63,7 @@ export function WhatsNew() {
             <Cordillera />
           </div>
           <div className="dialog__body nuevo__texto">
-            <Markdown gfm={false}>{anuncio}</Markdown>
+            <Markdown gfm={false}>{announcement}</Markdown>
           </div>
         </Dialog>
       )}

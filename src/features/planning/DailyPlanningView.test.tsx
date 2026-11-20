@@ -326,6 +326,12 @@ describe("DailyPlanningView", () => {
     await userEvent.click(within(notice).getByRole("button", { name: /Ir a la semana/ }));
 
     expect(await screen.findByText("La semana")).toBeInTheDocument();
+    // Navegar desmontó la vista con el aviso adentro: la salida la termina una
+    // copia encima de la semana (`exitAbove`), fuera del árbol accesible.
+    const ghost = document.querySelector(".modal-presence.is-ghost");
+    expect(ghost).toHaveClass("is-leaving");
+    expect(ghost).toHaveTextContent("Ya pasaste por acá");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("una marca de otro día no avisa: la comparación es contra hoy", async () => {

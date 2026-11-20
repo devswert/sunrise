@@ -103,6 +103,15 @@ puede depender del orden de sus `it`. Cuando pase, **anotalo arriba del
 `describe`** (`DailyPlanningView.test.tsx` y `DailyShutdownView.test.tsx` lo
 hacen): aislar un caso con `-t` lo puede dejar pasar en falso.
 
+**Un modal cerrado no desaparece en el acto.** Todo modal va dentro de
+`ModalPresence` y sigue montado 240 ms mientras sale, así que "se cerró" se
+verifica con `await waitFor(() => expect(…).toBeNull())`, nunca con un assert seco
+(lo mismo que los paneles de la tira). Y cerrar navegando —el play del detalle,
+"Ir a la semana"— deja una **copia en `body`** (`exitAbove`) que RTL no limpia:
+la barre `src/test/setup.ts` después de cada test. Es `aria-hidden`, así que
+`queryByRole` no la ve, pero `queryByText` y `queryByLabelText` sí; si un test
+encuentra un botón "fantasma" justo después de dar play, es eso.
+
 **El mock arranca sembrado.** Un test que asegure "las horas de la semana son
 1h 30m" cuenta también la semilla y falla apenas alguien la toque: pide el total
 a `api.weeklyRollup(...)` y compara contra eso, o mide el delta antes y después.

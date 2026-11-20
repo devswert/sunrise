@@ -43,7 +43,7 @@ type Picker = "channel" | "objective" | "priority" | "start" | "planned" | "actu
  * El detalle de una tarea, con su entrada y su salida animadas (§7, "Modales").
  *
  * Recibe la tarea **o `null`**, y no se monta con `{tarea && <TaskModal/>}`: así
- * los ocho lugares que lo abren comparten un solo `ModalPresence`, que lo sostiene
+ * los siete lugares que lo abren comparten un solo `ModalPresence`, que lo sostiene
  * mientras sale. Importa sobre todo al borrar, porque la tarea desaparece del
  * board antes de que el modal termine de irse.
  */
@@ -262,10 +262,16 @@ function TaskDetail({ task, categories, objectives, onClose, onChanged }: TaskMo
     return () => window.removeEventListener("keydown", onKey);
   }, [picker, quitOpen, onClose, flush, leaving]);
 
-  // Un picker abierto no se va con el modal: vive en un portal sobre `body`. Se
-  // cierra apenas el modal empieza a salir, en vez de quedar flotando 240 ms.
+  // Al empezar a salir:
+  // - un picker abierto no se va con el modal —vive en un portal sobre `body`—,
+  //   así que se cierra en vez de quedar flotando 240 ms;
+  // - lo que esperaba el debounce se escribe **ya**, no al desmontar. Si no,
+  //   reabrir la misma tarea durante la salida montaría el detalle con el título
+  //   viejo: el nuevo todavía no llegó a la base.
   useEffect(() => {
-    if (leaving) setPicker(null);
+    if (!leaving) return;
+    setPicker(null);
+    void flushRef.current();
   }, [leaving]);
 
   /**
@@ -654,7 +660,9 @@ function TaskDetail({ task, categories, objectives, onClose, onChanged }: TaskMo
                   commitDebounced({ notes: e.target.value });
                 }}
                 onBlur={() => {
-                  setEditingNotes(false);
+                  // Saliendo, el blur lo provoca el modal al soltar el foco: volver
+                  // a la vista de markdown cambiaría el alto en pleno fundido.
+                  if (!leaving) setEditingNotes(false);
                   void commit({ notes });
                 }}
               />
