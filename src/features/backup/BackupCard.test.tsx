@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BackupCard } from "./BackupCard";
+import { api } from "../../lib/ipc";
 import { SettingKey, backupSettings, useSettingsStore } from "../../lib/settings";
 import { todayISO } from "../../lib/date";
 
@@ -161,6 +162,7 @@ describe("BackupCard · respaldar", () => {
 });
 
 describe("BackupCard · restaurar", () => {
+  afterEach(() => vi.restoreAllMocks());
   beforeEach(async () => {
     await configure(CARPETA);
   });
@@ -239,12 +241,55 @@ describe("BackupCard · restaurar", () => {
     await openNewest();
     await userEvent.click(await screen.findByRole("button", { name: /Restaurar y reemplazar/ }));
     await screen.findByRole("alertdialog", { name: "Respaldo restaurado" });
-    // Que termine la recarga posterior a restaurar: es lo que volvía el botón
-    // atrás. La salida dura 240 ms, así que a los 100 sigue en pantalla.
-    await new Promise((r) => setTimeout(r, 100));
 
-    const leaving = screen.getByRole("alertdialog", { name: "Confirmar restauración" });
-    expect(leaving.closest(".modal-presence")).toHaveClass("is-leaving");
-    expect(leaving).toHaveTextContent("Restaurando…");
+    // Se mira la confirmación **durante toda su salida**, no en un instante: lo
+    // que volvía el botón atrás era la recarga que sigue a restaurar, y cuándo
+    // termina no depende del test. `waitFor` reintenta hasta que se desmonta.
+    const seen: string[] = [];
+    await waitFor(() => {
+      const leaving = screen.queryByRole("alertdialog", { name: "Confirmar restauración" });
+      if (!leaving) return;
+      expect(leaving.closest(".modal-presence")).toHaveClass("is-leaving");
+      seen.push(leaving.textContent ?? "");
+      throw new Error("la confirmación todavía está saliendo");
+    });
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.filter((t) => !t.includes("Restaurando…"))).toEqual([]);
+  });
+
+  /**
+   * `restaurando` solo vuelve a `false` al abrir la confirmación siguiente, y el
+   * botón de cada fila no lo hacía: reintentar abría un modal con los botones
+   * deshabilitados y sin Escape, o sea sin salida.
+   */
+  it("si restaurar falla, reabrir desde la fila deja confirmar y salir con Escape", async () => {
+    const restore = vi.spyOn(api, "restoreBackup").mockRejectedValueOnce(new Error("zip roto"));
+    render(<BackupCard />);
+    await openNewest();
+    await userEvent.click(await screen.findByRole("button", { name: /Restaurar y reemplazar/ }));
+    await waitFor(() => expect(restore).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+
+    const rows = screen.getAllByRole("button", { name: /Restaurar el respaldo del/ });
+    await userEvent.click(rows[0]);
+
+    expect(await screen.findByRole("button", { name: /Restaurar y reemplazar/ })).toBeEnabled();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  });
+
+  it("después de restaurar bien, reabrir desde la fila deja confirmar y salir con Escape", async () => {
+    render(<BackupCard />);
+    await openNewest();
+    await userEvent.click(await screen.findByRole("button", { name: /Restaurar y reemplazar/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Entendido" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+
+    const rows = await screen.findAllByRole("button", { name: /Restaurar el respaldo del/ });
+    await userEvent.click(rows[0]);
+
+    expect(await screen.findByRole("button", { name: /Restaurar y reemplazar/ })).toBeEnabled();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 });

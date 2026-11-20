@@ -142,6 +142,12 @@ export function ModalPresence<T>({
     const scrolled = Array.from(el.querySelectorAll<HTMLElement>("*")).flatMap((n, i) =>
       n.scrollTop > 0 ? [[i, n.scrollTop] as const] : [],
     );
+    // Un radio de la copia con el mismo `name` que el original formaría un solo
+    // grupo con él, y marcar uno desmarcaría el otro: el original perdería su
+    // valor justo antes de que React lo lea o lo desmonte. La copia no lo necesita.
+    for (const radio of ghost.querySelectorAll<HTMLInputElement>('input[type="radio"]')) {
+      radio.removeAttribute("name");
+    }
     document.body.appendChild(ghost);
     // El `scrollTop` solo se puede poner con la copia ya en el documento.
     const all = ghost.querySelectorAll<HTMLElement>("*");

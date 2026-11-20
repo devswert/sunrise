@@ -195,7 +195,11 @@ anima solo— pero se va de golpe, y lo que delata el olvido es justamente eso: 
 salida seca. Y si el modal cuelga teclas de `window`, lee `const leaving = useModalLeaving()` y
 el efecto empieza con `if (leaving) return`, con `leaving` en las deps: durante los 240 ms
 de la salida sigue montado, y un listener vivo cierra dos veces, guarda dos veces o
-—con el `capture` de `Dialog`— le come Escape y Enter a la vista de abajo. Si cerrar
+—con el `capture` de `Dialog`— le come Escape y Enter a la vista de abajo. Si el modal
+tiene autosave con debounce, **escribe lo pendiente al empezar a salir** (un
+efecto sobre `leaving` que llama al `flush`), no solo al desmontar: reabrir lo
+mismo en plena salida monta un modal nuevo que lee la base, y lo escrito todavía
+no llegó (`TaskModal` y `ObjectiveModal`). Si cerrar
 viene con navegar, llama a `exitAbove()` **antes** de `navigate`: la vista se desmonta
 con el modal adentro y la salida la termina una copia en `body`.
 

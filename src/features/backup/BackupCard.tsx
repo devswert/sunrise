@@ -292,13 +292,21 @@ export function BackupCard() {
     }
   }
 
+  /**
+   * Abre la confirmación de restaurar. **Todo** camino que la abre pasa por acá
+   * —el Finder y el botón de cada fila—, porque es el único lugar donde
+   * `restaurando` vuelve a `false` (ver el comentario en `restaurar`). Una
+   * apertura que no lo hiciera heredaría el `true` de la restauración anterior:
+   * botones deshabilitados y sin Escape, un modal sin salida.
+   */
+  function openRestore(path: string) {
+    setRestaurando(false);
+    setToRestore(path);
+  }
+
   async function pickZip() {
     const zip = await elegirEnFinder({ directory: false, title: "Elige el respaldo a restaurar" });
-    if (zip) {
-      // Vuelve acá y no al terminar: ver el comentario en `restaurar`.
-      setRestaurando(false);
-      setToRestore(zip);
-    }
+    if (zip) openRestore(zip);
   }
 
   async function restaurar() {
@@ -522,7 +530,7 @@ export function BackupCard() {
                   className="set-row__icon"
                   aria-label={`Restaurar el respaldo del ${readableDate(a.createdAt)}`}
                   title="Restaurar este respaldo"
-                  onClick={() => setToRestore(a.path)}
+                  onClick={() => openRestore(a.path)}
                 >
                   <RotateCcw size={14} />
                 </button>

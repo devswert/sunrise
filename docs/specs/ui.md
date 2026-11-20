@@ -336,9 +336,10 @@ cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcio
   - **Mientras sale no es de nadie.** El envoltorio lleva `is-leaving`
     (`pointer-events: none`: el click pasa a la vista de abajo) e `inert`, el foco que
     tuviera adentro se suelta con `blur` —que dispara el guardado del campo, como
-    siempre—, los pickers abiertos se cierran, el detalle escribe **ya** lo que
-    esperaba el debounce (reabrir la misma tarea en plena salida leería el título
-    viejo) y `AddTaskModal` corta la reentrada de `create()` con un ref, y **cada modal suelta sus teclas** leyendo
+    siempre—, los pickers abiertos se cierran, **todo modal con autosave con debounce
+    escribe lo pendiente al empezar a salir** y no al desmontar —hoy el detalle de tarea
+    y el de objetivo: reabrir lo mismo en plena salida monta un modal nuevo que lee la
+    base, y ahí todavía estaba lo viejo— y `AddTaskModal` corta la reentrada de `create()` con un ref, y **cada modal suelta sus teclas** leyendo
     `useModalLeaving()`: un segundo Escape no lo vuelve a cerrar, ⌘Enter no guarda dos
     veces y el `capture` + `preventDefault` de `Dialog` no le roba Escape ni Enter a lo
     de abajo. Un modal nuevo que cuelgue teclas de `window` tiene que hacer lo mismo.
