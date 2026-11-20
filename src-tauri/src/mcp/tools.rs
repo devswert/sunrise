@@ -319,9 +319,8 @@ fn channel(conn: &Connection, id: i64) -> Result<i64, String> {
 /// quince minutos y reescribe título, día y hora desde el feed. Una edición acá
 /// duraría hasta la próxima sincronización.
 fn editable(conn: &Connection, id: i64) -> Result<Task, String> {
-    let task = repo::get_task(conn, id)
+    let task = repo::get_live_task(conn, id)
         .map_err(db_err)?
-        .filter(|t| t.source_state == "ACTIVE")
         .ok_or_else(|| format!("No existe una tarea con id {id}."))?;
     if task.source == "CALENDAR" {
         return Err(
@@ -406,9 +405,8 @@ pub fn list_backlog(conn: &Connection) -> ToolResult {
 }
 
 pub fn get_task(conn: &Connection, p: TaskIdParams) -> ToolResult {
-    let task = repo::get_task(conn, p.id)
+    let task = repo::get_live_task(conn, p.id)
         .map_err(db_err)?
-        .filter(|t| t.source_state == "ACTIVE")
         .ok_or_else(|| format!("No existe una tarea con id {}.", p.id))?;
     to_json(&view(task, &channels(conn)?))
 }
@@ -565,9 +563,8 @@ struct TimerResult {
 /// calendario**: el tiempo de una reunión se trackea como el de cualquier tarea
 /// (la card tiene play), y eso no lo reescribe el reconciler.
 fn trackable(conn: &Connection, id: i64) -> Result<Task, String> {
-    repo::get_task(conn, id)
+    repo::get_live_task(conn, id)
         .map_err(db_err)?
-        .filter(|t| t.source_state == "ACTIVE")
         .ok_or_else(|| format!("No existe una tarea con id {id}."))
 }
 
@@ -751,6 +748,82 @@ pub fn set_task_time(conn: &Connection, p: SetTaskTimeParams) -> ToolResult {
         }
     }
     timer_result(conn, p.id, None, Vec::new())
+}
+
+// ---------------------------------------------------------------------------
+// Basurero (#11)
+// ---------------------------------------------------------------------------
+
+/// Una tarea del basurero como la lee el modelo: la tarea, cuándo entró y el día
+/// (local) en que se elimina sola.
+#[derive(Debug, Serialize)]
+struct TrashedView {
+    #[serde(flatten)]
+    task: TaskView,
+    deleted_at: String,
+    purge_on: String,
+}
+
+/// Lo que devuelve `delete_task`: la tarea y hasta cuándo se puede restaurar.
+#[derive(Debug, Serialize)]
+struct DeletedView {
+    deleted: TaskView,
+    restorable_until: String,
+    timer_stopped: bool,
+}
+
+/// Manda la tarea al basurero. **Nunca la elimina**: es lo que hace seguro dejar
+/// borrar al agente (#11). Acepta las de calendario, igual que el modal de la
+/// app: la sincronización no las resucita mientras estén en el basurero.
+pub fn delete_task(conn: &Connection, p: TaskIdParams) -> ToolResult {
+    let task = trackable(conn, p.id)?;
+    let was_running = repo::trash_task(conn, p.id)
+        .map_err(db_err)?
+        .ok_or_else(|| format!("No existe una tarea con id {}.", p.id))?;
+    let tz = repo::zone(conn);
+    let restorable_until = repo::list_trash(conn)
+        .map_err(db_err)?
+        .into_iter()
+        .find(|t| t.task.id == p.id)
+        .map(|t| local_day(tz, &t.purge_at))
+        .unwrap_or_default();
+    to_json(&DeletedView {
+        deleted: view(task, &channels(conn)?),
+        restorable_until,
+        timer_stopped: was_running,
+    })
+}
+
+pub fn list_trash(conn: &Connection) -> ToolResult {
+    let tz = repo::zone(conn);
+    let channels = channels(conn)?;
+    let all: Vec<TrashedView> = repo::list_trash(conn)
+        .map_err(db_err)?
+        .into_iter()
+        .map(|t| TrashedView {
+            deleted_at: local_label(tz, &t.deleted_at),
+            purge_on: local_day(tz, &t.purge_at),
+            task: view(t.task, &channels),
+        })
+        .collect();
+    to_json(&all)
+}
+
+pub fn restore_task(conn: &Connection, p: TaskIdParams) -> ToolResult {
+    let task = repo::restore_task(conn, p.id).map_err(db_err)?.ok_or_else(|| {
+        format!(
+            "La tarea {} no está en el basurero. Usa list_trash para ver lo que hay.",
+            p.id
+        )
+    })?;
+    to_json(&view(task, &channels(conn)?))
+}
+
+/// El día local (YYYY-MM-DD) de un instante RFC 3339.
+fn local_day(tz: chrono_tz::Tz, rfc: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(rfc)
+        .map(|d| d.with_timezone(&tz).format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|_| rfc.to_string())
 }
 
 #[cfg(test)]
@@ -1202,5 +1275,64 @@ mod tests {
         let err = set_task_time(&c, SetTaskTimeParams { id: a, minutes: 10 }).unwrap_err();
         assert!(err.contains("stop_timer"));
         assert_eq!(repo::get_task(&c, a).unwrap().unwrap().actual_seconds, 90 * 60);
+    }
+
+    // Basurero (#11)
+
+    #[test]
+    fn borrar_desde_el_mcp_la_manda_al_basurero_y_se_restaura() {
+        let c = conn();
+        let id = create(&c, "Escribir", Some("2026-10-15"));
+
+        let out = json(&delete_task(&c, TaskIdParams { id }).unwrap());
+        assert_eq!(out["deleted"]["id"], id);
+        assert_eq!(out["timer_stopped"], false);
+        assert!(out["restorable_until"].as_str().unwrap().len() == 10, "un día YYYY-MM-DD");
+        // No se eliminó: sigue en la base, en el basurero.
+        assert!(repo::get_task(&c, id).unwrap().is_some());
+        assert!(get_task(&c, TaskIdParams { id }).is_err(), "para el agente ya no está");
+
+        let trash = json(&list_trash(&c).unwrap());
+        assert_eq!(trash.as_array().unwrap().len(), 1);
+        assert_eq!(trash[0]["id"], id);
+        assert_eq!(trash[0]["title"], "Escribir");
+        assert!(trash[0]["purge_on"].is_string());
+
+        let back = json(&restore_task(&c, TaskIdParams { id }).unwrap());
+        assert_eq!(back["date"], "2026-10-15");
+        assert!(json(&list_trash(&c).unwrap()).as_array().unwrap().is_empty());
+        assert!(
+            restore_task(&c, TaskIdParams { id }).unwrap_err().contains("no está en el basurero")
+        );
+    }
+
+    #[test]
+    fn borrar_detiene_el_timer_y_no_se_borra_dos_veces() {
+        let c = conn();
+        let id = create(&c, "Agente", Some("2026-10-15"));
+        repo::start_timer(&c, id, false).unwrap();
+
+        let out = json(&delete_task(&c, TaskIdParams { id }).unwrap());
+        assert_eq!(out["timer_stopped"], true);
+        assert!(repo::get_active_timers(&c).unwrap().is_empty());
+
+        assert!(delete_task(&c, TaskIdParams { id }).is_err(), "ya está en el basurero");
+        assert!(delete_task(&c, TaskIdParams { id: 999 }).is_err());
+    }
+
+    #[test]
+    fn una_tarea_del_basurero_no_se_edita_ni_se_trackea() {
+        let c = conn();
+        let id = create(&c, "Fuera", Some("2026-10-15"));
+        delete_task(&c, TaskIdParams { id }).unwrap();
+        assert!(start_timer(&c, StartTimerParams { id, parallel: true }).is_err());
+        assert!(set_task_time(&c, SetTaskTimeParams { id, minutes: 30 }).is_err());
+    }
+
+    #[test]
+    fn se_puede_borrar_una_reunion_del_calendario() {
+        let c = conn();
+        let id = calendar_task(&c, "2026-10-15");
+        assert!(delete_task(&c, TaskIdParams { id }).is_ok());
     }
 }

@@ -10,7 +10,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { CalendarDays, ChevronLeft, ChevronRight, Inbox } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Inbox, Trash2 } from "lucide-react";
 import { DayColumn } from "./DayColumn";
 import { boardCollision } from "./collision";
 import { resolveDrop, taskIdFrom, type DropData } from "./dropTarget";
@@ -34,6 +34,8 @@ import { CalendarRail } from "../calendar/CalendarRail";
 import { SideDock } from "./SideDock";
 import { usePanelPresence } from "./panelPresence";
 import { BacklogPanel } from "../backlog/BacklogPanel";
+import { TrashPanel } from "../trash/TrashPanel";
+import "../trash/trash.css";
 import type { Task } from "../../lib/types";
 import { useDayWork } from "../calendar/useTrabajoDelDia";
 import { useLateTasks } from "../calendar/useLateTasks";
@@ -47,7 +49,7 @@ export function WeekView() {
    * en el mismo lugar (`right: 44px`, 300px de ancho), así que dos abiertos se
    * apilarían uno sobre el otro.
    */
-  const [panel, setPanel] = useState<"agenda" | "backlog" | null>(null);
+  const [panel, setPanel] = useState<"agenda" | "backlog" | "trash" | null>(null);
   /**
    * Los paneles siguen montados mientras se van, para poder animar la salida —
    * ver `usePanelPresence`. Uno por panel y no uno compartido: al cambiar de la
@@ -56,6 +58,7 @@ export function WeekView() {
    */
   const agenda = usePanelPresence(panel === "agenda");
   const backlog = usePanelPresence(panel === "backlog");
+  const trash = usePanelPresence(panel === "trash");
   /**
    * Dos arreglos y no uno, porque el board dejó de ser una semana:
    *
@@ -407,6 +410,10 @@ export function WeekView() {
           />
         )}
 
+        {/* El basurero (#11), fuera del `DndContext` como la agenda: no recibe
+         * drops. */}
+        {trash.mounted && <TrashPanel leaving={trash.leaving} onClose={() => setPanel(null)} />}
+
         {/* La tira de iconos es permanente y no se superpone: los paneles se
          * abren a su izquierda. Falta el de objetivos de la semana, que sale con
          * M3.5 — el avance que muestra lo calcula la review.
@@ -428,6 +435,13 @@ export function WeekView() {
               icon: <Inbox size={17} />,
               active: panel === "backlog",
               onToggle: () => setPanel((p) => (p === "backlog" ? null : "backlog")),
+            },
+            {
+              id: "trash",
+              label: "Trash",
+              icon: <Trash2 size={17} />,
+              active: panel === "trash",
+              onToggle: () => setPanel((p) => (p === "trash" ? null : "trash")),
             },
           ]}
         />

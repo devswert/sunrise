@@ -48,6 +48,13 @@ describe("McpCard", () => {
     expect(screen.queryByText(/no toca el timer/)).not.toBeInTheDocument();
   });
 
+  it("dice que lo que borra Claude va al basurero, no que no borra nada (#11)", async () => {
+    vi.spyOn(api, "claudeDesktopStatus").mockResolvedValue(info());
+    render(<McpCard />);
+    expect(await screen.findByText(/va al basurero/)).toBeInTheDocument();
+    expect(screen.queryByText(/no borra nada/)).not.toBeInTheDocument();
+  });
+
   /** La decisión del dev: una entrada que apunta a otro lado no se pisa. */
   it("si ya hay un sunrise apuntando a otro lado, avisa a dónde y no ofrece conectar", async () => {
     vi.spyOn(api, "claudeDesktopStatus").mockResolvedValue(

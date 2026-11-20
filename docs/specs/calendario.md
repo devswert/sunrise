@@ -401,6 +401,16 @@ solo lo intacto y por venir:
 cuenta corriendo sobre algo que ya no puedes ver ni detener desde ahí. Al
 pausar, la siguiente sincronización la resuelve con las reglas normales.
 
+**Una reunión que mandaste al basurero (#11) tampoco se toca**, ni al importar ni
+al conciliar: `import_events` no la actualiza (no la resucita, y el
+`UNIQUE(feed_id, calendar_uid)` impide importar otra al lado) y `reconcile_feed`
+solo mira las que están fuera del basurero. La sacaste a propósito; si a los 30
+días se purga y el evento sigue en el feed, vuelve como nueva (§4.1). Mientras
+está ahí tampoco se actualiza: si la restauras después de que el evento se movió,
+vuelve con los datos viejos hasta la próxima sincronización, y si el evento ya no
+está en el feed, esa sincronización la trata como cualquier otra (futura sin
+trabajar: se elimina).
+
 Del resto, se borra solo lo intacto y por venir:
 
 | Condición | Por qué |
@@ -451,13 +461,13 @@ alrededor** de lo que ya está comprometido. Se monta de dos formas:
 **La tira (`SideDock`, `.dock`)** es una columna de iconos **permanente** pegada
 al borde derecho: no se superpone, y los paneles se abren a su izquierda
 (`rail--overlay` y `.backlog-panel` tienen `right: 44px`, el ancho de la tira).
-Recibe sus botones como lista porque va a tener tres —agenda, backlog y objetivos
-de la semana—, pero **solo se dibujan los paneles que ya existen**: un icono que
+Recibe sus botones como lista: hoy son agenda, backlog y trash (#11, §4.1), y
+falta el de objetivos de la semana, pero **solo se dibujan los paneles que ya existen**: un icono que
 no hace nada al apretarlo enseña que la barra no responde. El de objetivos llega
 con M3.5, que ya calcula ese avance para la review.
 
-**Se abre uno a la vez** (`panel: "agenda" | "backlog" | null` en `WeekView`), y
-no es una preferencia: los dos se montan en el mismo lugar, así que dos abiertos
+**Se abre uno a la vez** (`panel: "agenda" | "backlog" | "trash" | null` en
+`WeekView`), y no es una preferencia: se montan en el mismo lugar, así que dos abiertos
 se apilarían. Por lo mismo, **clickear la cabecera de un día trae la agenda**
 incluso con el backlog abierto — el click es un pedido de ver ese día, y dejarlo
 sin efecto visible sería peor que el cambio de panel.

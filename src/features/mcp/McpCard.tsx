@@ -183,8 +183,9 @@ export function McpCard() {
           <span className="set-note">
             Ver tus tareas de un día o una semana, el backlog y los channels; crear, editar o mover
             tareas; y registrar tiempo: iniciar y parar timers, anotar un rato que ya trabajaste o
-            corregir el total. No completa tareas, no borra nada, y las reuniones del calendario no
-            las edita (sí les registra tiempo).
+            corregir el total. Lo que borra va al basurero, donde puedes restaurarlo durante 30
+            días. No completa tareas, y las reuniones del calendario no las edita (sí les registra
+            tiempo).
           </span>
         </div>
       </div>

@@ -243,6 +243,12 @@
   --accent: #ffb59e;
   --accent-ink: #b5502b;
   --overlay: rgba(58, 58, 68, 0.32);
+  /* El aviso de abajo (`Toast`). En claro va invertido —oscuro sobre la app
+   * clara—; en oscuro **no** se invierte (ver la rama oscura). */
+  --toast-bg: #3a3a44;
+  --toast-text: #fbfaf7;
+  --toast-border: transparent;
+  --toast-action: #ffb59e;
 }
 
 /* --- Tema oscuro --- */
@@ -286,6 +292,13 @@
     --accent: #ffb59e;
     --accent-ink: #ffd9c7;
     --overlay: rgba(0, 0, 0, 0.5);
+    /* Invertir los tokens en oscuro daba un aviso casi blanco con el durazno
+     * de "Deshacer" encima, que no se leía. Se queda oscuro, un escalón más
+     * claro que las superficies y con borde, para despegarse del tablero. */
+    --toast-bg: #33333d;
+    --toast-text: #ecebe6;
+    --toast-border: #4a4a56;
+    --toast-action: #ffb59e;
   }
 }
 
@@ -328,4 +341,11 @@
   --accent: #ffb59e;
   --accent-ink: #ffd9c7;
   --overlay: rgba(0, 0, 0, 0.5);
+  /* Invertir los tokens en oscuro daba un aviso casi blanco con el durazno
+   * de "Deshacer" encima, que no se leía. Se queda oscuro, un escalón más
+   * claro que las superficies y con borde, para despegarse del tablero. */
+  --toast-bg: #33333d;
+  --toast-text: #ecebe6;
+  --toast-border: #4a4a56;
+  --toast-action: #ffb59e;
 }

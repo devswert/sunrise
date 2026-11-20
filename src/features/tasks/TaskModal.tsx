@@ -56,6 +56,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const timer = useTimer();
   const prioridades = usePrioritiesOn();
   const bumpData = useAppStore((s) => s.bumpData);
+  const showToast = useAppStore((s) => s.showToast);
   const dataVersion = useAppStore((s) => s.dataVersion);
   const quitOpen = useAppStore((s) => s.quitOpen);
   const navigate = useNavigate();
@@ -250,10 +251,23 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
    * detalle de algo que ya no existía.
    */
   async function remove() {
-    await api.deleteTask(task.id);
+    const { id, title } = task;
+    await api.trashTask(id);
     await onChanged();
     bumpData();
     onClose();
+    // Eliminar **manda al basurero** (#11). El aviso con "Deshacer" es el arreglo
+    // más rápido para un click equivocado; pasado el aviso, queda el panel Trash.
+    showToast({
+      text: `“${title}” se fue al basurero`,
+      action: {
+        label: "Deshacer",
+        run: async () => {
+          await api.restoreTask(id);
+          bumpData();
+        },
+      },
+    });
   }
 
   const channel = categoryId != null ? categories.find((c) => c.id === categoryId) : null;
@@ -684,7 +698,7 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
         <footer className="tmodal__foot">
           {confirmDelete ? (
             <div className="confirm">
-              <span>¿Eliminar esta tarea?</span>
+              <span>¿Eliminar esta tarea? Queda 30 días en el basurero.</span>
               <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>
                 Cancelar
               </button>

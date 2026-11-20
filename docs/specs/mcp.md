@@ -61,7 +61,7 @@ se pruebe en memoria.
 |---|---|---|
 | `list_tasks` (`date`, `end_date`) | `list_tasks_for_date` / `_for_range` | solo lectura |
 | `list_backlog` | `list_backlog` | solo lectura |
-| `get_task` (`id`) | `get_task` | solo lectura |
+| `get_task` (`id`) | `get_live_task` | solo lectura |
 | `list_channels` | `list_categories` | solo lectura |
 | `create_task` | `create_task` | escribe, no destructiva |
 | `update_task` | `update_task` | escribe, no destructiva, idempotente |
@@ -70,11 +70,17 @@ se pruebe en memoria.
 | `stop_timer` (`id`) | `stop_timer` | escribe, no destructiva, idempotente |
 | `log_time` (`id`, `start`, `end`) | `log_time_entry` | escribe, no destructiva, **no** idempotente |
 | `set_task_time` (`id`, `minutes`) | `set_actual_seconds_unless_running` | escribe, no destructiva, idempotente |
+| `delete_task` (`id`) | `trash_task` | escribe, **destructiva**, **no** idempotente (la segunda da error) |
+| `list_trash` | `list_trash` | solo lectura |
+| `restore_task` (`id`) | `restore_task` | escribe, no destructiva, **no** idempotente (la segunda da error) |
 
 - **`list_tasks` sin fecha es hoy** en la zona del usuario, y toda respuesta trae
   `today`: el modelo no tiene otra forma confiable de saber qué día es acá.
-- **Sigue lo que muestra el tablero**: sin `ORPHANED` (I7) y sin los eventos "solo
-  agenda" (`rail_only`).
+- **Sigue lo que muestra el tablero**: sin `ORPHANED` (I7), sin lo del basurero
+  (I12, `repo::get_live_task`) y sin los eventos "solo agenda" (`rail_only`).
+- **El basurero** (#11): `delete_task` acepta también reuniones de calendario, como
+  el modal, y responde hasta qué día se restaura (`restorable_until`) y si detuvo un
+  timer. `list_trash` trae `deleted_at` (hora local) y `purge_on` (día local).
 - **El esquema publicado no lleva `"default"`** (`no_defaults` en `tools.rs`).
   schemars lo agrega por cada `#[serde(default)]` como `"default": null`, y el
   cliente completa con eso los campos que el modelo omite: en `update_task` eso
@@ -156,10 +162,11 @@ hora repetida hay que mandar RFC 3339 con offset. Lo que se guarda es siempre
 
 **Fuera, a propósito:**
 
-- **Completar y borrar.** El motivo original de completar —cierra un timer en la
-  base y el taxímetro no se enteraba— se resolvió en #23 (las dos ventanas escuchan
-  el aviso, ver abajo); queda fuera por alcance, no por un impedimento. Borrar
-  espera el basurero (#11).
+- **Completar.** El motivo original —cierra un timer en la base y el taxímetro no
+  se enteraba— se resolvió en #23 (las dos ventanas escuchan el aviso, ver abajo);
+  queda fuera por alcance, no por un impedimento.
+- **Eliminar de verdad.** `delete_task` manda al basurero (#11, §4.1): se restaura
+  con `restore_task` durante 30 días. Es lo que hace seguro dejar borrar al agente.
 - **Corregir o borrar tramos ya registrados.** `log_time` solo agrega.
 - **Editar o mover las tareas de calendario.** Se leen; su dueño es el reconciler,
   que reescribiría la edición en la próxima sincronización.

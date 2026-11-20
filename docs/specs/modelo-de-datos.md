@@ -47,6 +47,11 @@ TEXT en mayúsculas, espejados en `src/lib/enums.ts`:
   no la marca: la suelta del feed y la deja `ACTIVE` (§4.12). Marcarla `ORPHANED`
   la hacía desaparecer del tablero al día siguiente, justo cuando uno quiere ver
   lo que hizo.
+- `deleted_at` (migración 19, #11) ⇒ la tarea está **en el basurero** desde ese
+  instante (RFC 3339, UTC). Ninguna vista ni agregado la ve ([I12](invariantes.md))
+  y a los 30 días se elimina de verdad. Es independiente de `source_state`: una
+  reunión del basurero sigue `ACTIVE`, y por eso cada consulta lleva los dos
+  filtros (§4.1).
 
 ## 3.3 Categorías = "channels"
 

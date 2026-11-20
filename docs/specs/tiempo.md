@@ -367,7 +367,8 @@ Las tres reglas que lo definen:
   empezó**: una reunión del viernes no puede aparecer trabajada un lunes.
 - **El rollup NO filtra `source_state = 'ACTIVE'`** para el tiempo (I7). Las
   `ORPHANED` existen justamente para el historial y la review; filtrarlas
-  borraría horas reales de semanas pasadas.
+  borraría horas reales de semanas pasadas. **Pero sí filtra el basurero** (I12,
+  #11), en sus dos consultas: lo eliminado no cuenta, y vuelve al restaurarlo.
 
 Las tres viven en **`work_by_day`**, el núcleo compartido con la bitácora
 (§4.16): la semana lo agrupa en celdas día × categoría, la bitácora en timelines.

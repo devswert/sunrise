@@ -112,8 +112,9 @@ tests que se ponen rojos si algo de eso divergió.
   Dos precisiones que ya se discutieron: **el nombre de un test de Rust es su
   descripción**, no un identificador que alguien llame, así que se queda en
   español igual que el `it("…")` de Vitest. Y **los términos del sidebar**
-  (`Weekly review`, `Focus`, `Backlog`, `Daily rituals`) se quedan en inglés: son
-  los nombres propios de las vistas, no texto traducible.
+  (`Weekly review`, `Focus`, `Backlog`, `Daily rituals`) y **los paneles de la tira
+  de la semana** (`Agenda`, `Trash`) se quedan en inglés: son los nombres propios de
+  las vistas, no texto traducible.
 
   **Las clases CSS quedan fuera**, y no por descuido: son strings a los dos lados
   y no las revisa ningún compilador, así que un renombre ahí se paga con estilos

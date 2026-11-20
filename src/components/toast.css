@@ -1,0 +1,76 @@
+/* El aviso de abajo (`Toast.tsx`). Sus colores son tokens propios (`--toast-*`
+ * en tokens.css): en claro va invertido y en oscuro no, porque invertir los
+ * tokens generales dejaba "Deshacer" ilegible sobre un fondo casi blanco. */
+.toast {
+  /* Centrado con márgenes y no con `translateX(-50%)`: con un ancho impar el
+   * transform lo deja en medio píxel y WebKit difumina el texto, que se veía
+   * con ruido al lado del resto de la app. */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  width: fit-content;
+  margin: 0 auto;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--radius-md);
+  background: var(--toast-bg);
+  color: var(--toast-text);
+  border: 1px solid var(--toast-border);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  animation: toast-in 160ms ease-out;
+}
+
+.toast__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast__action,
+.toast__close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.toast__action {
+  padding: 4px 8px;
+  font-weight: 600;
+  color: var(--toast-action);
+}
+
+.toast__action:hover,
+.toast__close:hover {
+  background: color-mix(in srgb, var(--toast-text) 14%, transparent);
+}
+
+.toast__close {
+  padding: 2px 8px;
+  opacity: 0.7;
+}
+
+/* Solo la entrada usa transform, y en píxeles enteros: al terminar no queda
+ * ninguno puesto. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}

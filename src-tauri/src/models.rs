@@ -383,6 +383,19 @@ impl Task {
     }
 }
 
+/// Una tarea en el basurero (#11). `deleted_at` va aparte y no en `Task`
+/// porque ninguna otra vista ve tareas del basurero: en `Task` sería un campo
+/// que fuera de aquí siempre vale `null`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashedTask {
+    pub task: Task,
+    /// Cuándo entró al basurero (RFC 3339, UTC).
+    pub deleted_at: String,
+    /// Cuándo se elimina de verdad: `deleted_at` + `TRASH_DAYS`.
+    pub purge_at: String,
+}
+
 /// Feed ICS configurado por el usuario.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

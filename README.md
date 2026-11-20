@@ -66,7 +66,7 @@ Cierra Claude Desktop del todo (⌘Q, no basta con la ventana) y vuelve a abrirl
 
 **Ojo con qué sale de tu máquina.** El servidor es local y no abre ningún puerto, pero lo que Claude lee de sunrise —títulos, notas, y de las reuniones la descripción y el link— pasa a la conversación con Claude, igual que si lo pegaras en el chat. Pedirle "qué tengo hoy" le manda el día entero; lo que no lee no sale de acá.
 
-Claude puede **listar** las tareas de un día o de un rango, el backlog y los channels, y **crear, editar y mover** tareas. No puede completarlas, tocar el timer ni borrar nada, y las reuniones del calendario las lee pero no las cambia.
+Claude puede **listar** las tareas de un día o de un rango, el backlog y los channels, y **crear, editar y mover** tareas. También **registra tiempo** (iniciar y parar timers, anotar un rato que ya trabajaste, corregir el total) y puede **borrar**: lo que borra va al basurero, donde se restaura durante 30 días. No completa tareas, y las reuniones del calendario las lee pero no las cambia (sí les registra tiempo).
 
 ## 🛠️ Desarrollo
 

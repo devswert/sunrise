@@ -14,6 +14,15 @@ export interface ComposeDefaults {
   objectiveId?: number | null;
 }
 
+export interface ToastState {
+  /** Cambia con cada aviso, para que el plazo de cierre vuelva a empezar. */
+  id: number;
+  text: string;
+  action?: { label: string; run: () => void | Promise<void> };
+}
+
+let toastSeq = 0;
+
 interface AppState {
   /** Modal global de "Add task". */
   composeOpen: boolean;
@@ -50,6 +59,16 @@ interface AppState {
   /** Lo limpia, una vez aplicado. */
   clearFocusTask: () => void;
 
+  /**
+   * El aviso de abajo (`Toast`), uno a la vez: uno nuevo reemplaza al anterior.
+   * Vive en el store y no en la vista que lo dispara porque esa vista suele
+   * desmontarse en el mismo gesto —eliminar cierra el modal— y el aviso tiene
+   * que sobrevivirle para que "Deshacer" sirva.
+   */
+  toast: ToastState | null;
+  showToast: (toast: Omit<ToastState, "id">) => void;
+  dismissToast: () => void;
+
   /** Timer simple (M1). El widget flotante y la campana llegan en M2. */
   activeTaskId: number | null;
   startedAtMs: number | null;
@@ -80,6 +99,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   focusTaskId: null,
   requestFocusTask: (taskId) => set({ focusTaskId: taskId }),
   clearFocusTask: () => set({ focusTaskId: null }),
+
+  toast: null,
+  showToast: (toast) => set({ toast: { ...toast, id: ++toastSeq } }),
+  dismissToast: () => set({ toast: null }),
 
   quitOpen: false,
   setQuitOpen: (v) => set({ quitOpen: v }),

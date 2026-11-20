@@ -13,6 +13,8 @@ const updateTask = vi.fn(async (_id: number, _patch: unknown) => null);
 const listTimeEntries = vi.fn(async (): Promise<TimeEntry[]> => []);
 const setTaskRailOnly = vi.fn(async (_id: number, _railOnly: boolean) => null);
 const moveTask = vi.fn(async (_id: number, _date: string | null, _pos: number) => null);
+const trashTask = vi.fn(async (_id: number) => true);
+const restoreTask = vi.fn(async (_id: number) => null);
 
 /** Entrada cerrada de `seconds` segundos que arranca ese día a las 09:00 local. */
 function entry(id: number, day: string, seconds: number): TimeEntry {
@@ -63,7 +65,8 @@ vi.mock("../../lib/ipc", () => ({
     setActualSeconds: vi.fn(async () => null),
     setTaskRailOnly: (id: number, railOnly: boolean) => setTaskRailOnly(id, railOnly),
     moveTask: (id: number, date: string | null, pos: number) => moveTask(id, date, pos),
-    deleteTask: vi.fn(async () => undefined),
+    trashTask: (id: number) => trashTask(id),
+    restoreTask: (id: number) => restoreTask(id),
   },
 }));
 
@@ -477,5 +480,29 @@ describe("TaskModal · prioridad", () => {
 
     const rotulos = [...document.querySelectorAll(".tmodal__meta-label")].map((e) => e.textContent);
     expect(rotulos.indexOf("Prioridad")).toBeLessThan(rotulos.indexOf("Objetivo"));
+  });
+});
+
+describe("TaskModal · eliminar manda al basurero (#11)", () => {
+  beforeEach(() => {
+    trashTask.mockClear();
+    restoreTask.mockClear();
+    useAppStore.setState({ toast: null });
+  });
+
+  it("eliminar la manda al basurero, cierra y avisa con Deshacer", async () => {
+    const { onClose } = renderModal();
+    await userEvent.click(screen.getByRole("button", { name: "Eliminar tarea" }));
+    expect(screen.getByText(/Queda 30 días en el basurero/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sí, eliminar" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(trashTask).toHaveBeenCalledWith(7);
+    const toast = useAppStore.getState().toast;
+    expect(toast?.text).toContain("Revisar PRs");
+    expect(toast?.action?.label).toBe("Deshacer");
+
+    await toast!.action!.run();
+    expect(restoreTask).toHaveBeenCalledWith(7);
   });
 });

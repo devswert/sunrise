@@ -95,6 +95,17 @@ no borra la fila).
 **`actual_seconds` no se escribe con `update_task`**: el patch lo desvía a
 `set_actual_seconds`. Lee la skill `sunrise-timer-y-tiempo` antes de tocar tiempo.
 
+## El basurero filtra todo (I12)
+
+Desde #11 borrar es `trash_task`, que sella `tasks.deleted_at`. **Toda consulta
+nueva sobre `tasks` o `time_entries` que alimente una vista o un agregado lleva
+`deleted_at IS NULL`** (o su join), incluidas las que no filtran `source_state`
+(rollup, `day_work`, completadas, uso de channels). Las lecturas por id no:
+`get_task` devuelve cualquier fila porque las mutaciones releen lo que escriben;
+la puerta del MCP es `get_live_task`. En `mockDb.ts` la tarea **sale del arreglo**
+(con sus tramos) mientras está en el basurero, así que el mock no necesita filtros.
+Los tests de `repo.rs` del bloque "Basurero (#11)" tienen un caso por listado.
+
 ## `move_task` y el historial
 
 **El `position` que recibe es el índice final**, contando que la tarea ya salió de
@@ -102,10 +113,13 @@ la lista: es lo que dnd-kit muestra mientras arrastras. El día destino se
 **renumera entero** (0..n, sin huecos ni empates); antes corría +1 las tareas
 `>= position`, que se equivoca en uno al reordenar dentro del mismo día. El índice
 se cuenta contra la lista **visible**, así que la renumeración incluye a las
-`ORPHANED` y a los eventos ignorados (`rail_only`) —para no empatar posiciones—
+`ORPHANED`, a los eventos ignorados (`rail_only`) y a lo del basurero
+(`deleted_at`, #11) —para no empatar posiciones—
 pero los saltea al ubicar. Olvidar uno de los dos filtros deja la card un lugar más
 abajo de donde se soltó. Fuera de rango es "al final". `mockDb.moveTask` hace lo
-mismo, y hay un test a cada lado.
+mismo, y hay un test a cada lado. La excepción es el basurero: el mock saca la
+tarea del arreglo, así que no la renumera, y al restaurarla puede empatar posición
+con una hermana (el orden lo desempata el id). Rust sí la renumera.
 
 Mandar al backlog es `move_task(id, null, 0)`.
 

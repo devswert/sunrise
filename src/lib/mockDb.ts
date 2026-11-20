@@ -11,6 +11,7 @@ import type {
   Objective,
   ObjectivePatch,
   Task,
+  TrashedTask,
   TaskEvent,
   TimeEntry,
   DayWork,
@@ -113,6 +114,28 @@ let nextFeedId = 1;
 const objectives: Objective[] = [];
 const events: TaskEvent[] = [];
 const entries: TimeEntry[] = [];
+
+/**
+ * El basurero del mock (#11). La tarea **sale** de `tasks` —y sus tramos de
+ * `entries`— mientras está aquí, así que ningún listado ni agregado tiene que
+ * acordarse de filtrarla: es el mismo efecto que el `deleted_at IS NULL` del SQL.
+ * Restaurar los devuelve tal cual.
+ */
+const trash: { task: Task; entries: TimeEntry[]; deletedAt: string }[] = [];
+const TRASH_DAYS = 30;
+const purgeAtOf = (deletedAt: string) =>
+  new Date(new Date(deletedAt).getTime() + TRASH_DAYS * 86_400_000).toISOString();
+
+function purgeTrash(now = Date.now()): number {
+  let n = 0;
+  for (let i = trash.length - 1; i >= 0; i--) {
+    if (new Date(purgeAtOf(trash[i].deletedAt)).getTime() <= now) {
+      trash.splice(i, 1);
+      n++;
+    }
+  }
+  return n;
+}
 
 function blankTask(input: NewTaskInput, position: number): Task {
   return {
@@ -534,10 +557,32 @@ export const mock = {
     return t;
   },
 
-  deleteTask: async (id: number): Promise<void> => {
+  trashTask: async (id: number): Promise<boolean> => {
     const i = tasks.findIndex((x) => x.id === id);
-    if (i >= 0) tasks.splice(i, 1);
+    if (i < 0) return false;
+    // Como en Rust: su timer se detiene y el tramo se conserva.
+    await mock.stopTimer(id);
+    const [task] = tasks.splice(i, 1);
+    const own = entries.filter((e) => e.taskId === id);
+    for (const e of own) entries.splice(entries.indexOf(e), 1);
+    trash.push({ task, entries: own, deletedAt: nowISO() });
+    return true;
   },
+
+  restoreTask: async (id: number): Promise<Task | null> => {
+    const i = trash.findIndex((x) => x.task.id === id);
+    if (i < 0) return null;
+    const [{ task, entries: own }] = trash.splice(i, 1);
+    task.updatedAt = nowISO();
+    tasks.push(task);
+    entries.push(...own);
+    return task;
+  },
+
+  listTrash: async (): Promise<TrashedTask[]> =>
+    [...trash]
+      .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || b.task.id - a.task.id)
+      .map(({ task, deletedAt }) => ({ task, deletedAt, purgeAt: purgeAtOf(deletedAt) })),
 
   setTaskStatus: async (id: number, status: Task["status"]): Promise<Task | null> => {
     const t = tasks.find((x) => x.id === id);
@@ -626,6 +671,8 @@ export const mock = {
    * de días anteriores.
    */
   demotePending: async (today: string): Promise<number> => {
+    // La degradación es el tick diario que también vacía lo vencido (#11).
+    purgeTrash();
     const liveDay = tasks
       .filter((t) => t.sourceState === "ACTIVE" && t.scheduledDate && t.scheduledDate < today)
       .reduce<string | null>(

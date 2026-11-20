@@ -6,7 +6,7 @@ use crate::backup;
 use crate::db::Db;
 use crate::models::{
     ActiveTimer, AppUpdate, BackupFile, CalendarFeed, Category, CategoryUsage, LogDay, Objective,
-    Profile, Rescue, RestoreResult, Task, TaskEvent, TimeEntry, DayWork, WeeklyRollup,
+    Profile, Rescue, RestoreResult, Task, TaskEvent, TimeEntry, TrashedTask, DayWork, WeeklyRollup,
 };
 use crate::repo::{self, NewTask, ObjectivePatch, TaskPatch};
 
@@ -65,10 +65,24 @@ pub fn update_task(db: State<'_, Db>, id: i64, patch: TaskPatch) -> Result<Optio
     repo::update_task(&conn, id, patch).map_err(e)
 }
 
+/// Borrar desde la app **manda al basurero** (#11): se restaura durante
+/// `repo::TRASH_DAYS` días y después se elimina sola.
 #[tauri::command]
-pub fn delete_task(db: State<'_, Db>, id: i64) -> Result<(), String> {
+pub fn trash_task(db: State<'_, Db>, id: i64) -> Result<bool, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::delete_task(&conn, id).map_err(e)
+    repo::trash_task(&conn, id).map(|r| r.is_some()).map_err(e)
+}
+
+#[tauri::command]
+pub fn restore_task(db: State<'_, Db>, id: i64) -> Result<Option<Task>, String> {
+    let conn = db.0.lock().map_err(e)?;
+    repo::restore_task(&conn, id).map_err(e)
+}
+
+#[tauri::command]
+pub fn list_trash(db: State<'_, Db>) -> Result<Vec<TrashedTask>, String> {
+    let conn = db.0.lock().map_err(e)?;
+    repo::list_trash(&conn).map_err(e)
 }
 
 #[tauri::command]
@@ -92,7 +106,7 @@ pub fn set_task_rail_only(
 ) -> Result<Option<Task>, String> {
     let conn = db.0.lock().map_err(e)?;
     repo::set_series_rail_only(&conn, id, rail_only).map_err(e)?;
-    repo::get_task(&conn, id).map_err(e)
+    repo::get_task_outside_trash(&conn, id).map_err(e)
 }
 
 #[tauri::command]
@@ -109,6 +123,12 @@ pub fn move_task(
 #[tauri::command]
 pub fn demote_pending(db: State<'_, Db>, today: String) -> Result<u32, String> {
     let conn = db.0.lock().map_err(e)?;
+    // La degradación corre una vez al día: es el tick diario que también vacía
+    // lo vencido del basurero (#11). Un fallo de la purga no puede frenar la
+    // degradación: lo que no se purgó hoy se purga mañana.
+    if let Err(err) = repo::purge_trash(&conn) {
+        eprintln!("[sunrise] no se pudo purgar el basurero: {err}");
+    }
     repo::demote_pending(&conn, &today).map_err(e)
 }
 
@@ -525,11 +545,12 @@ pub fn set_actual_seconds(
     repo::set_actual_seconds(&conn, task_id, seconds).map_err(e)
 }
 
-/// Una tarea por id (para refrescar snapshots, p. ej. el taxímetro).
+/// Una tarea por id (para refrescar snapshots, p. ej. el taxímetro). **Una del
+/// basurero vuelve `None`**, igual que en el mock: para el front ya no está.
 #[tauri::command]
 pub fn get_task(db: State<'_, Db>, id: i64) -> Result<Option<Task>, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::get_task(&conn, id).map_err(e)
+    repo::get_task_outside_trash(&conn, id).map_err(e)
 }
 
 // --- Categories ---
