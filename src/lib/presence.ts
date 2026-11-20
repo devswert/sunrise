@@ -29,7 +29,7 @@ export function prefersReducedMotion(): boolean {
  * sigue en `true` durante la salida, y `leaving` es lo que la dispara.
  *
  * Con `prefers-reduced-motion` no hay animación que esperar, así que desmonta al
- * instante: quedarse montado 140 ms sin moverse sería una demora y nada más.
+ * instante: quedarse montado 240 ms sin moverse sería una demora y nada más.
  */
 export function usePresence(open: boolean): { mounted: boolean; leaving: boolean } {
   const [mounted, setMounted] = useState(open);

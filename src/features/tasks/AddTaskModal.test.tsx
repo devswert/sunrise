@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AddTaskModal } from "./AddTaskModal";
+import { ModalPresence } from "../../components/ModalPresence";
 import { useAppStore } from "../../lib/store";
 import { api } from "../../lib/ipc";
 
@@ -446,5 +447,29 @@ describe("AddTaskModal · ⌘Enter doble", () => {
 
     await waitFor(() => expect(useAppStore.getState().composeOpen).toBe(false));
     expect(createTask).toHaveBeenCalledOnce();
+  });
+});
+
+describe("AddTaskModal · la salida animada", () => {
+  beforeEach(() => {
+    useAppStore.setState({ composeOpen: true, composeDefaults: {} });
+  });
+
+  /** Montado como en `App`: el modal lo sostiene `ModalPresence` mientras sale. */
+  function Shell() {
+    const open = useAppStore((s) => s.composeOpen);
+    return <ModalPresence value={open}>{() => <AddTaskModal />}</ModalPresence>;
+  }
+
+  it("crear la tarea cierra el modal con su salida", async () => {
+    const user = userEvent.setup();
+    render(<Shell />);
+
+    await user.click(await screen.findByPlaceholderText("Descripción de la tarea…"));
+    await user.keyboard("Una tarea{Enter}");
+
+    await waitFor(() => expect(useAppStore.getState().composeOpen).toBe(false));
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+    await waitFor(() => expect(document.querySelector(".modal-presence")).toBeNull());
   });
 });

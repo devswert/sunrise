@@ -318,11 +318,11 @@ export function BackupCard() {
     } catch (err) {
       setToRestore(null);
       setError({ field: "action", text: String(err) });
-      setRestaurando(false);
     }
-    // Si salió bien, `restaurando` **no** vuelve a `false` acá: la confirmación
-    // todavía está saliendo (§7, "Modales") y su botón volvería a decir
-    // "Restaurar y reemplazar" durante el fundido. Vuelve al abrir la próxima.
+    // `restaurando` **no** vuelve a `false` acá, salga bien o mal: en los dos
+    // casos la confirmación ya está saliendo (§7, "Modales") y su botón volvería
+    // a decir "Restaurar y reemplazar" durante el fundido. Vuelve al abrir la
+    // próxima.
   }
 
   const field = (

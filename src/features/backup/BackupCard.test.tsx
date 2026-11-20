@@ -228,4 +228,23 @@ describe("BackupCard · restaurar", () => {
     // `waitFor`: el modal se queda montado mientras corre su salida (`ModalPresence`).
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
+
+  /**
+   * La confirmación sale mientras entra el resumen, y durante esa salida su
+   * botón no puede volver a "Restaurar y reemplazar": se leería como que la
+   * acción no se hizo.
+   */
+  it("tras restaurar bien, la confirmación sale diciendo Restaurando…", async () => {
+    render(<BackupCard />);
+    await openNewest();
+    await userEvent.click(await screen.findByRole("button", { name: /Restaurar y reemplazar/ }));
+    await screen.findByRole("alertdialog", { name: "Respaldo restaurado" });
+    // Que termine la recarga posterior a restaurar: es lo que volvía el botón
+    // atrás. La salida dura 240 ms, así que a los 100 sigue en pantalla.
+    await new Promise((r) => setTimeout(r, 100));
+
+    const leaving = screen.getByRole("alertdialog", { name: "Confirmar restauración" });
+    expect(leaving.closest(".modal-presence")).toHaveClass("is-leaving");
+    expect(leaving).toHaveTextContent("Restaurando…");
+  });
 });

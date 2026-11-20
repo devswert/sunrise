@@ -44,8 +44,8 @@ La lista de casos vive en los propios archivos y no se duplica acá; esto es el 
 | Weekly review y rollup | `repo.rs`, `weeklyReview.test.tsx`, `reviewFilter.test.ts`, `WeeklyReviewView.test.tsx` |
 | Bitácora y cierre | `repo.rs`, `dailyLog.test.ts`, `DailyShutdownView.test.tsx`, `useShutdownReminder.test.ts` |
 | Planificación diaria | `dailyPlan.test.ts`, `DailyPlanningView.test.tsx`, `repo.rs` (`demote_pending`) |
-| Objetivos | `repo.rs`, `WeeklyPlanningView.test.tsx`, `objectiveHistory.test.ts` |
-| Calendario y rail | `calendar/ics.rs`, `calendar/mod.rs`, `railLayout.test.ts`, `CalendarRail.test.tsx`, `useTrabajoDelDia.test.ts`, `calendarSync.test.ts`, `descripcion.test.ts`, `FeedsCard.test.tsx`, `MeetingLink.test.tsx`, `Participantes.test.tsx` |
+| Objetivos | `repo.rs`, `WeeklyPlanningView.test.tsx`, `objectiveHistory.test.ts`, `ObjectiveModal.test.tsx` |
+| Calendario y rail | `calendar/ics.rs`, `calendar/mod.rs`, `railLayout.test.ts`, `CalendarRail.test.tsx`, `useTrabajoDelDia.test.ts`, `calendarSync.test.ts`, `descripcion.test.ts`, `FeedsCard.test.tsx`, `AddFeedModal.test.tsx`, `MeetingLink.test.tsx`, `Participantes.test.tsx` |
 | DnD del board | `collision.test.ts`, `dropTarget.test.ts` |
 | Vista semana | `date.test.ts` (`threeWeeks`), `WeekView.test.tsx`, `anchor.test.ts` |
 | El día como estado | `day.test.ts` |

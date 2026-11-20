@@ -127,7 +127,7 @@ export function ModalPresence<T>({
     ghost.classList.add("is-leaving", "is-ghost");
     ghost.setAttribute("inert", "");
     ghost.setAttribute("aria-hidden", "true");
-    // `cloneNode` copia el árbol, no lo vivo: lo escrito en un campo controlado
+    // `cloneNode` copia el árbol, no lo vivo: lo escrito o marcado en un campo controlado
     // por React y el scroll del panel se pasan a mano, o la copia saldría con
     // otro texto o arriba de todo. Los dos árboles tienen la misma forma, así que
     // se emparejan por orden.
@@ -135,7 +135,9 @@ export function ModalPresence<T>({
     const from = el.querySelectorAll<HTMLInputElement>(fields);
     const to = ghost.querySelectorAll<HTMLInputElement>(fields);
     from.forEach((f, i) => {
-      if (to[i] && f.type !== "file") to[i].value = f.value;
+      if (!to[i] || f.type === "file") return;
+      to[i].value = f.value;
+      if (f instanceof HTMLInputElement) to[i].checked = f.checked;
     });
     const scrolled = Array.from(el.querySelectorAll<HTMLElement>("*")).flatMap((n, i) =>
       n.scrollTop > 0 ? [[i, n.scrollTop] as const] : [],

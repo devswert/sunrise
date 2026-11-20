@@ -124,15 +124,19 @@ export function ObjectiveModal({
       if (p !== null && p.trim()) void commitRef.current({ title: p.trim() });
     }, 500);
   };
-  useEffect(
-    () => () => {
-      clearTimeout(debounceRef.current);
-      const p = pendienteRef.current;
-      pendienteRef.current = null;
-      if (p !== null && p.trim()) void commitRef.current({ title: p.trim() });
-    },
-    [],
-  );
+  const flushTitle = useCallback(() => {
+    clearTimeout(debounceRef.current);
+    const p = pendienteRef.current;
+    pendienteRef.current = null;
+    if (p !== null && p.trim()) void commitRef.current({ title: p.trim() });
+  }, []);
+  useEffect(() => flushTitle, [flushTitle]);
+  // Y también **al empezar a salir**, no recién al desmontar: reabrir el mismo
+  // objetivo durante la salida montaría uno nuevo con el título viejo (igual que
+  // en `TaskModal`).
+  useEffect(() => {
+    if (leaving) flushTitle();
+  }, [leaving, flushTitle]);
 
   // Escape cierra, y el picker abierto primero. En `window` con captura porque
   // los popovers viven en un portal y su Escape no pasa por este div (SPECS §7).

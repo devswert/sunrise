@@ -661,6 +661,27 @@ describe("TaskModal · la salida animada", () => {
     expect(screen.getByLabelText("Título")).toHaveValue("Revisar PRs de hoy");
   });
 
+  /**
+   * Saliendo, el modal suelta el foco y eso dispara el `onBlur` de las notas.
+   * Volver ahí a la vista de markdown cambiaría el alto del modal en pleno
+   * fundido: el textarea se queda hasta el final.
+   */
+  it("editar las notas y apretar Escape deja el textarea mientras sale", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <OpenDetail onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByText("Notas…"));
+    await user.type(screen.getByPlaceholderText("Notas… (soporta markdown)"), "una idea");
+    await user.keyboard("{Escape}");
+
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+    expect(screen.getByPlaceholderText("Notas… (soporta markdown)")).toBeInTheDocument();
+  });
+
   it("el play navega a Focus al instante y el modal termina de salir encima", async () => {
     const onClose = vi.fn();
     render(
