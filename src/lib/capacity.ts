@@ -1,6 +1,6 @@
 import { CapacityLevel } from "./enums";
 import type { Task } from "./types";
-import { minutesFromTime } from "../features/calendar/railLayout";
+import { minutesFromTime } from "./date";
 
 /**
  * Semáforo del contador de capacidad diaria.

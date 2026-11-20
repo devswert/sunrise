@@ -266,6 +266,11 @@ siguiente corrida.
   la jornada tampoco. Si no queda tiempo, 0. Recibe la **agenda**
   (`agendaByDate`), no las tarjetas, que ya vienen sin los ignorados. Se calcula
   al mirar, no se guarda: cambiar la jornada repinta también los días pasados.
+  Tres precisiones: solo restan los de `sourceState === ACTIVE` (un evento que el
+  feed ya no trae no es hueco); un ignorado que cruza la medianoche cuenta solo
+  en el día en que empieza, que es el único que lo tiene en su agenda; y como
+  marcar una serie **no marca las repeticiones ya trabajadas** (DONE o con
+  tiempo, §4.12), ese día pasado sigue sin restar nada.
   Semáforo por `computeCapacityLevel`: `> target` ⇒ `OVER` (rojo);
   `>= target * 0.85` ⇒ `WARN` (amarillo); resto `OK` (gris). `target <= 0` ⇒
   siempre `OK`. El badge lleva en el `title` contra qué se pinta

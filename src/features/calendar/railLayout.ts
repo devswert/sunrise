@@ -1,4 +1,4 @@
-import { minutesOfDay } from "../../lib/date";
+import { minutesFromTime, minutesOfDay } from "../../lib/date";
 import type { Task, DayWork } from "../../lib/types";
 import { type RunningSeconds, runningFor } from "../timer/runningSeconds";
 
@@ -103,16 +103,9 @@ export interface OpcionesRail {
   segundosEnCurso?: RunningSeconds;
 }
 
-/** `"09:30"` → 570. `null` si no es una hora válida. */
-export function minutesFromTime(hhmm: string | null | undefined): number | null {
-  if (!hhmm) return null;
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
-  return h * 60 + min;
-}
+// Vive en `lib/date.ts` desde #8: la capacidad del día también la usa, y `lib/`
+// no importa de `features/`. Se reexporta para no mover a quienes ya la toman acá.
+export { minutesFromTime };
 
 /** 570 → `"9:30 AM"`, el mismo formato que el detalle del evento. */
 export function hourLabel(min: number): string {
