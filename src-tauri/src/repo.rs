@@ -1,7 +1,7 @@
 //! Lógica de datos de sunrise (funciones puras sobre `&Connection`), testeable
 //! sin el runtime de Tauri. Los comandos en `commands.rs` son wrappers delgados.
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Duration, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
 
@@ -28,7 +28,7 @@ where
 use crate::models::{
     ActiveTimer, CalendarFeed, Category, CategoryUsage, LogDay, DoneTask, Objective, ObjectiveWork,
     Attendee,
-    Rescue, RollupCell, RollupDay, Task, TaskEvent, TimeEntry, DayWork, DaySegment,
+    Rescue, RollupCell, RollupDay, Task, TaskEvent, TimeEntry, TrashedTask, DayWork, DaySegment,
     WeeklyRollup,
 };
 
@@ -92,6 +92,29 @@ const TASK_COLS: &str = "id, title, notes, category_id, objective_id, priority, 
     scheduled_time, position, estimated_minutes, actual_seconds, status, completed_at, \
     source, source_state, feed_id, calendar_uid, event_start, event_end, meeting_url, \
     event_description, attendees, rail_only, created_at, updated_at";
+
+/// La tarea **si se ve en la app**: activa y fuera del basurero. Es la puerta
+/// del MCP: lo que no está acá, para el agente no existe. `get_task` sigue
+/// devolviendo cualquier fila, porque las mutaciones la usan para leer lo que
+/// acaban de escribir.
+pub fn get_live_task(conn: &Connection, id: i64) -> Result<Option<Task>> {
+    let Some(task) = get_task(conn, id)? else {
+        return Ok(None);
+    };
+    if task.source_state != "ACTIVE" || is_trashed(conn, id)? {
+        return Ok(None);
+    }
+    Ok(Some(task))
+}
+
+/// `true` si la tarea está en el basurero.
+pub fn is_trashed(conn: &Connection, id: i64) -> Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1 AND deleted_at IS NOT NULL)",
+        [id],
+        |r| r.get(0),
+    )
+}
 
 pub fn get_task(conn: &Connection, id: i64) -> Result<Option<Task>> {
     conn.query_row(
@@ -203,9 +226,112 @@ pub fn update_task(conn: &Connection, id: i64, patch: TaskPatch) -> Result<Optio
     get_task(conn, id)
 }
 
-pub fn delete_task(conn: &Connection, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM tasks WHERE id = ?1", [id])?;
-    Ok(())
+// ---------------------------------------------------------------------------
+// Basurero (#11)
+// ---------------------------------------------------------------------------
+
+/// Días que una tarea pasa en el basurero antes de eliminarse de verdad.
+pub const TRASH_DAYS: i64 = 30;
+
+/// Manda la tarea al basurero: **borrar ya no es un DELETE**. Desde aquí
+/// ninguna vista ni agregado la ve (todas sus consultas filtran
+/// `deleted_at IS NULL`), y `purge_trash` la elimina a los `TRASH_DAYS`.
+///
+/// Si tenía el timer corriendo, lo detiene primero —como completarla—: el tramo
+/// queda registrado (I1) y se conserva para cuando la restauren. Dejarlo abierto
+/// sería un timer contando sobre una tarea que ya no se puede ver ni pausar.
+///
+/// Devuelve `false` si no existe o ya estaba en el basurero.
+pub fn trash_task(conn: &Connection, id: i64) -> Result<bool> {
+    trash_task_at(conn, id, &now())
+}
+
+pub fn trash_task_at(conn: &Connection, id: i64, at: &str) -> Result<bool> {
+    atomically(conn, || {
+        stop_timer(conn, id)?;
+        let n = conn.execute(
+            "UPDATE tasks SET deleted_at = ?2, updated_at = ?2
+              WHERE id = ?1 AND deleted_at IS NULL",
+            params![id, at],
+        )?;
+        Ok(n > 0)
+    })
+}
+
+/// Saca la tarea del basurero. Vuelve a su día (o al backlog) **tal como
+/// estaba**, con su tiempo: no se mueve aunque su día ya haya pasado; de eso se
+/// encarga la degradación diaria, como con cualquier otra.
+///
+/// Devuelve la tarea restaurada, o `None` si no estaba en el basurero.
+pub fn restore_task(conn: &Connection, id: i64) -> Result<Option<Task>> {
+    let n = conn.execute(
+        "UPDATE tasks SET deleted_at = NULL, updated_at = ?2
+          WHERE id = ?1 AND deleted_at IS NOT NULL",
+        params![id, now()],
+    )?;
+    if n == 0 {
+        return Ok(None);
+    }
+    get_task(conn, id)
+}
+
+/// Lo que hay en el basurero, lo más reciente primero, con el día en que se
+/// elimina.
+pub fn list_trash(conn: &Connection) -> Result<Vec<TrashedTask>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {TASK_COLS}, deleted_at FROM tasks
+          WHERE deleted_at IS NOT NULL
+          ORDER BY deleted_at DESC, id DESC"
+    ))?;
+    let rows = stmt
+        .query_map([], |r| {
+            let deleted_at: String = r.get("deleted_at")?;
+            let purge_at = purge_at_of(&deleted_at);
+            Ok(TrashedTask {
+                task: Task::from_row(r)?,
+                deleted_at,
+                purge_at,
+            })
+        })?
+        .collect();
+    rows
+}
+
+/// Instante en que una tarea que entró al basurero en `deleted_at` se elimina.
+fn purge_at_of(deleted_at: &str) -> String {
+    DateTime::parse_from_rfc3339(deleted_at)
+        .map(|d| (d.with_timezone(&Utc) + Duration::days(TRASH_DAYS)).to_rfc3339())
+        .unwrap_or_else(|_| deleted_at.to_string())
+}
+
+/// Elimina de verdad lo que lleva `TRASH_DAYS` o más en el basurero. El
+/// `ON DELETE CASCADE` se lleva sus tramos y sus eventos. Devuelve cuántas.
+pub fn purge_trash(conn: &Connection) -> Result<usize> {
+    purge_trash_at(conn, Utc::now())
+}
+
+pub fn purge_trash_at(conn: &Connection, now: DateTime<Utc>) -> Result<usize> {
+    let cutoff = now - Duration::days(TRASH_DAYS);
+    // Se compara como instante y no como texto: un `deleted_at` con otro offset
+    // (o escrito a mano) ordenaría mal como string.
+    let ids: Vec<(i64, String)> = {
+        let mut stmt =
+            conn.prepare("SELECT id, deleted_at FROM tasks WHERE deleted_at IS NOT NULL")?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_>>()?;
+        rows
+    };
+    let mut n = 0;
+    for (id, at) in ids {
+        let Ok(at) = DateTime::parse_from_rfc3339(&at) else {
+            continue;
+        };
+        if at.with_timezone(&Utc) <= cutoff {
+            n += conn.execute("DELETE FROM tasks WHERE id = ?1", [id])?;
+        }
+    }
+    Ok(n)
 }
 
 /// Marca estado TODO/DONE (sella `completed_at`).
@@ -299,14 +425,16 @@ fn move_task_as(
             Some(d) => conn
                 .prepare(
                     "SELECT id, source_state, rail_only FROM tasks
-                     WHERE scheduled_date = ?1 AND id <> ?2 ORDER BY position, id",
+                     WHERE scheduled_date = ?1 AND id <> ?2 AND deleted_at IS NULL
+                     ORDER BY position, id",
                 )?
                 .query_map(params![d, id], mapa)?
                 .collect::<Result<Vec<_>>>()?,
             None => conn
                 .prepare(
                     "SELECT id, source_state, rail_only FROM tasks
-                     WHERE scheduled_date IS NULL AND id <> ?1 ORDER BY position, id",
+                     WHERE scheduled_date IS NULL AND id <> ?1 AND deleted_at IS NULL
+                     ORDER BY position, id",
                 )?
                 .query_map(params![id], mapa)?
                 .collect::<Result<Vec<_>>>()?,
@@ -364,7 +492,7 @@ fn move_task_as(
 pub fn last_day_with_tasks(conn: &Connection, before: &str) -> Result<Option<String>> {
     conn.query_row(
         "SELECT MAX(scheduled_date) FROM tasks
-          WHERE source_state = 'ACTIVE'
+          WHERE source_state = 'ACTIVE' AND deleted_at IS NULL
             AND rail_only = 0
             AND scheduled_date IS NOT NULL
             AND scheduled_date < ?1",
@@ -398,6 +526,7 @@ pub fn demote_pending(conn: &Connection, today: &str) -> Result<u32> {
     let mut stmt = conn.prepare(
         "SELECT id FROM tasks
           WHERE source = 'MANUAL' AND status = 'TODO' AND source_state = 'ACTIVE'
+            AND deleted_at IS NULL
             AND scheduled_date IS NOT NULL AND scheduled_date < ?1
           ORDER BY scheduled_date DESC, position DESC",
     )?;
@@ -428,7 +557,7 @@ pub fn rescued_from_backlog(conn: &Connection) -> Result<Vec<Rescue>> {
                   WHERE e.task_id = t.id AND e.type = 'MOVED' AND e.to_date IS NULL
                   ORDER BY e.id DESC LIMIT 1) AS desde
            FROM tasks t
-          WHERE t.source_state = 'ACTIVE'
+          WHERE t.source_state = 'ACTIVE' AND t.deleted_at IS NULL
             AND t.status = 'TODO'
             AND t.scheduled_date IS NULL
           ORDER BY t.position, t.id",
@@ -450,7 +579,7 @@ pub fn rescued_from_backlog(conn: &Connection) -> Result<Vec<Rescue>> {
 pub fn list_tasks_for_range(conn: &Connection, start: &str, end: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {TASK_COLS} FROM tasks
-         WHERE source_state = 'ACTIVE'
+         WHERE source_state = 'ACTIVE' AND deleted_at IS NULL
            AND scheduled_date IS NOT NULL AND scheduled_date BETWEEN ?1 AND ?2
          ORDER BY scheduled_date, position, id"
     ))?;
@@ -461,7 +590,7 @@ pub fn list_tasks_for_range(conn: &Connection, start: &str, end: &str) -> Result
 pub fn list_tasks_for_date(conn: &Connection, date: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {TASK_COLS} FROM tasks
-         WHERE source_state = 'ACTIVE' AND scheduled_date = ?1
+         WHERE source_state = 'ACTIVE' AND deleted_at IS NULL AND scheduled_date = ?1
          ORDER BY position, id"
     ))?;
     let rows = stmt.query_map([date], Task::from_row)?.collect();
@@ -476,7 +605,8 @@ pub fn list_tasks_for_date(conn: &Connection, date: &str) -> Result<Vec<Task>> {
 pub fn focus_queue(conn: &Connection, date: &str, now_hhmm: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {TASK_COLS} FROM tasks
-         WHERE source_state = 'ACTIVE' AND status = 'TODO' AND scheduled_date = ?1
+         WHERE source_state = 'ACTIVE' AND deleted_at IS NULL AND status = 'TODO'
+           AND scheduled_date = ?1
            -- Un bloque de agenda se ignora por completo (§4.12): no es trabajo,
            -- así que no tiene nada que hacer en la cola de Focus.
            AND rail_only = 0
@@ -517,7 +647,8 @@ pub struct Meeting {
 pub fn meetings_for_date(conn: &Connection, date: &str) -> Result<Vec<Meeting>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, scheduled_time, notified_for FROM tasks
-         WHERE source_state = 'ACTIVE' AND status = 'TODO' AND source = 'CALENDAR'
+         WHERE source_state = 'ACTIVE' AND deleted_at IS NULL AND status = 'TODO'
+           AND source = 'CALENDAR'
            AND scheduled_date = ?1 AND scheduled_time IS NOT NULL
            -- Un bloque de agenda no avisa: ignorarlo por completo incluye no
            -- interrumpir para anunciar el almuerzo (§4.12).
@@ -547,7 +678,8 @@ pub fn mark_notified(conn: &Connection, task_id: i64, time: &str) -> Result<()> 
 pub fn list_backlog(conn: &Connection) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {TASK_COLS} FROM tasks
-         WHERE source_state = 'ACTIVE' AND scheduled_date IS NULL AND status = 'TODO'
+         WHERE source_state = 'ACTIVE' AND deleted_at IS NULL AND scheduled_date IS NULL
+           AND status = 'TODO'
          ORDER BY category_id, position, id"
     ))?;
     let rows = stmt.query_map([], Task::from_row)?.collect();
@@ -729,7 +861,7 @@ const ACTIVE_SQL: &str = "SELECT e.id AS entry_id, e.task_id, e.started_at, t.ti
                                  t.estimated_minutes, t.bell_rung_for
                           FROM time_entries e
                           JOIN tasks t ON t.id = e.task_id
-                          WHERE e.ended_at IS NULL";
+                          WHERE e.ended_at IS NULL AND t.deleted_at IS NULL";
 
 fn active_from_row(conn: &Connection, r: &rusqlite::Row) -> rusqlite::Result<ActiveTimer> {
     let task_id: i64 = r.get("task_id")?;
@@ -1239,7 +1371,8 @@ pub fn set_actual_seconds_unless_running(
         // También que siga viva: el reconciler pudo orfanarla (I7) desde que el
         // llamador la miró.
         let active: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1 AND source_state = 'ACTIVE')",
+            "SELECT EXISTS(SELECT 1 FROM tasks
+                            WHERE id = ?1 AND source_state = 'ACTIVE' AND deleted_at IS NULL)",
             [task_id],
             |r| r.get(0),
         )?;
@@ -1318,7 +1451,8 @@ fn log_time_entry_at(
     let mut refused: Option<LogTimeError> = None;
     let logged = atomically(conn, || {
         let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1 AND source_state = 'ACTIVE')",
+            "SELECT EXISTS(SELECT 1 FROM tasks
+                            WHERE id = ?1 AND source_state = 'ACTIVE' AND deleted_at IS NULL)",
             [task_id],
             |r| r.get(0),
         )?;
@@ -1433,6 +1567,8 @@ pub fn day_work(conn: &Connection, date: &str) -> Result<Vec<DayWork>> {
                 MAX(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END) AS running
          FROM time_entries
          WHERE started_at >= ?1 AND started_at < ?2
+           -- Lo del basurero no cuenta (#11), y aquí no hay join que lo filtre.
+           AND task_id NOT IN (SELECT id FROM tasks WHERE deleted_at IS NOT NULL)
          GROUP BY task_id
          ORDER BY MIN(started_at)",
     )?;
@@ -1589,11 +1725,12 @@ fn work_by_day(conn: &Connection, days: &Semana, now: DateTime<Utc>) -> Result<T
            FROM time_entries e
            JOIN tasks t ON t.id = e.task_id
            LEFT JOIN categories c ON c.id = t.category_id
-          WHERE (e.started_at >= ?1 AND e.started_at < ?2)
+          WHERE t.deleted_at IS NULL
+            AND ((e.started_at >= ?1 AND e.started_at < ?2)
              -- Una corrida abierta desde antes del rango no se atribuye acá
              -- (Regla 2), pero sus horas de reloj sí caen en el rango: es la
              -- jornada de hoy de un timer que quedó corriendo desde anoche.
-             OR (e.ended_at IS NULL AND e.started_at < ?1)",
+             OR (e.ended_at IS NULL AND e.started_at < ?1))",
     )?;
     let rows = stmt.query_map(params![from_date, to_date], |r| {
         Ok((
@@ -1655,7 +1792,7 @@ fn work_by_day(conn: &Connection, days: &Semana, now: DateTime<Utc>) -> Result<T
                 COALESCE(c.parent_id, c.id) AS context_id
            FROM tasks t
            LEFT JOIN categories c ON c.id = t.category_id
-          WHERE t.source = 'CALENDAR' AND t.source_state = 'ACTIVE'
+          WHERE t.source = 'CALENDAR' AND t.source_state = 'ACTIVE' AND t.deleted_at IS NULL
             AND t.rail_only = 0
             AND t.event_start IS NOT NULL AND t.event_end IS NOT NULL
             AND ((t.event_start >= ?1 AND t.event_start < ?2)
@@ -1802,7 +1939,7 @@ fn plan_by_day(conn: &Connection, days: &Semana) -> Result<Vec<(i64, i64)>> {
     let mut stmt = conn.prepare(
         "SELECT scheduled_date, estimated_minutes, source, event_start, event_end
            FROM tasks
-          WHERE source_state = 'ACTIVE' AND rail_only = 0
+          WHERE source_state = 'ACTIVE' AND rail_only = 0 AND deleted_at IS NULL
             AND scheduled_date >= ?1 AND scheduled_date <= ?2",
     )?;
     let plans = stmt.query_map(params![days[0].0, days[days.len() - 1].0], |r| {
@@ -1981,7 +2118,8 @@ fn completed_in_range(conn: &Connection, days: &Semana) -> Result<Vec<Task>> {
     }
     let mut stmt = conn.prepare(&format!(
         "SELECT {TASK_COLS} FROM tasks
-          WHERE status = 'DONE' AND completed_at >= ?1 AND completed_at < ?2
+          WHERE status = 'DONE' AND deleted_at IS NULL
+            AND completed_at >= ?1 AND completed_at < ?2
           ORDER BY completed_at, id"
     ))?;
     let from_date = days[0].1.to_rfc3339();
@@ -2286,7 +2424,7 @@ pub fn list_categories(conn: &Connection) -> Result<Vec<Category>> {
 pub fn category_usage(conn: &Connection) -> Result<Vec<CategoryUsage>> {
     let mut stmt = conn.prepare(
         "SELECT category_id, COUNT(*) AS tasks FROM tasks
-         WHERE category_id IS NOT NULL AND rail_only = 0
+         WHERE category_id IS NOT NULL AND rail_only = 0 AND deleted_at IS NULL
          GROUP BY category_id",
     )?;
     let rows = stmt
@@ -2704,7 +2842,8 @@ pub fn reconcile_feed(
                 (SELECT COUNT(*) FROM time_entries e
                   WHERE e.task_id = t.id AND e.ended_at IS NULL) AS corriendo
          FROM tasks t
-         WHERE feed_id = ?1 AND calendar_uid IS NOT NULL AND source_state = 'ACTIVE'",
+         WHERE feed_id = ?1 AND calendar_uid IS NOT NULL AND source_state = 'ACTIVE'
+           AND deleted_at IS NULL",
     )?;
     let rows: Vec<(i64, String, Option<String>, String, String, i64, i64)> = stmt
         .query_map([feed_id], |r| {
@@ -2852,6 +2991,7 @@ fn place_by_time(conn: &Connection, id: i64, date: &str, hour: Option<&str>) -> 
     let mut stmt = conn.prepare(
         "SELECT scheduled_time, feed_id FROM tasks
          WHERE scheduled_date = ?1 AND id <> ?2 AND source_state = 'ACTIVE'
+           AND deleted_at IS NULL
                AND rail_only = 0
          ORDER BY position, id",
     )?;
@@ -3035,17 +3175,25 @@ pub fn import_events(
         // el evento se movió, y por lo tanto si hay que volver a ubicarlo en la
         // columna (ver `place_by_time`). Después del UPDATE ya no se pueden
         // consultar.
-        let existing: Option<(i64, Option<String>, Option<String>, bool)> = conn
+        let existing: Option<(i64, Option<String>, Option<String>, bool, bool)> = conn
             .query_row(
-                "SELECT id, scheduled_date, scheduled_time, rail_only FROM tasks
+                "SELECT id, scheduled_date, scheduled_time, rail_only,
+                        deleted_at IS NOT NULL FROM tasks
                  WHERE feed_id = ?1 AND calendar_uid = ?2",
                 params![feed_id, ev.uid],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
             )
             .optional()?;
 
         match existing {
-            Some((id, antes_date, antes_hour, rail_only)) => {
+            // **Una reunión que mandaste al basurero no se resucita** (#11): la
+            // sync no la toca mientras esté ahí —sería volver a ponerte en la
+            // semana algo que sacaste a propósito—. El `UNIQUE(feed_id,
+            // calendar_uid)` impide además que se importe de nuevo al lado. Si a
+            // los 30 días se purga y el evento sigue en el feed, vuelve como
+            // nueva: entonces sí es el calendario el que manda.
+            Some((_, _, _, _, true)) => {}
+            Some((id, antes_date, antes_hour, rail_only, false)) => {
                 conn.execute(
                     "UPDATE tasks
                      SET title = ?2, scheduled_date = ?3, scheduled_time = ?4,
@@ -6889,5 +7037,200 @@ mod tests {
         assert_eq!(rollup_day(&r, "2026-08-11").span_seconds, 9 * H);
         assert_eq!(rollup_day(&r, "2026-08-12").span_seconds, 0);
     }
-}
 
+    // -----------------------------------------------------------------------
+    // Basurero (#11)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn mandar_al_basurero_la_saca_de_todas_las_vistas() {
+        let c = conn();
+        let cat = create_category(&c, None, "Trabajo", "#fff").unwrap();
+        let mut nt = new_task("del día", Some("2026-08-10"));
+        nt.category_id = Some(cat.id);
+        let dia = create_task(&c, nt).unwrap();
+        let back = create_task(&c, new_task("del backlog", None)).unwrap();
+
+        assert!(trash_task(&c, dia.id).unwrap());
+        assert!(trash_task(&c, back.id).unwrap());
+
+        assert!(list_tasks_for_date(&c, "2026-08-10").unwrap().is_empty());
+        assert!(list_tasks_for_range(&c, "2026-08-10", "2026-08-16").unwrap().is_empty());
+        assert!(list_backlog(&c).unwrap().is_empty());
+        assert!(focus_queue(&c, "2026-08-10", "09:00").unwrap().is_empty());
+        assert_eq!(last_day_with_tasks(&c, "2026-08-11").unwrap(), None);
+        assert!(category_usage(&c).unwrap().is_empty(), "no cuenta como uso del channel");
+        assert_eq!(weekly_rollup(&c, "2026-08-10").unwrap().planned_minutes, 0);
+        // Sigue en la base, pero solo para el basurero y para quien la lea por id.
+        assert!(get_task(&c, dia.id).unwrap().is_some());
+        assert!(get_live_task(&c, dia.id).unwrap().is_none());
+        assert_eq!(list_trash(&c).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn mandar_al_basurero_dos_veces_no_cambia_su_fecha() {
+        let c = conn();
+        let t = create_task(&c, new_task("a", Some("2026-08-10"))).unwrap();
+        assert!(trash_task_at(&c, t.id, "2026-08-10T10:00:00+00:00").unwrap());
+        assert!(!trash_task_at(&c, t.id, "2026-08-20T10:00:00+00:00").unwrap());
+        assert_eq!(list_trash(&c).unwrap()[0].deleted_at, "2026-08-10T10:00:00+00:00");
+        assert!(!trash_task(&c, 999).unwrap(), "una que no existe no se manda");
+    }
+
+    #[test]
+    fn el_basurero_detiene_su_timer_y_conserva_el_tramo() {
+        let c = conn();
+        let a = create_task(&c, new_task("a", Some("2026-08-10"))).unwrap();
+        let b = create_task(&c, new_task("b", Some("2026-08-10"))).unwrap();
+        start_timer(&c, a.id, false).unwrap();
+        start_timer(&c, b.id, true).unwrap();
+
+        trash_task(&c, a.id).unwrap();
+
+        let activos: Vec<i64> = get_active_timers(&c).unwrap().iter().map(|t| t.task_id).collect();
+        assert_eq!(activos, vec![b.id], "el otro timer sigue corriendo");
+        let tramos = list_time_entries(&c, a.id).unwrap();
+        assert_eq!(tramos.len(), 1);
+        assert!(tramos[0].ended_at.is_some(), "el tramo quedó cerrado, no borrado");
+    }
+
+    #[test]
+    fn su_tiempo_no_cuenta_mientras_esta_en_el_basurero_y_vuelve_al_restaurar() {
+        let c = conn();
+        let t = create_task(&c, new_task("revisar", Some("2026-08-10"))).unwrap();
+        let start = local_at(&c, "2026-08-10", 10, 0);
+        let end = local_at(&c, "2026-08-10", 11, 0);
+        log_time_entry(&c, t.id, start, end).unwrap();
+        c.execute(
+            "UPDATE tasks SET status = 'DONE', completed_at = ?2 WHERE id = ?1",
+            params![t.id, end.to_rfc3339()],
+        )
+        .unwrap();
+        let antes = weekly_rollup(&c, "2026-08-10").unwrap();
+        assert_eq!(antes.total_seconds, 3600);
+        assert_eq!(antes.completed_tasks.len(), 1);
+
+        trash_task(&c, t.id).unwrap();
+
+        let r = weekly_rollup(&c, "2026-08-10").unwrap();
+        assert_eq!(r.total_seconds, 0, "el rollup no cuenta su tiempo");
+        assert!(r.completed_tasks.is_empty(), "ni la cuenta como completada");
+        assert!(day_work(&c, "2026-08-10").unwrap().is_empty(), "ni el rail del día");
+        let log = daily_log(&c, "2026-08-10", 1).unwrap();
+        assert_eq!(log[0].worked_seconds, 0);
+        assert!(log[0].done.is_empty());
+
+        let vuelta = restore_task(&c, t.id).unwrap().unwrap();
+        assert_eq!(vuelta.scheduled_date.as_deref(), Some("2026-08-10"), "vuelve a su día");
+        assert_eq!(vuelta.actual_seconds, 3600, "con su tiempo");
+        assert_eq!(weekly_rollup(&c, "2026-08-10").unwrap().total_seconds, 3600);
+        assert!(list_trash(&c).unwrap().is_empty());
+        assert!(restore_task(&c, t.id).unwrap().is_none(), "ya no está en el basurero");
+    }
+
+    #[test]
+    fn no_se_registra_tiempo_en_una_tarea_del_basurero() {
+        let c = conn();
+        let t = create_task(&c, new_task("a", Some("2026-08-10"))).unwrap();
+        trash_task(&c, t.id).unwrap();
+        let start = local_at(&c, "2026-08-10", 10, 0);
+        let end = local_at(&c, "2026-08-10", 11, 0);
+        assert!(log_time_entry(&c, t.id, start, end).is_err());
+        assert!(matches!(
+            set_actual_seconds_unless_running(&c, t.id, 600).unwrap(),
+            SetTotal::NotActive
+        ));
+    }
+
+    #[test]
+    fn reordenar_cuenta_el_indice_sin_lo_del_basurero() {
+        let c = conn();
+        let a = create_task(&c, new_task("a", Some("2026-08-10"))).unwrap();
+        create_task(&c, new_task("b", Some("2026-08-10"))).unwrap();
+        let x = create_task(&c, new_task("x", Some("2026-08-11"))).unwrap();
+        trash_task(&c, a.id).unwrap();
+
+        // El índice de drop se cuenta contra lo visible: 1 es "después de b".
+        move_task(&c, x.id, Some("2026-08-10"), 1).unwrap();
+        let orden: Vec<_> = list_tasks_for_date(&c, "2026-08-10")
+            .unwrap()
+            .into_iter()
+            .map(|t| t.title)
+            .collect();
+        assert_eq!(orden, vec!["b", "x"]);
+
+        restore_task(&c, a.id).unwrap();
+        assert_eq!(list_tasks_for_date(&c, "2026-08-10").unwrap().len(), 3);
+    }
+
+    #[test]
+    fn la_degradacion_no_baja_al_backlog_lo_del_basurero() {
+        let c = conn();
+        let t = create_task(&c, new_task("vieja", Some("2026-08-10"))).unwrap();
+        trash_task(&c, t.id).unwrap();
+        assert_eq!(demote_pending(&c, "2026-08-12").unwrap(), 0);
+        restore_task(&c, t.id).unwrap();
+        assert_eq!(
+            get_task(&c, t.id).unwrap().unwrap().scheduled_date.as_deref(),
+            Some("2026-08-10"),
+            "restaurar no la mueve: la degradación la bajará como a cualquiera"
+        );
+    }
+
+    #[test]
+    fn la_purga_elimina_a_los_30_dias_y_no_antes() {
+        let c = conn();
+        let t = create_task(&c, new_task("a", Some("2026-08-10"))).unwrap();
+        log_time_entry(
+            &c,
+            t.id,
+            local_at(&c, "2026-08-10", 10, 0),
+            local_at(&c, "2026-08-10", 11, 0),
+        )
+        .unwrap();
+        trash_task_at(&c, t.id, "2026-08-10T12:00:00+00:00").unwrap();
+        let en = |s: &str| DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc);
+
+        assert_eq!(list_trash(&c).unwrap()[0].purge_at, "2026-09-09T12:00:00+00:00");
+        assert_eq!(purge_trash_at(&c, en("2026-09-08T12:00:00+00:00")).unwrap(), 0, "día 29");
+        assert_eq!(purge_trash_at(&c, en("2026-09-09T11:59:59+00:00")).unwrap(), 0);
+        assert_eq!(purge_trash_at(&c, en("2026-09-09T12:00:00+00:00")).unwrap(), 1, "día 30");
+        assert!(get_task(&c, t.id).unwrap().is_none());
+        assert!(list_time_entries(&c, t.id).unwrap().is_empty(), "el CASCADE se lleva sus tramos");
+    }
+
+    #[test]
+    fn la_purga_no_toca_lo_que_no_esta_en_el_basurero() {
+        let c = conn();
+        let t = create_task(&c, new_task("viva", Some("2020-01-01"))).unwrap();
+        assert_eq!(purge_trash(&c).unwrap(), 0);
+        assert!(get_task(&c, t.id).unwrap().is_some());
+    }
+
+    #[test]
+    fn la_sincronizacion_no_resucita_una_reunion_del_basurero() {
+        let c = conn();
+        let f = feed(&c);
+        import_events(&c, f.id, &[event("a@x", "Daily", "2099-08-10")], None).unwrap();
+        let id = list_tasks_for_date(&c, "2099-08-10").unwrap()[0].id;
+        trash_task(&c, id).unwrap();
+
+        // El evento sigue en el feed, y hasta cambió de título.
+        let seen =
+            import_events(&c, f.id, &[event("a@x", "Daily movida", "2099-08-10")], None).unwrap();
+        assert_eq!(seen, vec!["a@x".to_string()]);
+        assert!(list_tasks_for_date(&c, "2099-08-10").unwrap().is_empty(), "no vuelve");
+        let trash = list_trash(&c).unwrap();
+        assert_eq!(trash.len(), 1, "ni se importa otra al lado");
+        assert_eq!(trash[0].task.title, "Daily", "la sync no la toca");
+
+        // Si el evento desaparece del feed, la conciliación tampoco la borra.
+        reconcile_feed(&c, f.id, &[], "2026-08-01").unwrap();
+        assert_eq!(list_trash(&c).unwrap().len(), 1);
+
+        // Restaurada, vuelve a ser del calendario como cualquier otra.
+        restore_task(&c, id).unwrap();
+        import_events(&c, f.id, &[event("a@x", "Daily movida", "2099-08-10")], None).unwrap();
+        assert_eq!(list_tasks_for_date(&c, "2099-08-10").unwrap()[0].title, "Daily movida");
+    }
+}

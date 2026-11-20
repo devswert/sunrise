@@ -544,6 +544,21 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
             ON time_entries(task_id) WHERE ended_at IS NULL;
         "#,
     ),
+    (
+        19,
+        r#"
+        -- Basurero (#11): borrar una tarea deja de ser un DELETE. Se sella la
+        -- hora en que entró al basurero, ninguna vista ni agregado la ve, y a los
+        -- 30 días `purge_trash` la elimina de verdad (el CASCADE se lleva sus
+        -- tramos). Mientras tanto se puede restaurar con todo su tiempo.
+        --
+        -- **Columna propia y no un `source_state`**, por lo mismo que `rail_only`:
+        -- `ORPHANED` ya significó dos cosas a la vez y desenredarlo costó la
+        -- migración 6. Y es dato nuestro: la sincronización del calendario no lo
+        -- pisa.
+        ALTER TABLE tasks ADD COLUMN deleted_at TEXT;
+        "#,
+    ),
 ];
 
 /// Aplica todas las migraciones pendientes. Idempotente.

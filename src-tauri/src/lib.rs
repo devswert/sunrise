@@ -94,6 +94,11 @@ pub fn run() {
 
             let conn = db::open(&db_path)?;
             db::migrate(&conn)?;
+            // Al abrir, lo que venció en el basurero (#11) se elimina. El otro
+            // momento es la degradación diaria (`commands::demote_pending`).
+            if let Err(err) = repo::purge_trash(&conn) {
+                eprintln!("[sunrise] no se pudo purgar el basurero: {err}");
+            }
             app.manage(Db(Mutex::new(conn)));
             app.manage(bell::Armed::new());
 
@@ -180,7 +185,9 @@ pub fn run() {
             // tasks
             commands::create_task,
             commands::update_task,
-            commands::delete_task,
+            commands::trash_task,
+            commands::restore_task,
+            commands::list_trash,
             commands::set_task_status,
             commands::set_task_rail_only,
             commands::move_task,
