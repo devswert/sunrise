@@ -341,6 +341,10 @@ falle:
   de `docs/specs/tiempo.md` §4.15.
 - **El rollup NO filtra `source_state = 'ACTIVE'`** para el tiempo: es la única
   excepción a I7.
+- **Pero sí filtra el basurero** (I12, #11): el tiempo de una tarea con
+  `deleted_at` no cuenta en `work_by_day`, `day_work` ni las completadas, y vuelve
+  al restaurarla. Mandarla al basurero detiene su timer (como completarla), y no
+  recibe tiempo nuevo.
 - **`work_by_day` tiene DOS consultas y todo campo nuevo va en las dos.** La de
   `time_entries` y la de la Regla 3 (reuniones sin entradas). El corte
   objetivos/resto de la review (`objective_seconds`, §4.29) se pagó justo ahí: con

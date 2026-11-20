@@ -20,13 +20,31 @@ Vuelve al [índice de SPECS](../SPECS.md).
   `>= position`, que se equivoca en uno al reordenar dentro del mismo día: la
   tarea que se mueve deja libre su lugar. Lo mismo hace `mockDb.moveTask`.
   El índice se cuenta contra la lista **visible**: la renumeración incluye a las
-  `ORPHANED` —si no, dos filas quedarían con la misma posición— pero las saltea
+  `ORPHANED` y a lo del basurero —si no, dos filas quedarían con la misma posición— pero las saltea
   al ubicar la tarea. La salvedad es el backlog, que `list_backlog` ordena por
   `category_id, position, id`: ahí el índice de la vista nunca coincidió con el
   orden de `position`, ni antes ni ahora.
 - **Estado** (`set_task_status`): sella/limpia `completed_at`. Ver Invariante I5.
-- **Borrar** (`delete_task`): borrado real. `ON DELETE CASCADE` limpia
-  `task_events` y `time_entries`.
+- **Borrar manda al basurero** (`trash_task`, #11). Sella `tasks.deleted_at`
+  (migración 19) y desde ahí ninguna vista ni agregado la ve (I12); si tenía el
+  timer corriendo, lo detiene primero y el tramo se conserva. El modal pide
+  confirmación ("Queda 30 días en el basurero") y al eliminar muestra un aviso con
+  **Deshacer** (`Toast`, en el store porque el modal se cierra en el mismo gesto).
+  - **Restaurar** (`restore_task`) la devuelve a su día —o al backlog— tal como
+    estaba, con su tiempo. **No la mueve** aunque su día ya haya pasado: la
+    degradación del día siguiente la baja como a cualquier otra.
+  - **Panel Trash**: cuarto ítem de la tira de la semana, después de Agenda y
+    Backlog, fuera del `DndContext` (no recibe drops). Lista lo más reciente primero
+    con su día y el día en que se elimina, y restaura. **No hay "eliminar
+    definitivamente" ni "vaciar"**: sería el único gesto irreversible de la app.
+  - **Purga** (`purge_trash`): a los 30 días el `DELETE` real, cuyo `ON DELETE
+    CASCADE` se lleva `task_events` y `time_entries`. Corre al abrir la app
+    (`setup` de `lib.rs`) y en la degradación diaria (`commands::demote_pending`).
+  - **Calendario**: `import_events` no toca una reunión del basurero (no la resucita
+    ni importa otra al lado, por el `UNIQUE(feed_id, calendar_uid)`) y
+    `reconcile_feed` la ignora. Purgada, si el evento sigue en el feed vuelve como
+    nueva. Las futuras sin trabajar que el reconciler elimina por su cuenta siguen
+    saliendo directo: el calendario las vuelve a crear.
 
 ### 4.2 Degradación diaria al backlog
 

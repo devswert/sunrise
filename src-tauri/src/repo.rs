@@ -418,23 +418,22 @@ fn move_task_as(
         let mapa = |r: &rusqlite::Row| -> rusqlite::Result<(i64, bool)> {
             Ok((
                 r.get(0)?,
-                r.get::<_, String>(1)? == "ACTIVE" && !r.get::<_, bool>(2)?,
+                // Lo del basurero (#11) tampoco se ve: se renumera, pero no cuenta.
+                r.get::<_, String>(1)? == "ACTIVE" && !r.get::<_, bool>(2)? && !r.get::<_, bool>(3)?,
             ))
         };
         match date {
             Some(d) => conn
                 .prepare(
-                    "SELECT id, source_state, rail_only FROM tasks
-                     WHERE scheduled_date = ?1 AND id <> ?2 AND deleted_at IS NULL
-                     ORDER BY position, id",
+                    "SELECT id, source_state, rail_only, deleted_at IS NOT NULL FROM tasks
+                     WHERE scheduled_date = ?1 AND id <> ?2 ORDER BY position, id",
                 )?
                 .query_map(params![d, id], mapa)?
                 .collect::<Result<Vec<_>>>()?,
             None => conn
                 .prepare(
-                    "SELECT id, source_state, rail_only FROM tasks
-                     WHERE scheduled_date IS NULL AND id <> ?1 AND deleted_at IS NULL
-                     ORDER BY position, id",
+                    "SELECT id, source_state, rail_only, deleted_at IS NOT NULL FROM tasks
+                     WHERE scheduled_date IS NULL AND id <> ?1 ORDER BY position, id",
                 )?
                 .query_map(params![id], mapa)?
                 .collect::<Result<Vec<_>>>()?,

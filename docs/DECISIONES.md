@@ -1237,9 +1237,38 @@ servidor sobre la misma base.
 
 **Lo que el MCP todavía no hace.** Completar tareas: desde #23 el taxímetro
 escucha el aviso de `external.rs`, así que lo que la frenaba ya no está; falta
-pedirla (y probar que `refresh` avance la tarea en pausa, `last`). Borrar
-no se hace directo: va a pasar por un basurero de 30 días con restauración, para
-que un error del agente no sea irreversible (issue #11).
+pedirla (y probar que `refresh` avance la tarea en pausa, `last`).
+
+**Borrar se abrió con el basurero (#11), no antes.** Un `delete_task` directo le
+daba al agente el único gesto irreversible de la app, y un error de modelo —el id
+equivocado de un listado largo— no tenía vuelta. Con el basurero, `delete_task` es
+destructiva solo en la anotación: se restaura con `restore_task` durante 30 días, y
+el mismo agente puede deshacer su error (por eso `list_trash` y `restore_task`
+también son tools, aunque la issue pedía solo borrar).
+
+**`deleted_at` es columna propia, no un tercer `source_state`.** Es la misma
+lección del `rail_only`: `ORPHANED` ya significó "no la planifiques" y "no la
+muestres" a la vez y desenredarlo costó la migración 6. Y no calzaba: el rollup
+**quiere** las `ORPHANED` (I7) y **no quiere** lo del basurero (I12), así que un
+mismo filtro no podía servir a las dos. El precio es que cada consulta lleva un
+filtro más; lo cubre un test por listado en `repo.rs`, y en el mock la tarea sale
+del arreglo, que no deja nada que olvidar.
+
+**El tiempo de una tarea en el basurero deja de contar, incluso en semanas
+cerradas.** Se discutió: mandar al basurero una tarea completada el mes pasado le
+cambia los números a esa Weekly review. Se aceptó porque es lo que ya pasaba con el
+borrado real (el CASCADE se llevaba los tramos), con la diferencia de que ahora
+restaurar los devuelve.
+
+**Sin "eliminar definitivamente" ni "vaciar".** Sería el único botón irreversible
+de la app, para ganar espacio en una base que no lo necesita; los 30 días lo
+hacen solos. La purga corre al abrir y con la degradación diaria, no en un
+vigilante propio: un día de atraso en eliminar algo invisible no le cambia nada a
+nadie.
+
+**La sincronización no resucita una reunión del basurero**, pero las futuras sin
+trabajar que el reconciler elimina por su cuenta siguen saliendo directo: esas las
+decidió el calendario, y si vuelven, el calendario las vuelve a crear.
 
 ## 12. Lo que falta vive en GitHub, no en el repo
 
