@@ -88,8 +88,11 @@ export function AddFeedModal({
         pollMinutes: Math.max(POLL_MINIMO, Number.parseInt(pollMinutes, 10) || POLL_DEFAULT),
       });
       onClose();
-    } finally {
+    } catch (e) {
+      // Solo al fallar vuelve el botón: si salió bien, el modal ya se está yendo
+      // y el "Guardando…" se queda quieto durante la salida en vez de parpadear.
       setGuardando(false);
+      throw e;
     }
   }
 

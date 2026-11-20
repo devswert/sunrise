@@ -955,9 +955,9 @@ caminos. **Esperar la salida para navegar** contradecía lo pedido —la app tie
 cambiar de vista al instante— y además deja una ventana de 240 ms en la que la
 tecla siguiente cae en la vista vieja. **Subir el detalle a un host global** en
 `App` habría movido los siete lugares que lo abren, cada uno con su `onChanged` y
-sus listas, por una animación. **Una copia automática en cada desmontaje** se
-disparaba también en el desmontaje simulado de `StrictMode` y en la limpieza de
-RTL, que deja la copia en el `body` del test siguiente. Quedó explícito: quien
+sus listas, por una animación. **Una copia automática en cada desmontaje** no se
+construyó: se dispararía también en el desmontaje simulado de `StrictMode` y en la
+limpieza de RTL, y la copia quedaría en el `body` del test siguiente. Quedó explícito: quien
 cierra navegando llama a `exitAbove()` antes de `navigate`, y la copia —DOM suelto,
 `inert` y `aria-hidden`— se borra sola. En los tests, `src/test/setup.ts` barre
 las que queden al terminar cada uno: un test que da play termina antes de los
