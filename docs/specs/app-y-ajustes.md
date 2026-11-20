@@ -18,9 +18,13 @@ una y se ve otra. Las dos salen de la misma lista, `settings/secciones.ts`, que 
 también de donde sale el icono de cada una (§7) — y desde Mej.1 lo vigila un test
 (§8), porque hasta entonces era una regla escrita sin nada que la sostuviera.
 
-- Capacidad diaria: autosave al salir del foco, acepta `8h`/`7h30`/`480`.
+- **No hay "Capacidad diaria"** (#8): el número que se define es la jornada. La
+  capacidad de cada día es la jornada menos sus eventos ignorados (§4.3,
+  "Contador de capacidad"). La clave `daily_capacity_minutes` sigue sembrada en
+  la base y **no se lee**; no hubo migración.
 - **Jornada** (`work_start`/`work_end`): dos horas en formato 24 h, autosave al
-  salir del foco. Es lo que dibuja la grilla del rail (§4.13). El formulario
+  salir del foco. Es lo que dibuja la grilla del rail (§4.13) y de donde sale la
+  capacidad de cada día. El formulario
   **valida al escribir** —hora imposible o rango invertido se rechazan y se
   avisan— aunque `workHours()` ya caiga al default: ese fallback protege la
   lectura de la base, pero si el campo se tragara un `25:00` en silencio, el rail
@@ -53,8 +57,7 @@ también de donde sale el icono de cada una (§7) — y desde Mej.1 lo vigila un
 Los ajustes viven en la tabla `settings` (TEXT/TEXT) y se leen vía
 `src/lib/settings.ts`: `useSettingsStore` los carga desde `Shell` y los relee con
 cada invalidación, así un cambio en una ventana llega a la otra.
-**Toda lectura pasa por un parser con fallback** (`dailyCapacityMinutes`,
-`capacityWarnRatio`, `workHours`, `planMark`, `collapsedWeekdays`, `noticeSound`,
+**Toda lectura pasa por un parser con fallback** (`capacityWarnRatio`, `workHours`, `planMark`, `collapsedWeekdays`, `noticeSound`,
 `bellSound`, `fontFamily`): la clave puede faltar, venir vacía o traer basura editada a
 mano, y un `NaN` suelto dejaría el semáforo en OK para siempre sin error visible,
 porque toda comparación con `NaN` es false.

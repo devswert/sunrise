@@ -1,9 +1,11 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { create } from "zustand";
 import { api } from "./ipc";
 import { FontChoice, GroupBy, SUNRISE_BELL } from "./enums";
 import { useAppStore } from "./store";
 import { setZone } from "./date";
+import { dayCapacity } from "./capacity";
+import type { Task } from "./types";
 import {
   type SuggestRules,
   parseChannelRules,
@@ -21,7 +23,8 @@ import {
  */
 
 export const SettingKey = {
-  DAILY_CAPACITY_MINUTES: "daily_capacity_minutes",
+  // `daily_capacity_minutes` ya no se lee (#8): la capacidad sale de la jornada.
+  // La fila sigue en la base, sin migración, y no hay nada que la escriba.
   CAPACITY_WARN_RATIO: "capacity_warn_ratio",
   BELL_SOUND: "bell_sound",
   WORK_START: "work_start",
@@ -88,7 +91,6 @@ export type SettingKey = (typeof SettingKey)[keyof typeof SettingKey];
  * protege un respaldo es "ayer andaba", no tener un mes de historia.
  */
 export const SETTING_DEFAULTS = {
-  dailyCapacityMinutes: 480, // 8h
   capacityWarnRatio: 0.85,
   workStart: "09:00",
   workEnd: "18:00",
@@ -143,11 +145,6 @@ function num(values: SettingsMap, key: string, fallback: number): number {
   if (raw == null || raw.trim() === "") return fallback;
   const n = Number(raw);
   return Number.isFinite(n) ? n : fallback;
-}
-
-/** Minutos de capacidad diaria. `<= 0` es válido: significa "sin objetivo". */
-export function dailyCapacityMinutes(values: SettingsMap): number {
-  return num(values, SettingKey.DAILY_CAPACITY_MINUTES, SETTING_DEFAULTS.dailyCapacityMinutes);
 }
 
 /**
@@ -466,13 +463,25 @@ export function useGroupBy(key: SettingKey): [GroupBy, (next: GroupBy) => void] 
   return [groupByLevel(values, key), (next) => void set(key, next)];
 }
 
-/** Atajo para las vistas: capacidad y umbral ya interpretados. */
-export function useCapacitySettings(): { target: number; warnRatio: number } {
+/**
+ * Atajo para las vistas: el umbral y la capacidad de un día ya interpretados.
+ *
+ * `capacityFor` recibe la **agenda** del día (`agendaByDate`, con los ignorados)
+ * y no un número fijo: cada día mide contra su propia jornada menos sus eventos
+ * ignorados (`dayCapacity`, #8). Sale de la jornada guardada, así que un cambio
+ * en Configs —de esta ventana o de la otra— repinta todas las columnas.
+ */
+export function useCapacitySettings(): {
+  warnRatio: number;
+  capacityFor: (agenda: Task[]) => number;
+} {
   const values = useSettingsStore((s) => s.values);
-  return {
-    target: dailyCapacityMinutes(values),
-    warnRatio: capacityWarnRatio(values),
-  };
+  const { start, end } = workHours(values);
+  const capacityFor = useCallback(
+    (agenda: Task[]) => dayCapacity(start, end, agenda),
+    [start, end],
+  );
+  return { warnRatio: capacityWarnRatio(values), capacityFor };
 }
 
 /**

@@ -136,8 +136,13 @@ cual quedó. Quien planifica decide si la tarea va a hoy, al backlog o se queda.
 - **Las tareas sin estimar se cuentan y se avisan**, no se rellenan con un
   número: el medidor iría corto y nadie sabría por qué. Es la misma regla que el
   rail con `DURACION_POR_DEFECTO`.
+- **El objetivo es la capacidad de hoy** (#8): la jornada menos los eventos
+  ignorados de hoy (`dayCapacity`, la misma de la semana), y no un número fijo.
+  El pie dice `X de Y` con ese `Y`, sin desglose, y marcar o desmarcar "Ignorar
+  como tarea" lo cambia sin recargar (la agenda se relee con el aviso).
 - **Sin objetivo de capacidad (`target <= 0`) la holgura es `null`**, que no es
   lo mismo que "te sobra 0" — el mensaje lo dice en vez de mostrar un número.
+  Desde #8 eso pasa cuando los ignorados cubren la jornada entera.
 - **La navegación queda pegada abajo** (`position: sticky`) mientras la columna
   de pasos scrollea: con una lista larga, "Siguiente" no puede estar al final del
   scroll.

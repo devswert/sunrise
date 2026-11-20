@@ -712,6 +712,38 @@ columna no se vuelva a apagar entera.
 tareas no puede ir apagando la alarma de un día sobrecargado. Y las tareas sin
 estimar se cuentan y se avisan en vez de rellenarse con un número.
 
+**La capacidad de un día es la jornada menos sus eventos ignorados (#8), y no un
+número fijo.** Los 480 minutos de Configs no seguían ni a la jornada ni a lo que de
+verdad no es trabajo: el almuerzo del calendario se mueve y dura distinto cada día,
+y un objetivo fijo lo trataba igual el día que duraba media hora que el que duraba
+una y media. Ahora cada columna mide contra `(work_end − work_start)` menos la
+**unión** de sus ignorados recortados a la jornada, y "Capacidad diaria" salió de
+Configs: el número que se define es la jornada. La clave quedó en la base sin
+leer —sin migración—, porque borrarla no gana nada y una migración es para
+siempre.
+
+Lo que resta es **la marca de ignorar, no una marca de almuerzo**. Una marca
+propia obligaría a decidir qué es "almuerzo" y a pedir un gesto más por evento, y
+la pregunta de fondo es la misma que ya contesta la de ignorar: este rato no es
+trabajo. Además la de ignorar ya es de **serie**, que es lo que hace que el
+almuerzo recurrente se marque una vez y cada ocurrencia reste con su hora real.
+El precio es que cualquier ignorado resta —un trámite, un bloque personal—, y está
+bien: si no es trabajo, tampoco es capacidad.
+
+Tres precisiones que se decidieron al implementarla. **Se calcula al mirar y no se
+guarda**, así que cambiar la jornada repinta también los días pasados: es una
+lectura del plan, no un registro. **Un ignorado sin duración no resta**, aunque el
+rail lo dibuje con media hora (`DURACION_POR_DEFECTO`): ahí es un alto legible,
+acá sería restar un número que nadie puso. Y **una jornada ilegible da 0** en la
+función, pero la vista recibe la de `workHours()`, que ya cae al default con
+basura: si no, una fila editada a mano dejaría el rail en 09–18 y la capacidad en
+cero, dos lecturas del mismo ajuste que se contradicen.
+
+**La columna dice contra qué se pinta en el `title` del badge** ("2:00 de 8:00"),
+no a la vista. Con un objetivo fijo el color bastaba; con uno que cambia por día,
+el mismo color en dos columnas puede querer decir cosas distintas y no había dónde
+leerlo. Es el mismo "X de Y" del pie del daily planning, sin el desglose.
+
 **Escribir no es cerrar.** El autosave de la bitácora no toca el sello del día;
 solo el botón sella. Si no, teclear una letra daría el día por terminado y no
 habría forma de dejar una nota a medias. Y `closed_at` no se re-sella: "a qué hora

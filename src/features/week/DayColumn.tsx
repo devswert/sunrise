@@ -13,6 +13,7 @@ interface DayColumnProps {
   tasks: Task[];
   categoryMap: Map<number, Category>;
   categories: Category[];
+  /** La capacidad de **este** día en minutos (`dayCapacity`): cada columna la suya. */
   capacityTarget: number;
   capacityWarnRatio: number;
   onToggle: (task: Task) => void;
@@ -217,8 +218,18 @@ export function DayColumn({
           <Plus size={14} aria-hidden />
           <span className="add-task__label">Agregar tarea</span>
         </button>
+        {/* Contra qué se pinta va en el `title` y no a la vista: la capacidad
+         * cambia de un día a otro (#8) y el color solo no dice de cuánto es. Es
+         * el mismo "X de Y" del pie del daily planning, sin el desglose. */}
         {plannedTotal > 0 && (
-          <span className={`day-col__cap ${LEVEL_CLASS[level]}`}>
+          <span
+            className={`day-col__cap ${LEVEL_CLASS[level]}`}
+            title={
+              capacityTarget > 0
+                ? `${formatMinutes(plannedTotal)} de ${formatMinutes(capacityTarget)}`
+                : undefined
+            }
+          >
             {formatMinutes(plannedTotal)}
           </span>
         )}

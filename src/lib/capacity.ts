@@ -1,4 +1,6 @@
 import { CapacityLevel } from "./enums";
+import type { Task } from "./types";
+import { minutesFromTime } from "../features/calendar/railLayout";
 
 /**
  * Semáforo del contador de capacidad diaria.
@@ -18,6 +20,65 @@ export function computeCapacityLevel(
   if (plannedMinutes > targetMinutes) return CapacityLevel.OVER;
   if (plannedMinutes >= targetMinutes * warnRatio) return CapacityLevel.WARN;
   return CapacityLevel.OK;
+}
+
+/**
+ * La capacidad de un día, en minutos: la jornada menos lo que ese día no es
+ * trabajo (#8).
+ *
+ * Lo que no es trabajo son los **eventos ignorados** (`railOnly`): la marca ya
+ * existía para sacar el almuerzo de la carga, así que la misma marca lo saca de la
+ * capacidad. Como se pone por serie, el almuerzo recurrente se marca una vez y
+ * cada ocurrencia resta con su hora y su duración reales, aunque se haya movido.
+ *
+ * - Solo resta la parte de cada evento que cae **dentro** de la jornada.
+ * - Los ignorados que se solapan restan una sola vez (la unión, no la suma).
+ * - Los de día completo no restan: no tienen hora (`scheduledTime` nulo, §4.12).
+ * - Un ignorado sin duración tampoco: no hay de dónde sacar cuánto ocupa, y
+ *   inventarle los 30 minutos con que lo dibuja el rail sería restar un número
+ *   que nadie puso.
+ * - Jornada ilegible o invertida, o cubierta entera ⇒ 0, que apaga el semáforo
+ *   igual que un objetivo de 0.
+ *
+ * La hora sale de `scheduledTime` + `estimatedMinutes`, **nunca** de
+ * `eventStart`/`eventEnd`, que están en UTC (ver `railLayout.ts`).
+ *
+ * Recibe la **agenda** del día (`agendaByDate`), no las tarjetas: las tarjetas ya
+ * vienen sin los ignorados. Se calcula al mirar y no se guarda, así que cambiar la
+ * jornada repinta también los días pasados.
+ */
+export function dayCapacity(workStart: string, workEnd: string, agenda: Task[]): number {
+  const from = minutesFromTime(workStart);
+  const to = minutesFromTime(workEnd);
+  if (from == null || to == null || to <= from) return 0;
+
+  const blocks: Array<[number, number]> = [];
+  for (const t of agenda) {
+    if (!t.railOnly || t.sourceState !== "ACTIVE") continue;
+    const start = minutesFromTime(t.scheduledTime);
+    const minutes = t.estimatedMinutes ?? 0;
+    if (start == null || minutes <= 0) continue;
+    const a = Math.max(start, from);
+    const b = Math.min(start + minutes, to);
+    if (b > a) blocks.push([a, b]);
+  }
+  blocks.sort((x, y) => x[0] - y[0]);
+
+  let ignored = 0;
+  let curA = -1;
+  let curB = -1;
+  for (const [a, b] of blocks) {
+    if (a > curB) {
+      ignored += curB - curA;
+      curA = a;
+      curB = b;
+    } else if (b > curB) {
+      curB = b;
+    }
+  }
+  ignored += curB - curA;
+
+  return Math.max(0, to - from - ignored);
 }
 
 /**

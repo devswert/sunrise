@@ -97,6 +97,19 @@ describe("SettingsView · jornada", () => {
     expect(end).toHaveClass("is-invalid");
     expect(saved().end).toBe("18:00");
   });
+
+  /**
+   * #8: el número que se define es la jornada. La capacidad de cada día sale de
+   * ella menos los eventos ignorados, así que un campo aparte sería un segundo
+   * número que nadie lee.
+   */
+  it("ya no hay campo de capacidad diaria: la jornada es el número", async () => {
+    render(<SettingsView />);
+    await screen.findByLabelText("Inicio");
+
+    expect(screen.queryByLabelText("Capacidad diaria")).not.toBeInTheDocument();
+    expect(screen.queryByText("Capacidad diaria")).not.toBeInTheDocument();
+  });
 });
 
 /**
@@ -423,8 +436,8 @@ describe("SettingsView · campos que no son prosa", () => {
     render(<SettingsView />);
     for (const campo of [
       await screen.findByDisplayValue("Thinking"),
-      screen.getByLabelText("Capacidad diaria"),
       screen.getByLabelText("Inicio"),
+      screen.getByLabelText("Fin"),
     ]) {
       expect(campo).toHaveAttribute("spellcheck", "false");
       expect(campo).toHaveAttribute("autocorrect", "off");
