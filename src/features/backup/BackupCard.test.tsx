@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BackupCard } from "./BackupCard";
 import { SettingKey, backupSettings, useSettingsStore } from "../../lib/settings";
@@ -183,7 +183,8 @@ describe("BackupCard · restaurar", () => {
     expect(dialog).toHaveTextContent(/guarda una copia de tu base actual/);
 
     await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    // `waitFor`: el modal se queda montado mientras corre su salida (`ModalPresence`).
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
   /**
@@ -202,7 +203,8 @@ describe("BackupCard · restaurar", () => {
     ).toBeInTheDocument();
 
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    // `waitFor`: el modal se queda montado mientras corre su salida (`ModalPresence`).
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
   /**
@@ -223,6 +225,7 @@ describe("BackupCard · restaurar", () => {
     expect(summary).not.toHaveTextContent(/migrado a/);
 
     await userEvent.click(screen.getByRole("button", { name: "Entendido" }));
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    // `waitFor`: el modal se queda montado mientras corre su salida (`ModalPresence`).
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 });

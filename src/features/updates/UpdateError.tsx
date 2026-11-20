@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Copy, Check, RefreshCw } from "lucide-react";
 import { Dialog } from "../../components/Dialog";
+import { ModalPresence } from "../../components/ModalPresence";
+import type { AppUpdate } from "../../lib/types";
 import { Cordillera } from "./Cordillera";
 import { useUpdateStore } from "./updateStore";
 
@@ -25,12 +27,21 @@ import { useUpdateStore } from "./updateStore";
  */
 export function UpdateError() {
   const open = useUpdateStore((s) => s.errorOpen);
-  const setOpen = useUpdateStore((s) => s.setErrorOpen);
   const error = useUpdateStore((s) => s.error);
   const available = useUpdateStore((s) => s.available);
-  const [copied, setCopied] = useState(false);
 
-  if (!open || !error) return null;
+  // El error y las versiones viajan juntos: "Volver a intentarlo" borra el error
+  // al cerrar, y `ModalPresence` necesita algo que dibujar mientras sale.
+  return (
+    <ModalPresence value={open && error ? { error, available } : null}>
+      {(d) => <UpdateErrorDialog error={d.error} available={d.available} />}
+    </ModalPresence>
+  );
+}
+
+function UpdateErrorDialog({ error, available }: { error: string; available: AppUpdate | null }) {
+  const setOpen = useUpdateStore((s) => s.setErrorOpen);
+  const [copied, setCopied] = useState(false);
 
   const detail = [
     `sunrise — no se pudo actualizar`,

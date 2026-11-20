@@ -598,8 +598,9 @@ sobre el board.
 `panel-out`, en `week.css`): un panel que entra deslizándose y desaparece de
 golpe se siente como si se hubiera roto, no como si se hubiera cerrado. Animar la
 salida obliga a que el panel siga montado mientras se va, y de eso se encarga
-`usePanelPresence`. Mientras sale lleva `pointer-events: none`: ya no está, y
-además sigue siendo un droppable dentro del `DndContext`.
+`usePresence` (`src/lib/presence.ts`, el mismo que usan los modales, §7). Mientras
+sale lleva `pointer-events: none`: ya no está, y además sigue siendo un droppable
+dentro del `DndContext`.
 
 Dos detalles que costaron una vuelta y por eso están escritos en el código:
 

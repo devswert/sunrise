@@ -313,6 +313,42 @@ cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcio
   - No lo usan `TaskModal` ni `AddFeedModal`: no son confirmaciones sino una vista y un
     formulario, con su propio teclado. Comparten `.modal-overlay` y nada más. Las
     confirmaciones **en línea** de dos pasos tampoco: no son modales.
+- **Los modales entran y salen animados, todos por el mismo camino**
+  (`src/components/ModalPresence.tsx`, #10): detalle de tarea, nueva tarea, alta de
+  calendario, objetivo y cada `Dialog`. El fondo aparece con un fundido y el modal sube
+  8px mientras aparece; al cerrar, lo mismo al revés. Es el compás de los paneles de la
+  tira —160 ms con `--theme-ease`— y un desplazamiento corto a propósito: el detalle se
+  abre decenas de veces al día y una entrada que se hace notar cansa. El fundido va solo
+  en el overlay y el modal solo se mueve: si los dos se desvanecieran, las opacidades se
+  multiplicarían y el modal llegaría tarde a su propio fondo. Los keyframes viven en
+  `components/modal-presence.css`.
+  - **Un modal no se monta con `{x && <Modal/>}`**: así desaparece de golpe, porque
+    React lo desmonta en el mismo frame y no queda nada sobre qué animar. Va dentro de
+    `<ModalPresence value={x}>{(x) => <Modal…/>}</ModalPresence>`, que lo sostiene
+    durante la salida con `usePresence` (`src/lib/presence.ts`, el mismo de los paneles:
+    240 ms, 80 de holgura sobre la animación) y **se queda con el último valor**: al
+    borrar, la tarea sale del board antes de que el modal termine de irse.
+    `TaskModal` recibe la tarea o `null` y lleva su `ModalPresence` adentro, para que
+    los siete lugares que lo abren no tengan que acordarse.
+  - **Cada apertura es una instancia nueva** (una `key` que sube al abrir): reabrir
+    mientras el anterior sale —otra tarjeta, en esos 240 ms— no hereda el título ni lo
+    escrito del que se iba.
+  - **Mientras sale no es de nadie.** El envoltorio lleva `is-leaving`
+    (`pointer-events: none`: el click pasa a la vista de abajo) e `inert`, el foco que
+    tuviera adentro se suelta con `blur` —que dispara el guardado del campo, como
+    siempre—, los pickers abiertos se cierran, y **cada modal suelta sus teclas** leyendo
+    `useModalLeaving()`: un segundo Escape no lo vuelve a cerrar, ⌘Enter no guarda dos
+    veces y el `capture` + `preventDefault` de `Dialog` no le roba Escape ni Enter a lo
+    de abajo. Un modal nuevo que cuelgue teclas de `window` tiene que hacer lo mismo.
+  - **Cerrar navegando termina la salida encima de la vista nueva.** El play del detalle
+    va a Focus y "Ir a la semana" del aviso del daily planning va a la semana: navegar
+    desmonta la vista que sostiene el modal, y ahí no hay presencia que valga. Antes de
+    navegar llaman a `exitAbove()`, que deja una **copia del DOM** del modal en `body`,
+    marcada `is-leaving`, `inert` y `aria-hidden`, que se borra sola al terminar. La app
+    cambia de vista al instante y el modal se va igual.
+  - **Con `prefers-reduced-motion` no hay animación**: el modal se desmonta en el acto
+    (`usePresence` no espera) y `exitAbove` no deja copia. Los popovers (`pop-in`)
+    también respetan la preferencia, solo en su entrada: su salida no se anima.
 - **Popovers en portal con posición fija** (`Popover.tsx`). Si no, los recorta el
   `overflow` de columnas y modales, y el ancho queda limitado por el contenedor del chip.
   **El foco inicial lo da el `Popover`, no el picker**: monta `visibility: hidden` mientras

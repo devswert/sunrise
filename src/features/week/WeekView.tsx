@@ -32,7 +32,7 @@ import { anchorAfterDayChange, scrollDelta } from "./anchor";
 import { SyncButton } from "../calendar/SyncButton";
 import { CalendarRail } from "../calendar/CalendarRail";
 import { SideDock } from "./SideDock";
-import { usePanelPresence } from "./panelPresence";
+import { usePresence } from "../../lib/presence";
 import { BacklogPanel } from "../backlog/BacklogPanel";
 import { TrashPanel } from "../trash/TrashPanel";
 import "../trash/trash.css";
@@ -52,13 +52,13 @@ export function WeekView() {
   const [panel, setPanel] = useState<"agenda" | "backlog" | "trash" | null>(null);
   /**
    * Los paneles siguen montados mientras se van, para poder animar la salida —
-   * ver `usePanelPresence`. Uno por panel y no uno compartido: al cambiar de la
+   * ver `usePresence`. Uno por panel y no uno compartido: al cambiar de la
    * agenda al backlog los dos están en pantalla durante la transición, el que se
    * va saliendo y el que llega entrando.
    */
-  const agenda = usePanelPresence(panel === "agenda");
-  const backlog = usePanelPresence(panel === "backlog");
-  const trash = usePanelPresence(panel === "trash");
+  const agenda = usePresence(panel === "agenda");
+  const backlog = usePresence(panel === "backlog");
+  const trash = usePresence(panel === "trash");
   /**
    * Dos arreglos y no uno, porque el board dejó de ser una semana:
    *
@@ -447,15 +447,13 @@ export function WeekView() {
         />
       </div>
 
-      {selectedTask && (
-        <TaskModal
-          task={selectedTask}
-          categories={board.categories}
-          objectives={board.objectives}
-          onClose={() => setSelectedId(null)}
-          onChanged={board.reload}
-        />
-      )}
+      <TaskModal
+        task={selectedTask}
+        categories={board.categories}
+        objectives={board.objectives}
+        onClose={() => setSelectedId(null)}
+        onChanged={board.reload}
+      />
     </div>
   );
 }

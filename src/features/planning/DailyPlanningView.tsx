@@ -5,6 +5,7 @@ import { DayBoard } from "../week/DayBoard";
 import { TaskCardStatic } from "../week/TaskCard";
 import { TaskModal } from "../tasks/TaskModal";
 import { Dialog } from "../../components/Dialog";
+import { ModalPresence } from "../../components/ModalPresence";
 import { reorderLocal } from "../tasks/reorder";
 import { useBoard } from "../tasks/useBoard";
 import { CalendarRail } from "../calendar/CalendarRail";
@@ -544,49 +545,57 @@ export function DailyPlanningView() {
         </div>
       </footer>
 
-      {notice && (
-        <Dialog
-          title="Ya pasaste por acá"
-          label="Ya planificaste hoy"
-          icon={<CalendarCheck size={26} />}
-          hint="Enter o Escape para revisar"
-          onClose={() => setAviso(null)}
-          onEnter={() => setAviso(null)}
-          actions={
-            <>
-              <button className="btn-ghost" onClick={() => navigate("/")}>
-                Ir a la semana
-              </button>
-              <button className="btn-primary" onClick={() => setAviso(null)} autoFocus>
-                <ArrowRight size={14} aria-hidden /> Revisar igual
-              </button>
-            </>
-          }
-        >
-          <p className="dialog__body">
-            {notice.time
-              ? `Hoy a las ${notice.time} cerraste la planificación.`
-              : "Hoy ya cerraste la planificación (la marca no dice a qué hora)."}{" "}
-            Puedes revisarla igual —nada se deshace—, pero si venías de paso, la semana te espera.
-          </p>
-          {/* El desmentido va pegado a la frase que hace la afirmación, y no en la
-           * fila de botones: corrige el texto en vez de ofrecer una salida más, y
-           * un tercer botón ahí competiría con las dos decisiones de verdad. */}
-          <button className="dialog__deny" onClick={() => void desmentir()}>
-            Volver a planificar hoy
-          </button>
-        </Dialog>
-      )}
+      <ModalPresence value={notice}>
+        {(mark, { exitAbove }) => (
+          <Dialog
+            title="Ya pasaste por acá"
+            label="Ya planificaste hoy"
+            icon={<CalendarCheck size={26} />}
+            hint="Enter o Escape para revisar"
+            onClose={() => setAviso(null)}
+            onEnter={() => setAviso(null)}
+            actions={
+              <>
+                {/* Navegar desmonta esta vista con el aviso adentro: la salida la
+                 * termina una copia encima de la semana (`exitAbove`). */}
+                <button
+                  className="btn-ghost"
+                  onClick={() => {
+                    exitAbove();
+                    navigate("/");
+                  }}
+                >
+                  Ir a la semana
+                </button>
+                <button className="btn-primary" onClick={() => setAviso(null)} autoFocus>
+                  <ArrowRight size={14} aria-hidden /> Revisar igual
+                </button>
+              </>
+            }
+          >
+            <p className="dialog__body">
+              {mark.time
+                ? `Hoy a las ${mark.time} cerraste la planificación.`
+                : "Hoy ya cerraste la planificación (la marca no dice a qué hora)."}{" "}
+              Puedes revisarla igual —nada se deshace—, pero si venías de paso, la semana te espera.
+            </p>
+            {/* El desmentido va pegado a la frase que hace la afirmación, y no en la
+             * fila de botones: corrige el texto en vez de ofrecer una salida más, y
+             * un tercer botón ahí competiría con las dos decisiones de verdad. */}
+            <button className="dialog__deny" onClick={() => void desmentir()}>
+              Volver a planificar hoy
+            </button>
+          </Dialog>
+        )}
+      </ModalPresence>
 
-      {selectedTask && (
-        <TaskModal
-          task={selectedTask}
-          categories={board.categories}
-          objectives={board.objectives}
-          onClose={() => setSelectedId(null)}
-          onChanged={board.reload}
-        />
-      )}
+      <TaskModal
+        task={selectedTask}
+        categories={board.categories}
+        objectives={board.objectives}
+        onClose={() => setSelectedId(null)}
+        onChanged={board.reload}
+      />
     </div>
   );
 }

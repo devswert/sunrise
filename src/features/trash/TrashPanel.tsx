@@ -7,7 +7,7 @@ import type { TrashedTask } from "../../lib/types";
 
 interface Props {
   onClose: () => void;
-  /** Se está cerrando: dispara la animación de salida (ver `usePanelPresence`). */
+  /** Se está cerrando: dispara la animación de salida (ver `usePresence`). */
   leaving?: boolean;
 }
 

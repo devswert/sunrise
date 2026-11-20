@@ -279,7 +279,8 @@ describe("DailyPlanningView", () => {
     const notice = await screen.findByRole("alertdialog", { name: "Ya planificaste hoy" });
     await userEvent.click(within(notice).getByRole("button", { name: /Revisar igual/ }));
 
-    expect(screen.queryByRole("alertdialog")).toBeNull();
+    // `waitFor`: el modal se queda montado mientras corre su salida (`ModalPresence`).
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(screen.queryByText("La semana")).toBeNull();
   });
 
@@ -311,7 +312,8 @@ describe("DailyPlanningView", () => {
     const notice = await screen.findByRole("alertdialog");
     await userEvent.click(within(notice).getByRole("button", { name: /Volver a planificar hoy/ }));
 
-    expect(screen.queryByRole("alertdialog")).toBeNull();
+    // `waitFor`: el modal se queda montado mientras corre su salida (`ModalPresence`).
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(screen.queryByText("La semana")).toBeNull();
     await waitFor(() => expect(useSettingsStore.getState().values[SettingKey.PLANNED_AT]).toBe(""));
   });

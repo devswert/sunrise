@@ -551,15 +551,13 @@ export function WeeklyReviewView() {
         </div>
       )}
 
-      {selectedTask && (
-        <TaskModal
-          task={selectedTask}
-          categories={categories}
-          objectives={objectives}
-          onClose={() => setAbierta(null)}
-          onChanged={load}
-        />
-      )}
+      <TaskModal
+        task={selectedTask}
+        categories={categories}
+        objectives={objectives}
+        onClose={() => setAbierta(null)}
+        onChanged={load}
+      />
     </div>
   );
 }

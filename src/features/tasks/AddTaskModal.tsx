@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useModalLeaving } from "../../components/ModalPresence";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import { CalendarDays, Clock, Flag, Hash, Link2, Plus, Target, X } from "lucide-react";
@@ -81,6 +82,12 @@ export function AddTaskModal() {
   const prioRef = useRef<HTMLDivElement>(null);
   const prioritiesOn = usePrioritiesOn();
   const rules = useSuggestRules();
+  const leaving = useModalLeaving();
+
+  // Un picker en portal no sale con el modal: se cierra cuando empieza a irse.
+  useEffect(() => {
+    if (leaving) setPicker(null);
+  }, [leaving]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -131,6 +138,10 @@ export function AddTaskModal() {
    * closure vieja, no una optimización.
    */
   useEffect(() => {
+    // Saliendo (§7, "Modales"): ⌘Enter no crea dos veces y Escape no cierra de
+    // nuevo. El efecto corre en cada render, así que esto también suelta el
+    // listener que había quedado del render anterior.
+    if (leaving) return;
     const onKey = (e: KeyboardEvent) => {
       // Con el diálogo de salida encima, las teclas son suyas.
       if (useAppStore.getState().quitOpen) return;

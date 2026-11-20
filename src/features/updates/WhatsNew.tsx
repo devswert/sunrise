@@ -1,5 +1,6 @@
 import { Markdown } from "../../components/Markdown";
 import { Dialog } from "../../components/Dialog";
+import { ModalPresence } from "../../components/ModalPresence";
 import { announcementFor, releaseDateFor } from "../../lib/changelog";
 import { dateLabel } from "../../lib/date";
 import { useUpdateStore } from "./updateStore";
@@ -29,37 +30,41 @@ export function WhatsNew() {
   const setOpen = useUpdateStore((s) => s.setWhatsNewOpen);
   const version = useUpdateStore((s) => s.updatedTo);
 
-  if (!open || !version) return null;
-  const anuncio = announcementFor(version);
-  if (!anuncio) return null;
-  const fecha = releaseDateFor(version);
+  const anuncio = open && version ? announcementFor(version) : null;
+  // Todo lo que dibuja, junto: `ModalPresence` se queda con esto mientras sale.
+  const contenido =
+    anuncio && version ? { version, anuncio, fecha: releaseDateFor(version) } : null;
 
   return (
-    <Dialog
-      variant="announcement"
-      title={
-        <>
-          Lo nuevo en {version}
-          {fecha && <span className="nuevo__fecha">{dateLabel(fecha)}</span>}
-        </>
-      }
-      label={`Lo nuevo en la ${version}`}
-      onClose={() => setOpen(false)}
-      onEnter={() => setOpen(false)}
-      actions={
-        <button className="btn-primary" onClick={() => setOpen(false)} autoFocus>
-          Entendido
-        </button>
-      }
-    >
-      <div className="nuevo__cielo" aria-hidden>
-        <span className="nuevo__rayos" />
-        <span className="nuevo__sol" />
-        <Cordillera />
-      </div>
-      <div className="dialog__body nuevo__texto">
-        <Markdown gfm={false}>{anuncio}</Markdown>
-      </div>
-    </Dialog>
+    <ModalPresence value={contenido}>
+      {({ version, anuncio, fecha }) => (
+        <Dialog
+          variant="announcement"
+          title={
+            <>
+              Lo nuevo en {version}
+              {fecha && <span className="nuevo__fecha">{dateLabel(fecha)}</span>}
+            </>
+          }
+          label={`Lo nuevo en la ${version}`}
+          onClose={() => setOpen(false)}
+          onEnter={() => setOpen(false)}
+          actions={
+            <button className="btn-primary" onClick={() => setOpen(false)} autoFocus>
+              Entendido
+            </button>
+          }
+        >
+          <div className="nuevo__cielo" aria-hidden>
+            <span className="nuevo__rayos" />
+            <span className="nuevo__sol" />
+            <Cordillera />
+          </div>
+          <div className="dialog__body nuevo__texto">
+            <Markdown gfm={false}>{anuncio}</Markdown>
+          </div>
+        </Dialog>
+      )}
+    </ModalPresence>
   );
 }

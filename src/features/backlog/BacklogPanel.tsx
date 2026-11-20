@@ -24,7 +24,7 @@ interface Props {
   onOpen: (task: Task) => void;
   onPatch?: (id: number, patch: TaskPatch) => void;
   onClose: () => void;
-  /** Se está cerrando: dispara la animación de salida (ver `usePanelPresence`). */
+  /** Se está cerrando: dispara la animación de salida (ver `usePresence`). */
   leaving?: boolean;
 }
 

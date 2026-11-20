@@ -15,6 +15,7 @@ import { SETTING_DEFAULTS, SettingKey, backupSettings, useSettingsStore } from "
 import { minutesFromTime } from "../calendar/railLayout";
 import { sectionIcon } from "../settings/secciones";
 import { Dialog } from "../../components/Dialog";
+import { ModalPresence } from "../../components/ModalPresence";
 import { Spinner } from "../../components/Spinner";
 import type { BackupFile, RestoreResult } from "../../lib/types";
 import { readableDate, formatBytes, readableMoment } from "./backup";
@@ -527,16 +528,20 @@ export function BackupCard() {
 
       {version && <span className="resp-version">versión {version}</span>}
 
-      {toRestore && (
-        <ConfirmarRestore
-          zip={toRestore}
-          restaurando={restaurando}
-          onCancel={() => setToRestore(null)}
-          onConfirm={restaurar}
-        />
-      )}
+      <ModalPresence value={toRestore}>
+        {(zip) => (
+          <ConfirmarRestore
+            zip={zip}
+            restaurando={restaurando}
+            onCancel={() => setToRestore(null)}
+            onConfirm={restaurar}
+          />
+        )}
+      </ModalPresence>
 
-      {restaurado && <RestauracionLista r={restaurado} onClose={() => setRestaurado(null)} />}
+      <ModalPresence value={restaurado}>
+        {(r) => <RestauracionLista r={r} onClose={() => setRestaurado(null)} />}
+      </ModalPresence>
     </section>
   );
 }

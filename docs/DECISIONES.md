@@ -941,6 +941,28 @@ hoy" borraba el bloque trabajado del rail mientras la portada lo seguía contand
 El rail del paso 1 recibe además las tareas trabajadas ese día que viven en otro
 lado, sin hora ni estimado para que no se les proyecte nada ahí.
 
+**Los modales animan la salida con el mecanismo de los paneles, y navegar la
+termina una copia del DOM** (#10). `usePanelPresence` pasó a `src/lib/presence.ts`
+como `usePresence` y lo envuelve `ModalPresence`, que agrega lo que un panel no
+necesita: quedarse con el último valor —borrar saca la tarea del board antes de
+que el modal termine de irse— y una instancia nueva por apertura, porque el detalle
+inicializa título y notas al montarse y reabrir otra tarjeta en plena salida le
+habría dejado el título de la anterior.
+
+Lo que no resuelve ninguna presencia es navegar: el play del detalle va a Focus, y
+la vista que sostenía el modal se desmonta con él adentro. Se descartaron tres
+caminos. **Esperar la salida para navegar** contradecía lo pedido —la app tiene que
+cambiar de vista al instante— y además deja una ventana de 240 ms en la que la
+tecla siguiente cae en la vista vieja. **Subir el detalle a un host global** en
+`App` habría movido los siete lugares que lo abren, cada uno con su `onChanged` y
+sus listas, por una animación. **Una copia automática en cada desmontaje** se
+disparaba también en el desmontaje simulado de `StrictMode` y en la limpieza de
+RTL, que deja la copia en el `body` del test siguiente. Quedó explícito: quien
+cierra navegando llama a `exitAbove()` antes de `navigate`, y la copia —DOM suelto,
+`inert` y `aria-hidden`— se borra sola. En los tests, `src/test/setup.ts` barre
+las que queden al terminar cada uno: un test que da play termina antes de los
+240 ms y su copia, con un botón "Iniciar" adentro, se colaba en el siguiente.
+
 ---
 
 ## 8. Notificaciones: lo que no está en nuestras manos

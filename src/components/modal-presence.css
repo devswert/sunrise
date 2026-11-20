@@ -1,0 +1,84 @@
+/* Entrada y salida de los modales: `components/ModalPresence.tsx` (§7).
+ *
+ * El fondo aparece con un fundido y el modal sube un poco mientras aparece; al
+ * cerrar, lo mismo al revés. Es el compás de los paneles de la tira (160 ms,
+ * `--theme-ease`) y un desplazamiento corto a propósito: el detalle de tarea se
+ * abre decenas de veces al día, y una entrada que se hace notar cansa a la
+ * tercera.
+ *
+ * El fundido va **solo en el overlay**, y el modal hereda la opacidad de él: si el
+ * modal también se desvaneciera, las dos opacidades se multiplicarían y el modal
+ * aparecería más tarde que su fondo. El modal solo se mueve.
+ *
+ * La duración está espejada en `src/lib/presence.ts`, que es quien mantiene el
+ * modal montado mientras se va (con 80 ms de holgura, explicados allá). Si cambia
+ * acá, cambia allá. */
+
+/* El envoltorio no ocupa lugar: el overlay sigue siendo fijo contra la ventana. */
+.modal-presence {
+  display: contents;
+}
+
+.modal-presence > .modal-overlay,
+.modal-presence > .compose-overlay {
+  animation: modal-fade-in 160ms var(--theme-ease);
+}
+.modal-presence > .modal-overlay > *,
+.modal-presence > .compose-overlay > * {
+  animation: modal-rise-in 160ms var(--theme-ease);
+}
+
+/* La salida declara el `animation` entero y con `forwards`, por las mismas dos
+ * razones que `panel-out` (`week.css`): cambiar solo una longhand sobre un
+ * elemento que ya corrió su entrada no siempre reinicia la animación, y sin
+ * `forwards` el modal vuelve a su sitio un frame antes de desmontarse. */
+.modal-presence.is-leaving > .modal-overlay,
+.modal-presence.is-leaving > .compose-overlay {
+  animation: modal-fade-out 160ms var(--theme-ease) forwards;
+  /* Ya se está yendo: un click acá caería sobre algo que no está. Pasa de largo a
+   * la vista de abajo. */
+  pointer-events: none;
+}
+.modal-presence.is-leaving > .modal-overlay > *,
+.modal-presence.is-leaving > .compose-overlay > * {
+  animation: modal-rise-out 160ms var(--theme-ease) forwards;
+}
+
+/* La copia que termina de salir encima de otra vista (`exitAbove`) va suelta en
+ * `body`, después de todo: el `z-index` del overlay ya la deja arriba. */
+
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes modal-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes modal-rise-in {
+  from {
+    transform: translateY(8px);
+  }
+}
+@keyframes modal-rise-out {
+  to {
+    transform: translateY(8px);
+  }
+}
+
+/* Sin animación, y el modal se desmonta al instante (`usePresence` no espera).
+ * Van también las de salida: tienen más especificidad y le ganarían a la regla. */
+@media (prefers-reduced-motion: reduce) {
+  .modal-presence > .modal-overlay,
+  .modal-presence > .compose-overlay,
+  .modal-presence > .modal-overlay > *,
+  .modal-presence > .compose-overlay > *,
+  .modal-presence.is-leaving > .modal-overlay,
+  .modal-presence.is-leaving > .compose-overlay,
+  .modal-presence.is-leaving > .modal-overlay > *,
+  .modal-presence.is-leaving > .compose-overlay > * {
+    animation: none;
+  }
+}

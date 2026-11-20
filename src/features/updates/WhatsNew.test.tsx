@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WhatsNew } from "./WhatsNew";
 import { useUpdateStore } from "./updateStore";
@@ -30,7 +30,8 @@ describe("WhatsNew", () => {
     expect(dlg).not.toHaveTextContent(/Detalle/);
 
     await userEvent.click(screen.getByRole("button", { name: "Entendido" }));
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    // `waitFor`: el modal se queda montado mientras corre su salida (`ModalPresence`).
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
   it("una versión sin entrada en el changelog no abre un modal vacío", () => {

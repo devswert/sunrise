@@ -129,7 +129,7 @@ describe("WeekView · agenda superpuesta", () => {
     await userEvent.click(button());
     await userEvent.click(button());
     // `waitFor` y no un assert seco: el panel se queda montado mientras corre su
-    // animación de salida (ver `usePanelPresence`).
+    // animación de salida (ver `usePresence`).
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: "Agenda del día" })).toBeNull(),
     );
@@ -242,7 +242,7 @@ describe("WeekView · panel de backlog", () => {
    * El panel entraba animado y desaparecía de golpe, que se siente como si se
    * hubiera roto y no como si se hubiera cerrado. Lo que se fija acá es que **no
    * se desmonta en el mismo frame** en que se cierra: la animación necesita que
-   * el nodo siga existiendo, y esa es toda la razón de `usePanelPresence`.
+   * el nodo siga existiendo, y esa es toda la razón de `usePresence`.
    */
   it("al cerrarse se queda un momento marcado como saliendo, y recién después se va", async () => {
     render(<WeekView />);

@@ -286,15 +286,13 @@ export function DailyHighlightsView() {
         })}
       </div>
 
-      {abierta && (
-        <TaskModal
-          task={abierta}
-          categories={categories}
-          objectives={objectives}
-          onClose={() => setAbierta(null)}
-          onChanged={load}
-        />
-      )}
+      <TaskModal
+        task={abierta}
+        categories={categories}
+        objectives={objectives}
+        onClose={() => setAbierta(null)}
+        onChanged={load}
+      />
     </div>
   );
 }

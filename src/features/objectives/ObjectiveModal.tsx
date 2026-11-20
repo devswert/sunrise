@@ -11,6 +11,7 @@ import { TIME_PRESETS, formatMinutes } from "../../lib/capacity";
 import { shortWeekday } from "../../lib/date";
 import { shortDuration } from "../tasks/timeByDay";
 import { useAppStore } from "../../lib/store";
+import { useModalLeaving } from "../../components/ModalPresence";
 import "./objectives.css";
 
 /** Los mismos escalones que ofrece el estimado de una tarea. */
@@ -67,6 +68,7 @@ export function ObjectiveModal({
   const chanRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const bumpData = useAppStore((s) => s.bumpData);
+  const leaving = useModalLeaving();
 
   const options = useMemo(() => channelOptions(categories), [categories]);
   const channel = categoryId != null ? categories.find((c) => c.id === categoryId) : null;
@@ -135,6 +137,12 @@ export function ObjectiveModal({
   // Escape cierra, y el picker abierto primero. En `window` con captura porque
   // los popovers viven en un portal y su Escape no pasa por este div (SPECS §7).
   useEffect(() => {
+    // Saliendo, las teclas ya no son suyas (§7, "Modales"), y el picker en portal
+    // se cierra en vez de quedar flotando sin su modal.
+    if (leaving) {
+      setPicker(null);
+      return;
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (picker) {
@@ -146,7 +154,7 @@ export function ObjectiveModal({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [picker, onClose]);
+  }, [picker, onClose, leaving]);
 
   /** Las tareas del objetivo que caen en un día, en el orden del tablero. */
   const delDia = useCallback(
