@@ -1,6 +1,6 @@
-/* El aviso de abajo (`Toast.tsx`). Invertido —tinta de fondo, superficie de
- * letra— para que se lea encima de cualquier vista; los tokens se invierten
- * solos en el tema oscuro. */
+/* El aviso de abajo (`Toast.tsx`). Sus colores son tokens propios (`--toast-*`
+ * en tokens.css): en claro va invertido y en oscuro no, porque invertir los
+ * tokens generales dejaba "Deshacer" ilegible sobre un fondo casi blanco. */
 .toast {
   position: fixed;
   left: 50%;
@@ -13,8 +13,9 @@
   max-width: min(520px, calc(100vw - 32px));
   padding: 10px 12px 10px 16px;
   border-radius: var(--radius-md);
-  background: var(--ink);
-  color: var(--surface);
+  background: var(--toast-bg);
+  color: var(--toast-text);
+  border: 1px solid var(--toast-border);
   box-shadow: var(--shadow-lg);
   font-size: 13px;
   animation: toast-in 160ms ease-out;
@@ -41,12 +42,12 @@
 .toast__action {
   padding: 4px 8px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--toast-action);
 }
 
 .toast__action:hover,
 .toast__close:hover {
-  background: color-mix(in srgb, var(--surface) 14%, transparent);
+  background: color-mix(in srgb, var(--toast-text) 14%, transparent);
 }
 
 .toast__close {

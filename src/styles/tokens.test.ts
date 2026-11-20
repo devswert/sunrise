@@ -46,6 +46,27 @@ describe("tokens · color-scheme", () => {
       expect(bloque.body).toMatch(/color-scheme:\s*dark/);
     }
   });
+
+  /**
+   * El aviso de abajo (#11) tiene tokens propios porque invertir los generales
+   * en oscuro lo dejaba casi blanco, con "Deshacer" ilegible encima. Si una rama
+   * se queda sin ellos, el aviso hereda los del claro y vuelve el problema.
+   */
+  it("las tres ramas declaran los tokens del aviso, y en oscuro el fondo es oscuro", () => {
+    const ramas = blocks().filter((b) => /data-theme="(light|dark)"/.test(b.selector));
+    expect(ramas).toHaveLength(3);
+    for (const bloque of ramas) {
+      for (const token of ["--toast-bg", "--toast-text", "--toast-border", "--toast-action"]) {
+        expect(bloque.body).toContain(`${token}:`);
+      }
+    }
+    const oscuras = ramas.filter((b) => !b.selector.includes(':root[data-theme="light"]'));
+    for (const bloque of oscuras) {
+      const bg = /--toast-bg:\s*#([0-9a-f]{6})/i.exec(bloque.body)?.[1] ?? "ffffff";
+      const luma = [0, 2, 4].map((i) => Number.parseInt(bg.slice(i, i + 2), 16));
+      expect(Math.max(...luma)).toBeLessThan(0x60);
+    }
+  });
 });
 
 /**
