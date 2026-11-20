@@ -777,8 +777,9 @@ struct DeletedView {
 /// app: la sincronización no las resucita mientras estén en el basurero.
 pub fn delete_task(conn: &Connection, p: TaskIdParams) -> ToolResult {
     let task = trackable(conn, p.id)?;
-    let was_running = repo::get_active_timer(conn, p.id).map_err(db_err)?.is_some();
-    repo::trash_task(conn, p.id).map_err(db_err)?;
+    let was_running = repo::trash_task(conn, p.id)
+        .map_err(db_err)?
+        .ok_or_else(|| format!("No existe una tarea con id {}.", p.id))?;
     let tz = repo::zone(conn);
     let restorable_until = repo::list_trash(conn)
         .map_err(db_err)?

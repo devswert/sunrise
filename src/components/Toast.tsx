@@ -32,7 +32,14 @@ export function Toast() {
           className="toast__action"
           onClick={async () => {
             dismiss();
-            await action.run();
+            try {
+              await action.run();
+            } catch (err) {
+              // Sin esto el fallo era un rechazo sin dueño y el gesto se sentía
+              // muerto: decirlo al menos deja saber que hay que reintentar.
+              console.error("[sunrise] la acción del aviso falló", err);
+              useAppStore.getState().showToast({ text: "No se pudo deshacer" });
+            }
           }}
         >
           {action.label}

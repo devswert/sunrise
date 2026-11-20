@@ -70,7 +70,7 @@ pub fn update_task(db: State<'_, Db>, id: i64, patch: TaskPatch) -> Result<Optio
 #[tauri::command]
 pub fn trash_task(db: State<'_, Db>, id: i64) -> Result<bool, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::trash_task(&conn, id).map_err(e)
+    repo::trash_task(&conn, id).map(|r| r.is_some()).map_err(e)
 }
 
 #[tauri::command]
@@ -545,11 +545,12 @@ pub fn set_actual_seconds(
     repo::set_actual_seconds(&conn, task_id, seconds).map_err(e)
 }
 
-/// Una tarea por id (para refrescar snapshots, p. ej. el taxímetro).
+/// Una tarea por id (para refrescar snapshots, p. ej. el taxímetro). **Una del
+/// basurero vuelve `None`**, igual que en el mock: para el front ya no está.
 #[tauri::command]
 pub fn get_task(db: State<'_, Db>, id: i64) -> Result<Option<Task>, String> {
     let conn = db.0.lock().map_err(e)?;
-    repo::get_task(&conn, id).map_err(e)
+    repo::get_task_outside_trash(&conn, id).map_err(e)
 }
 
 // --- Categories ---

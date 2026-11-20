@@ -313,8 +313,9 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     if (actives.length === 0 && last) {
       const fresh = await api.getTask(last.taskId);
       if (!fresh) {
-        // La tarea ya no está: la borraron en la otra ventana, o se restauró un
-        // respaldo anterior a que existiera. El taxímetro no puede seguir
+        // La tarea ya no está: la mandaron al basurero (#11) —desde la otra
+        // ventana, desde esta o desde el MCP—, o se restauró un respaldo anterior a
+        // que existiera. El taxímetro no puede seguir
         // ofreciendo darle play a un id que ya no resuelve.
         last = null;
       } else if (fresh.status === "DONE") {

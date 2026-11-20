@@ -7,12 +7,12 @@ import { Toast, TOAST_MS } from "../../components/Toast";
 import { TrashPanel } from "./TrashPanel";
 
 /** Vacía el basurero del mock entre tests restaurando lo que quede. */
-async function vaciar() {
+async function emptyTrash() {
   for (const t of await api.listTrash()) await api.restoreTask(t.task.id);
 }
 
 describe("basurero · mockDb (#11)", () => {
-  beforeEach(vaciar);
+  beforeEach(emptyTrash);
 
   it("mandar al basurero la saca de las listas y restaurar la devuelve", async () => {
     const dia = await api.createTask({ title: "del día", scheduledDate: "2031-03-03" });
@@ -38,7 +38,7 @@ describe("basurero · mockDb (#11)", () => {
 });
 
 describe("TrashPanel (#11)", () => {
-  beforeEach(vaciar);
+  beforeEach(emptyTrash);
 
   it("sin nada, dice que está vacío", async () => {
     render(<TrashPanel onClose={vi.fn()} />);

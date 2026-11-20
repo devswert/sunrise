@@ -64,13 +64,6 @@ cambias una, actualiza este archivo en el mismo commit.
   para el historial y la review. **La única excepción es el rollup compartido**
   (`work_by_day`, §4.15 y §4.16), que las cuenta a propósito: filtrarlas borraría horas
   reales de semanas pasadas.
-- **I12. Una tarea en el basurero no existe para nadie más que el basurero** (#11).
-  `deleted_at IS NOT NULL` la saca de **todo** listado y agregado —las del tablero, y
-  también el rollup, `day_work`, las completadas y el uso de channels, que no filtran
-  I7—. No recibe tiempo (`log_time`, `set_task_time`), el MCP no la ve (`get_live_task`)
-  y la sincronización del calendario no la toca. Una consulta nueva sobre `tasks` o
-  `time_entries` que alimente una vista tiene que filtrarla; el mock lo logra sacándola
-  del arreglo. Se purga sola a los 30 días (§4.1).
 - **I8. Enums en MAYÚSCULAS**, espejados `migrations.rs` ↔ `enums.ts`.
 - **I9. Las migraciones aplicadas son inmutables**: se agrega una versión nueva.
 - **I10. Todo acceso a datos pasa por `src/lib/ipc.ts`**, con su gemelo en `mockDb.ts`.
@@ -86,6 +79,13 @@ cambias una, actualiza este archivo en el mismo commit.
   **Lo que escribe otro proceso no puede llamarlo**: lo cubre `external.rs`, que
   detecta el commit ajeno con `PRAGMA data_version` y emite `sunrise://data-changed`
   (§5.3, §4.32).
+- **I12. Una tarea en el basurero no existe para nadie más que el basurero** (#11).
+  `deleted_at IS NOT NULL` la saca de **todo** listado y agregado —las del tablero, y
+  también el rollup, `day_work`, las completadas y el uso de channels, que no filtran
+  I7—. No recibe tiempo (`log_time`, `set_task_time`), el MCP no la ve (`get_live_task`)
+  y la sincronización del calendario no la toca. Una consulta nueva sobre `tasks` o
+  `time_entries` que alimente una vista tiene que filtrarla; el mock lo logra sacándola
+  del arreglo. Se purga sola a los 30 días (§4.1).
 
 ## §9 Deuda técnica conocida
 

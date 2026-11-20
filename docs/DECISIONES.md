@@ -1244,7 +1244,7 @@ daba al agente el único gesto irreversible de la app, y un error de modelo —e
 equivocado de un listado largo— no tenía vuelta. Con el basurero, `delete_task` es
 destructiva solo en la anotación: se restaura con `restore_task` durante 30 días, y
 el mismo agente puede deshacer su error (por eso `list_trash` y `restore_task`
-también son tools, aunque la issue pedía solo borrar).
+también son tools, no solo `delete_task`).
 
 **`deleted_at` es columna propia, no un tercer `source_state`.** Es la misma
 lección del `rail_only`: `ORPHANED` ya significó "no la planifiques" y "no la

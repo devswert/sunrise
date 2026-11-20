@@ -48,6 +48,11 @@ así que no puede hacer eco. Del lado del front lo escucha `useExternalChanges`,
   cada aviso invalida dos veces. Límite conocido: la fila **en pausa** (`last`) la
   escribe solo el `stop` del store, así que un `stop_timer` o `log_time` del MCP no
   la actualiza (`docs/specs/mcp.md`, "El timer").
+- **"Ya no está" incluye el basurero** (#11). El taxímetro y Focus deciden que una
+  tarea se fue cuando `api.getTask` devuelve `null`, y el comando `get_task`
+  devuelve `null` también para una tarea del basurero (`get_task_outside_trash`),
+  igual que el mock, que la saca del arreglo. Si agregas otra lectura por id que
+  alimente una vista, que no use `repo::get_task` pelado.
 
 ## Las trampas
 

@@ -107,6 +107,17 @@ pub fn get_live_task(conn: &Connection, id: i64) -> Result<Option<Task>> {
     Ok(Some(task))
 }
 
+/// La tarea por id **salvo que esté en el basurero**. Es lo que lee el front
+/// (`get_task` del IPC): el taxímetro y Focus la usan para saber si una tarea
+/// "ya no está", y una del basurero ya no está. A diferencia de `get_live_task`
+/// deja pasar las `ORPHANED`, que el front ya sabía tratar.
+pub fn get_task_outside_trash(conn: &Connection, id: i64) -> Result<Option<Task>> {
+    if is_trashed(conn, id)? {
+        return Ok(None);
+    }
+    get_task(conn, id)
+}
+
 /// `true` si la tarea está en el basurero.
 pub fn is_trashed(conn: &Connection, id: i64) -> Result<bool> {
     conn.query_row(
@@ -241,20 +252,24 @@ pub const TRASH_DAYS: i64 = 30;
 /// queda registrado (I1) y se conserva para cuando la restauren. Dejarlo abierto
 /// sería un timer contando sobre una tarea que ya no se puede ver ni pausar.
 ///
-/// Devuelve `false` si no existe o ya estaba en el basurero.
-pub fn trash_task(conn: &Connection, id: i64) -> Result<bool> {
+/// Devuelve `None` si no existe o ya estaba en el basurero, y si no, si detuvo
+/// un timer. Las dos cosas van en la misma transacción: quien lo cuente (el MCP)
+/// no puede leer el timer por separado sin carrera con la app.
+pub fn trash_task(conn: &Connection, id: i64) -> Result<Option<bool>> {
     trash_task_at(conn, id, &now())
 }
 
-pub fn trash_task_at(conn: &Connection, id: i64, at: &str) -> Result<bool> {
+pub fn trash_task_at(conn: &Connection, id: i64, at: &str) -> Result<Option<bool>> {
     atomically(conn, || {
-        stop_timer(conn, id)?;
-        let n = conn.execute(
-            "UPDATE tasks SET deleted_at = ?2, updated_at = ?2
-              WHERE id = ?1 AND deleted_at IS NULL",
+        if is_trashed(conn, id)? || get_task(conn, id)?.is_none() {
+            return Ok(None);
+        }
+        let stopped = stop_timer(conn, id)?.is_some();
+        conn.execute(
+            "UPDATE tasks SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1",
             params![id, at],
         )?;
-        Ok(n > 0)
+        Ok(Some(stopped))
     })
 }
 
@@ -311,6 +326,8 @@ pub fn purge_trash(conn: &Connection) -> Result<usize> {
 }
 
 pub fn purge_trash_at(conn: &Connection, now: DateTime<Utc>) -> Result<usize> {
+    // Sin transacción a propósito: cada DELETE es independiente, y lo que no se
+    // alcance a purgar hoy se purga en la próxima pasada.
     let cutoff = now - Duration::days(TRASH_DAYS);
     // Se compara como instante y no como texto: un `deleted_at` con otro offset
     // (o escrito a mano) ordenaría mal como string.
@@ -935,6 +952,11 @@ pub fn start_timer(conn: &Connection, task_id: i64, parallel: bool) -> Result<Ac
 fn start_timer_in(conn: &Connection, task_id: i64, parallel: bool) -> Result<ActiveTimer> {
     if let Some(running) = get_active_timer(conn, task_id)? {
         return Ok(running);
+    }
+    // Una tarea del basurero (#11) no recibe tiempo, igual que en `log_time`. Va
+    // **antes** de pausar las demás: un play rechazado no puede detenerte nada.
+    if is_trashed(conn, task_id)? {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
     }
     if !parallel {
         stop_all_timers_in(conn)?;
@@ -7038,20 +7060,20 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Basurero (#11)
+    // Basurero (#11): un caso por cada consulta que lo filtra.
     // -----------------------------------------------------------------------
 
     #[test]
     fn mandar_al_basurero_la_saca_de_todas_las_vistas() {
         let c = conn();
         let cat = create_category(&c, None, "Trabajo", "#fff").unwrap();
-        let mut nt = new_task("del día", Some("2026-08-10"));
-        nt.category_id = Some(cat.id);
-        let dia = create_task(&c, nt).unwrap();
-        let back = create_task(&c, new_task("del backlog", None)).unwrap();
+        let mut input = new_task("del día", Some("2026-08-10"));
+        input.category_id = Some(cat.id);
+        let day_task = create_task(&c, input).unwrap();
+        let loose = create_task(&c, new_task("del backlog", None)).unwrap();
 
-        assert!(trash_task(&c, dia.id).unwrap());
-        assert!(trash_task(&c, back.id).unwrap());
+        assert_eq!(trash_task(&c, day_task.id).unwrap(), Some(false));
+        assert_eq!(trash_task(&c, loose.id).unwrap(), Some(false));
 
         assert!(list_tasks_for_date(&c, "2026-08-10").unwrap().is_empty());
         assert!(list_tasks_for_range(&c, "2026-08-10", "2026-08-16").unwrap().is_empty());
@@ -7060,9 +7082,10 @@ mod tests {
         assert_eq!(last_day_with_tasks(&c, "2026-08-11").unwrap(), None);
         assert!(category_usage(&c).unwrap().is_empty(), "no cuenta como uso del channel");
         assert_eq!(weekly_rollup(&c, "2026-08-10").unwrap().planned_minutes, 0);
-        // Sigue en la base, pero solo para el basurero y para quien la lea por id.
-        assert!(get_task(&c, dia.id).unwrap().is_some());
-        assert!(get_live_task(&c, dia.id).unwrap().is_none());
+        // Sigue en la base, pero solo para el basurero y las lecturas internas.
+        assert!(get_task(&c, day_task.id).unwrap().is_some());
+        assert!(get_task_outside_trash(&c, day_task.id).unwrap().is_none(), "el front no la ve");
+        assert!(get_live_task(&c, day_task.id).unwrap().is_none(), "el MCP tampoco");
         assert_eq!(list_trash(&c).unwrap().len(), 2);
     }
 
@@ -7070,10 +7093,10 @@ mod tests {
     fn mandar_al_basurero_dos_veces_no_cambia_su_fecha() {
         let c = conn();
         let t = create_task(&c, new_task("a", Some("2026-08-10"))).unwrap();
-        assert!(trash_task_at(&c, t.id, "2026-08-10T10:00:00+00:00").unwrap());
-        assert!(!trash_task_at(&c, t.id, "2026-08-20T10:00:00+00:00").unwrap());
+        assert_eq!(trash_task_at(&c, t.id, "2026-08-10T10:00:00+00:00").unwrap(), Some(false));
+        assert_eq!(trash_task_at(&c, t.id, "2026-08-20T10:00:00+00:00").unwrap(), None);
         assert_eq!(list_trash(&c).unwrap()[0].deleted_at, "2026-08-10T10:00:00+00:00");
-        assert!(!trash_task(&c, 999).unwrap(), "una que no existe no se manda");
+        assert_eq!(trash_task(&c, 999).unwrap(), None, "una que no existe no se manda");
     }
 
     #[test]
@@ -7084,13 +7107,28 @@ mod tests {
         start_timer(&c, a.id, false).unwrap();
         start_timer(&c, b.id, true).unwrap();
 
-        trash_task(&c, a.id).unwrap();
+        assert_eq!(trash_task(&c, a.id).unwrap(), Some(true), "avisa que detuvo uno");
 
-        let activos: Vec<i64> = get_active_timers(&c).unwrap().iter().map(|t| t.task_id).collect();
-        assert_eq!(activos, vec![b.id], "el otro timer sigue corriendo");
-        let tramos = list_time_entries(&c, a.id).unwrap();
-        assert_eq!(tramos.len(), 1);
-        assert!(tramos[0].ended_at.is_some(), "el tramo quedó cerrado, no borrado");
+        let running: Vec<i64> = get_active_timers(&c).unwrap().iter().map(|t| t.task_id).collect();
+        assert_eq!(running, vec![b.id], "el otro timer sigue corriendo");
+        let entries = list_time_entries(&c, a.id).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].ended_at.is_some(), "el tramo quedó cerrado, no borrado");
+    }
+
+    #[test]
+    fn play_sobre_una_tarea_del_basurero_falla_sin_pausar_las_demas() {
+        let c = conn();
+        let gone = create_task(&c, new_task("fuera", Some("2026-08-10"))).unwrap();
+        let other = create_task(&c, new_task("sigue", Some("2026-08-10"))).unwrap();
+        trash_task(&c, gone.id).unwrap();
+        start_timer(&c, other.id, false).unwrap();
+
+        assert!(start_timer(&c, gone.id, false).is_err());
+
+        let running: Vec<i64> = get_active_timers(&c).unwrap().iter().map(|t| t.task_id).collect();
+        assert_eq!(running, vec![other.id], "un play rechazado no detiene nada");
+        assert!(list_time_entries(&c, gone.id).unwrap().is_empty());
     }
 
     #[test]
@@ -7105,9 +7143,9 @@ mod tests {
             params![t.id, end.to_rfc3339()],
         )
         .unwrap();
-        let antes = weekly_rollup(&c, "2026-08-10").unwrap();
-        assert_eq!(antes.total_seconds, 3600);
-        assert_eq!(antes.completed_tasks.len(), 1);
+        let before = weekly_rollup(&c, "2026-08-10").unwrap();
+        assert_eq!(before.total_seconds, 3600);
+        assert_eq!(before.completed_tasks.len(), 1);
 
         trash_task(&c, t.id).unwrap();
 
@@ -7119,12 +7157,75 @@ mod tests {
         assert_eq!(log[0].worked_seconds, 0);
         assert!(log[0].done.is_empty());
 
-        let vuelta = restore_task(&c, t.id).unwrap().unwrap();
-        assert_eq!(vuelta.scheduled_date.as_deref(), Some("2026-08-10"), "vuelve a su día");
-        assert_eq!(vuelta.actual_seconds, 3600, "con su tiempo");
+        let restored = restore_task(&c, t.id).unwrap().unwrap();
+        assert_eq!(restored.scheduled_date.as_deref(), Some("2026-08-10"), "vuelve a su día");
+        assert_eq!(restored.actual_seconds, 3600, "con su tiempo");
         assert_eq!(weekly_rollup(&c, "2026-08-10").unwrap().total_seconds, 3600);
         assert!(list_trash(&c).unwrap().is_empty());
         assert!(restore_task(&c, t.id).unwrap().is_none(), "ya no está en el basurero");
+    }
+
+    #[test]
+    fn una_reunion_del_basurero_no_cuenta_su_duracion_ni_avisa() {
+        // La regla 3 del rollup es la segunda consulta de `work_by_day`: una
+        // reunión sin tramos cuenta su duración de evento. También la filtra.
+        let c = conn();
+        let f = feed(&c);
+        import_events(&c, f.id, &[event_at("m@x", "Daily", "2026-08-10", Some("10:00"))], None)
+            .unwrap();
+        let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
+        assert_eq!(weekly_rollup(&c, "2026-08-10").unwrap().total_seconds, 3600);
+        assert_eq!(meetings_for_date(&c, "2026-08-10").unwrap().len(), 1);
+
+        trash_task(&c, id).unwrap();
+
+        assert_eq!(weekly_rollup(&c, "2026-08-10").unwrap().total_seconds, 0);
+        assert!(meetings_for_date(&c, "2026-08-10").unwrap().is_empty(), "la campana no suena");
+    }
+
+    #[test]
+    fn el_rescate_del_backlog_no_lista_lo_del_basurero() {
+        let c = conn();
+        let t = create_task(&c, new_task("caída", Some("2026-08-10"))).unwrap();
+        move_task(&c, t.id, None, 0).unwrap();
+        assert_eq!(rescued_from_backlog(&c).unwrap().len(), 1);
+
+        trash_task(&c, t.id).unwrap();
+
+        assert!(rescued_from_backlog(&c).unwrap().is_empty());
+    }
+
+    #[test]
+    fn una_reunion_importada_se_ubica_sin_contar_lo_del_basurero() {
+        // `place_by_time` busca su lugar entre los hermanos con hora: uno del
+        // basurero no puede correrla.
+        let c = conn();
+        let gone = create_task(&c, new_task("fuera", Some("2026-08-10"))).unwrap();
+        update_task(
+            &c,
+            gone.id,
+            TaskPatch { scheduled_time: Some(Some("09:00".into())), ..Default::default() },
+        )
+        .unwrap();
+        let late = create_task(&c, new_task("tarde", Some("2026-08-10"))).unwrap();
+        update_task(
+            &c,
+            late.id,
+            TaskPatch { scheduled_time: Some(Some("12:00".into())), ..Default::default() },
+        )
+        .unwrap();
+        trash_task(&c, gone.id).unwrap();
+        let f = feed(&c);
+
+        import_events(&c, f.id, &[event_at("m@x", "Daily", "2026-08-10", Some("10:00"))], None)
+            .unwrap();
+
+        let order: Vec<_> = list_tasks_for_date(&c, "2026-08-10")
+            .unwrap()
+            .into_iter()
+            .map(|t| t.title)
+            .collect();
+        assert_eq!(order, vec!["Daily", "tarde"]);
     }
 
     #[test]
@@ -7151,15 +7252,19 @@ mod tests {
 
         // El índice de drop se cuenta contra lo visible: 1 es "después de b".
         move_task(&c, x.id, Some("2026-08-10"), 1).unwrap();
-        let orden: Vec<_> = list_tasks_for_date(&c, "2026-08-10")
+        let order: Vec<_> = list_tasks_for_date(&c, "2026-08-10")
             .unwrap()
             .into_iter()
             .map(|t| t.title)
             .collect();
-        assert_eq!(orden, vec!["b", "x"]);
+        assert_eq!(order, vec!["b", "x"]);
 
+        // Y se renumeró con ella: al volver no empata posiciones.
         restore_task(&c, a.id).unwrap();
-        assert_eq!(list_tasks_for_date(&c, "2026-08-10").unwrap().len(), 3);
+        let day = list_tasks_for_date(&c, "2026-08-10").unwrap();
+        let mut positions: Vec<i64> = day.iter().map(|t| t.position).collect();
+        positions.dedup();
+        assert_eq!(positions.len(), 3, "sin posiciones repetidas");
     }
 
     #[test]
@@ -7188,12 +7293,12 @@ mod tests {
         )
         .unwrap();
         trash_task_at(&c, t.id, "2026-08-10T12:00:00+00:00").unwrap();
-        let en = |s: &str| DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc);
+        let at = |s: &str| DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc);
 
         assert_eq!(list_trash(&c).unwrap()[0].purge_at, "2026-09-09T12:00:00+00:00");
-        assert_eq!(purge_trash_at(&c, en("2026-09-08T12:00:00+00:00")).unwrap(), 0, "día 29");
-        assert_eq!(purge_trash_at(&c, en("2026-09-09T11:59:59+00:00")).unwrap(), 0);
-        assert_eq!(purge_trash_at(&c, en("2026-09-09T12:00:00+00:00")).unwrap(), 1, "día 30");
+        assert_eq!(purge_trash_at(&c, at("2026-09-08T12:00:00+00:00")).unwrap(), 0, "día 29");
+        assert_eq!(purge_trash_at(&c, at("2026-09-09T11:59:59+00:00")).unwrap(), 0);
+        assert_eq!(purge_trash_at(&c, at("2026-09-09T12:00:00+00:00")).unwrap(), 1, "día 30");
         assert!(get_task(&c, t.id).unwrap().is_none());
         assert!(list_time_entries(&c, t.id).unwrap().is_empty(), "el CASCADE se lleva sus tramos");
     }

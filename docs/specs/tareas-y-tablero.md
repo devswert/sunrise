@@ -33,7 +33,7 @@ Vuelve al [índice de SPECS](../SPECS.md).
   - **Restaurar** (`restore_task`) la devuelve a su día —o al backlog— tal como
     estaba, con su tiempo. **No la mueve** aunque su día ya haya pasado: la
     degradación del día siguiente la baja como a cualquier otra.
-  - **Panel Trash**: cuarto ítem de la tira de la semana, después de Agenda y
+  - **Panel Trash**: tercer ítem de la tira de la semana, después de Agenda y
     Backlog, fuera del `DndContext` (no recibe drops). Lista lo más reciente primero
     con su día y el día en que se elimina, y restaura. **No hay "eliminar
     definitivamente" ni "vaciar"**: sería el único gesto irreversible de la app.
@@ -45,6 +45,11 @@ Vuelve al [índice de SPECS](../SPECS.md).
     `reconcile_feed` la ignora. Purgada, si el evento sigue en el feed vuelve como
     nueva. Las futuras sin trabajar que el reconciler elimina por su cuenta siguen
     saliendo directo: el calendario las vuelve a crear.
+  - **Lo que no espera al basurero**: borrar un channel u objetivo mientras la
+    tarea está ahí la deja sin él al restaurarla (`ON DELETE SET NULL`), y el aviso
+    de uso del channel en Configs (`category_usage`) no la cuenta. Aceptado: es lo
+    mismo que pasaría con la tarea viva, y un channel no se borra por una tarea
+    que ya eliminaste.
 
 ### 4.2 Degradación diaria al backlog
 
