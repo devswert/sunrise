@@ -12,6 +12,7 @@ import { FocusView } from "./features/focus/FocusView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { AddTaskModal } from "./features/tasks/AddTaskModal";
 import { QuitConfirm, useQuitListener } from "./components/QuitConfirm";
+import { Toast } from "./components/Toast";
 import { WhatsNew } from "./features/updates/WhatsNew";
 import { UpdateError } from "./features/updates/UpdateError";
 import { useUpdateRuntime } from "./features/updates/useUpdateRuntime";
@@ -36,6 +37,7 @@ import "./features/tasks/task-modal.css";
 import "./features/tasks/add-task-modal.css";
 import "./components/search-select.css";
 import "./components/dialog.css";
+import "./components/toast.css";
 import "./features/focus/focus.css";
 import "./features/calendar/rail.css";
 import "./features/backup/backup.css";
@@ -120,6 +122,7 @@ export default function App() {
         </div>
         {composeOpen && <AddTaskModal />}
         <QuitConfirm />
+        <Toast />
         <WhatsNew />
         <UpdateError />
       </Shell>

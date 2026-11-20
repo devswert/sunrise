@@ -105,11 +105,11 @@ describe("WeekView · agenda superpuesta", () => {
   const button = () => screen.getByRole("button", { name: /Agenda/ });
 
   it("la tira de la derecha solo trae los paneles que existen", () => {
-    // Agenda y backlog. El de objetivos de la semana llega con M3.5: un icono que
-    // no hace nada al apretarlo enseña que la barra no responde.
+    // Agenda, backlog y trash (#11). El de objetivos de la semana llega con M3.5:
+    // un icono que no hace nada al apretarlo enseña que la barra no responde.
     render(<WeekView />);
     const tira = screen.getByRole("navigation", { name: "Paneles" });
-    expect(within(tira).getAllByRole("button")).toHaveLength(2);
+    expect(within(tira).getAllByRole("button")).toHaveLength(3);
   });
 
   it("arranca cerrada y se abre con el botón", async () => {

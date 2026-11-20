@@ -11,6 +11,7 @@ import type {
   Objective,
   ObjectivePatch,
   Task,
+  TrashedTask,
   TaskEvent,
   TimeEntry,
   DayWork,
@@ -46,8 +47,17 @@ export const api = {
   updateTask: (id: number, patch: TaskPatch) =>
     isTauri() ? invoke<Task | null>("update_task", { id, patch }) : mock.updateTask(id, patch),
 
-  deleteTask: (id: number) =>
-    isTauri() ? invoke<void>("delete_task", { id }) : mock.deleteTask(id),
+  /**
+   * Borrar **manda al basurero** (#11): se restaura durante 30 días y después se
+   * elimina sola. Devuelve `false` si no estaba o ya estaba en el basurero.
+   */
+  trashTask: (id: number) =>
+    isTauri() ? invoke<boolean>("trash_task", { id }) : mock.trashTask(id),
+
+  restoreTask: (id: number) =>
+    isTauri() ? invoke<Task | null>("restore_task", { id }) : mock.restoreTask(id),
+
+  listTrash: () => (isTauri() ? invoke<TrashedTask[]>("list_trash") : mock.listTrash()),
 
   setTaskStatus: (id: number, status: Task["status"]) =>
     isTauri()

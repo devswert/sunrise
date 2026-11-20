@@ -92,6 +92,18 @@ export interface Task {
   updatedAt: string;
 }
 
+/**
+ * Una tarea en el basurero (#11). Ninguna otra vista ve tareas del basurero, por
+ * eso `deletedAt` va aquí y no en `Task`.
+ */
+export interface TrashedTask {
+  task: Task;
+  /** Cuándo entró al basurero (ISO, UTC). */
+  deletedAt: string;
+  /** Cuándo se elimina sola: `deletedAt` + 30 días. */
+  purgeAt: string;
+}
+
 export interface TaskEvent {
   id: number;
   taskId: number;
