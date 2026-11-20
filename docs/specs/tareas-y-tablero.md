@@ -45,6 +45,12 @@ Vuelve al [índice de SPECS](../SPECS.md).
     `reconcile_feed` la ignora. Purgada, si el evento sigue en el feed vuelve como
     nueva. Las futuras sin trabajar que el reconciler elimina por su cuenta siguen
     saliendo directo: el calendario las vuelve a crear.
+  - **"Se elimina el …" es el día más temprano**: la purga corre al abrir la app y
+    con la degradación diaria, así que puede ocurrir un día después. Aceptado
+    (DECISIONES §11).
+  - **Una `ORPHANED` también entra al basurero**, y al restaurarla vuelve
+    `ORPHANED`: invisible, como antes de borrarla. Es raro llegar a una (solo
+    desde la review), y restaurar no es lugar para cambiarle el estado.
   - **Lo que no espera al basurero**: borrar un channel u objetivo mientras la
     tarea está ahí la deja sin él al restaurarla (`ON DELETE SET NULL`), y el aviso
     de uso del channel en Configs (`category_usage`) no la cuenta. Aceptado: es lo

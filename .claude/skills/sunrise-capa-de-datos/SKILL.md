@@ -117,7 +117,9 @@ se cuenta contra la lista **visible**, así que la renumeración incluye a las
 (`deleted_at`, #11) —para no empatar posiciones—
 pero los saltea al ubicar. Olvidar uno de los dos filtros deja la card un lugar más
 abajo de donde se soltó. Fuera de rango es "al final". `mockDb.moveTask` hace lo
-mismo, y hay un test a cada lado.
+mismo, y hay un test a cada lado. La excepción es el basurero: el mock saca la
+tarea del arreglo, así que no la renumera, y al restaurarla puede empatar posición
+con una hermana (el orden lo desempata el id). Rust sí la renumera.
 
 Mandar al backlog es `move_task(id, null, 0)`.
 

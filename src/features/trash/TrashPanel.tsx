@@ -27,6 +27,7 @@ interface Props {
 export function TrashPanel({ onClose, leaving }: Props) {
   const dataVersion = useAppStore((s) => s.dataVersion);
   const bumpData = useAppStore((s) => s.bumpData);
+  const showToast = useAppStore((s) => s.showToast);
   const [items, setItems] = useState<TrashedTask[] | null>(null);
 
   const load = useCallback(async () => {
@@ -38,7 +39,13 @@ export function TrashPanel({ onClose, leaving }: Props) {
   }, [load, dataVersion]);
 
   async function restore(id: number) {
-    await api.restoreTask(id);
+    try {
+      await api.restoreTask(id);
+    } catch (err) {
+      console.error("[sunrise] no se pudo restaurar", err);
+      showToast({ text: "No se pudo restaurar" });
+      return;
+    }
     await load();
     bumpData();
   }

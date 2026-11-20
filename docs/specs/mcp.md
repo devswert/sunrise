@@ -61,7 +61,7 @@ se pruebe en memoria.
 |---|---|---|
 | `list_tasks` (`date`, `end_date`) | `list_tasks_for_date` / `_for_range` | solo lectura |
 | `list_backlog` | `list_backlog` | solo lectura |
-| `get_task` (`id`) | `get_task` | solo lectura |
+| `get_task` (`id`) | `get_live_task` | solo lectura |
 | `list_channels` | `list_categories` | solo lectura |
 | `create_task` | `create_task` | escribe, no destructiva |
 | `update_task` | `update_task` | escribe, no destructiva, idempotente |

@@ -15,14 +15,14 @@ describe("basurero · mockDb (#11)", () => {
   beforeEach(emptyTrash);
 
   it("mandar al basurero la saca de las listas y restaurar la devuelve", async () => {
-    const dia = await api.createTask({ title: "del día", scheduledDate: "2031-03-03" });
+    const dayTask = await api.createTask({ title: "del día", scheduledDate: "2031-03-03" });
     const back = await api.createTask({ title: "del backlog" });
 
-    expect(await api.trashTask(dia.id)).toBe(true);
+    expect(await api.trashTask(dayTask.id)).toBe(true);
     expect(await api.trashTask(back.id)).toBe(true);
-    expect(await api.trashTask(dia.id)).toBe(false);
+    expect(await api.trashTask(dayTask.id)).toBe(false);
 
-    expect((await api.listTasksForDate("2031-03-03")).map((t) => t.id)).not.toContain(dia.id);
+    expect((await api.listTasksForDate("2031-03-03")).map((t) => t.id)).not.toContain(dayTask.id);
     expect((await api.listBacklog()).map((t) => t.id)).not.toContain(back.id);
     const trash = await api.listTrash();
     expect(trash.map((t) => t.task.title)).toEqual(["del backlog", "del día"]);
@@ -30,10 +30,10 @@ describe("basurero · mockDb (#11)", () => {
     const { deletedAt, purgeAt } = trash[0];
     expect(new Date(purgeAt).getTime() - new Date(deletedAt).getTime()).toBe(30 * 86_400_000);
 
-    const vuelta = await api.restoreTask(dia.id);
-    expect(vuelta?.scheduledDate).toBe("2031-03-03");
-    expect((await api.listTasksForDate("2031-03-03")).map((t) => t.id)).toContain(dia.id);
-    expect(await api.restoreTask(dia.id)).toBeNull();
+    const restored = await api.restoreTask(dayTask.id);
+    expect(restored?.scheduledDate).toBe("2031-03-03");
+    expect((await api.listTasksForDate("2031-03-03")).map((t) => t.id)).toContain(dayTask.id);
+    expect(await api.restoreTask(dayTask.id)).toBeNull();
   });
 });
 
