@@ -15,6 +15,11 @@ interface TaskCardProps {
   hidePlaceholders?: boolean;
   /** Ver `TaskCardContent`: la tarea no entra en el horario de trabajo. */
   late?: boolean;
+  /**
+   * La card va apagada: es de un día pasado y ya no pide nada (ver
+   * `fadesInPast` en `DayColumn`). Solo la usa la columna del board.
+   */
+  faded?: boolean;
 }
 
 export function TaskCard({
@@ -26,6 +31,7 @@ export function TaskCard({
   onPatch,
   hidePlaceholders,
   late,
+  faded = false,
 }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `task-${task.id}`,
@@ -50,7 +56,7 @@ export function TaskCard({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`task-card${done ? " is-done" : ""}${isDragging ? " is-dragging" : ""}${
         running ? " is-running" : ""
-      }`}
+      }${faded ? " is-faded" : ""}`}
       {...attributes}
       {...listeners}
       onClick={() => onOpen?.(task)}

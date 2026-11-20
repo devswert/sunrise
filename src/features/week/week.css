@@ -272,11 +272,15 @@
   color: var(--apricot-ink);
 }
 
-/* Los días de atrás no reciben cards (ver `DayColumn`), y eso tiene que verse
-   antes de intentarlo: la columna entera va apagada. Es el mismo recurso que
-   usa una tarea completada —bajar el contraste, no tachar— porque el pasado no
-   es un error, es pasado. */
-.day-col.is-past {
+/* Un día de atrás no se apaga entero: se apagan su encabezado y las cards que ya
+   no piden nada (`.task-card.is-faded`, más abajo). Una tarea manual pendiente
+   queda a contraste completo, y ese contraste contra el resto del día es la
+   señal de que quedó algo sin hacer — sin borde ni color nuevo. Bajar el
+   contraste y no tachar, porque el pasado no es un error, es pasado. Y sí recibe
+   cards (ver `DayColumn`). La tira plegada se apaga entera: no muestra cards, así
+   que es puro encabezado. */
+.day-col.is-past .day-col__head,
+.day-col--collapsed.is-past {
   opacity: 0.62;
 }
 
@@ -414,6 +418,12 @@
 }
 .task-card:hover {
   border-color: var(--muted);
+}
+/* Una card apagada de un día pasado (ver `.day-col.is-past`). Va **antes** de
+   `.is-dragging` y con la misma especificidad, para que al levantarla gane el
+   apagado del arrastre. */
+.task-card.is-faded {
+  opacity: 0.62;
 }
 .task-card.is-dragging {
   opacity: 0.35;

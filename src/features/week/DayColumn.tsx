@@ -4,7 +4,7 @@ import { ChevronsRightLeft, Plus } from "lucide-react";
 import type { Category, Task, TaskPatch } from "../../lib/types";
 import { TaskCard } from "./TaskCard";
 import { computeCapacityLevel, formatMinutes } from "../../lib/capacity";
-import { CapacityLevel } from "../../lib/enums";
+import { CapacityLevel, TaskSource, TaskStatus } from "../../lib/enums";
 import { dateLabel, isToday, weekdayLabel } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
 
@@ -23,8 +23,11 @@ interface DayColumnProps {
   /** El día que el rail está mostrando ahora mismo. */
   isPicked?: boolean;
   /**
-   * Es un día ya pasado. **Solo cambia cómo se ve** —la columna va atenuada—: sí
-   * recibe cards. Ver el comentario del `useDroppable`.
+   * Es un día ya pasado. **Solo cambia cómo se ve**, y no la columna entera: se
+   * apagan el encabezado, las cards completadas y las reuniones de calendario. Una
+   * tarea manual pendiente queda a contraste completo, para que salte a la vista
+   * contra el resto del día apagado (§4.3). Sí recibe cards: ver el comentario
+   * del `useDroppable`.
    */
   isPast?: boolean;
   /**
@@ -46,6 +49,16 @@ interface DayColumnProps {
    * hora actual y en un día futuro no querría decir nada.
    */
   lateIds?: Set<number>;
+}
+
+/**
+ * Si una card de un día pasado va apagada. Se apaga lo que ya no pide nada: lo
+ * completado y las reuniones de calendario —aunque sigan sin cerrar, porque el
+ * foco está en las tareas que uno crea—. Lo único que queda a contraste completo
+ * es una tarea manual pendiente: esa es la que hay que ver al abrir la semana.
+ */
+export function fadesInPast(task: Task): boolean {
+  return task.status === TaskStatus.DONE || task.source !== TaskSource.MANUAL;
 }
 
 const LEVEL_CLASS: Record<CapacityLevel, string> = {
@@ -226,6 +239,7 @@ export function DayColumn({
               onOpen={onOpen}
               onPatch={onPatch}
               late={lateIds?.has(t.id)}
+              faded={isPast && fadesInPast(t)}
             />
           ))}
         </SortableContext>
