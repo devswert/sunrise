@@ -348,6 +348,27 @@ describe("WeekView · la capacidad de cada día", () => {
     await waitFor(() => expect(cap(dia)?.title).toMatch(/ de 9:00$/));
   });
 
+  it("un ignorado que cubre la jornada deja la columna en OK y sin contra qué pintarse", async () => {
+    const [dia] = twoWorkdays();
+    // 11 h de carga: contra cualquier capacidad positiva sería OVER, así que si
+    // queda en OK es porque la capacidad es 0 y el semáforo se apagó.
+    await withLoad(dia);
+    const t = await api.createTask({
+      title: "Más carga",
+      scheduledDate: dia,
+      estimatedMinutes: 600,
+    });
+    created.push(t.id);
+    addToRange(() => [ignoredEvent(dia, "09:00", 540)]);
+    render(<WeekView />);
+
+    await waitFor(() => expect(cap(dia)).not.toBeNull());
+    // Capacidad 0 ⇒ el semáforo se apaga (OK, gris) y el badge no tiene `title`.
+    await waitFor(() => expect(cap(dia)!.hasAttribute("title")).toBe(false));
+    expect(cap(dia)).toHaveClass("cap--ok");
+    expect(cap(dia)).not.toHaveClass("cap--over");
+  });
+
   it("cambiar la jornada repinta todas las columnas", async () => {
     const [a, b] = twoWorkdays();
     await withLoad(a);

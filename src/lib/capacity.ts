@@ -1,4 +1,4 @@
-import { CapacityLevel } from "./enums";
+import { CapacityLevel, SourceState } from "./enums";
 import type { Task } from "./types";
 import { minutesFromTime } from "./date";
 
@@ -54,7 +54,7 @@ export function dayCapacity(workStart: string, workEnd: string, agenda: Task[]):
 
   const blocks: Array<[number, number]> = [];
   for (const t of agenda) {
-    if (!t.railOnly || t.sourceState !== "ACTIVE") continue;
+    if (!t.railOnly || t.sourceState !== SourceState.ACTIVE) continue;
     const start = minutesFromTime(t.scheduledTime);
     const minutes = t.estimatedMinutes ?? 0;
     if (start == null || minutes <= 0) continue;

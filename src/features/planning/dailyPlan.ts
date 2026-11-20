@@ -139,7 +139,9 @@ export function dayRecap(delDia: Task[]): RepasoDelDia {
  */
 export function capacityMessage(r: ResumenDelDia): string {
   if (r.total === 0) return "El día está vacío. Trae algo del backlog o crea una tarea.";
-  if (r.holgura == null) return "Sin objetivo de capacidad configurado.";
+  // Desde #8 la capacidad sale de la jornada, así que `null` ya no es "no
+  // configuraste un objetivo": es que los ignorados de hoy cubren la jornada.
+  if (r.holgura == null) return "Sin horas libres en la jornada de hoy.";
   if (r.nivel === CapacityLevel.OVER) {
     return `Te pasaste por ${fmt(-r.holgura)}. Algo tiene que salir del día.`;
   }

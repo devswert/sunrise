@@ -29,7 +29,7 @@ const SectionIcon = sectionIcon("notificaciones");
  * **Es sección propia y no un campo dentro de General**, y la razón es la de
  * abajo: acá no solo se elige qué recibir, también hay que explicar que macOS
  * decide si el aviso se queda en pantalla. Eso no cabe como una línea suelta entre
- * la capacidad diaria y la jornada.
+ * la jornada y los días plegados.
  *
  * Los tres switches guardan `"1"` / `"0"` en `settings`, y **una clave ausente es
  * encendido** (`noticeOn`): los avisos ya estaban andando antes de que hubiera

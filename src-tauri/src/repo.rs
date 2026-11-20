@@ -5051,6 +5051,44 @@ mod tests {
     }
 
     #[test]
+    fn mover_un_ignorado_en_el_calendario_conserva_la_marca_y_trae_su_hora_nueva() {
+        // La capacidad del día (#8) resta cada ignorado con su hora y su duración
+        // **reales**: si el almuerzo se mueve en el calendario y se resincroniza,
+        // la fila tiene que seguir ignorada y traer la hora y la duración nuevas.
+        // Si perdiera la marca volvería a ser carga; si no se actualizara, la
+        // capacidad restaría el almuerzo de antes.
+        let c = conn();
+        let f = feed(&c);
+        let lunes = ImportableEvent {
+            minutes: Some(75),
+            ..event_at("lunch@x#20260810T130000", "Lunch", "2026-08-10", Some("13:00"))
+        };
+        let martes = ImportableEvent {
+            minutes: Some(75),
+            ..event_at("lunch@x#20260811T130000", "Lunch", "2026-08-11", Some("13:00"))
+        };
+        import_events(&c, f.id, &[lunes.clone(), martes.clone()], None).unwrap();
+        let id = list_tasks_for_date(&c, "2026-08-10").unwrap()[0].id;
+        set_series_rail_only(&c, id, true).unwrap();
+
+        // El lunes se corre a las 14:30 y dura 45 minutos; el martes sigue igual.
+        let movido = ImportableEvent {
+            hour: Some("14:30".into()),
+            minutes: Some(45),
+            ..lunes
+        };
+        import_events(&c, f.id, &[movido, martes], None).unwrap();
+
+        let t = list_tasks_for_date(&c, "2026-08-10").unwrap();
+        assert_eq!(t.len(), 1, "es la misma fila, no una nueva");
+        assert_eq!(t[0].id, id);
+        assert!(t[0].rail_only, "la marca sobrevive al reimport");
+        assert_eq!(t[0].scheduled_time.as_deref(), Some("14:30"));
+        assert_eq!(t[0].estimated_minutes, Some(45));
+        assert!(list_tasks_for_date(&c, "2026-08-11").unwrap()[0].rail_only);
+    }
+
+    #[test]
     fn un_bloque_de_agenda_no_cuenta_al_reordenar_la_columna() {
         // El índice que manda la vista se cuenta contra las cards que se ven, y
         // un bloque de agenda no es una de ellas: sin descontarlo, la card

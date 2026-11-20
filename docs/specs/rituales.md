@@ -140,9 +140,11 @@ cual quedó. Quien planifica decide si la tarea va a hoy, al backlog o se queda.
   ignorados de hoy (`dayCapacity`, la misma de la semana), y no un número fijo.
   El pie dice `X de Y` con ese `Y`, sin desglose, y marcar o desmarcar "Ignorar
   como tarea" lo cambia sin recargar (la agenda se relee con el aviso).
-- **Sin objetivo de capacidad (`target <= 0`) la holgura es `null`**, que no es
-  lo mismo que "te sobra 0" — el mensaje lo dice en vez de mostrar un número.
-  Desde #8 eso pasa cuando los ignorados cubren la jornada entera.
+- **Con capacidad 0 (`target <= 0`) la holgura es `null`**, que no es lo mismo
+  que "te sobra 0" — el mensaje lo dice en vez de mostrar un número: "Sin horas
+  libres en la jornada de hoy." Desde #8 eso pasa cuando los ignorados cubren la
+  jornada entera; antes era un objetivo configurado en 0, y el texto viejo ("Sin
+  objetivo de capacidad configurado") nombraba un ajuste que ya no existe.
 - **La navegación queda pegada abajo** (`position: sticky`) mientras la columna
   de pasos scrollea: con una lista larga, "Siguiente" no puede estar al final del
   scroll.

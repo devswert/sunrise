@@ -49,7 +49,7 @@ La lista de casos vive en los propios archivos y no se duplica acá; esto es el 
 | DnD del board | `collision.test.ts`, `dropTarget.test.ts` |
 | Vista semana | `date.test.ts` (`threeWeeks`), `WeekView.test.tsx`, `anchor.test.ts` |
 | El día como estado | `day.test.ts` |
-| Capacidad | `capacity.test.ts`, `capacity.parse.test.ts` |
+| Capacidad | `capacity.test.ts` (`dayCapacity`, #8), `capacity.parse.test.ts`, `WeekView.test.tsx` y `TodayView.test.tsx` (capacidad por día), `DailyPlanningView.test.tsx` (el pie), `settings.test.ts` (no lee `daily_capacity_minutes`; jornada sin cero adelante), `repo.rs` (la marca de ignorar sobrevive al reimport). Fixture compartida: `src/test/ignoredEvents.ts` (`ignoredEvent`, `addToRange`) |
 | Settings y atajos | `settings.test.ts`, `secciones.test.ts`, `shortcuts.test.ts`, `useShortcuts.test.tsx`, `SettingsView.test.tsx`, `DevToolsCard.test.tsx` |
 | Notificaciones | `notice.rs`, `notify.test.ts`, `NotificationsCard.test.tsx` |
 | Sonido y tipografía | `sound.rs`, `bell.rs`, `fonts.rs`, `fonts.test.ts`, `AppearanceCard.test.tsx` |
