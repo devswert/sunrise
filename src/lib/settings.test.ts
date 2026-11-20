@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { renderHook } from "@testing-library/react";
 import {
   SETTING_DEFAULTS,
   SettingKey,
@@ -26,10 +27,16 @@ import { CapacityLevel } from "./enums";
  * fila vieja con 300 no debe mover nada.
  */
 describe("la capacidad ya no lee daily_capacity_minutes", () => {
-  it("una jornada 09–18 da 540 aunque la clave vieja diga otra cosa", () => {
-    const values = { daily_capacity_minutes: "300" };
-    const { start, end } = workHours(values);
-    expect(dayCapacity(start, end, [])).toBe(540);
+  it("con la clave vieja guardada en 300, el hook mide contra la jornada completa", async () => {
+    const { useSettingsStore, useCapacitySettings } = await import("./settings");
+    // La fila sigue en la base (la siembra la migración 2): se pisa con 300 y se
+    // recarga desde el mock, como la leería la app.
+    await useSettingsStore.getState().set("daily_capacity_minutes" as SettingKey, "300");
+    await useSettingsStore.getState().load();
+    expect(useSettingsStore.getState().values.daily_capacity_minutes).toBe("300");
+
+    const { result } = renderHook(() => useCapacitySettings());
+    expect(result.current.capacityFor([])).toBe(540);
   });
 });
 

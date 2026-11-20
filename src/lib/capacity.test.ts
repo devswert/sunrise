@@ -2,42 +2,13 @@ import { describe, expect, it } from "vitest";
 import { computeCapacityLevel, dayCapacity, formatMinutes } from "./capacity";
 import { CapacityLevel } from "./enums";
 import type { Task } from "./types";
+import { ignoredEvent } from "../test/ignoredEvents";
 
 const DIA = "2026-08-17";
-let ids = 0;
 
-/** Un evento del calendario marcado "Ignorar como tarea", con hora local y duración. */
+/** Un ignorado de `DIA`. Ver `ignoredEvent`: sus `eventStart`/`eventEnd` mienten a propósito. */
 function ignored(time: string | null, minutes: number | null, over: Partial<Task> = {}): Task {
-  ids += 1;
-  return {
-    id: ids,
-    title: `Evento ${ids}`,
-    notes: null,
-    categoryId: null,
-    objectiveId: null,
-    priority: null,
-    scheduledDate: DIA,
-    scheduledTime: time,
-    position: 0,
-    estimatedMinutes: minutes,
-    actualSeconds: 0,
-    status: "TODO",
-    completedAt: null,
-    source: "CALENDAR",
-    sourceState: "ACTIVE",
-    feedId: 1,
-    calendarUid: `uid-${ids}`,
-    // A propósito en UTC y con otra hora: la capacidad no debe leerlos.
-    eventStart: `${DIA}T03:00:00Z`,
-    eventEnd: `${DIA}T04:00:00Z`,
-    meetingUrl: null,
-    eventDescription: null,
-    attendees: [],
-    railOnly: true,
-    createdAt: `${DIA}T09:00:00Z`,
-    updatedAt: `${DIA}T09:00:00Z`,
-    ...over,
-  };
+  return ignoredEvent(DIA, time, minutes, over);
 }
 
 describe("computeCapacityLevel", () => {
@@ -80,6 +51,16 @@ describe("dayCapacity", () => {
 
   it("un almuerzo de 13:00 a 14:15 resta 75 y deja 465", () => {
     expect(dayCapacity("09:00", "18:00", [ignored("13:00", 75)])).toBe(465);
+  });
+
+  it("el almuerzo movido a otra hora y con otra duración resta lo nuevo", () => {
+    // Lo que deja la sincronización tras mover el evento: la misma fila (mismo
+    // uid) con otra hora y otra duración. `eventStart`/`eventEnd` no cambian
+    // acá a propósito: no son de donde se lee.
+    const antes = ignored("13:00", 75);
+    const despues = { ...antes, scheduledTime: "14:30", estimatedMinutes: 45 };
+    expect(dayCapacity("09:00", "18:00", [antes])).toBe(465);
+    expect(dayCapacity("09:00", "18:00", [despues])).toBe(495);
   });
 
   it("un evento de 17:30 a 18:30 resta solo los 30 minutos de adentro", () => {

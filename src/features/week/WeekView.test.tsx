@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WeekView } from "./WeekView";
 import { dateLabel, isoWeekday, todayISO, weekDates } from "../../lib/date";
 import { api } from "../../lib/ipc";
 import { useAppStore } from "../../lib/store";
+import { addToRange, ignoredEvent } from "../../test/ignoredEvents";
 import { SettingKey, useSettingsStore } from "../../lib/settings";
 
 /**
@@ -274,26 +275,33 @@ describe("WeekView · panel de backlog", () => {
  * ignorados de ese día—, no contra un número fijo. El badge de carga lleva en el
  * `title` contra qué se pinta.
  *
- * Toca estado del mock (la marca de ignorar de la Weekly de la semilla, una
- * tarea propia y la jornada); el `afterEach` lo devuelve, así que los casos no
- * dependen del orden.
+ * El evento ignorado es propio (`addToRange`), no uno de la semilla. Lo que sí
+ * toca estado del mock —una tarea de carga y la jornada— lo devuelve el
+ * `afterEach`, así que los casos no dependen del orden.
  */
 describe("WeekView · la capacidad de cada día", () => {
   let created: number[] = [];
 
   afterEach(async () => {
-    const hoy = await api.listTasksForRange(todayISO(), todayISO());
-    const weekly = hoy.find((t) => t.title === "Weekly de equipo");
-    if (weekly) await api.setTaskRailOnly(weekly.id, false);
+    vi.restoreAllMocks();
     for (const id of created) await api.trashTask(id);
     created = [];
     await useSettingsStore.getState().set(SettingKey.WORK_START, "09:00");
     await useSettingsStore.getState().set(SettingKey.WORK_END, "18:00");
   });
 
-  /** Un día hábil de esta semana que no es hoy: nunca va plegado. */
-  function otherWorkday(): string {
-    return weekDates(new Date()).find((d) => d !== todayISO() && isoWeekday(d) <= 5)!;
+  /**
+   * Dos días hábiles **futuros** a la vista: nunca van plegados, y la
+   * degradación no se lleva su tarea al backlog (pasaría con un día pasado si el
+   * caso corre solo, con `-t`, y es el primero en montar la vista).
+   */
+  function twoWorkdays(): [string, string] {
+    const next = new Date();
+    next.setDate(next.getDate() + 7);
+    const [a, b] = [...weekDates(new Date()), ...weekDates(next)].filter(
+      (d) => d > todayISO() && isoWeekday(d) <= 5,
+    );
+    return [a, b];
   }
 
   const cap = (date: string) =>
@@ -308,42 +316,50 @@ describe("WeekView · la capacidad de cada día", () => {
     created.push(t.id);
   }
 
-  async function ignoreWeekly() {
-    const hoy = await api.listTasksForRange(todayISO(), todayISO());
-    const weekly = hoy.find((t) => t.title === "Weekly de equipo")!;
-    await act(async () => {
-      await api.setTaskRailOnly(weekly.id, true);
-      useAppStore.getState().bumpData();
-    });
-  }
-
   it("un día con un evento ignorado y otro sin él miden contra números distintos", async () => {
-    const otro = otherWorkday();
-    await withLoad(otro);
+    const [conAlmuerzo, sinAlmuerzo] = twoWorkdays();
+    await withLoad(conAlmuerzo);
+    await withLoad(sinAlmuerzo);
+    // Un almuerzo de 13:00 a 14:15, ignorado: 9 h − 1 h 15 = 7:45.
+    const almuerzo = ignoredEvent(conAlmuerzo, "13:00", 75);
+    addToRange(() => [almuerzo]);
     render(<WeekView />);
 
-    // Sin ignorados, los dos tienen la jornada completa: 09–18 son 9 horas.
-    await waitFor(() => expect(cap(todayISO())?.title).toMatch(/ de 9:00$/));
-    expect(cap(otro)?.title).toMatch(/ de 9:00$/);
+    await waitFor(() => expect(cap(conAlmuerzo)?.title).toMatch(/ de 7:45$/));
+    // Sin ignorados, la jornada completa: 09–18 son 9 horas.
+    expect(cap(sinAlmuerzo)?.title).toMatch(/ de 9:00$/);
+  });
 
-    // Ignorar la Weekly (10:00, una hora) le resta a hoy y solo a hoy, sin
-    // recargar la vista.
-    await ignoreWeekly();
-    await waitFor(() => expect(cap(todayISO())?.title).toMatch(/ de 8:00$/));
-    expect(cap(otro)?.title).toMatch(/ de 9:00$/);
+  it("marcar y desmarcar el evento cambia la capacidad sin recargar la vista", async () => {
+    const [dia] = twoWorkdays();
+    await withLoad(dia);
+    let ignorado = false;
+    const reunion = () => ignoredEvent(dia, "10:00", 60, { railOnly: ignorado });
+    addToRange(() => [reunion()]);
+    render(<WeekView />);
+    await waitFor(() => expect(cap(dia)?.title).toMatch(/ de 9:00$/));
+
+    ignorado = true;
+    act(() => useAppStore.getState().bumpData());
+    await waitFor(() => expect(cap(dia)?.title).toMatch(/ de 8:00$/));
+
+    ignorado = false;
+    act(() => useAppStore.getState().bumpData());
+    await waitFor(() => expect(cap(dia)?.title).toMatch(/ de 9:00$/));
   });
 
   it("cambiar la jornada repinta todas las columnas", async () => {
-    const otro = otherWorkday();
-    await withLoad(otro);
+    const [a, b] = twoWorkdays();
+    await withLoad(a);
+    await withLoad(b);
     render(<WeekView />);
-    await waitFor(() => expect(cap(otro)?.title).toMatch(/ de 9:00$/));
+    await waitFor(() => expect(cap(a)?.title).toMatch(/ de 9:00$/));
 
     await act(async () => {
       await useSettingsStore.getState().set(SettingKey.WORK_END, "17:30");
     });
 
-    await waitFor(() => expect(cap(otro)?.title).toMatch(/ de 8:30$/));
-    expect(cap(todayISO())?.title).toMatch(/ de 8:30$/);
+    await waitFor(() => expect(cap(a)?.title).toMatch(/ de 8:30$/));
+    expect(cap(b)?.title).toMatch(/ de 8:30$/);
   });
 });
