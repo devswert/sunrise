@@ -106,7 +106,7 @@ pub fn set_task_rail_only(
 ) -> Result<Option<Task>, String> {
     let conn = db.0.lock().map_err(e)?;
     repo::set_series_rail_only(&conn, id, rail_only).map_err(e)?;
-    repo::get_task(&conn, id).map_err(e)
+    repo::get_task_outside_trash(&conn, id).map_err(e)
 }
 
 #[tauri::command]

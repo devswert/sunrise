@@ -70,9 +70,9 @@ se pruebe en memoria.
 | `stop_timer` (`id`) | `stop_timer` | escribe, no destructiva, idempotente |
 | `log_time` (`id`, `start`, `end`) | `log_time_entry` | escribe, no destructiva, **no** idempotente |
 | `set_task_time` (`id`, `minutes`) | `set_actual_seconds_unless_running` | escribe, no destructiva, idempotente |
-| `delete_task` (`id`) | `trash_task` | escribe, **destructiva**, idempotente |
+| `delete_task` (`id`) | `trash_task` | escribe, **destructiva**, **no** idempotente (la segunda da error) |
 | `list_trash` | `list_trash` | solo lectura |
-| `restore_task` (`id`) | `restore_task` | escribe, no destructiva, idempotente |
+| `restore_task` (`id`) | `restore_task` | escribe, no destructiva, **no** idempotente (la segunda da error) |
 
 - **`list_tasks` sin fecha es hoy** en la zona del usuario, y toda respuesta trae
   `today`: el modelo no tiene otra forma confiable de saber qué día es acá.

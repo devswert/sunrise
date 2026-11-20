@@ -405,7 +405,11 @@ pausar, la siguiente sincronización la resuelve con las reglas normales.
 al conciliar: `import_events` no la actualiza (no la resucita, y el
 `UNIQUE(feed_id, calendar_uid)` impide importar otra al lado) y `reconcile_feed`
 solo mira las que están fuera del basurero. La sacaste a propósito; si a los 30
-días se purga y el evento sigue en el feed, vuelve como nueva (§4.1).
+días se purga y el evento sigue en el feed, vuelve como nueva (§4.1). Mientras
+está ahí tampoco se actualiza: si la restauras después de que el evento se movió,
+vuelve con los datos viejos hasta la próxima sincronización, y si el evento ya no
+está en el feed, esa sincronización la trata como cualquier otra (futura sin
+trabajar: se elimina).
 
 Del resto, se borra solo lo intacto y por venir:
 

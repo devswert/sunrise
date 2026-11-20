@@ -76,6 +76,7 @@ locale de `date-fns` va **por llamada** y es fácil olvidarlo, y
 |---|---|
 | `src/components/Dialog.tsx` | todo diálogo chico de confirmar o avisar |
 | `src/components/Popover.tsx` | todo popover flotante |
+| `src/components/Toast.tsx` | todo aviso de abajo, con acción opcional ("Deshacer"): `useAppStore.showToast`, uno a la vez, se cierra solo |
 | `src/components/SearchSelect.tsx` | todo select con búsqueda (channel, objetivo), simple o **multi** con `selected` |
 | `src/components/TimePicker.tsx` | elegir duraciones (planned / actual) |
 | `src/components/ThemeToggle.tsx` | switch de tema (solo ese: tiene sol y luna dibujados) |

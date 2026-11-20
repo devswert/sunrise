@@ -322,7 +322,7 @@ minuto no cambia nada y deja la app pidiendo lo mismo toda la tarde.
 
 **El rollup lo comparte con la weekly review.** `work_by_day` es el único
 lugar donde viven la atribución por día local, la Regla 2, la Regla 3, el
-no-filtrar `ORPHANED` y el piso en 0 por tarea; la semana lo agrupa en celdas
+no-filtrar `ORPHANED` (pero sí el basurero, I12) y el piso en 0 por tarea; la semana lo agrupa en celdas
 día × categoría y la bitácora en timelines. Tener dos consultas garantizaba que
 se separaran.
 

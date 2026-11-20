@@ -229,6 +229,12 @@ chip nuevo que arme el `#` a mano vuelve a abrir el bug.
 
 ## Componentes y patrones
 
+**Los avisos de abajo son `components/Toast.tsx`** (#11): uno a la vez —uno nuevo
+reemplaza al anterior—, en portal, `role="status"` (avisa sin robar el foco), se
+cierra solo a los 6 s y lleva una acción opcional ("Deshacer"). El estado vive en
+el store (`showToast`) y no en la vista que lo dispara, porque esa vista suele
+desmontarse en el mismo gesto. Un aviso nuevo usa este, no uno propio.
+
 **Los links salen al navegador del sistema, siempre.** Dentro del webview un
 `<a href>` **navega la propia ventana de la app**: sunrise se convierte en una
 pestaña de Google sin barra de direcciones ni botón de volver, y la única salida es

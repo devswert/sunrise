@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RotateCcw, Trash2, X } from "lucide-react";
 import { api } from "../../lib/ipc";
-import { shortDate, toISODate } from "../../lib/date";
+import { dayInZone, shortDate } from "../../lib/date";
 import { useAppStore } from "../../lib/store";
 import type { TrashedTask } from "../../lib/types";
 
@@ -70,7 +70,7 @@ export function TrashPanel({ onClose, leaving }: Props) {
                 <span className="trash-panel__title">{task.title}</span>
                 <span className="trash-panel__meta">
                   {task.scheduledDate ? shortDate(task.scheduledDate) : "Backlog"}
-                  {" · "}se elimina el {shortDate(toISODate(new Date(purgeAt)))}
+                  {" · "}se elimina el {shortDate(dayInZone(purgeAt))}
                 </span>
               </div>
               <button
