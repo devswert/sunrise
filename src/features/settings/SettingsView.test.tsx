@@ -99,6 +99,42 @@ describe("SettingsView · jornada", () => {
   });
 
   /**
+   * Con horas sin cero adelante la validación comparaba texto: `"8:30" <= "9:00"`
+   * es false como string, así que un fin anterior al inicio pasaba y la capacidad
+   * de todas las columnas quedaba en 0.
+   */
+  it("rechaza un fin anterior al inicio aunque se escriba sin cero adelante", async () => {
+    render(<SettingsView />);
+    const end = await screen.findByLabelText("Fin");
+
+    await userEvent.clear(end);
+    await userEvent.type(end, "8:30");
+    await userEvent.tab();
+
+    expect(end).toHaveClass("is-invalid");
+    expect(saved().end).toBe("18:00");
+  });
+
+  it("acepta una hora sin cero adelante y la guarda con dos dígitos", async () => {
+    await useSettingsStore.getState().set(SettingKey.WORK_START, "8:00");
+    render(<SettingsView />);
+    const end = await screen.findByLabelText("Fin");
+
+    // Comparado como texto, "10:00" <= "8:00" daba true y lo rechazaba.
+    await userEvent.clear(end);
+    await userEvent.type(end, "10:00");
+    await userEvent.tab();
+    expect(end).not.toHaveClass("is-invalid");
+    expect(saved().end).toBe("10:00");
+
+    const start = screen.getByLabelText("Inicio");
+    await userEvent.clear(start);
+    await userEvent.type(start, "9:15");
+    await userEvent.tab();
+    expect(useSettingsStore.getState().values[SettingKey.WORK_START]).toBe("09:15");
+  });
+
+  /**
    * #8: el número que se define es la jornada. La capacidad de cada día sale de
    * ella menos los eventos ignorados, así que un campo aparte sería un segundo
    * número que nadie lee.

@@ -31,12 +31,18 @@ describe("la capacidad ya no lee daily_capacity_minutes", () => {
     const { useSettingsStore, useCapacitySettings } = await import("./settings");
     // La fila sigue en la base (la siembra la migración 2): se pisa con 300 y se
     // recarga desde el mock, como la leería la app.
-    await useSettingsStore.getState().set("daily_capacity_minutes" as SettingKey, "300");
-    await useSettingsStore.getState().load();
-    expect(useSettingsStore.getState().values.daily_capacity_minutes).toBe("300");
+    const key = "daily_capacity_minutes" as SettingKey;
+    await useSettingsStore.getState().set(key, "300");
+    try {
+      await useSettingsStore.getState().load();
+      expect(useSettingsStore.getState().values.daily_capacity_minutes).toBe("300");
 
-    const { result } = renderHook(() => useCapacitySettings());
-    expect(result.current.capacityFor([])).toBe(540);
+      const { result } = renderHook(() => useCapacitySettings());
+      expect(result.current.capacityFor([])).toBe(540);
+    } finally {
+      // La semilla del mock es de módulo: se devuelve como la dejó la migración 2.
+      await useSettingsStore.getState().set(key, "480");
+    }
   });
 });
 
@@ -71,6 +77,27 @@ describe("workHours", () => {
         [SettingKey.WORK_END]: "17:00",
       }),
     ).toEqual({ start: "08:30", end: "17:00" });
+  });
+
+  /**
+   * Una hora guardada sin cero adelante (`"9:30"`). Comparada como texto,
+   * `"10:00" <= "9:30"` da true: la jornada válida caía al default, o al revés,
+   * una invertida pasaba, y la capacidad quedaba en 0 en todas las columnas.
+   */
+  it("una hora sin cero adelante se compara en minutos y sale con dos dígitos", () => {
+    const jornada = workHours({
+      [SettingKey.WORK_START]: "9:30",
+      [SettingKey.WORK_END]: "10:00",
+    });
+    expect(jornada).toEqual({ start: "09:30", end: "10:00" });
+    expect(dayCapacity(jornada.start, jornada.end, [])).toBe(30);
+  });
+
+  it("una invertida sin cero adelante igual cae al default", () => {
+    expect(workHours({ [SettingKey.WORK_START]: "10:00", [SettingKey.WORK_END]: "9:30" })).toEqual({
+      start: SETTING_DEFAULTS.workStart,
+      end: SETTING_DEFAULTS.workEnd,
+    });
   });
 
   it("cae al default si falta o no es una hora", () => {

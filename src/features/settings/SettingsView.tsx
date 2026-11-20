@@ -558,15 +558,19 @@ function JornadaFields() {
       return;
     }
     // El otro extremo puede venir a medio editar; se compara contra lo guardado.
-    const otro = cual === "start" ? workday.end : workday.start;
-    const invertido = cual === "start" ? raw >= otro : raw <= otro;
+    // **En minutos, no como texto**: `"9:30"` contra `"10:00"` comparado como
+    // string dejaba pasar una jornada invertida, y la capacidad quedaba en 0.
+    const otro = minutesFromTime(cual === "start" ? workday.end : workday.start) ?? 0;
+    const invertido = cual === "start" ? min >= otro : min <= otro;
     if (invertido) {
       setError(cual);
       return;
     }
     setError(null);
     setDraft((d) => ({ ...d, [cual]: undefined }));
-    await setSetting(cual === "start" ? SettingKey.WORK_START : SettingKey.WORK_END, raw);
+    // Se guarda con dos dígitos, que es la forma que leen todos (`"9:30"` → `"09:30"`).
+    const hhmm = `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+    await setSetting(cual === "start" ? SettingKey.WORK_START : SettingKey.WORK_END, hhmm);
   }
 
   const field = (cual: "start" | "end", label: string, id: string) => (

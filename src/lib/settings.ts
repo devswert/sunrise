@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { api } from "./ipc";
 import { FontChoice, GroupBy, SUNRISE_BELL } from "./enums";
 import { useAppStore } from "./store";
-import { setZone } from "./date";
+import { minutesFromTime, setZone } from "./date";
 import { dayCapacity } from "./capacity";
 import type { Task } from "./types";
 import {
@@ -158,13 +158,19 @@ export function capacityWarnRatio(values: SettingsMap): number {
   return n;
 }
 
-/** `"HH:mm"`, o el default. Cubre clave ausente, vacía o con basura. */
+/**
+ * `"HH:mm"`, o el default. Cubre clave ausente, vacía o con basura.
+ *
+ * **Sale siempre con dos dígitos** (`"9:30"` → `"09:30"`): varios lectores
+ * comparan la hora como texto (el aviso de cierre contra `nowHhmm`), y sin el
+ * cero `"10:00" >= "9:30"` da false.
+ */
 function hour(values: SettingsMap, key: string, fallback: string): string {
   const raw = values[key]?.trim();
   if (!raw) return fallback;
   const m = /^(\d{1,2}):(\d{2})$/.exec(raw);
   if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return fallback;
-  return raw;
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
 }
 
 /**
@@ -177,7 +183,11 @@ function hour(values: SettingsMap, key: string, fallback: string): string {
 export function workHours(values: SettingsMap): { start: string; end: string } {
   const start = hour(values, SettingKey.WORK_START, SETTING_DEFAULTS.workStart);
   const end = hour(values, SettingKey.WORK_END, SETTING_DEFAULTS.workEnd);
-  if (end <= start) return { start: SETTING_DEFAULTS.workStart, end: SETTING_DEFAULTS.workEnd };
+  // En minutos y no como texto: una hora guardada sin cero (`"9:30"`) hacía que
+  // `"10:00" <= "9:30"` diera true y la jornada válida cayera al default.
+  if ((minutesFromTime(end) ?? 0) <= (minutesFromTime(start) ?? 0)) {
+    return { start: SETTING_DEFAULTS.workStart, end: SETTING_DEFAULTS.workEnd };
+  }
   return { start, end };
 }
 
