@@ -2,10 +2,15 @@
  * en tokens.css): en claro va invertido y en oscuro no, porque invertir los
  * tokens generales dejaba "Deshacer" ilegible sobre un fondo casi blanco. */
 .toast {
+  /* Centrado con márgenes y no con `translateX(-50%)`: con un ancho impar el
+   * transform lo deja en medio píxel y WebKit difumina el texto, que se veía
+   * con ruido al lado del resto de la app. */
   position: fixed;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: 24px;
-  transform: translateX(-50%);
+  width: fit-content;
+  margin: 0 auto;
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -55,10 +60,12 @@
   opacity: 0.7;
 }
 
+/* Solo la entrada usa transform, y en píxeles enteros: al terminar no queda
+ * ninguno puesto. */
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 8px);
+    transform: translateY(8px);
   }
 }
 
