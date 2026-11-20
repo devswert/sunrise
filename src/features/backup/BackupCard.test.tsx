@@ -159,6 +159,19 @@ describe("BackupCard · respaldar", () => {
     expect(field).toHaveClass("is-invalid");
     expect(saved().keep).toBe(2);
   });
+
+  it("una hora sin cero adelante se guarda con dos dígitos", async () => {
+    render(<BackupCard />);
+    const field = await screen.findByLabelText("Hora");
+
+    await userEvent.clear(field);
+    await userEvent.type(field, "9:05");
+    await userEvent.tab();
+
+    // Lo guardado, no lo interpretado: `backupSettings` ya normaliza al leer.
+    expect(useSettingsStore.getState().values[SettingKey.BACKUP_TIME]).toBe("09:05");
+    await useSettingsStore.getState().set(SettingKey.BACKUP_TIME, "20:00");
+  });
 });
 
 describe("BackupCard · restaurar", () => {

@@ -6,6 +6,7 @@
  * cuándo toca avisar.
  */
 import type { LogDay, DoneTask } from "../../lib/types";
+import { minutesFromTime } from "../../lib/date";
 import { SettingKey, noticeOn, type SettingsMap } from "../../lib/settings";
 import { type RunningSeconds, runningFor } from "../timer/runningSeconds";
 import { type ClockDay, liveClock } from "../../lib/workday";
@@ -111,8 +112,12 @@ export function shouldRemindShutdown(options: {
   if (!noticeOn(values, SettingKey.NOTICE_SHUTDOWN)) return false;
   if (alreadyClosed) return false;
   if (values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === today) return false;
-  // Comparación de strings `HH:mm`, que es lexicográfica y por eso funciona.
-  return nowHhmm >= workEnd;
+  // **En minutos, no como texto**: `"10:00" >= "9:30"` da false. `workHours()` ya
+  // devuelve dos dígitos, pero la función no puede depender de quién la llame.
+  const now = minutesFromTime(nowHhmm);
+  const end = minutesFromTime(workEnd);
+  if (now == null || end == null) return false;
+  return now >= end;
 }
 
 /**

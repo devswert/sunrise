@@ -128,6 +128,12 @@ describe("tocaAvisarCierre", () => {
     expect(shouldRemindShutdown({ ...base, nowHhmm: "21:30" })).toBe(true);
   });
 
+  it("compara en minutos: un fin de jornada sin cero adelante igual avisa", () => {
+    // Como texto, "10:00" >= "9:30" da false y el aviso no llegaba nunca.
+    expect(shouldRemindShutdown({ ...base, workEnd: "9:30", nowHhmm: "10:00" })).toBe(true);
+    expect(shouldRemindShutdown({ ...base, workEnd: "9:30", nowHhmm: "09:29" })).toBe(false);
+  });
+
   it("no avisa dos veces el mismo día", () => {
     const values = { [SettingKey.SHUTDOWN_NOTIFIED_ON]: "2026-08-12" };
     expect(shouldRemindShutdown({ ...base, nowHhmm: "19:00", values })).toBe(false);

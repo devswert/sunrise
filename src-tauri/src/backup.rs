@@ -579,9 +579,10 @@ const PULSO: Duration = Duration::from_secs(60);
 
 /// Minutos desde medianoche de un `HH:mm`, o `None` si no se entiende.
 ///
-/// Se compara en números y no como texto —que es lo que hace el front— porque
-/// `hour()` en `settings.ts` acepta una hora de un dígito: con `"9:05"`,
-/// `"9:05" >= "20:00"` es **falso** todo el día y el respaldo nunca corre.
+/// Se compara en números y no como texto. El front ya guarda y devuelve dos
+/// dígitos (#8), pero lo guardado puede venir sin cero —de antes, o editado a
+/// mano—, y con `"9:05"` la comparación de texto `"9:05" >= "20:00"` es **falsa**
+/// todo el día y el respaldo nunca corre.
 fn minutes_of_day(hhmm: &str) -> Option<i64> {
     let (h, m) = hhmm.trim().split_once(':')?;
     let h: i64 = h.trim().parse().ok()?;

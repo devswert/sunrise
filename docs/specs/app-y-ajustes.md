@@ -28,7 +28,11 @@ también de donde sale el icono de cada una (§7) — y desde Mej.1 lo vigila un
   **valida al escribir** —hora imposible o rango invertido se rechazan y se
   avisan— aunque `workHours()` ya caiga al default: ese fallback protege la
   lectura de la base, pero si el campo se tragara un `25:00` en silencio, el rail
-  no cambiaría y nada explicaría por qué.
+  no cambiaría y nada explicaría por qué. **Se valida en minutos y se guarda con
+  dos dígitos** (`9:30` → `09:30`, `hhmmFromMinutes`): comparado como texto,
+  `"8:30" <= "09:00"` es false y una jornada invertida pasaba, dejando la
+  capacidad en 0 en todas las columnas (#8). `workHours()` también compara en
+  minutos y devuelve dos dígitos, por lo que ya hubiera guardado.
 - **Días plegados** (`collapsed_weekdays`): siete botones con los días de la
   semana, marcados los que se dibujan como tira angosta en la vista semana (§4.3).
   Por defecto sábado y domingo. Siete botones y no siete interruptores porque la

@@ -29,11 +29,10 @@ import {
   useSettingsStore,
   useWorkHours,
 } from "../../lib/settings";
-import { isoWeekdayLabel, systemZone } from "../../lib/date";
+import { hhmmFromMinutes, isoWeekdayLabel, minutesFromTime, systemZone } from "../../lib/date";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { announcementFor } from "../../lib/changelog";
 import { useUpdateStore } from "../updates/updateStore";
-import { minutesFromTime } from "../calendar/railLayout";
 import { PLAIN_INPUT } from "../../components/plainInput";
 import { useProfile } from "../../lib/profile";
 import { SuggestionsCard } from "../tasks/SuggestionsCard";
@@ -569,8 +568,10 @@ function JornadaFields() {
     setError(null);
     setDraft((d) => ({ ...d, [cual]: undefined }));
     // Se guarda con dos dígitos, que es la forma que leen todos (`"9:30"` → `"09:30"`).
-    const hhmm = `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
-    await setSetting(cual === "start" ? SettingKey.WORK_START : SettingKey.WORK_END, hhmm);
+    await setSetting(
+      cual === "start" ? SettingKey.WORK_START : SettingKey.WORK_END,
+      hhmmFromMinutes(min),
+    );
   }
 
   const field = (cual: "start" | "end", label: string, id: string) => (
