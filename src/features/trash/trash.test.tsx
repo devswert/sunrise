@@ -67,7 +67,9 @@ describe("Toast (#11)", () => {
   it("la acción corre y cierra el aviso", async () => {
     const run = vi.fn();
     render(<Toast />);
-    act(() => useAppStore.getState().showToast({ text: "Se fue", action: { label: "Deshacer", run } }));
+    act(() =>
+      useAppStore.getState().showToast({ text: "Se fue", action: { label: "Deshacer", run } }),
+    );
 
     expect(screen.getByRole("status")).toHaveTextContent("Se fue");
     await userEvent.click(screen.getByRole("button", { name: "Deshacer" }));

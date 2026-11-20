@@ -506,4 +506,3 @@ describe("TaskModal · eliminar manda al basurero (#11)", () => {
     expect(restoreTask).toHaveBeenCalledWith(7);
   });
 });
-
