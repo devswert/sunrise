@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AddTaskModal } from "./AddTaskModal";
+import { ModalPresence } from "../../components/ModalPresence";
 import { useAppStore } from "../../lib/store";
 import { api } from "../../lib/ipc";
 
@@ -418,5 +419,57 @@ describe("AddTaskModal · el cursor se queda donde se está escribiendo", () => 
 
     expect(field.value).toBe("vermañana");
     expect(field.selectionStart).toBe(3);
+  });
+});
+
+describe("AddTaskModal · ⌘Enter doble", () => {
+  beforeEach(() => {
+    useAppStore.setState({ composeOpen: true, composeDefaults: {} });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  /**
+   * `create()` espera a la base antes de cerrar, y el segundo ⌘Enter cae en ese
+   * hueco: el modal todavía no empezó a salir, así que su tecla sigue viva.
+   */
+  it("crea una sola tarea", async () => {
+    const user = userEvent.setup();
+    const original = api.createTask.bind(api);
+    const createTask = vi.spyOn(api, "createTask").mockImplementation(async (draft) => {
+      await new Promise((r) => setTimeout(r, 30));
+      return original(draft);
+    });
+    render(<AddTaskModal />);
+
+    await user.click(await screen.findByPlaceholderText("Descripción de la tarea…"));
+    await user.keyboard("Una sola vez");
+    await user.keyboard("{Meta>}{Enter}{Enter}{/Meta}");
+
+    await waitFor(() => expect(useAppStore.getState().composeOpen).toBe(false));
+    expect(createTask).toHaveBeenCalledOnce();
+  });
+});
+
+describe("AddTaskModal · la salida animada", () => {
+  beforeEach(() => {
+    useAppStore.setState({ composeOpen: true, composeDefaults: {} });
+  });
+
+  /** Montado como en `App`: el modal lo sostiene `ModalPresence` mientras sale. */
+  function Shell() {
+    const open = useAppStore((s) => s.composeOpen);
+    return <ModalPresence value={open}>{() => <AddTaskModal />}</ModalPresence>;
+  }
+
+  it("crear la tarea cierra el modal con su salida", async () => {
+    const user = userEvent.setup();
+    render(<Shell />);
+
+    await user.click(await screen.findByPlaceholderText("Descripción de la tarea…"));
+    await user.keyboard("Una tarea{Enter}");
+
+    await waitFor(() => expect(useAppStore.getState().composeOpen).toBe(false));
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+    await waitFor(() => expect(document.querySelector(".modal-presence")).toBeNull());
   });
 });

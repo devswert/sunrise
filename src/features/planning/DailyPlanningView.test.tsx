@@ -279,7 +279,8 @@ describe("DailyPlanningView", () => {
     const notice = await screen.findByRole("alertdialog", { name: "Ya planificaste hoy" });
     await userEvent.click(within(notice).getByRole("button", { name: /Revisar igual/ }));
 
-    expect(screen.queryByRole("alertdialog")).toBeNull();
+    // `waitFor`: el modal se queda montado mientras corre su salida (`ModalPresence`).
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(screen.queryByText("La semana")).toBeNull();
   });
 
@@ -311,7 +312,8 @@ describe("DailyPlanningView", () => {
     const notice = await screen.findByRole("alertdialog");
     await userEvent.click(within(notice).getByRole("button", { name: /Volver a planificar hoy/ }));
 
-    expect(screen.queryByRole("alertdialog")).toBeNull();
+    // `waitFor`: el modal se queda montado mientras corre su salida (`ModalPresence`).
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(screen.queryByText("La semana")).toBeNull();
     await waitFor(() => expect(useSettingsStore.getState().values[SettingKey.PLANNED_AT]).toBe(""));
   });
@@ -324,6 +326,12 @@ describe("DailyPlanningView", () => {
     await userEvent.click(within(notice).getByRole("button", { name: /Ir a la semana/ }));
 
     expect(await screen.findByText("La semana")).toBeInTheDocument();
+    // Navegar desmontó la vista con el aviso adentro: la salida la termina una
+    // copia encima de la semana (`exitAbove`), fuera del árbol accesible.
+    const ghost = document.querySelector(".modal-presence.is-ghost");
+    expect(ghost).toHaveClass("is-leaving");
+    expect(ghost).toHaveTextContent("Ya pasaste por acá");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("una marca de otro día no avisa: la comparación es contra hoy", async () => {

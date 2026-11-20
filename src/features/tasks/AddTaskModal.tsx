@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useModalLeaving } from "../../components/ModalPresence";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import { CalendarDays, Clock, Flag, Hash, Link2, Plus, Target, X } from "lucide-react";
@@ -81,6 +82,12 @@ export function AddTaskModal() {
   const prioRef = useRef<HTMLDivElement>(null);
   const prioritiesOn = usePrioritiesOn();
   const rules = useSuggestRules();
+  const leaving = useModalLeaving();
+
+  // Un picker en portal no sale con el modal: se cierra cuando empieza a irse.
+  useEffect(() => {
+    if (leaving) setPicker(null);
+  }, [leaving]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -131,6 +138,10 @@ export function AddTaskModal() {
    * closure vieja, no una optimización.
    */
   useEffect(() => {
+    // Saliendo (§7, "Modales"): ⌘Enter no crea dos veces y Escape no cierra de
+    // nuevo. El efecto corre en cada render, así que esto también suelta el
+    // listener que había quedado del render anterior.
+    if (leaving) return;
     const onKey = (e: KeyboardEvent) => {
       // Con el diálogo de salida encima, las teclas son suyas.
       if (useAppStore.getState().quitOpen) return;
@@ -178,7 +189,15 @@ export function AddTaskModal() {
     return { text, pos };
   }
 
+  /**
+   * Una creación en curso. `create()` espera a `createTask` antes de cerrar, y un
+   * ⌘Enter doble cae entero en ese hueco —antes de que el modal empiece a salir y
+   * suelte la tecla—: sin el corte, creaba la tarea dos veces.
+   */
+  const creating = useRef(false);
+
   async function create() {
+    if (creating.current) return;
     // Última pasada: un link escrito a mano al final del título no lo cosechó
     // ni el pegado ni el `onChange` —que solo mira links cerrados—, así que sin
     // esto se crearía con el link todavía adentro.
@@ -187,17 +206,24 @@ export function AddTaskModal() {
     // si no, el canal viaja escrito dos veces y se lee en cada card.
     const t = stripChannelTag(text, selectedCat).trim();
     if (!t) return;
+    creating.current = true;
     const todos = [...resources, ...links.filter((l) => !resources.includes(l))];
     const notes = appendResources("", todos);
-    await api.createTask({
-      title: t,
-      notes: notes || undefined,
-      scheduledDate: date,
-      estimatedMinutes: planned,
-      categoryId,
-      objectiveId,
-      priority,
-    });
+    try {
+      await api.createTask({
+        title: t,
+        notes: notes || undefined,
+        scheduledDate: date,
+        estimatedMinutes: planned,
+        categoryId,
+        objectiveId,
+        priority,
+      });
+    } catch (e) {
+      // Falló: el modal sigue abierto y se puede volver a intentar.
+      creating.current = false;
+      throw e;
+    }
     bumpData();
     closeCompose();
   }

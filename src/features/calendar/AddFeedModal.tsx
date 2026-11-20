@@ -5,6 +5,7 @@ import { Popover } from "../../components/Popover";
 import { Spinner } from "../../components/Spinner";
 import { PLAIN_INPUT } from "../../components/plainInput";
 import { chipVarsForColor } from "../tasks/chipVars";
+import { useModalLeaving } from "../../components/ModalPresence";
 
 /** Mismo piso que `POLL_MINIMO` en `repo.rs`. */
 export const POLL_MINIMO = 2;
@@ -46,6 +47,7 @@ export function AddFeedModal({
   const dialogRef = useRef<HTMLDivElement>(null);
   const catRef = useRef<HTMLDivElement>(null);
   const urlRef = useRef<HTMLInputElement>(null);
+  const leaving = useModalLeaving();
 
   useEffect(() => {
     dialogRef.current?.focus();
@@ -55,6 +57,11 @@ export function AddFeedModal({
   // `body`, así que con el selector de canal abierto la tecla no pasaría por acá.
   // Ver la regla en la skill `sunrise-ui`.
   useEffect(() => {
+    // Saliendo, las teclas ya no son suyas (§7, "Modales").
+    if (leaving) {
+      setAbierto(false);
+      return;
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -64,7 +71,7 @@ export function AddFeedModal({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [abierto, onClose]);
+  }, [abierto, onClose, leaving]);
 
   const urlValida = icsUrl.trim().length > 0;
   const category = categories.find((o) => o.value === String(categoryId));
@@ -81,8 +88,11 @@ export function AddFeedModal({
         pollMinutes: Math.max(POLL_MINIMO, Number.parseInt(pollMinutes, 10) || POLL_DEFAULT),
       });
       onClose();
-    } finally {
+    } catch (e) {
+      // Solo al fallar vuelve el botón: si salió bien, el modal ya se está yendo
+      // y el "Guardando…" se queda quieto durante la salida en vez de parpadear.
       setGuardando(false);
+      throw e;
     }
   }
 

@@ -75,6 +75,7 @@ locale de `date-fns` va **por llamada** y es fácil olvidarlo, y
 | Componente | Para qué |
 |---|---|
 | `src/components/Dialog.tsx` | todo diálogo chico de confirmar o avisar |
+| `src/components/ModalPresence.tsx` | entrada y salida animadas de todo modal |
 | `src/components/Popover.tsx` | todo popover flotante |
 | `src/components/Toast.tsx` | todo aviso de abajo, con acción opcional ("Deshacer"): `useAppStore.showToast`, uno a la vez, se cierra solo |
 | `src/components/SearchSelect.tsx` | todo select con búsqueda (channel, objetivo), simple o **multi** con `selected` |
@@ -187,6 +188,20 @@ En los tres, Escape y ⌘Enter quedaban muertos sin ningún síntoma que apuntar
 foco. Cuélgalos de `window` en un `useEffect`, en **fase de burbuja** para que un
 control interno pueda quedarse con la tecla antes (`SearchSelect` corta el Enter con
 `stopPropagation`), y saltea el handler si el diálogo de salida está arriba.
+
+**Un modal nuevo va dentro de `ModalPresence`, no detrás de un `&&`** (#10, regla
+completa en `docs/specs/ui.md` §7). Con `{x && <Modal/>}` entra animado —el overlay
+anima solo— pero se va de golpe, y lo que delata el olvido es justamente eso: la
+salida seca. Y si el modal cuelga teclas de `window`, lee `const leaving = useModalLeaving()` y
+el efecto empieza con `if (leaving) return`, con `leaving` en las deps: durante los 240 ms
+de la salida sigue montado, y un listener vivo cierra dos veces, guarda dos veces o
+—con el `capture` de `Dialog`— le come Escape y Enter a la vista de abajo. Si el modal
+tiene autosave con debounce, **escribe lo pendiente al empezar a salir** (un
+efecto sobre `leaving` que llama al `flush`), no solo al desmontar: reabrir lo
+mismo en plena salida monta un modal nuevo que lee la base, y lo escrito todavía
+no llegó (`TaskModal` y `ObjectiveModal`). Si cerrar
+viene con navegar, llama a `exitAbove()` **antes** de `navigate`: la vista se desmonta
+con el modal adentro y la salida la termina una copia en `body`.
 
 **El click afuera cierra, salvo en `AddTaskModal`.** Ahí no cierra, y es a
 propósito: es el único modal donde lo que se pierde no existe en ningún otro lado

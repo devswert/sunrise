@@ -2750,7 +2750,7 @@ button.tc__tag.is-empty {
    siente como si se hubiera roto, no como si se hubiera cerrado.
 
    Las usan `.backlog-panel` (acá) y `.rail--overlay` (rail.css), y la duración
-   está espejada en `panelPresence.ts`, que es quien mantiene el panel montado
+   está espejada en `src/lib/presence.ts`, que es quien mantiene el panel montado
    mientras se va. Si cambia acá, cambia allá. */
 @keyframes panel-in {
   from {

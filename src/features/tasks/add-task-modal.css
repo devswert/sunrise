@@ -188,6 +188,14 @@
     transform: translateY(-4px);
   }
 }
+/* Con movimiento reducido el popover aparece sin más, como los modales y los
+ * paneles de la tira. Solo la entrada: los popovers no animan su salida. */
+@media (prefers-reduced-motion: reduce) {
+  .popover,
+  .popover--portal {
+    animation: none;
+  }
+}
 .popover--center {
   animation: none;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { useModalLeaving } from "./ModalPresence";
 
 interface DialogProps {
   /** El título visible. Puede traer su icono. */
@@ -53,6 +54,11 @@ interface DialogProps {
  * `onKeyDown` solo se dispara si el foco está adentro, y basta un click en el
  * overlay para que deje de estarlo. Copiada seis veces, esa regla se olvida una.
  *
+ * **Se monta dentro de un `ModalPresence`**, que le da la entrada y la salida
+ * animadas (§7, "Modales"). Mientras sale suelta sus teclas: con `capture` y
+ * `preventDefault`, un listener que siguiera colgado le robaría Escape y Enter a
+ * la vista de abajo durante toda la salida.
+ *
  * No cubre `TaskModal` ni `AddFeedModal`: esos no son diálogos de confirmación
  * sino una vista y un formulario, con su propio teclado (⌘Enter, Enter por
  * campo). Comparten el `.modal-overlay` y nada más. Las confirmaciones **en
@@ -71,8 +77,10 @@ export function Dialog({
   variant,
 }: DialogProps) {
   const panel = useRef<HTMLDivElement>(null);
+  const leaving = useModalLeaving();
 
   useEffect(() => {
+    if (leaving) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && onClose) {
         e.preventDefault();
@@ -85,7 +93,7 @@ export function Dialog({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose, onEnter]);
+  }, [onClose, onEnter, leaving]);
 
   // Si ningún botón se llevó el foco con `autoFocus`, se lo queda el panel: sin
   // foco adentro, un lector de pantalla sigue leyendo la vista de atrás.

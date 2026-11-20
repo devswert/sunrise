@@ -15,6 +15,7 @@ import { SETTING_DEFAULTS, SettingKey, backupSettings, useSettingsStore } from "
 import { minutesFromTime } from "../calendar/railLayout";
 import { sectionIcon } from "../settings/secciones";
 import { Dialog } from "../../components/Dialog";
+import { ModalPresence } from "../../components/ModalPresence";
 import { Spinner } from "../../components/Spinner";
 import type { BackupFile, RestoreResult } from "../../lib/types";
 import { readableDate, formatBytes, readableMoment } from "./backup";
@@ -291,9 +292,21 @@ export function BackupCard() {
     }
   }
 
+  /**
+   * Abre la confirmación de restaurar. **Todo** camino que la abre pasa por acá
+   * —el Finder y el botón de cada fila—, porque es el único lugar donde
+   * `restaurando` vuelve a `false` (ver el comentario en `restaurar`). Una
+   * apertura que no lo hiciera heredaría el `true` de la restauración anterior:
+   * botones deshabilitados y sin Escape, un modal sin salida.
+   */
+  function openRestore(path: string) {
+    setRestaurando(false);
+    setToRestore(path);
+  }
+
   async function pickZip() {
     const zip = await elegirEnFinder({ directory: false, title: "Elige el respaldo a restaurar" });
-    if (zip) setToRestore(zip);
+    if (zip) openRestore(zip);
   }
 
   async function restaurar() {
@@ -313,9 +326,11 @@ export function BackupCard() {
     } catch (err) {
       setToRestore(null);
       setError({ field: "action", text: String(err) });
-    } finally {
-      setRestaurando(false);
     }
+    // `restaurando` **no** vuelve a `false` acá, salga bien o mal: en los dos
+    // casos la confirmación ya está saliendo (§7, "Modales") y su botón volvería
+    // a decir "Restaurar y reemplazar" durante el fundido. Vuelve al abrir la
+    // próxima.
   }
 
   const field = (
@@ -515,7 +530,7 @@ export function BackupCard() {
                   className="set-row__icon"
                   aria-label={`Restaurar el respaldo del ${readableDate(a.createdAt)}`}
                   title="Restaurar este respaldo"
-                  onClick={() => setToRestore(a.path)}
+                  onClick={() => openRestore(a.path)}
                 >
                   <RotateCcw size={14} />
                 </button>
@@ -527,16 +542,20 @@ export function BackupCard() {
 
       {version && <span className="resp-version">versión {version}</span>}
 
-      {toRestore && (
-        <ConfirmarRestore
-          zip={toRestore}
-          restaurando={restaurando}
-          onCancel={() => setToRestore(null)}
-          onConfirm={restaurar}
-        />
-      )}
+      <ModalPresence value={toRestore}>
+        {(zip) => (
+          <ConfirmarRestore
+            zip={zip}
+            restaurando={restaurando}
+            onCancel={() => setToRestore(null)}
+            onConfirm={restaurar}
+          />
+        )}
+      </ModalPresence>
 
-      {restaurado && <RestauracionLista r={restaurado} onClose={() => setRestaurado(null)} />}
+      <ModalPresence value={restaurado}>
+        {(r) => <RestauracionLista r={r} onClose={() => setRestaurado(null)} />}
+      </ModalPresence>
     </section>
   );
 }

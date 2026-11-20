@@ -18,6 +18,7 @@ import { useAppStore } from "../../lib/store";
 import { Popover } from "../../components/Popover";
 import { SearchSelect } from "../../components/SearchSelect";
 import { ObjectiveModal } from "../objectives/ObjectiveModal";
+import { ModalPresence } from "../../components/ModalPresence";
 import { channelLabel } from "../../lib/channelLabel";
 import {
   historyByWeek,
@@ -432,16 +433,18 @@ export function WeeklyPlanningView() {
         )}
       </section>
 
-      {objetivoAbierto && (
-        <ObjectiveModal
-          objective={objetivoAbierto}
-          dates={dates}
-          tasks={tasks}
-          categories={categories}
-          onClose={() => setAbierto(null)}
-          onChanged={load}
-        />
-      )}
+      <ModalPresence value={objetivoAbierto}>
+        {(objective) => (
+          <ObjectiveModal
+            objective={objective}
+            dates={dates}
+            tasks={tasks}
+            categories={categories}
+            onClose={() => setAbierto(null)}
+            onChanged={load}
+          />
+        )}
+      </ModalPresence>
     </div>
   );
 }

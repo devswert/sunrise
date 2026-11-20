@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Power } from "lucide-react";
 import { Dialog } from "./Dialog";
+import { ModalPresence } from "./ModalPresence";
 import { api, isTauri } from "../lib/ipc";
 import { useAppStore } from "../lib/store";
 import { useTimer, hms } from "../features/timer/useTimer";
@@ -36,11 +37,13 @@ export function useQuitListener() {
  */
 export function QuitConfirm() {
   const quitOpen = useAppStore((s) => s.quitOpen);
+  return <ModalPresence value={quitOpen}>{() => <QuitDialog />}</ModalPresence>;
+}
+
+function QuitDialog() {
   const setQuitOpen = useAppStore((s) => s.setQuitOpen);
   const { actives, elapsedById } = useTimer();
   const [saliendo, setSaliendo] = useState(false);
-
-  if (!quitOpen) return null;
 
   async function salir() {
     setSaliendo(true);

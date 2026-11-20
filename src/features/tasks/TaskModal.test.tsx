@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import type { Task, TimeEntry } from "../../lib/types";
 import { useAppStore } from "../../lib/store";
@@ -504,5 +505,201 @@ describe("TaskModal · eliminar manda al basurero (#11)", () => {
 
     await toast!.action!.run();
     expect(restoreTask).toHaveBeenCalledWith(7);
+  });
+
+  /**
+   * Al borrar, la recarga del board saca la tarea **antes** de que el modal
+   * termine de irse: la vista ya no tiene qué pasarle. La salida se dibuja igual
+   * con la última tarea conocida, y sin consoleErrors.
+   */
+  it("anima la salida aunque la tarea ya no esté en el board", async () => {
+    const consoleErrors = vi.spyOn(console, "error");
+    function Board() {
+      const [task, setTask] = useState<Task | null>(baseTask);
+      return (
+        <MemoryRouter>
+          <TaskModal
+            task={task}
+            categories={[]}
+            objectives={[]}
+            onClose={() => setTask(null)}
+            // Lo que hace el `reload` del board: la tarea borrada ya no viene.
+            onChanged={() => setTask(null)}
+          />
+        </MemoryRouter>
+      );
+    }
+    render(<Board />);
+    await userEvent.click(screen.getByRole("button", { name: "Eliminar tarea" }));
+    await userEvent.click(screen.getByRole("button", { name: "Sí, eliminar" }));
+
+    await waitFor(() => expect(useAppStore.getState().toast).not.toBeNull());
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+    expect(screen.getByDisplayValue("Revisar PRs")).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector(".modal-presence")).toBeNull());
+    expect(consoleErrors).not.toHaveBeenCalled();
+    consoleErrors.mockRestore();
+  });
+});
+
+describe("TaskModal · la salida animada", () => {
+  /** Montado como en las vistas: cerrar es poner la tarea en `null`. */
+  function OpenDetail({ onClose }: { onClose: () => void }) {
+    const [task, setTask] = useState<Task | null>(baseTask);
+    return (
+      <TaskModal
+        task={task}
+        categories={[]}
+        objectives={[]}
+        onClose={() => {
+          onClose();
+          setTask(null);
+        }}
+        onChanged={vi.fn()}
+      />
+    );
+  }
+
+  beforeEach(() => updateTask.mockClear());
+
+  it("mientras sale, Escape y ⌘Enter ya no hacen nada", async () => {
+    const onClose = vi.fn();
+    render(
+      <MemoryRouter>
+        <OpenDetail onClose={onClose} />
+      </MemoryRouter>,
+    );
+
+    await userEvent.keyboard("{Escape}");
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+
+    await userEvent.keyboard("{Escape}");
+    await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("cerrar con × también anima la salida", async () => {
+    const onClose = vi.fn();
+    render(
+      <MemoryRouter>
+        <OpenDetail onClose={onClose} />
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+    await waitFor(() => expect(document.querySelector(".modal-presence")).toBeNull());
+  });
+
+  it("cerrar con un click afuera también anima la salida", async () => {
+    const onClose = vi.fn();
+    render(
+      <MemoryRouter>
+        <OpenDetail onClose={onClose} />
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(document.querySelector(".modal-overlay")!);
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+    await waitFor(() => expect(document.querySelector(".modal-presence")).toBeNull());
+  });
+
+  /**
+   * Lo pendiente del debounce se escribe **al empezar a salir**, no al
+   * desmontar: reabrir la misma tarea durante la salida monta un detalle nuevo,
+   * que lee la tarea de la base, y ahí el título nuevo todavía no estaba.
+   */
+  it("editar el título, cerrar y reabrir la misma tarea muestra el título nuevo", async () => {
+    function Reopenable() {
+      const [saved, setSaved] = useState<Task>(baseTask);
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>Reabrir</button>
+          <TaskModal
+            task={open ? saved : null}
+            categories={[]}
+            objectives={[]}
+            onClose={() => setOpen(false)}
+            // Lo que haría el `reload` del board: la tarea vuelve con lo guardado.
+            onChanged={() => {
+              const patch = updateTask.mock.lastCall?.[1] as Partial<Task> | undefined;
+              if (patch) setSaved((t) => ({ ...t, ...patch }));
+            }}
+          />
+        </>
+      );
+    }
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <Reopenable />
+      </MemoryRouter>,
+    );
+
+    const title = screen.getByLabelText("Título");
+    await user.clear(title);
+    await user.type(title, "Revisar PRs de hoy");
+    await user.keyboard("{Escape}");
+
+    // Escrito ya, con el modal todavía saliendo.
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+    await waitFor(() =>
+      expect(updateTask).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ title: "Revisar PRs de hoy" }),
+      ),
+    );
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+
+    await user.click(screen.getByRole("button", { name: "Reabrir" }));
+    expect(screen.getByLabelText("Título")).toHaveValue("Revisar PRs de hoy");
+  });
+
+  /**
+   * Saliendo, el modal suelta el foco y eso dispara el `onBlur` de las notas.
+   * Volver ahí a la vista de markdown cambiaría el alto del modal en pleno
+   * fundido: el textarea se queda hasta el final.
+   */
+  it("editar las notas y apretar Escape deja el textarea mientras sale", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <OpenDetail onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByText("Notas…"));
+    await user.type(screen.getByPlaceholderText("Notas… (soporta markdown)"), "una idea");
+    await user.keyboard("{Escape}");
+
+    expect(document.querySelector(".modal-presence")).toHaveClass("is-leaving");
+    expect(screen.getByPlaceholderText("Notas… (soporta markdown)")).toBeInTheDocument();
+  });
+
+  it("el play navega a Focus al instante y el modal termina de salir encima", async () => {
+    const onClose = vi.fn();
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<OpenDetail onClose={onClose} />} />
+          <Route path="/focus" element={<div>VISTA FOCUS</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Iniciar" }));
+
+    // La vista que montaba el modal ya no está: lo que sale es la copia.
+    expect(await screen.findByText("VISTA FOCUS")).toBeInTheDocument();
+    const ghost = document.querySelector(".modal-presence.is-ghost");
+    expect(ghost).toHaveClass("is-leaving");
+    expect(ghost).toHaveAttribute("aria-hidden", "true");
+    await waitFor(() => expect(ghost).not.toBeInTheDocument());
   });
 });

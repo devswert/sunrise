@@ -11,6 +11,7 @@ import { relativeTime } from "../../lib/date";
 import { useCalendarSync } from "../../lib/calendarSync";
 import { sectionIcon } from "../settings/secciones";
 import { AddFeedModal, POLL_DEFAULT, POLL_MINIMO } from "./AddFeedModal";
+import { ModalPresence } from "../../components/ModalPresence";
 import { SyncButton } from "./SyncButton";
 import { PLAIN_INPUT } from "../../components/plainInput";
 
@@ -112,19 +113,21 @@ export function FeedsCard({ categories }: Props) {
         </>
       )}
 
-      {agregando && (
-        <AddFeedModal
-          categories={opcionesCanal}
-          onClose={() => setAgregando(false)}
-          onSave={async (d) => {
-            await api.createCalendarFeed(d.name, d.icsUrl, d.defaultCategoryId, d.pollMinutes);
-            await load();
-            // Recién creado: traer sus eventos de inmediato en vez de esperar al
-            // poller, que puede tardar hasta un minuto en despertar.
-            await sync();
-          }}
-        />
-      )}
+      <ModalPresence value={agregando}>
+        {() => (
+          <AddFeedModal
+            categories={opcionesCanal}
+            onClose={() => setAgregando(false)}
+            onSave={async (d) => {
+              await api.createCalendarFeed(d.name, d.icsUrl, d.defaultCategoryId, d.pollMinutes);
+              await load();
+              // Recién creado: traer sus eventos de inmediato en vez de esperar al
+              // poller, que puede tardar hasta un minuto en despertar.
+              await sync();
+            }}
+          />
+        )}
+      </ModalPresence>
     </section>
   );
 }

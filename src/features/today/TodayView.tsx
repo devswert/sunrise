@@ -63,15 +63,13 @@ export function TodayView() {
         />
       </div>
 
-      {selectedTask && (
-        <TaskModal
-          task={selectedTask}
-          categories={board.categories}
-          objectives={board.objectives}
-          onClose={() => setSelectedId(null)}
-          onChanged={board.reload}
-        />
-      )}
+      <TaskModal
+        task={selectedTask}
+        categories={board.categories}
+        objectives={board.objectives}
+        onClose={() => setSelectedId(null)}
+        onChanged={board.reload}
+      />
     </div>
   );
 }

@@ -22,6 +22,7 @@ import { es } from "date-fns/locale";
 import { parseISODate, shortDate, toISODate } from "../../lib/date";
 import { useNavigate } from "react-router-dom";
 import { PlayControls } from "../../components/PlayControls";
+import { ModalPresence, useModalExitAbove, useModalLeaving } from "../../components/ModalPresence";
 import { useTimer, hms } from "../timer/useTimer";
 import { isOverEstimate } from "../timer/timerStore";
 import { useAppStore } from "../../lib/store";
@@ -38,7 +39,22 @@ interface TaskModalProps {
 
 type Picker = "channel" | "objective" | "priority" | "start" | "planned" | "actual" | null;
 
-export function TaskModal({ task, categories, objectives, onClose, onChanged }: TaskModalProps) {
+/**
+ * El detalle de una tarea, con su entrada y su salida animadas (§7, "Modales").
+ *
+ * Recibe la tarea **o `null`**, y no se monta con `{tarea && <TaskModal/>}`: así
+ * los siete lugares que lo abren comparten un solo `ModalPresence`, que lo sostiene
+ * mientras sale. Importa sobre todo al borrar, porque la tarea desaparece del
+ * board antes de que el modal termine de irse.
+ */
+export function TaskModal({
+  task,
+  ...rest
+}: Omit<TaskModalProps, "task"> & { task: Task | null | undefined }) {
+  return <ModalPresence value={task}>{(t) => <TaskDetail task={t} {...rest} />}</ModalPresence>;
+}
+
+function TaskDetail({ task, categories, objectives, onClose, onChanged }: TaskModalProps) {
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes ?? "");
   const [editingNotes, setEditingNotes] = useState(false);
@@ -60,6 +76,8 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
   const dataVersion = useAppStore((s) => s.dataVersion);
   const quitOpen = useAppStore((s) => s.quitOpen);
   const navigate = useNavigate();
+  const leaving = useModalLeaving();
+  const exitAbove = useModalExitAbove();
   const running = timer.isRunning(task.id);
   const runTotal = timer.runTotalOf(task.id);
   // Pasada de su estimado **esta** tarea, con lo de hoy (como la campana).
@@ -218,6 +236,9 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
    * pendiente.
    */
   useEffect(() => {
+    // Saliendo, el modal ya no es de nadie: un segundo Escape no lo vuelve a
+    // cerrar y ⌘Enter no guarda dos veces (§7, "Modales").
+    if (leaving) return;
     const onKey = (e: KeyboardEvent) => {
       // Con el diálogo de salida encima, las teclas son suyas. Mismo criterio
       // que `useShortcuts`.
@@ -239,7 +260,19 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
     // el modal la interprete como "cerrar".
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [picker, quitOpen, onClose, flush]);
+  }, [picker, quitOpen, onClose, flush, leaving]);
+
+  // Al empezar a salir:
+  // - un picker abierto no se va con el modal —vive en un portal sobre `body`—,
+  //   así que se cierra en vez de quedar flotando 240 ms;
+  // - lo que esperaba el debounce se escribe **ya**, no al desmontar. Si no,
+  //   reabrir la misma tarea durante la salida montaría el detalle con el título
+  //   viejo: el nuevo todavía no llegó a la base.
+  useEffect(() => {
+    if (!leaving) return;
+    setPicker(null);
+    void flushRef.current();
+  }, [leaving]);
 
   /**
    * Borrar es una mutación como cualquier otra, así que **también avisa**
@@ -594,7 +627,12 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                     // muestra la más antigua de las que corren y un play en
                     // paralelo no la mueve, así que llevaría a otra tarea. Se
                     // queda en el detalle, que ahora muestra la pausa.
+                    //
+                    // Navegar desmonta la vista que sostiene el modal, así que la
+                    // salida la termina una copia encima de Focus (`exitAbove`):
+                    // la app cambia de vista al instante y el modal se va igual.
                     if (parallel) return;
+                    exitAbove();
                     onClose();
                     navigate("/focus");
                   }}
@@ -622,7 +660,9 @@ export function TaskModal({ task, categories, objectives, onClose, onChanged }: 
                   commitDebounced({ notes: e.target.value });
                 }}
                 onBlur={() => {
-                  setEditingNotes(false);
+                  // Saliendo, el blur lo provoca el modal al soltar el foco: volver
+                  // a la vista de markdown cambiaría el alto en pleno fundido.
+                  if (!leaving) setEditingNotes(false);
                   void commit({ notes });
                 }}
               />

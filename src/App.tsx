@@ -11,6 +11,7 @@ import { BacklogView } from "./features/backlog/BacklogView";
 import { FocusView } from "./features/focus/FocusView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { AddTaskModal } from "./features/tasks/AddTaskModal";
+import { ModalPresence } from "./components/ModalPresence";
 import { QuitConfirm, useQuitListener } from "./components/QuitConfirm";
 import { Toast } from "./components/Toast";
 import { WhatsNew } from "./features/updates/WhatsNew";
@@ -120,7 +121,7 @@ export default function App() {
             </Routes>
           </main>
         </div>
-        {composeOpen && <AddTaskModal />}
+        <ModalPresence value={composeOpen}>{() => <AddTaskModal />}</ModalPresence>
         <QuitConfirm />
         <Toast />
         <WhatsNew />

@@ -232,15 +232,13 @@ export function BacklogView() {
         )}
       </div>
 
-      {selected && (
-        <TaskModal
-          task={selected}
-          categories={categories}
-          objectives={objectives}
-          onClose={() => setSelected(null)}
-          onChanged={load}
-        />
-      )}
+      <TaskModal
+        task={selected}
+        categories={categories}
+        objectives={objectives}
+        onClose={() => setSelected(null)}
+        onChanged={load}
+      />
     </div>
   );
 }
