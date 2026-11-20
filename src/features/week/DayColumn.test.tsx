@@ -59,12 +59,12 @@ function dayTasks(date: string): Task[] {
   ];
 }
 
-function renderDay(date: string, isPast: boolean) {
-  render(
+function column(date: string, tasks: Task[], isPast?: boolean) {
+  return (
     <DndContext>
       <DayColumn
         date={date}
-        tasks={dayTasks(date)}
+        tasks={tasks}
         categoryMap={new Map()}
         categories={[]}
         capacityTarget={480}
@@ -72,8 +72,12 @@ function renderDay(date: string, isPast: boolean) {
         onToggle={vi.fn()}
         isPast={isPast}
       />
-    </DndContext>,
+    </DndContext>
   );
+}
+
+function renderDay(date: string, isPast: boolean) {
+  render(column(date, dayTasks(date), isPast));
 }
 
 const card = (title: string) => screen.getByText(title).closest(".task-card")!;
@@ -116,6 +120,27 @@ describe("DayColumn · qué se apaga en un día pasado", () => {
     expect(document.querySelectorAll(".task-card.is-faded")).toHaveLength(0);
   });
 
+  it("una pendiente que se completa se apaga, y al reabrirla recupera el contraste", () => {
+    const date = shift(-1);
+    const task = makeTask({ title: "Ida y vuelta", scheduledDate: date });
+    const { rerender } = render(column(date, [task], true));
+    expect(card("Ida y vuelta")).not.toHaveClass("is-faded");
+
+    rerender(column(date, [{ ...task, status: "DONE" }], true));
+    expect(card("Ida y vuelta")).toHaveClass("is-faded");
+
+    rerender(column(date, [{ ...task, status: "TODO" }], true));
+    expect(card("Ida y vuelta")).not.toHaveClass("is-faded");
+  });
+
+  it("sin `isPast` —como la monta Today— no se apaga ninguna card", () => {
+    // Today usa la misma columna sin pasarle `isPast`: una completada de hoy se
+    // ve tachada, como siempre, y no apagada.
+    render(column(todayISO(), dayTasks(todayISO())));
+    expect(card("Manual completada")).toHaveClass("is-done");
+    expect(document.querySelectorAll(".task-card.is-faded")).toHaveLength(0);
+  });
+
   it("solo una tarea manual pendiente se libra del apagado", () => {
     // La regla sola, sin render: la decide el estado y el origen, no la hora.
     expect(fadesInPast(makeTask())).toBe(false);
@@ -138,21 +163,31 @@ describe("week.css · el apagado de un día pasado", () => {
     return out;
   }
 
+  /** Cada selector suelto (partiendo las listas por coma), con el cuerpo de su bloque. */
+  const selectors = () =>
+    blocks().flatMap((b) => b.selector.split(",").map((s) => ({ sel: s.trim(), body: b.body })));
+
   it("la columna de un día pasado no se apaga entera", () => {
-    // Si volviera la opacidad sobre la columna, la pendiente se apagaría con todo
-    // lo demás y el resto de los tests seguiría en verde.
-    const whole = blocks().filter((b) =>
-      b.selector.split(",").some((s) => s.trim() === ".day-col.is-past"),
+    // Si volviera la opacidad sobre la columna —o sobre su lista entera—, la
+    // pendiente se apagaría con todo lo demás y el resto de los tests seguiría en
+    // verde. La tira plegada es la excepción: no tiene cards.
+    const all = selectors();
+    // Que la clase exista en la hoja, o este test pasaría vacío.
+    expect(all.some(({ sel }) => sel.includes(".day-col.is-past"))).toBe(true);
+    const whole = all.filter(
+      ({ sel }) =>
+        sel !== ".day-col--collapsed.is-past" &&
+        (/\.is-past$/.test(sel) || sel.includes(".is-past .day-col__list")),
     );
-    for (const b of whole) expect(b.body).not.toMatch(/opacity/);
+    for (const { sel, body } of whole) expect(body, sel).not.toMatch(/opacity/);
   });
 
-  it("se apagan el encabezado del día y las cards marcadas", () => {
-    const sets = (sel: string) =>
-      blocks().some(
-        (b) => b.selector.split(",").some((s) => s.trim() === sel) && /opacity/.test(b.body),
-      );
+  it("se apagan el encabezado del día, su fila de acciones, la tira plegada y las cards marcadas", () => {
+    const sets = (target: string) =>
+      selectors().some(({ sel, body }) => sel === target && /opacity/.test(body));
     expect(sets(".day-col.is-past .day-col__head")).toBe(true);
+    expect(sets(".day-col.is-past .day-col__actions")).toBe(true);
+    expect(sets(".day-col--collapsed.is-past")).toBe(true);
     expect(sets(".task-card.is-faded")).toBe(true);
   });
 });

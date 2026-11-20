@@ -697,14 +697,16 @@ y lo que hay que cerrar es el viernes.
 **Un día pasado apaga lo que ya no pide nada, no la columna entera (#5).** La
 columna completa a 0.62 hacía que una pendiente de ayer se viera igual de apagada
 que una completada, y era justo la que había que ver al abrir la semana. Ahora se
-apagan el encabezado, lo completado y las reuniones —sin cerrar también: el foco
+apagan el encabezado —incluida la fila de "Agregar tarea" y la capacidad: es parte
+de la cabecera del día, y un contador a todo color en un día que ya pasó compite
+con la pendiente—, lo completado y las reuniones —sin cerrar también: el foco
 está en lo que uno crea, y una reunión no se mueve de su día—, y la pendiente
 manual queda como cualquier pendiente. **No lleva borde ni color**: el color
 clasifica (`docs/specs/ui.md` §7) y "atrasada" no es una categoría; el contraste
-contra el resto del día ya es la señal. La regla va en TS (`fadesInPast`) y no en un selector CSS
-sobre `.is-done`, porque jsdom no aplica estilos y un selector es invisible para
-los tests; un test que lee `week.css` como texto vigila que la columna no se
-vuelva a apagar entera.
+contra el resto del día ya es la señal. La regla va en TS (`fadesInPast`) y no en
+un selector CSS sobre `.is-done`, porque jsdom no aplica estilos y un selector es
+invisible para los tests; un test que lee `week.css` como texto vigila que la
+columna no se vuelva a apagar entera.
 
 **El semáforo de capacidad pesa el día entero, no solo lo pendiente.** Completar
 tareas no puede ir apagando la alarma de un día sobrecargado. Y las tareas sin

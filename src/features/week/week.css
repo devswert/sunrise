@@ -272,14 +272,16 @@
   color: var(--apricot-ink);
 }
 
-/* Un día de atrás no se apaga entero: se apagan su encabezado y las cards que ya
-   no piden nada (`.task-card.is-faded`, más abajo). Una tarea manual pendiente
+/* Un día de atrás no se apaga entero: se apagan su encabezado —el nombre y la
+   fecha, y la fila de "Agregar tarea" con la capacidad— y las cards que ya no
+   piden nada (`.task-card.is-faded`, más abajo). Una tarea manual pendiente
    queda a contraste completo, y ese contraste contra el resto del día es la
    señal de que quedó algo sin hacer — sin borde ni color nuevo. Bajar el
    contraste y no tachar, porque el pasado no es un error, es pasado. Y sí recibe
    cards (ver `DayColumn`). La tira plegada se apaga entera: no muestra cards, así
    que es puro encabezado. */
 .day-col.is-past .day-col__head,
+.day-col.is-past .day-col__actions,
 .day-col--collapsed.is-past {
   opacity: 0.62;
 }
