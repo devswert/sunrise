@@ -81,11 +81,13 @@ describe("WeekView · la ventana de tres semanas", () => {
     expect(screen.getAllByRole("button", { name: /^Plegar / })).toHaveLength(1);
   });
 
-  it("los días de atrás quedan apagados, y eso es lo único que cambia en ellos", () => {
-    // Atenuados como información —el pasado es pasado—, pero **siguen recibiendo
-    // cards**: bloquearlos sacaba algo que se podía hacer navegando a la semana
-    // anterior, y una pendiente que se va al backlog con la degradación del día
-    // siguiente aparece ahí con su rótulo "Desde el X", no desaparece.
+  it("los días de atrás se marcan como pasados, y eso es lo único que cambia en ellos", () => {
+    // La marca solo cambia cómo se ve: se apagan el encabezado y lo que ya no pide
+    // nada, y una pendiente manual queda a contraste completo (eso lo prueba
+    // `DayColumn.test.tsx`). **Siguen recibiendo cards**: bloquearlos sacaba algo
+    // que se podía hacer navegando a la semana anterior, y una pendiente que se va
+    // al backlog con la degradación del día siguiente aparece ahí con su rótulo
+    // "Desde el X", no desaparece.
     render(<WeekView />);
     const today = todayISO();
 

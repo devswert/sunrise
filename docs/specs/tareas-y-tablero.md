@@ -150,8 +150,22 @@ siguiente corrida.
   browser. Corre **al montar, al cambiar de semana y al cambiar el día**, nunca con
   una invalidación de datos: recolocar la vista al guardar una tarea sería pelear
   con quien ya scrolleó a propósito.
+- **Un día anterior a hoy no se apaga entero** (#5). El criterio es la fecha
+  (`date < today`), sin mirar la hora, y es solo visual: no mueve ni cambia datos,
+  y la degradación diaria (§4.2) sigue igual. Con `.day-col.is-past` se apagan el
+  **encabezado del día** —el nombre y la fecha (`.day-col__head`) y la fila de
+  "Agregar tarea" con la capacidad (`.day-col__actions`)— y las cards que ya no piden nada
+  (`.task-card.is-faded`): las completadas y las reuniones de calendario, cerradas
+  o no —el foco está en las tareas que uno crea—. **Una tarea manual con
+  `status = TODO` queda a contraste completo**, como cualquier pendiente, sin borde
+  ni color nuevo: el contraste contra el resto del día apagado es la señal de que
+  quedó algo sin hacer, y se nota al abrir la semana en la mañana. La regla vive en
+  `fadesInPast` (`DayColumn.tsx`) y no en un selector CSS, para que un test la
+  pueda ver. Un día pasado
+  **plegado** sí va apagado entero: no muestra cards, así que es puro encabezado.
+  Hoy, los días futuros, Today y la ventana flotante no cambian.
 - **Los días anteriores a hoy sí reciben cards**, y van con menos contraste
-  (`.day-col.is-past`) solo como información: el pasado es pasado. Se evaluó
+  (lo de arriba) solo como información: el pasado es pasado. Se evaluó
   bloquearlos y **se decidió no hacerlo**, porque bloquear costaba más de lo que
   evitaba. Lo que evita: una tarea pendiente con fecha anterior al último día con
   actividad la manda al backlog la degradación diaria (§4.2), así que soltarla muy
