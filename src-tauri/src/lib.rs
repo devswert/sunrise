@@ -202,6 +202,7 @@ pub fn run() {
             commands::stop_timer,
             commands::stop_all_timers,
             commands::get_active_timers,
+            commands::seconds_today,
             commands::list_time_entries,
             commands::day_work,
             commands::weekly_rollup,

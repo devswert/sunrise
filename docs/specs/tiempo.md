@@ -206,13 +206,24 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   > signifique lo mismo en los dos lados.
 - `last` (última tarea pausada) se persiste en `localStorage` para poder
   reanudar; el taxímetro se muestra mientras tenga filas (`timerRows`: algún
-  timer corriendo **o** `last`).
+  timer corriendo **o** `last`). **Su contador es lo de hoy** (`seconds_today`, al
+  pausar y en cada `refresh`), así que la pausada de ayer vuelve a 0:00:00 con el
+  primer `refresh` del día; el tiempo anterior sigue en `time_entries` y en el
+  total de la tarea. Al pausar no se suma lo que devuelve `stop_timer`: es la
+  corrida entera, y una que cruzó la medianoche le cargaba a hoy lo de anoche.
+  **Los ajustes manuales ("Ajustar tiempo real") también mueven ese contador**
+  si la tarea es de hoy, del backlog o de un día futuro, con piso en 0: la entrada
+  del ajuste se fecha en el día de la tarea, y `adjustment_stamp` sella las del
+  backlog y las futuras con la hora actual, así que caen en hoy. Las de un día
+  pasado no lo mueven.
 - **`refresh` avanza igual que el check.** Re-lee la tarea pausada y, si la
   completaron desde otro lado (Focus, la card, el modal), pasa a la siguiente
   pendiente en pausa o se oculta. Antes quedaba en pantalla la tarea ya cerrada
   con su play, invitando a retomar algo terminado. Tres detalles que se rompen
-  al editarlo: la re-lectura refresca título y estimado pero **no** pisa el
-  contador con `actual_seconds` (total histórico, no lo de hoy); **no hace
+  al editarlo: la re-lectura refresca título, estimado **y el contador, que sale
+  de `seconds_today`** (comando `seconds_today`, #38) y **nunca** de
+  `actual_seconds` (total histórico, no lo de hoy) —así la fila en pausa se entera
+  de un `stop_timer` o un `log_time` del MCP—; **no hace
   `broadcast()`**, porque refrescar no es mutar y avisar haría que la otra
   ventana refresque y avise de vuelta, con un `focus_queue` por salto; y por eso
   mismo escribe solo si el registro cambió.

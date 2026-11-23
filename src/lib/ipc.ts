@@ -158,6 +158,10 @@ export const api = {
   getActiveTimers: () =>
     isTauri() ? invoke<ActiveTimer[]>("get_active_timers") : mock.getActiveTimers(),
 
+  /** Segundos cerrados de hoy de una tarea: el contador de la fila en pausa del taxímetro. */
+  secondsToday: (taskId: number) =>
+    isTauri() ? invoke<number>("seconds_today", { taskId }) : mock.secondsToday(taskId),
+
   listTimeEntries: (taskId: number) =>
     isTauri() ? invoke<TimeEntry[]>("list_time_entries", { taskId }) : mock.listTimeEntries(taskId),
 

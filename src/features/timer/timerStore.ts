@@ -82,6 +82,30 @@ async function nextPaused(exceptId: number): Promise<LastTask | null> {
   };
 }
 
+/**
+ * El contador de la tarea que queda en pausa: lo cerrado **hoy**, leído de la
+ * base (`seconds_today`), igual que el que pone `refresh`.
+ *
+ * No `baseSeconds + seconds`: `stop_timer` devuelve el total de la corrida, y una
+ * corrida que cruzó la medianoche se guarda partida por día (I3), así que la
+ * suma le cargaba a hoy lo de anoche. El número saltaba dos veces: al pausar,
+ * hacia arriba, y en el `refresh` siguiente, a lo de hoy. Leyendo lo mismo que
+ * `refresh`, pausar y refrescar no pueden discrepar.
+ *
+ * **Nunca rechaza.** Se llama después de cerrar el timer en la base: si esta
+ * lectura fallara y `stop` lanzara, el timer quedaría detenido y la ventana sin
+ * enterarse (sin `set`, sin aviso). El respaldo es `fallback`, lo de hoy de
+ * cuando se leyó la pila; el próximo `refresh` lo corrige.
+ */
+async function pausedSeconds(taskId: number, fallback: number): Promise<number> {
+  try {
+    return await api.secondsToday(taskId);
+  } catch (err) {
+    console.error("[sunrise] taxímetro: no pude leer lo de hoy al pausar:", err);
+    return fallback;
+  }
+}
+
 function broadcast() {
   try {
     localStorage.setItem(CHANNEL, String(Date.now()));
@@ -308,10 +332,14 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     const actives = await api.getActiveTimers();
     let last = readLast();
 
-    // Si hay una tarea pausada en el widget, re-léela: su título o su tiempo
-    // planned pueden haber cambiado desde que se guardó el snapshot.
+    // Si hay una tarea pausada en el widget, re-léela: su título, su tiempo
+    // planned o lo trabajado hoy pueden haber cambiado desde que se guardó el
+    // snapshot.
     if (actives.length === 0 && last) {
-      const fresh = await api.getTask(last.taskId);
+      const [fresh, secondsToday] = await Promise.all([
+        api.getTask(last.taskId),
+        api.secondsToday(last.taskId),
+      ]);
       if (!fresh) {
         // La tarea ya no está: la mandaron al basurero (#11) —desde la otra
         // ventana, desde esta o desde el MCP—, o se restauró un respaldo anterior a
@@ -325,10 +353,19 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         // nada pendiente, se oculta.
         last = await nextPaused(fresh.id);
       } else {
-        // `seconds` NO se toma de `actualSeconds`: eso es el total histórico y
-        // el taxímetro cuenta lo de hoy. Acá solo se refrescan el título y el
-        // estimado, que es para lo que existe esta re-lectura.
-        last = { ...last, title: fresh.title, estimatedMinutes: fresh.estimatedMinutes };
+        // El contador sale de `seconds_today`, lo cerrado **hoy** en la base, y
+        // NUNCA de `actualSeconds`: eso es el total histórico, y pisarlo hacía
+        // saltar el número al primer refresco. Releerlo es lo que hace que la
+        // fila en pausa se entere de lo que cambió por fuera de este store: un
+        // `stop_timer` del MCP la dejaba con la foto de cuando arrancó (se veía
+        // retroceder) y un `log_time` no la movía (#38). Las dos ventanas leen el
+        // mismo número, así que `persistLast` no arma un ida y vuelta.
+        last = {
+          ...last,
+          title: fresh.title,
+          estimatedMinutes: fresh.estimatedMinutes,
+          seconds: secondsToday,
+        };
       }
       // Sin `broadcast()`: refrescar no es mutar, y avisarle a la otra ventana
       // la haría refrescar y avisar de vuelta.
@@ -369,22 +406,28 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     const id = typeof taskId === "number" ? taskId : (await api.getActiveTimers())[0]?.taskId;
     const prev = get().actives.find((a) => a.taskId === id) ?? null;
     const res = id == null ? null : await api.stopTimer(id);
-    const actives = await api.getActiveTimers();
+    // La pila y lo de hoy se leen **juntos**, y entre esta lectura y `set` no hay
+    // otro `await`: si lo hubiera, un play de la otra ventana o del MCP podía
+    // caer en el medio y este `set` publicaba una pila ya vieja.
+    const [actives, today] = await Promise.all([
+      api.getActiveTimers(),
+      res ? pausedSeconds(res[0], prev?.baseSeconds ?? 0) : Promise.resolve(0),
+    ]);
     if (res) {
-      const [stoppedId, seconds] = res;
-      const guardada = readLast();
-      const sameSaved = guardada?.taskId === stoppedId ? guardada : null;
+      const [stoppedId] = res;
+      const saved = readLast();
+      const sameSaved = saved?.taskId === stoppedId ? saved : null;
       // Pausar una de varias la **saca** de la pila: las que siguen corriendo
       // son las filas, y `last` sigue apuntando a una de ellas. Solo la última
       // en pausarse queda en el taxímetro esperando su play, como con un timer.
       const last: LastTask | null =
         actives.length > 0
-          ? lastInStack(guardada, actives)
+          ? lastInStack(saved, actives)
           : {
               taskId: stoppedId,
               title: prev?.title ?? sameSaved?.title ?? "",
               estimatedMinutes: prev?.estimatedMinutes ?? sameSaved?.estimatedMinutes ?? null,
-              seconds: (prev?.baseSeconds ?? 0) + seconds,
+              seconds: today,
             };
       writeLast(last);
       set({ ...derive(actives), last });
@@ -401,21 +444,33 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     const res = await api.stopAllTimers();
     // La pausada que queda en el taxímetro es la que mostraba: la primera.
     const first = res[0];
+    const p = first ? prev.find((a) => a.taskId === first[0]) : undefined;
+    // Una sola lectura de la pila y de lo de hoy, sin `await` entre ella y el
+    // `set`: lo mismo que en `stop`.
+    const [actives, today] = await Promise.all([
+      api.getActiveTimers(),
+      first ? pausedSeconds(first[0], p?.baseSeconds ?? 0) : Promise.resolve(0),
+    ]);
     if (first) {
-      const [stoppedId, seconds] = first;
-      const p = prev.find((a) => a.taskId === stoppedId);
+      const [stoppedId] = first;
       const saved = readLast();
-      const last: LastTask = {
-        taskId: stoppedId,
-        title: p?.title ?? (saved?.taskId === stoppedId ? saved.title : ""),
-        estimatedMinutes:
-          p?.estimatedMinutes ?? (saved?.taskId === stoppedId ? saved.estimatedMinutes : null),
-        seconds: (p?.baseSeconds ?? 0) + seconds,
-      };
+      // Lo normal es la pila vacía; si algo arrancó entre el cierre y la lectura
+      // (la otra ventana, el MCP), `last` tiene que ser una de las que corren.
+      const last: LastTask | null =
+        actives.length > 0
+          ? lastInStack(saved, actives)
+          : {
+              taskId: stoppedId,
+              title: p?.title ?? (saved?.taskId === stoppedId ? saved.title : ""),
+              estimatedMinutes:
+                p?.estimatedMinutes ??
+                (saved?.taskId === stoppedId ? saved.estimatedMinutes : null),
+              seconds: today,
+            };
       writeLast(last);
-      set({ ...derive(await api.getActiveTimers()), last });
+      set({ ...derive(actives), last });
     } else {
-      set(derive(await api.getActiveTimers()));
+      set(derive(actives));
     }
     useAppStore.getState().bumpData();
     broadcast();

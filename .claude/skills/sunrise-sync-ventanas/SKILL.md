@@ -45,9 +45,16 @@ así que no puede hacer eco. Del lado del front lo escucha `useExternalChanges`,
   abre, cierra y registra timers, y cada ventana tiene su propio store: sin el de
   la raíz, el taxímetro seguía mostrando lo último que leyó. **No lo muevas dentro
   de `useTimerRuntime`**: `main` lo monta además en `Shell`, y con dos listeners
-  cada aviso invalida dos veces. Límite conocido: la fila **en pausa** (`last`) la
-  escribe solo el `stop` del store, así que un `stop_timer` o `log_time` del MCP no
-  la actualiza (`docs/specs/mcp.md`, "El timer").
+  cada aviso invalida dos veces. **Ojo con lo que el store guarda como foto**: la
+  fila en pausa (`last`) vive en `localStorage` y el aviso solo hace que `refresh`
+  relea; si `refresh` no relee un campo, ese campo queda viejo aunque la base
+  cambie. Fue #38: el contador de `last` no se releía y un `stop_timer` o
+  `log_time` del MCP no lo movía. Hoy sale de `seconds_today` en cada `refresh`,
+  y también en `stop` y `stopAll`: no se suma lo que devuelve `stop_timer`, que es
+  la corrida entera, porque una que cruzó la medianoche se guarda partida por día
+  (I3) y la suma le cargaba a hoy lo de anoche. En `stop` y `stopAll` la pila y lo
+  de hoy se leen juntos (`Promise.all`) y no hay otro `await` antes del `set`.
+  Si agregas un campo a `last`, relee también ese.
 - **"Ya no está" incluye el basurero** (#11). El taxímetro y Focus deciden que una
   tarea se fue cuando `api.getTask` devuelve `null`, y el comando `get_task`
   devuelve `null` también para una tarea del basurero (`get_task_outside_trash`),

@@ -207,6 +207,18 @@ pub fn get_active_timers(db: State<'_, Db>) -> Result<Vec<ActiveTimer>, String> 
     repo::get_active_timers(&conn).map_err(e)
 }
 
+/// Segundos cerrados **de hoy** de una tarea (`repo::seconds_today`).
+///
+/// Es el contador de la fila en pausa del taxímetro: `refresh` lo relee con cada
+/// aviso porque el tiempo de esa tarea puede haber cambiado por fuera del store
+/// —un `stop_timer` o un `log_time` del MCP— y la foto guardada en `last` no se
+/// entera (#38).
+#[tauri::command]
+pub fn seconds_today(db: State<'_, Db>, task_id: i64) -> Result<i64, String> {
+    let conn = db.0.lock().map_err(e)?;
+    repo::seconds_today(&conn, task_id).map_err(e)
+}
+
 #[tauri::command]
 pub fn list_time_entries(db: State<'_, Db>, task_id: i64) -> Result<Vec<TimeEntry>, String> {
     let conn = db.0.lock().map_err(e)?;

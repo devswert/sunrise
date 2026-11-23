@@ -125,6 +125,8 @@ vi.mock("../../lib/ipc", () => ({
       running.splice(i, 1);
       return [taskId, 60];
     }),
+    // Lo de hoy de la tarea que queda en pausa; a Focus no le importa el número.
+    secondsToday: vi.fn(async () => 60),
     dailyLog: vi.fn(async () => [
       {
         date: "2026-08-10",
