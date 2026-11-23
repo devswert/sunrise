@@ -1138,6 +1138,13 @@ taguear, se verifica antes.
 **Si el primer Release sale sin la llave en los secrets, los artefactos van sin
 firmar y la app los rechaza sin decir por qué.**
 
+**Publicar no depende de Actions** (noviembre de 2026). Sin minutos de runner, la
+v0.12.0 iba a esperar casi un mes. `bin/release-local` hace lo de `release.yml` en
+la máquina del dev: gates, build firmado con la copia local de la llave del
+updater, y el Release con los mismos cuatro archivos y el mismo `latest.json`. Lo
+que se pierde es el SDK fijo del runner: el binario se enlaza con el de esta
+máquina. Por eso Actions sigue siendo el camino normal, y el script es el plan B.
+
 ---
 
 ## 10. Método: cómo se verifica acá

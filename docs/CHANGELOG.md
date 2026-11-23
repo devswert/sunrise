@@ -15,6 +15,44 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.12.0 — 2026-11-23
+
+Ahora puedes llevar el tiempo de varias tareas a la vez. Si estás en una reunión
+mientras esperas un deploy, o avanzas dos cosas en paralelo, cada una tiene su
+propio timer: el taxímetro muestra una fila por tarea y Focus una columna, y al
+cerrar el día ves cuánto de tu jornada fue en paralelo. También puedes pedirle a
+Claude que inicie o pare un timer, o que anote tiempo que se te olvidó registrar.
+
+La capacidad del día ya no es un número que ajustas a mano. sunrise la calcula con
+tu jornada menos las reuniones que marcas como que no cuentan, como el almuerzo,
+aunque cambien de hora. Así el semáforo de cada día refleja las horas que de verdad
+tienes.
+
+Si borras una tarea por error, queda 30 días en el basurero para recuperarla. Y en
+la semana, las tareas pendientes de días pasados ya no se ven apagadas, para que no
+se te pierdan.
+
+### Detalle
+
+- Varios timers corriendo a la vez: base, campana y store (#17, #18), taxímetro
+  apilado con una fila por timer (#19), botón de play en paralelo (#20) y Focus con
+  una columna por timer (#21).
+- El cierre del día, los highlights y la weekly review muestran la jornada y el
+  tiempo en paralelo (#22).
+- MCP: iniciar, parar y registrar tiempo (#23). La fila en pausa del taxímetro
+  relee lo de hoy después de un cambio hecho desde Claude (#38).
+- La capacidad de cada día es la jornada menos los eventos ignorados del
+  calendario; sale de Configs el campo "Capacidad diaria" (#8).
+- Basurero de 30 días para las tareas borradas, también desde el MCP (#11).
+- Las pendientes de días pasados no se apagan en la semana (#5).
+- Los modales entran y salen animados (#10), y al restaurar un respaldo queda un
+  solo fondo entre un diálogo y el otro (#40).
+- Aviso con `#` amarillo en el rail para las tareas sin channel (#7).
+- Arreglos: el cursor del título al crear se queda donde escribes (#3), el rail del
+  planning muestra el día que se repasa (#6) y un solo `#` en los channels (#9).
+- Interno: el CI es local (`bin/gates`) y las suites corren al publicar (#25, #32);
+  deuda de tests y de horas de las revisiones (#39).
+
 ## v0.11.0 — 2026-10-16
 
 Ahora puedes conectar sunrise a Claude Desktop: Claude puede ver tu día y tu

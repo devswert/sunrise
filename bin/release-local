@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Publica una versión de sunrise **sin Actions**: compila, firma y sube el Release
+# desde esta máquina. Es el plan B de `release.yml`, para cuando no hay minutos de
+# runner (docs/DECISIONES.md §9). Hace lo mismo y en el mismo orden: suites antes de
+# compilar, notas desde docs/CHANGELOG.md, y los cuatro archivos que necesita el
+# updater (.dmg, .app.tar.gz, su .sig y latest.json).
+#
+# Uso, con el tag ya empujado y el checkout en ese commit de main:
+#   bin/release-local v0.12.0
+#
+# No empuja nada a git: el tag lo empuja quien publica, y pasa por el hook, que es lo
+# que asegura que apunte a un commit de origin/main.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+fail() { echo "✗ $*" >&2; exit 1; }
+step() { echo "▸ $*"; }
+
+repo="devswert/sunrise"
+tag="${1:-}"
+[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "uso: bin/release-local vX.Y.Z"
+version="${tag#v}"
+key_file="${SUNRISE_UPDATER_KEY:-$HOME/.tauri/sunrise-updater.key}"
+
+step "El commit que se publica"
+[ -z "$(git status --porcelain)" ] || fail "hay cambios sin commitear: se publicaría algo que no está en git"
+git fetch --quiet origin main --tags
+[ "$(git rev-parse HEAD)" = "$(git rev-parse "$tag^{commit}" 2>/dev/null)" ] \
+  || fail "HEAD no es el commit del tag $tag (git checkout $tag)"
+git merge-base --is-ancestor HEAD origin/main || fail "el commit del tag no está en origin/main"
+# El commit del tag en origin, pelado si es anotado: tiene que ser este mismo.
+remote_sha=$(git ls-remote --tags origin \
+  | awk -v t="refs/tags/$tag" '$2==t || $2==t"^{}" { s=$1 } END { print s }')
+[ -n "$remote_sha" ] || fail "el tag $tag no está en origin: empújalo primero"
+[ "$remote_sha" = "$(git rev-parse HEAD)" ] || fail "el tag $tag de origin apunta a otro commit"
+# Solo un 404 significa "no hay Release". Cualquier otro error (red, rate limit) se
+# corta acá y no después de diez minutos de gates y build.
+if api_out=$(gh api "repos/$repo/releases/tags/$tag" 2>&1); then
+  fail "ya existe un Release $tag"
+fi
+case "$api_out" in
+  *"HTTP 404"*) ;;
+  *) fail "no pude revisar si existe el Release $tag: $api_out" ;;
+esac
+
+step "La versión en los tres archivos"
+cargo_v=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
+conf_v=$(node -p "require('./src-tauri/tauri.conf.json').version")
+pkg_v=$(node -p "require('./package.json').version")
+for v in "$cargo_v" "$conf_v" "$pkg_v"; do
+  [ "$v" = "$version" ] || fail "el tag $tag no coincide con la versión $v del repo"
+done
+
+step "La llave del updater"
+[ -s "$key_file" ] || fail "no está la llave privada en $key_file (o define SUNRISE_UPDATER_KEY)"
+# Sin la pareja correcta el build firma igual, y las apps instaladas rechazan la
+# actualización sin decir por qué: se compara la pública antes de compilar.
+pub_conf=$(node -p "require('./src-tauri/tauri.conf.json').plugins.updater.pubkey")
+[ "$(tr -d '\n' < "$key_file.pub" 2>/dev/null)" = "$pub_conf" ] \
+  || fail "$key_file.pub no es la llave pública de tauri.conf.json"
+
+out="$(mktemp -d -t sunrise-release)"
+step "Notas del release (en $out)"
+awk -v v="$version" '
+  $0 ~ "^## v" v "([^0-9.]|$)" { dentro=1; next }
+  dentro && /^## v/ { exit }
+  dentro { print }
+' docs/CHANGELOG.md > "$out/notas.md"
+[ -s "$out/notas.md" ] || fail "docs/CHANGELOG.md no tiene una sección '## v$version'"
+# El mismo pie que agrega release.yml.
+cat >> "$out/notas.md" <<'EOF'
+
+---
+
+**Si es tu primera instalación**: abre el `.dmg`, arrastra sunrise a
+Aplicaciones y quítale la cuarentena que le puso el navegador:
+
+```bash
+xattr -cr /Applications/sunrise.app
+```
+
+Ese paso no es opcional. El paquete está firmado ad-hoc y no con una
+cuenta de Apple Developer, y macOS lo reporta como **dañado** hasta que
+le quites la marca. Una sola vez.
+
+Después, la app se actualiza sola desde Configs → General →
+Actualizaciones. Esas descargas no vuelven a pasar por el aviso.
+EOF
+
+# Las suites antes de compilar, como en release.yml: un .dmg con tests rojos es peor
+# que no publicar.
+step "Gates"
+bin/gates
+
+step "Build firmado"
+TAURI_SIGNING_PRIVATE_KEY="$(cat "$key_file")" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" \
+  pnpm tauri build
+
+target="$(cd src-tauri && cargo metadata --format-version 1 --no-deps | node -pe 'JSON.parse(require("fs").readFileSync(0)).target_directory')"
+bundle="$target/release/bundle"
+dmg="$bundle/dmg/sunrise_${version}_aarch64.dmg"
+tarball="$bundle/macos/sunrise.app.tar.gz"
+for f in "$dmg" "$tarball" "$tarball.sig"; do
+  [ -s "$f" ] || fail "el build no dejó $f"
+done
+# La firma tiene que ser de la llave que conocen las apps instaladas. Una llave
+# privada que no es pareja de la pública firma igual, y el síntoma llega tarde y en
+# silencio: "nunca hay actualizaciones". Se compara el key id de minisign (bytes 2
+# a 9) de la firma con el de la pública de tauri.conf.json.
+node -e '
+  const fs = require("fs");
+  const line = (b64) => Buffer.from(b64.trim(), "base64").toString().split("\n")[1];
+  const keyId = (b64) => Buffer.from(line(b64), "base64").subarray(2, 10).toString("hex");
+  const sig = keyId(fs.readFileSync(process.argv[1], "utf8"));
+  const pub = keyId(process.argv[2]);
+  if (sig !== pub) { console.error(`firma ${sig}, pública ${pub}`); process.exit(1); }
+' "$tarball.sig" "$pub_conf" || fail "la firma no es de la llave pública de tauri.conf.json"
+# Nombres iguales a los de los Releases anteriores.
+cp "$dmg" "$out/"
+cp "$tarball" "$out/sunrise_aarch64.app.tar.gz"
+cp "$tarball.sig" "$out/sunrise_aarch64.app.tar.gz.sig"
+
+step "latest.json"
+url="https://github.com/$repo/releases/download/$tag/sunrise_aarch64.app.tar.gz"
+jq -n \
+  --arg version "$version" \
+  --rawfile notes "$out/notas.md" \
+  --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --rawfile signature "$out/sunrise_aarch64.app.tar.gz.sig" \
+  --arg url "$url" \
+  '{version: $version, notes: ($notes | rtrimstr("\n")), pub_date: $pub_date,
+    platforms: {
+      "darwin-aarch64": {signature: ($signature | rtrimstr("\n")), url: $url},
+      "darwin-aarch64-app": {signature: ($signature | rtrimstr("\n")), url: $url}
+    }}' > "$out/latest.json"
+
+step "Release $tag"
+gh release create "$tag" --repo "$repo" --verify-tag \
+  --title "sunrise $tag" --notes-file "$out/notas.md" --latest \
+  "$out/sunrise_${version}_aarch64.dmg" \
+  "$out/sunrise_aarch64.app.tar.gz" \
+  "$out/sunrise_aarch64.app.tar.gz.sig" \
+  "$out/latest.json"
+
+gh release view "$tag" --repo "$repo" --json assets -q '.assets[].name'
+echo "✓ Publicado $tag"
