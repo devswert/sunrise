@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WeekView } from "./WeekView";
 import { dateLabel, isoWeekday, todayISO, weekDates } from "../../lib/date";
+import { api } from "../../lib/ipc";
+import { useAppStore } from "../../lib/store";
+import { addToRange, ignoredEvent } from "../../test/ignoredEvents";
+import { SettingKey, useSettingsStore } from "../../lib/settings";
 
 /**
  * La ventana del board: tres semanas con scroll horizontal, la del ancla al
@@ -263,5 +267,120 @@ describe("WeekView · panel de backlog", () => {
     await userEvent.click(backlogButton());
 
     expect(document.querySelectorAll(".day-col")).toHaveLength(21);
+  });
+});
+
+/**
+ * #8: cada columna mide contra **su** capacidad —la jornada menos los eventos
+ * ignorados de ese día—, no contra un número fijo. El badge de carga lleva en el
+ * `title` contra qué se pinta.
+ *
+ * El evento ignorado es propio (`addToRange`), no uno de la semilla. Lo que sí
+ * toca estado del mock —una tarea de carga y la jornada— lo devuelve el
+ * `afterEach`, así que los casos no dependen del orden.
+ */
+describe("WeekView · la capacidad de cada día", () => {
+  let created: number[] = [];
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    for (const id of created) await api.trashTask(id);
+    created = [];
+    await useSettingsStore.getState().set(SettingKey.WORK_START, "09:00");
+    await useSettingsStore.getState().set(SettingKey.WORK_END, "18:00");
+  });
+
+  /**
+   * Dos días hábiles **futuros** a la vista: nunca van plegados, y la
+   * degradación no se lleva su tarea al backlog (pasaría con un día pasado si el
+   * caso corre solo, con `-t`, y es el primero en montar la vista).
+   */
+  function twoWorkdays(): [string, string] {
+    const next = new Date();
+    next.setDate(next.getDate() + 7);
+    const [a, b] = [...weekDates(new Date()), ...weekDates(next)].filter(
+      (d) => d > todayISO() && isoWeekday(d) <= 5,
+    );
+    return [a, b];
+  }
+
+  const cap = (date: string) =>
+    document.querySelector<HTMLElement>(`.day-col[data-date="${date}"] .day-col__cap`);
+
+  async function withLoad(date: string) {
+    const t = await api.createTask({
+      title: "Carga de prueba",
+      scheduledDate: date,
+      estimatedMinutes: 60,
+    });
+    created.push(t.id);
+  }
+
+  it("un día con un evento ignorado y otro sin él miden contra números distintos", async () => {
+    const [conAlmuerzo, sinAlmuerzo] = twoWorkdays();
+    await withLoad(conAlmuerzo);
+    await withLoad(sinAlmuerzo);
+    // Un almuerzo de 13:00 a 14:15, ignorado: 9 h − 1 h 15 = 7:45.
+    const almuerzo = ignoredEvent(conAlmuerzo, "13:00", 75);
+    addToRange(() => [almuerzo]);
+    render(<WeekView />);
+
+    await waitFor(() => expect(cap(conAlmuerzo)?.title).toMatch(/ de 7:45$/));
+    // Sin ignorados, la jornada completa: 09–18 son 9 horas.
+    expect(cap(sinAlmuerzo)?.title).toMatch(/ de 9:00$/);
+  });
+
+  it("marcar y desmarcar el evento cambia la capacidad sin recargar la vista", async () => {
+    const [dia] = twoWorkdays();
+    await withLoad(dia);
+    let ignorado = false;
+    const reunion = () => ignoredEvent(dia, "10:00", 60, { railOnly: ignorado });
+    addToRange(() => [reunion()]);
+    render(<WeekView />);
+    await waitFor(() => expect(cap(dia)?.title).toMatch(/ de 9:00$/));
+
+    ignorado = true;
+    act(() => useAppStore.getState().bumpData());
+    await waitFor(() => expect(cap(dia)?.title).toMatch(/ de 8:00$/));
+
+    ignorado = false;
+    act(() => useAppStore.getState().bumpData());
+    await waitFor(() => expect(cap(dia)?.title).toMatch(/ de 9:00$/));
+  });
+
+  it("un ignorado que cubre la jornada deja la columna en OK y sin contra qué pintarse", async () => {
+    const [dia] = twoWorkdays();
+    // 11 h de carga: contra cualquier capacidad positiva sería OVER, así que si
+    // queda en OK es porque la capacidad es 0 y el semáforo se apagó.
+    await withLoad(dia);
+    const t = await api.createTask({
+      title: "Más carga",
+      scheduledDate: dia,
+      estimatedMinutes: 600,
+    });
+    created.push(t.id);
+    addToRange(() => [ignoredEvent(dia, "09:00", 540)]);
+    render(<WeekView />);
+
+    await waitFor(() => expect(cap(dia)).not.toBeNull());
+    // Capacidad 0 ⇒ el semáforo se apaga (OK, gris) y el badge no tiene `title`.
+    await waitFor(() => expect(cap(dia)!.hasAttribute("title")).toBe(false));
+    expect(cap(dia)).toHaveClass("cap--ok");
+    expect(cap(dia)).not.toHaveClass("cap--over");
+  });
+
+  it("cambiar la jornada repinta todas las columnas", async () => {
+    const [a, b] = twoWorkdays();
+    await withLoad(a);
+    await withLoad(b);
+    render(<WeekView />);
+    await waitFor(() => expect(cap(a)?.title).toMatch(/ de 9:00$/));
+
+    await act(async () => {
+      await useSettingsStore.getState().set(SettingKey.WORK_END, "17:30");
+    });
+
+    await waitFor(() => expect(cap(a)?.title).toMatch(/ de 8:30$/));
+    expect(cap(b)?.title).toMatch(/ de 8:30$/);
   });
 });

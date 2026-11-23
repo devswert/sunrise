@@ -155,7 +155,9 @@ export function DailyPlanningView() {
   const tasks = board.tasksByDate[today] ?? [];
   // El rail ve además los bloques de agenda (§4.12), que no son tarjetas.
   const agenda = board.agendaByDate[today] ?? [];
-  const summary = daySummary(tasks, capacity.target, capacity.warnRatio);
+  // La capacidad de hoy: la jornada menos los ignorados de hoy (#8).
+  const target = capacity.capacityFor(agenda);
+  const summary = daySummary(tasks, target, capacity.warnRatio);
 
   /**
    * El día que se repasa es el último con tareas, y **coincide con el que la
@@ -473,7 +475,7 @@ export function DailyPlanningView() {
               rescued={rescued}
               categoryMap={board.categoryMap}
               categories={board.categories}
-              capacityTarget={capacity.target}
+              capacityTarget={target}
               capacityWarnRatio={capacity.warnRatio}
               onToggle={board.toggleTask}
               onOpen={(t) => setSelectedId(t.id)}
@@ -508,15 +510,13 @@ export function DailyPlanningView() {
          * decir dos números. */}
         <div className={`cap-line ${NIVEL_CLASS[summary.nivel]}`}>
           <strong>{formatMinutes(summary.planned)}</strong>
-          {capacity.target > 0 && <span> de {formatMinutes(capacity.target)}</span>}
+          {target > 0 && <span> de {formatMinutes(target)}</span>}
           <span className="cap-line__bar">
             <span
               className="cap-line__fill"
               style={{
                 width: `${
-                  capacity.target > 0
-                    ? Math.min(100, Math.round((summary.planned / capacity.target) * 100))
-                    : 0
+                  target > 0 ? Math.min(100, Math.round((summary.planned / target) * 100)) : 0
                 }%`,
               }}
             />

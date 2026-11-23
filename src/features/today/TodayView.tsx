@@ -41,7 +41,7 @@ export function TodayView() {
           tasks={tasks}
           categoryMap={board.categoryMap}
           categories={board.categories}
-          capacityTarget={capacity.target}
+          capacityTarget={capacity.capacityFor(agenda)}
           capacityWarnRatio={capacity.warnRatio}
           onToggle={board.toggleTask}
           onOpen={(t) => setSelectedId(t.id)}

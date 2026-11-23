@@ -77,9 +77,11 @@ que la app no se abrió nunca.
 > día por construcción, así que la precisión no era lo que estaba roto. Lo único
 > que se compró es que corra con la ventana tapada.
 >
-> La hora se compara **en minutos y no como texto**. El front lo hacía
-> lexicográficamente y `hour()` acepta una hora de un dígito: con `9:05`,
-> `"9:05" >= "20:00"` es falso todo el día y el respaldo no corría nunca.
+> La hora se compara **en minutos y no como texto**. Desde #8 el front guarda y
+> devuelve las horas con dos dígitos (`hour()` y `hhmmFromMinutes`), pero lo ya
+> guardado puede venir sin cero —`9:05`, de antes o editado a mano— y comparado
+> como texto `"9:05" >= "20:00"` es falso todo el día: el respaldo no correría
+> nunca.
 
 **Configs se entera por evento.** Lo que escribe el vigilante —la marca del día y,
 si falló, el error— no pasa por `setSetting`, que es lo que antes hacía redibujar

@@ -245,8 +245,8 @@ tiempo estimado**— más los minutos de adelanto del primero.
 
 **Es sección propia y no un campo de General**, y la razón no es la cantidad de
 controles: acá además hay que explicar que **macOS decide si el aviso se queda en
-pantalla** (§4.25), y eso no cabe como una línea suelta entre la capacidad diaria y
-la jornada. La nota nombra el ajuste exacto (*Persistent*) y trae el botón que abre
+pantalla** (§4.25), y eso no cabe como una línea suelta entre la jornada y los
+días plegados. La nota nombra el ajuste exacto (*Persistent*) y trae el botón que abre
 ese panel.
 
 > **I** — **El default no es el mismo para los tres, y no es un descuido.** El del

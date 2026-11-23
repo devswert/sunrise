@@ -9,10 +9,9 @@ import {
 } from "lucide-react";
 import { api, isTauri } from "../../lib/ipc";
 import { useAppStore } from "../../lib/store";
-import { relativeTime } from "../../lib/date";
+import { hhmmFromMinutes, minutesFromTime, relativeTime } from "../../lib/date";
 import { useToday } from "../../lib/day";
 import { SETTING_DEFAULTS, SettingKey, backupSettings, useSettingsStore } from "../../lib/settings";
-import { minutesFromTime } from "../calendar/railLayout";
 import { sectionIcon } from "../settings/secciones";
 import { Dialog } from "../../components/Dialog";
 import { ModalPresence } from "../../components/ModalPresence";
@@ -253,13 +252,15 @@ export function BackupCard() {
 
   async function saveHour(raw: string) {
     setDraft((b) => ({ ...b, hour: undefined }));
-    if (minutesFromTime(raw.trim()) == null) {
+    const min = minutesFromTime(raw.trim());
+    if (min == null) {
       setError({ field: "hour", text: "Una hora en formato 24 h, por ejemplo 20:00." });
       setDraft((b) => ({ ...b, hour: raw }));
       return;
     }
     setError(null);
-    await setSetting(SettingKey.BACKUP_TIME, raw.trim());
+    // Con dos dígitos (`"9:05"` → `"09:05"`), la misma forma que la jornada.
+    await setSetting(SettingKey.BACKUP_TIME, hhmmFromMinutes(min));
   }
 
   async function saveKeep(raw: string) {

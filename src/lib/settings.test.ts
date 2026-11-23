@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { renderHook } from "@testing-library/react";
 import {
   SETTING_DEFAULTS,
   SettingKey,
   capacityWarnRatio,
   collapsedWeekdays,
-  dailyCapacityMinutes,
   noticeMeetingMinutes,
   noticeSound,
   noticeOn,
@@ -12,7 +12,7 @@ import {
   workHours,
   timezone,
 } from "./settings";
-import { computeCapacityLevel } from "./capacity";
+import { computeCapacityLevel, dayCapacity } from "./capacity";
 import { CapacityLevel } from "./enums";
 
 /**
@@ -22,25 +22,27 @@ import { CapacityLevel } from "./enums";
  * ningún error visible. De ahí que estos casos sean el corazón del módulo.
  */
 
-describe("dailyCapacityMinutes", () => {
-  it("lee el valor guardado", () => {
-    expect(dailyCapacityMinutes({ [SettingKey.DAILY_CAPACITY_MINUTES]: "300" })).toBe(300);
-  });
+/**
+ * `daily_capacity_minutes` ya no se lee (#8): la capacidad sale de la jornada. Una
+ * fila vieja con 300 no debe mover nada.
+ */
+describe("la capacidad ya no lee daily_capacity_minutes", () => {
+  it("con la clave vieja guardada en 300, el hook mide contra la jornada completa", async () => {
+    const { useSettingsStore, useCapacitySettings } = await import("./settings");
+    // La fila sigue en la base (la siembra la migración 2): se pisa con 300 y se
+    // recarga desde el mock, como la leería la app.
+    const key = "daily_capacity_minutes" as SettingKey;
+    await useSettingsStore.getState().set(key, "300");
+    try {
+      await useSettingsStore.getState().load();
+      expect(useSettingsStore.getState().values.daily_capacity_minutes).toBe("300");
 
-  it("cae al default si la clave falta", () => {
-    expect(dailyCapacityMinutes({})).toBe(SETTING_DEFAULTS.dailyCapacityMinutes);
-  });
-
-  it("cae al default con valores vacíos o no numéricos", () => {
-    for (const raw of ["", "   ", "ocho horas", "8h", "NaN"]) {
-      expect(dailyCapacityMinutes({ [SettingKey.DAILY_CAPACITY_MINUTES]: raw })).toBe(
-        SETTING_DEFAULTS.dailyCapacityMinutes,
-      );
+      const { result } = renderHook(() => useCapacitySettings());
+      expect(result.current.capacityFor([])).toBe(540);
+    } finally {
+      // La semilla del mock es de módulo: se devuelve como la dejó la migración 2.
+      await useSettingsStore.getState().set(key, "480");
     }
-  });
-
-  it("respeta 0 como 'sin objetivo'", () => {
-    expect(dailyCapacityMinutes({ [SettingKey.DAILY_CAPACITY_MINUTES]: "0" })).toBe(0);
   });
 });
 
@@ -75,6 +77,27 @@ describe("workHours", () => {
         [SettingKey.WORK_END]: "17:00",
       }),
     ).toEqual({ start: "08:30", end: "17:00" });
+  });
+
+  /**
+   * Una hora guardada sin cero adelante (`"9:30"`). Comparada como texto,
+   * `"10:00" <= "9:30"` da true: la jornada válida caía al default, o al revés,
+   * una invertida pasaba, y la capacidad quedaba en 0 en todas las columnas.
+   */
+  it("una hora sin cero adelante se compara en minutos y sale con dos dígitos", () => {
+    const jornada = workHours({
+      [SettingKey.WORK_START]: "9:30",
+      [SettingKey.WORK_END]: "10:00",
+    });
+    expect(jornada).toEqual({ start: "09:30", end: "10:00" });
+    expect(dayCapacity(jornada.start, jornada.end, [])).toBe(30);
+  });
+
+  it("una invertida sin cero adelante igual cae al default", () => {
+    expect(workHours({ [SettingKey.WORK_START]: "10:00", [SettingKey.WORK_END]: "9:30" })).toEqual({
+      start: SETTING_DEFAULTS.workStart,
+      end: SETTING_DEFAULTS.workEnd,
+    });
   });
 
   it("cae al default si falta o no es una hora", () => {
@@ -176,26 +199,32 @@ describe("planMark", () => {
 });
 
 describe("el semáforo con ajustes rotos", () => {
-  it("no se queda mudo: un valor basura usa el default en vez de NaN", () => {
+  it("no se queda mudo: una jornada basura usa el default en vez de NaN", () => {
     const values = {
-      [SettingKey.DAILY_CAPACITY_MINUTES]: "ocho",
+      [SettingKey.WORK_START]: "nueve",
+      [SettingKey.WORK_END]: "tarde",
       [SettingKey.CAPACITY_WARN_RATIO]: "mucho",
     };
-    const target = dailyCapacityMinutes(values);
+    const { start, end } = workHours(values);
+    const target = dayCapacity(start, end, []);
     const ratio = capacityWarnRatio(values);
 
-    // Con NaN esto daría OK y el semáforo nunca se encendería.
+    // La jornada de fábrica, 09–18. Con NaN esto daría OK y el semáforo nunca
+    // se encendería.
+    expect(target).toBe(540);
     expect(computeCapacityLevel(600, target, ratio)).toBe(CapacityLevel.OVER);
-    expect(computeCapacityLevel(420, target, ratio)).toBe(CapacityLevel.WARN);
+    expect(computeCapacityLevel(470, target, ratio)).toBe(CapacityLevel.WARN);
     expect(computeCapacityLevel(60, target, ratio)).toBe(CapacityLevel.OK);
   });
 
   it("el umbral configurado sí cambia el semáforo", () => {
     const values = {
-      [SettingKey.DAILY_CAPACITY_MINUTES]: "480",
+      [SettingKey.WORK_START]: "09:00",
+      [SettingKey.WORK_END]: "17:00",
       [SettingKey.CAPACITY_WARN_RATIO]: "0.5",
     };
-    const target = dailyCapacityMinutes(values);
+    const { start, end } = workHours(values);
+    const target = dayCapacity(start, end, []);
     const ratio = capacityWarnRatio(values);
 
     // 300/480 = 62%: con el default (85%) sería OK; con 50% es WARN.
@@ -211,15 +240,15 @@ describe("useSettingsStore · round-trip por ipc/mockDb", () => {
     await useSettingsStore.getState().load();
     expect(useSettingsStore.getState().loaded).toBe(true);
     // La semilla del mock espeja la de la migración 2.
-    expect(dailyCapacityMinutes(useSettingsStore.getState().values)).toBe(480);
+    expect(capacityWarnRatio(useSettingsStore.getState().values)).toBe(0.85);
 
-    await useSettingsStore.getState().set(SettingKey.DAILY_CAPACITY_MINUTES, "300");
-    expect(dailyCapacityMinutes(useSettingsStore.getState().values)).toBe(300);
+    await useSettingsStore.getState().set(SettingKey.CAPACITY_WARN_RATIO, "0.7");
+    expect(capacityWarnRatio(useSettingsStore.getState().values)).toBe(0.7);
 
     // Y sobrevive a una recarga: quedó escrito, no solo en memoria del store.
     useSettingsStore.setState({ values: {}, loaded: false });
     await useSettingsStore.getState().load();
-    expect(dailyCapacityMinutes(useSettingsStore.getState().values)).toBe(300);
+    expect(capacityWarnRatio(useSettingsStore.getState().values)).toBe(0.7);
   });
 });
 

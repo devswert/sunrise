@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { DailyPlanningView } from "./DailyPlanningView";
 import { api } from "../../lib/ipc";
 import { shortDate, toISODate, todayISO } from "../../lib/date";
 import { SettingKey, useSettingsStore } from "../../lib/settings";
+import { useAppStore } from "../../lib/store";
 import { derive, useTimerStore } from "../timer/timerStore";
 
 // El canvas de jsdom no implementa `getContext`: la llamada real reventaría en
@@ -245,6 +246,31 @@ describe("DailyPlanningView", () => {
 
     await goToToday();
     expect(document.querySelector(".cap-line")).not.toBeNull();
+  });
+
+  /**
+   * #8: el medidor mide contra la capacidad de **hoy** —la jornada menos sus
+   * eventos ignorados—, y marcar uno la cambia sin recargar. Devuelve la marca al
+   * salir: la Weekly es de la semilla y la usan otros casos.
+   */
+  it("mide contra la jornada de hoy menos sus eventos ignorados", async () => {
+    const weekly = (await api.listTasksForRange(todayISO(), todayISO())).find(
+      (t) => t.title === "Weekly de equipo",
+    )!;
+    const capLine = () => document.querySelector(".cap-line")?.textContent ?? "";
+    mount();
+    await goToToday();
+    await waitFor(() => expect(capLine()).toMatch(/ de 9:00/));
+
+    try {
+      await act(async () => {
+        await api.setTaskRailOnly(weekly.id, true);
+        useAppStore.getState().bumpData();
+      });
+      await waitFor(() => expect(capLine()).toMatch(/ de 8:00/));
+    } finally {
+      await api.setTaskRailOnly(weekly.id, false);
+    }
   });
 
   it("el backlog es una columna del paso 2, para arrastrar en los dos sentidos", async () => {

@@ -11,7 +11,6 @@ import {
 import { api, isTauri } from "../../lib/ipc";
 import { PALETTE } from "../../lib/palette";
 import type { AppUpdate, Category } from "../../lib/types";
-import { formatMinutes, parseDuration } from "../../lib/capacity";
 import { Popover } from "../../components/Popover";
 import { Switch } from "../../components/Switch";
 import { Spinner } from "../../components/Spinner";
@@ -26,16 +25,14 @@ import {
   SettingKey,
   prioritiesOn,
   timezone,
-  useCapacitySettings,
   useCollapsedWeekdays,
   useSettingsStore,
   useWorkHours,
 } from "../../lib/settings";
-import { isoWeekdayLabel, systemZone } from "../../lib/date";
+import { hhmmFromMinutes, isoWeekdayLabel, minutesFromTime, systemZone } from "../../lib/date";
 import { SearchSelect, type SearchOption } from "../../components/SearchSelect";
 import { announcementFor } from "../../lib/changelog";
 import { useUpdateStore } from "../updates/updateStore";
-import { minutesFromTime } from "../calendar/railLayout";
 import { PLAIN_INPUT } from "../../components/plainInput";
 import { useProfile } from "../../lib/profile";
 import { SuggestionsCard } from "../tasks/SuggestionsCard";
@@ -140,66 +137,13 @@ function ColorDot({
 }
 
 /**
- * Capacidad diaria: el objetivo de minutos planificados con el que la vista
- * semana pinta su semáforo. Autosave al salir del campo (sin botón Guardar).
+ * Ajustes del día a día. **No hay "Capacidad diaria"** (#8): la capacidad de cada
+ * día sale de la jornada menos sus eventos ignorados, así que el número que se
+ * define acá es la jornada. La clave vieja queda en la base, sin leer.
  */
 function GeneralCard() {
-  const { target } = useCapacitySettings();
-  const setSetting = useSettingsStore((s) => s.set);
-  const [draft, setDraft] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-
-  // Mientras no se esté editando, refleja el valor guardado.
-  const value = draft ?? formatMinutes(target);
-
-  async function commit() {
-    if (draft == null) return;
-    const mins = parseDuration(draft);
-    if (mins == null) {
-      setError(true);
-      return;
-    }
-    setError(false);
-    setDraft(null);
-    await setSetting(SettingKey.DAILY_CAPACITY_MINUTES, String(mins));
-  }
-
   return (
     <Card id="general" title="General" hint="Ajustes del día a día.">
-      <div className="set-field">
-        <div className="set-field__text">
-          <label className="set-field__label" htmlFor="cap">
-            Capacidad diaria
-          </label>
-          <span className={`set-note${error ? " is-error" : ""}`}>
-            {error
-              ? "No entendí esa duración. Prueba 8h, 7h30 o 480."
-              : "Contra este número se pinta el semáforo de la semana. Acepta 8h, 7h30 o 480."}
-          </span>
-        </div>
-        <div className="set-field__control">
-          <input
-            id="cap"
-            className={`set-input${error ? " is-invalid" : ""}`}
-            aria-label="Capacidad diaria"
-            value={value}
-            {...PLAIN_INPUT}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setError(false);
-            }}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") {
-                setDraft(null);
-                setError(false);
-              }
-            }}
-          />
-        </div>
-      </div>
-
       <ZonaField />
       <JornadaFields />
       <CollapsedDaysField />
@@ -613,15 +557,21 @@ function JornadaFields() {
       return;
     }
     // El otro extremo puede venir a medio editar; se compara contra lo guardado.
-    const otro = cual === "start" ? workday.end : workday.start;
-    const invertido = cual === "start" ? raw >= otro : raw <= otro;
+    // **En minutos, no como texto**: `"9:30"` contra `"10:00"` comparado como
+    // string dejaba pasar una jornada invertida, y la capacidad quedaba en 0.
+    const otro = minutesFromTime(cual === "start" ? workday.end : workday.start) ?? 0;
+    const invertido = cual === "start" ? min >= otro : min <= otro;
     if (invertido) {
       setError(cual);
       return;
     }
     setError(null);
     setDraft((d) => ({ ...d, [cual]: undefined }));
-    await setSetting(cual === "start" ? SettingKey.WORK_START : SettingKey.WORK_END, raw);
+    // Se guarda con dos dígitos, que es la forma que leen todos (`"9:30"` → `"09:30"`).
+    await setSetting(
+      cual === "start" ? SettingKey.WORK_START : SettingKey.WORK_END,
+      hhmmFromMinutes(min),
+    );
   }
 
   const field = (cual: "start" | "end", label: string, id: string) => (
@@ -661,7 +611,7 @@ function JornadaFields() {
             ? "Una hora en formato 24 h (09:00), y antes del fin de jornada."
             : error === "end"
               ? "Una hora en formato 24 h (18:00), y después del inicio."
-              : "La grilla del rail en Today. No recorta: una reunión fuera se ve igual."}
+              : "La grilla del rail y la capacidad de cada día, que es la jornada menos tus eventos ignorados."}
         </span>
       </div>
       <div className="set-field__control">

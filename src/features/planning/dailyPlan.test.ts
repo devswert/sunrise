@@ -94,7 +94,7 @@ describe("resumenDelDia", () => {
     expect(r.planned).toBe(180);
   });
 
-  it("sin objetivo configurado no hay holgura, y eso no es holgura cero", () => {
+  it("con capacidad 0 no hay holgura, y eso no es holgura cero", () => {
     const r = daySummary([task({ id: 1, estimatedMinutes: 60 })], 0, 0.85);
     expect(r.holgura).toBeNull();
     expect(r.nivel).toBe(CapacityLevel.OK);
@@ -124,9 +124,9 @@ describe("mensajeDeCapacidad", () => {
     expect(capacityMessage(r)).toContain("7 h");
   });
 
-  it("avisa cuando no hay objetivo en vez de inventar una holgura", () => {
+  it("con capacidad 0 dice que no quedan horas libres, en vez de inventar una holgura", () => {
     const r = daySummary([task({ id: 1 })], 0, 0.85);
-    expect(capacityMessage(r)).toMatch(/sin objetivo/i);
+    expect(capacityMessage(r)).toBe("Sin horas libres en la jornada de hoy.");
   });
 });
 

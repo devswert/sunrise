@@ -165,7 +165,7 @@ todos los días.
 | Lectura | Qué se excluye | Por qué |
 |---|---|---|
 | columna del día (`tasksByDate`) | la tarjeta | no es trabajo que ordenar |
-| capacidad / `plan_by_day` | sus minutos | no es carga |
+| capacidad / `plan_by_day` | sus minutos **de la carga** | no es carga — pero **resta capacidad**: el día mide contra la jornada menos sus ignorados (#8, `dayCapacity`) |
 | `focus_queue` | la tarea | no es algo que "hacer ahora" |
 | `meetings_for_date` | el aviso | no interrumpe para anunciar el almuerzo |
 | rollup semanal (regla 3) | su duración | una reunión sin trackear no se cuenta como trabajada |

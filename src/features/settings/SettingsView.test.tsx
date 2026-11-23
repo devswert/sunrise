@@ -97,6 +97,55 @@ describe("SettingsView · jornada", () => {
     expect(end).toHaveClass("is-invalid");
     expect(saved().end).toBe("18:00");
   });
+
+  /**
+   * Con horas sin cero adelante la validación comparaba texto: `"8:30" <= "9:00"`
+   * es false como string, así que un fin anterior al inicio pasaba y la capacidad
+   * de todas las columnas quedaba en 0.
+   */
+  it("rechaza un fin anterior al inicio aunque se escriba sin cero adelante", async () => {
+    render(<SettingsView />);
+    const end = await screen.findByLabelText("Fin");
+
+    await userEvent.clear(end);
+    await userEvent.type(end, "8:30");
+    await userEvent.tab();
+
+    expect(end).toHaveClass("is-invalid");
+    expect(saved().end).toBe("18:00");
+  });
+
+  it("acepta una hora sin cero adelante y la guarda con dos dígitos", async () => {
+    await useSettingsStore.getState().set(SettingKey.WORK_START, "8:00");
+    render(<SettingsView />);
+    const end = await screen.findByLabelText("Fin");
+
+    // Comparado como texto, "10:00" <= "8:00" daba true y lo rechazaba.
+    await userEvent.clear(end);
+    await userEvent.type(end, "10:00");
+    await userEvent.tab();
+    expect(end).not.toHaveClass("is-invalid");
+    expect(saved().end).toBe("10:00");
+
+    const start = screen.getByLabelText("Inicio");
+    await userEvent.clear(start);
+    await userEvent.type(start, "9:15");
+    await userEvent.tab();
+    expect(useSettingsStore.getState().values[SettingKey.WORK_START]).toBe("09:15");
+  });
+
+  /**
+   * #8: el número que se define es la jornada. La capacidad de cada día sale de
+   * ella menos los eventos ignorados, así que un campo aparte sería un segundo
+   * número que nadie lee.
+   */
+  it("ya no hay campo de capacidad diaria: la jornada es el número", async () => {
+    render(<SettingsView />);
+    await screen.findByLabelText("Inicio");
+
+    expect(screen.queryByLabelText("Capacidad diaria")).not.toBeInTheDocument();
+    expect(screen.queryByText("Capacidad diaria")).not.toBeInTheDocument();
+  });
 });
 
 /**
@@ -423,8 +472,8 @@ describe("SettingsView · campos que no son prosa", () => {
     render(<SettingsView />);
     for (const campo of [
       await screen.findByDisplayValue("Thinking"),
-      screen.getByLabelText("Capacidad diaria"),
       screen.getByLabelText("Inicio"),
+      screen.getByLabelText("Fin"),
     ]) {
       expect(campo).toHaveAttribute("spellcheck", "false");
       expect(campo).toHaveAttribute("autocorrect", "off");

@@ -258,10 +258,25 @@ siguiente corrida.
   desplazar lo que pusiste vos—: lo escribe `repo::place_by_time` al importar, no
   el front al dibujar. Detalle y motivo en §4.12.
 - **Contador de capacidad** por día: suma de `estimatedMinutes` de lo que hay en
-  la columna, así que **los eventos ignorados no cuentan** (§4.12), vs objetivo
-  (de `settings`, default 480), semáforo por `computeCapacityLevel`:
-  `> target` ⇒ `OVER` (rojo); `>= target * 0.85` ⇒ `WARN` (amarillo); resto
-  `OK` (gris). `target <= 0` ⇒ siempre `OK`.
+  la columna, así que **los eventos ignorados no cuentan** (§4.12), contra la
+  **capacidad de ese día** (#8, `dayCapacity` en `lib/capacity.ts`):
+  `(work_end − work_start)` menos la **unión** de los eventos ignorados del día,
+  recortados a la jornada. Sin ignorados es la jornada completa (09–18 ⇒ 540).
+  Los de día completo y los que no traen duración no restan; lo que cae fuera de
+  la jornada tampoco. Si no queda tiempo, 0. Recibe la **agenda**
+  (`agendaByDate`), no las tarjetas, que ya vienen sin los ignorados. Se calcula
+  al mirar, no se guarda: cambiar la jornada repinta también los días pasados.
+  Tres precisiones: solo restan los de `sourceState === ACTIVE` (un evento que el
+  feed ya no trae no es hueco); un ignorado que cruza la medianoche cuenta solo
+  en el día en que empieza, que es el único que lo tiene en su agenda; y como
+  marcar una serie **no marca las repeticiones ya trabajadas** (DONE o con
+  tiempo, §4.12), ese día pasado sigue sin restar nada.
+  Semáforo por `computeCapacityLevel`: `> target` ⇒ `OVER` (rojo);
+  `>= target * 0.85` ⇒ `WARN` (amarillo); resto `OK` (gris). `target <= 0` ⇒
+  siempre `OK`. El badge lleva en el `title` contra qué se pinta
+  (`"2:00 de 8:00"`), sin el desglose: la cifra a la vista sigue siendo solo lo
+  planificado. Today y el daily planning usan la misma función con la agenda de
+  hoy.
 - **Aviso de "se sale del horario"** (`lateTaskIds`): en la columna de **hoy**, el
   badge de tiempo de una card va en ámbar (`.tc__badge.is-late`) si su bloque
   proyectado termina después de `work_end`. Tres precisiones:

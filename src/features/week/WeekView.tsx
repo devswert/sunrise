@@ -331,7 +331,9 @@ export function WeekView() {
                       tasks={board.tasksByDate[d] ?? []}
                       categoryMap={board.categoryMap}
                       categories={board.categories}
-                      capacityTarget={capacity.target}
+                      // La capacidad de **ese** día: su jornada menos sus
+                      // eventos ignorados (#8). Por eso la agenda y no `tasks`.
+                      capacityTarget={capacity.capacityFor(board.agendaByDate[d] ?? [])}
                       capacityWarnRatio={capacity.warnRatio}
                       lateIds={d === today ? lateIds : undefined}
                       onToggle={board.toggleTask}
