@@ -161,9 +161,10 @@ export function capacityWarnRatio(values: SettingsMap): number {
 /**
  * `"HH:mm"`, o el default. Cubre clave ausente, vacía o con basura.
  *
- * **Sale siempre con dos dígitos** (`"9:30"` → `"09:30"`): varios lectores
- * comparan la hora como texto (el aviso de cierre contra `nowHhmm`), y sin el
- * cero `"10:00" >= "9:30"` da false.
+ * **Sale siempre con dos dígitos** (`"9:30"` → `"09:30"`): es la forma en que se
+ * guardan y se muestran las horas. Los lectores comparan en minutos
+ * (`minutesFromTime`), así que el cero no es lo que los protege; es lo que hace
+ * que el valor sea uno solo, escrito igual en todas partes.
  */
 function hour(values: SettingsMap, key: string, fallback: string): string {
   const raw = values[key]?.trim();

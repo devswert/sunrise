@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BackupCard } from "./BackupCard";
 import { api } from "../../lib/ipc";
@@ -102,6 +102,16 @@ describe("BackupCard · la marca del día", () => {
 });
 
 describe("BackupCard · respaldar", () => {
+  /**
+   * La hora del respaldo vive en el estado de módulo del mock, y un caso de acá la
+   * cambia. Se restaura **después de desmontar**: con la card montada, el cambio
+   * la re-renderiza fuera de `act` y deja el warning. El `cleanup()` explícito no
+   * sobra: este `afterEach` corre antes que el de RTL, y sin él la card sigue ahí.
+   */
+  afterEach(async () => {
+    cleanup();
+    await useSettingsStore.getState().set(SettingKey.BACKUP_TIME, "20:00");
+  });
   beforeEach(async () => {
     await configure(CARPETA);
   });
@@ -170,7 +180,6 @@ describe("BackupCard · respaldar", () => {
 
     // Lo guardado, no lo interpretado: `backupSettings` ya normaliza al leer.
     expect(useSettingsStore.getState().values[SettingKey.BACKUP_TIME]).toBe("09:05");
-    await useSettingsStore.getState().set(SettingKey.BACKUP_TIME, "20:00");
   });
 });
 

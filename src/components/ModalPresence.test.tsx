@@ -197,6 +197,51 @@ describe("ModalPresence", () => {
     expect(copy?.value).toBe("a medio escribir");
   });
 
+  /**
+   * Con el mismo `name`, la copia y el original serían un solo grupo de radios:
+   * al entrar la copia marcada al documento, el navegador desmarca el original
+   * justo antes de que React lo lea o lo desmonte. Por eso la copia va sin `name`.
+   */
+  it("la copia de `exitAbove` no le desmarca los radios al original", async () => {
+    let exitAbove = () => {};
+    function Choice() {
+      const [level, setLevel] = useState("alta");
+      return (
+        <ModalPresence value={true}>
+          {(_, exit) => {
+            exitAbove = exit.exitAbove;
+            return (
+              <div className="modal-overlay">
+                {["baja", "alta"].map((v) => (
+                  <label key={v}>
+                    <input
+                      type="radio"
+                      name="nivel"
+                      value={v}
+                      checked={level === v}
+                      onChange={() => setLevel(v)}
+                    />
+                    {v}
+                  </label>
+                ))}
+              </div>
+            );
+          }}
+        </ModalPresence>
+      );
+    }
+    render(<Choice />);
+    const original = screen.getByRole("radio", { name: "alta" });
+    expect(original).toBeChecked();
+
+    act(() => exitAbove());
+
+    expect(original).toBeChecked();
+    const copy = document.querySelectorAll<HTMLInputElement>(".is-ghost input[type=radio]");
+    expect(copy[1].checked).toBe(true);
+    for (const radio of copy) expect(radio).not.toHaveAttribute("name");
+  });
+
   it("con movimiento reducido `exitAbove` no deja copia", () => {
     reducedMotion(true);
     let exitAbove = () => {};

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   dateLabel,
   dayInZone,
+  hhmmFromMinutes,
+  minutesFromTime,
   minutesOfDay,
   nowHhmm,
   setZone,
@@ -33,6 +35,20 @@ describe("toISOTimestamp", () => {
     // en Santiago quedarían marcadas como el día siguiente.
     const d = new Date(2026, 7, 21, 22, 30);
     expect(toISOTimestamp(d).slice(0, 10)).toBe(toISODate(d));
+  });
+});
+
+describe("hhmmFromMinutes", () => {
+  it("escribe la hora siempre con dos dígitos, de medianoche al último minuto", () => {
+    expect(hhmmFromMinutes(0)).toBe("00:00");
+    expect(hhmmFromMinutes(570)).toBe("09:30");
+    expect(hhmmFromMinutes(1439)).toBe("23:59");
+  });
+
+  it("es la inversa de minutesFromTime", () => {
+    for (const min of [0, 570, 1439]) {
+      expect(minutesFromTime(hhmmFromMinutes(min))).toBe(min);
+    }
   });
 });
 

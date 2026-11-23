@@ -312,6 +312,20 @@ pub fn list_trash(conn: &Connection) -> Result<Vec<TrashedTask>> {
     rows
 }
 
+/// Cuándo se elimina sola **una** tarea del basurero, o `None` si no está ahí
+/// (viva o inexistente). Es el `purge_at` de `list_trash` para esa fila, con una
+/// consulta por id en vez de recorrer el basurero entero.
+pub fn trash_purge_at(conn: &Connection, id: i64) -> Result<Option<String>> {
+    let deleted_at: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM tasks WHERE id = ?1 AND deleted_at IS NOT NULL",
+            [id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(deleted_at.as_deref().map(purge_at_of))
+}
+
 /// Instante en que una tarea que entró al basurero en `deleted_at` se elimina.
 fn purge_at_of(deleted_at: &str) -> String {
     DateTime::parse_from_rfc3339(deleted_at)
@@ -7339,6 +7353,26 @@ mod tests {
         assert_eq!(purge_trash_at(&c, at("2026-09-09T12:00:00+00:00")).unwrap(), 1, "día 30");
         assert!(get_task(&c, t.id).unwrap().is_none());
         assert!(list_time_entries(&c, t.id).unwrap().is_empty(), "el CASCADE se lleva sus tramos");
+    }
+
+    #[test]
+    fn el_plazo_de_una_tarea_del_basurero_es_el_mismo_que_da_el_listado() {
+        let c = conn();
+        let a = create_task(&c, new_task("a", Some("2026-08-10"))).unwrap();
+        let b = create_task(&c, new_task("b", Some("2026-08-10"))).unwrap();
+        let viva = create_task(&c, new_task("viva", Some("2026-08-10"))).unwrap();
+        trash_task_at(&c, a.id, "2026-08-10T12:00:00+00:00").unwrap();
+        trash_task_at(&c, b.id, "2026-08-11T09:30:00+00:00").unwrap();
+
+        for t in list_trash(&c).unwrap() {
+            assert_eq!(trash_purge_at(&c, t.task.id).unwrap(), Some(t.purge_at));
+        }
+        assert_eq!(
+            trash_purge_at(&c, a.id).unwrap().as_deref(),
+            Some("2026-09-09T12:00:00+00:00")
+        );
+        assert_eq!(trash_purge_at(&c, viva.id).unwrap(), None, "fuera del basurero no hay plazo");
+        assert_eq!(trash_purge_at(&c, 999_999).unwrap(), None, "ni si no existe");
     }
 
     #[test]

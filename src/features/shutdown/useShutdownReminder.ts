@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { api, isTauri } from "../../lib/ipc";
-import { nowHhmm } from "../../lib/date";
+import { minutesFromTime, nowHhmm } from "../../lib/date";
 import { useToday } from "../../lib/day";
 import { SettingKey, useSettingsStore, workHours } from "../../lib/settings";
 import { shouldRemindShutdown } from "./dailyLog";
@@ -60,9 +60,13 @@ export function useShutdownReminder() {
     const look = async () => {
       const { end } = workHours(values);
       const ahora = nowHhmm();
-      // Los dos cortes baratos, antes de tocar la base.
+      // Los dos cortes baratos, antes de tocar la base. La hora va **en minutos,
+      // no como texto**, igual que en `shouldRemindShutdown`: `workHours()` hoy
+      // devuelve dos dígitos, pero este corte no puede depender de eso.
       if (values[SettingKey.SHUTDOWN_NOTIFIED_ON]?.trim() === today) return;
-      if (ahora < end) return;
+      const nowMin = minutesFromTime(ahora);
+      const endMin = minutesFromTime(end);
+      if (nowMin == null || endMin == null || nowMin < endMin) return;
 
       const [day] = await api.dailyLog(today, 1);
       if (!alive) return;

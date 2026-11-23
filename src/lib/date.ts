@@ -135,8 +135,9 @@ export function minutesFromTime(hhmm: string | null | undefined): number | null 
 
 /**
  * 570 → `"09:30"`. La forma en que se **guardan** las horas de `settings` (la
- * jornada, el respaldo): siempre con dos dígitos, porque hay lectores que las
- * comparan como texto y sin el cero `"10:00" >= "9:30"` da false.
+ * jornada, el respaldo): siempre con dos dígitos, para que una hora se escriba
+ * de una sola manera. Para comparar horas se usa `minutesFromTime`, nunca el
+ * texto: comparado como texto, `"10:00" >= "9:30"` da false.
  */
 export function hhmmFromMinutes(min: number): string {
   return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;

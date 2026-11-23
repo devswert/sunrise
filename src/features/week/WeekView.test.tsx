@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { WeekView } from "./WeekView";
+import { Toast } from "../../components/Toast";
 import { dateLabel, isoWeekday, todayISO, weekDates } from "../../lib/date";
 import { api } from "../../lib/ipc";
 import { useAppStore } from "../../lib/store";
@@ -382,5 +384,54 @@ describe("WeekView · la capacidad de cada día", () => {
 
     await waitFor(() => expect(cap(a)?.title).toMatch(/ de 8:30$/));
     expect(cap(b)?.title).toMatch(/ de 8:30$/);
+  });
+});
+
+/**
+ * #11: el "Deshacer" del aviso, sobre la vista de verdad y no sobre el modal
+ * suelto. Lo que se prueba es el viaje completo —el modal manda al basurero, el
+ * board se refresca y la card sale; el aviso la restaura y la card vuelve—, que
+ * es lo que se rompe si alguna de las dos mitades olvida avisar con `bumpData()`.
+ */
+describe("WeekView · deshacer un borrado", () => {
+  let created: number | null = null;
+
+  afterEach(async () => {
+    if (created != null) await api.trashTask(created);
+    created = null;
+    useAppStore.setState({ toast: null });
+  });
+
+  it("eliminar desde el modal saca la card, y Deshacer la devuelve", async () => {
+    // Un día hábil futuro: nunca va plegado ni se degrada al backlog.
+    const next = new Date();
+    next.setDate(next.getDate() + 7);
+    const dia = [...weekDates(new Date()), ...weekDates(next)].find(
+      (d) => d > todayISO() && isoWeekday(d) <= 5,
+    )!;
+    const titulo = "Tarea para deshacer";
+    created = (await api.createTask({ title: titulo, scheduledDate: dia })).id;
+    // El detalle usa `useNavigate` (el play lleva a Focus): sin router no monta.
+    render(
+      <MemoryRouter>
+        <WeekView />
+        <Toast />
+      </MemoryRouter>,
+    );
+    const columna = () =>
+      within(document.querySelector<HTMLElement>(`.day-col[data-date="${dia}"]`)!);
+
+    await userEvent.click(await columna().findByText(titulo));
+    await userEvent.click(await screen.findByRole("button", { name: "Eliminar tarea" }));
+    await userEvent.click(screen.getByRole("button", { name: "Sí, eliminar" }));
+
+    await waitFor(() => expect(columna().queryByText(titulo)).toBeNull());
+    // Por texto y no por `role="status"`: el DnD del board tiene su propia región viva.
+    expect(screen.getByText(/se fue al basurero/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Deshacer" }));
+
+    expect(await columna().findByText(titulo)).toBeInTheDocument();
+    expect(screen.queryByText(/se fue al basurero/)).toBeNull();
   });
 });
