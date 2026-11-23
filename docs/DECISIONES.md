@@ -1009,6 +1009,23 @@ cierra navegando llama a `exitAbove()` antes de `navigate`, y la copia —DOM su
 las que queden al terminar cada uno: un test que da play termina antes de los
 240 ms y su copia, con un botón "Iniciar" adentro, se colaba en el siguiente.
 
+**Dos modales que se relevan comparten un fondo por CSS, no por estructura** (#40).
+Al restaurar bien, la confirmación sale mientras entra el resultado, y cada `Dialog`
+trae su overlay: dos fondos superpuestos durante la salida. Se descartaron dos
+caminos. **Una sola presencia para los dos diálogos** remonta el `Dialog` al cambiar
+de uno a otro, y el fondo hacía el fundido a claro y volvía a oscurecer: se veía
+peor que el problema. **Sacar el overlay de `Dialog`** a un fondo compartido tocaba
+todos los modales —`TaskModal` y `AddFeedModal` también lo usan— por un relevo que
+hoy ocurre en un solo lugar. Quedó una regla en `modal-presence.css`: si a un modal
+que sale lo sigue un hermano que entra, el fondo del que sale deja de desvanecerse
+(`:has`) y el del que entra va transparente (`~`). Lo que no se ve a primera vista:
+quitarle el fundido al overlay del que sale obliga a darle uno propio a su modal,
+que hasta entonces se desvanecía heredando la opacidad del overlay. Y no se
+cambió la animación del que entra: un `animation: none` que dejara de aplicar al
+desmontarse el otro reiniciaría su fundido en ese momento. jsdom aplica la cascada
+con `~` pero no evalúa `:has`, así que el test cuenta fondos visibles y vigila el
+texto de la otra regla.
+
 ---
 
 ## 8. Notificaciones: lo que no está en nuestras manos

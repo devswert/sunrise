@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { ModalPresence } from "./ModalPresence";
 import { Dialog } from "./Dialog";
+// `?raw`, como `reducedMotion.test.ts`: jsdom no carga las hojas que importa un
+// componente, así que el relevo se prueba inyectándolas a mano.
+import dialogCss from "./dialog.css?raw";
+import presenceCss from "./modal-presence.css?raw";
 
 /**
  * Un modal mínimo montado como en la app: lo abre un dato y lo cierra ponerlo en
@@ -261,5 +265,104 @@ describe("ModalPresence", () => {
     act(() => exitAbove());
 
     expect(document.querySelector(".is-ghost")).toBeNull();
+  });
+});
+
+/**
+ * Dos modales hermanos, como la confirmación de restaurar y su resultado: un
+ * mismo click cierra el primero y abre el segundo.
+ */
+function Relay() {
+  const [first, setFirst] = useState(true);
+  const [second, setSecond] = useState(false);
+  return (
+    <>
+      <ModalPresence value={first}>
+        {() => (
+          <Dialog
+            title="Primero"
+            label="Primero"
+            actions={
+              <button
+                onClick={() => {
+                  setFirst(false);
+                  setSecond(true);
+                }}
+              >
+                Seguir
+              </button>
+            }
+          >
+            <p>Cuerpo</p>
+          </Dialog>
+        )}
+      </ModalPresence>
+      <ModalPresence value={second}>
+        {() => (
+          <Dialog title="Segundo" label="Segundo" actions={null}>
+            <p>Cuerpo</p>
+          </Dialog>
+        )}
+      </ModalPresence>
+    </>
+  );
+}
+
+/**
+ * Los fondos que se ven. jsdom no resuelve `var(--overlay)` ni corre animaciones,
+ * pero sí aplica la cascada con `~`: un overlay sin fondo queda en transparente.
+ */
+const TRANSPARENT = new Set(["", "transparent", "rgba(0, 0, 0, 0)"]);
+
+function visibleBackgrounds(): Element[] {
+  return Array.from(document.querySelectorAll(".modal-overlay")).filter(
+    (el) => !TRANSPARENT.has(getComputedStyle(el).getPropertyValue("background")),
+  );
+}
+
+describe("ModalPresence · el relevo entre dos modales", () => {
+  let sheet: HTMLStyleElement;
+  beforeEach(() => {
+    sheet = document.createElement("style");
+    sheet.textContent = dialogCss + presenceCss;
+    document.head.appendChild(sheet);
+  });
+  afterEach(() => sheet.remove());
+
+  it("mientras uno sale y el otro entra, hay un solo fondo y es el del que sale", async () => {
+    render(<Relay />);
+    expect(visibleBackgrounds()).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Seguir" }));
+
+    // Los dos montados a la vez: el primero saliendo, el segundo entrando.
+    expect(document.querySelectorAll(".modal-overlay")).toHaveLength(2);
+    const visible = visibleBackgrounds();
+    expect(visible).toHaveLength(1);
+    expect(visible[0].closest(".modal-presence")).toHaveClass("is-leaving");
+
+    // Al irse el primero, el segundo recupera su fondo.
+    await waitFor(() => expect(document.querySelectorAll(".modal-overlay")).toHaveLength(1));
+    expect(visibleBackgrounds()).toHaveLength(1);
+    expect(visibleBackgrounds()[0].closest(".modal-presence")).not.toHaveClass("is-leaving");
+  });
+
+  /**
+   * El fondo del que sale no se desvanece: si lo hiciera, el único fondo en
+   * pantalla se iría a claro y volvería. Va por `:has`, que jsdom no evalúa,
+   * así que se vigila el texto de la regla.
+   */
+  it("en el relevo, el fondo del que sale se queda quieto y su modal se desvanece solo", () => {
+    const leaving = ".modal-presence.is-leaving:has(~ .modal-presence:not(.is-leaving))";
+    const rule = (selector: string) => {
+      const at = presenceCss.indexOf(`${selector} {`);
+      expect(at).toBeGreaterThan(-1);
+      return presenceCss.slice(at, presenceCss.indexOf("}", at));
+    };
+    expect(rule(`${leaving} > .compose-overlay`)).toMatch(/animation:\s*none/);
+    expect(presenceCss).toContain(`${leaving} > .modal-overlay,`);
+    const panel = rule(`${leaving} > .compose-overlay > *`);
+    expect(panel).toContain("modal-rise-out");
+    expect(panel).toContain("modal-fade-out");
   });
 });

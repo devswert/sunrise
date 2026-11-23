@@ -21,6 +21,10 @@ describe("prefers-reduced-motion", () => {
     expect(rule).toContain(".modal-presence > .modal-overlay");
     expect(rule).toContain(".modal-presence.is-leaving > .modal-overlay > *");
     expect(rule).toContain(".modal-presence.is-leaving > .compose-overlay");
+    // El modal del relevo se desvanece solo (`:has`), con más especificidad.
+    expect(rule).toContain(
+      ".modal-presence.is-leaving:has(~ .modal-presence:not(.is-leaving)) > .modal-overlay > *",
+    );
     expect(rule).toMatch(/animation:\s*none/);
   });
 

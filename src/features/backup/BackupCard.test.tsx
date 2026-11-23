@@ -314,4 +314,30 @@ describe("BackupCard · restaurar", () => {
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
+
+  /**
+   * El relevo de fondos (#40) depende del orden: la regla de
+   * `modal-presence.css` solo ve al que entra **después** del que sale, en el
+   * mismo padre. Si alguien invierte los dos `ModalPresence`, vuelven los dos
+   * fondos superpuestos sin que nada más se ponga rojo.
+   */
+  it("al restaurar bien, la confirmación que sale va antes que el resumen que entra, como hermanos", async () => {
+    render(<BackupCard />);
+    await openNewest();
+    await userEvent.click(await screen.findByRole("button", { name: /Restaurar y reemplazar/ }));
+
+    // Los dos a la vez: el resumen aparece en el mismo render en que la
+    // confirmación empieza a salir, y ella sigue montada 240 ms.
+    const [leaving, entering] = await waitFor(() => {
+      const confirm = screen.getByRole("alertdialog", { name: "Confirmar restauración" });
+      const summary = screen.getByRole("alertdialog", { name: "Respaldo restaurado" });
+      return [confirm.closest(".modal-presence"), summary.closest(".modal-presence")];
+    });
+    expect(leaving).toHaveClass("is-leaving");
+    expect(entering).not.toHaveClass("is-leaving");
+    expect(leaving?.parentElement).toBe(entering?.parentElement);
+    expect(
+      leaving!.compareDocumentPosition(entering!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 });

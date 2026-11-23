@@ -202,6 +202,10 @@ mismo en plena salida monta un modal nuevo que lee la base, y lo escrito todaví
 no llegó (`TaskModal` y `ObjectiveModal`). Si cerrar
 viene con navegar, llama a `exitAbove()` **antes** de `navigate`: la vista se desmonta
 con el modal adentro y la salida la termina una copia en `body`.
+Si un modal se cierra **y en el mismo render abre otro** (la confirmación de restaurar
+y su resultado), los dos `ModalPresence` van hermanos y el que sale **antes** en el
+DOM: el relevo de `modal-presence.css` deja quieto el fondo del que sale y transparente
+el del que entra, y solo ve ese orden. Al revés vuelven dos fondos superpuestos (#40).
 
 **El click afuera cierra, salvo en `AddTaskModal`.** Ahí no cierra, y es a
 propósito: es el único modal donde lo que se pierde no existe en ningún otro lado

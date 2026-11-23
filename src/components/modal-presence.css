@@ -44,6 +44,38 @@
   animation: modal-rise-out 160ms var(--theme-ease) forwards;
 }
 
+/* El relevo: un modal que sale mientras **entra otro en el mismo instante**,
+ * hermano suyo y después de él en el DOM —la confirmación de restaurar y su
+ * resultado (`BackupCard`)—. Cada uno trae su `.modal-overlay`, y con las reglas
+ * de arriba un fondo se desvanecía mientras el otro aparecía: dos fondos
+ * superpuestos durante toda la salida.
+ *
+ * En el relevo hay **un solo fondo, quieto**: el del que sale. Deja de
+ * desvanecerse (`animation: none`) y se queda hasta desmontarse; el del que
+ * entra va transparente, y su fundido de entrada solo trae el modal nuevo. Como
+ * el overlay del que sale ya no se desvanece, su modal se desvanece solo —acá no
+ * se multiplican dos opacidades, porque el overlay se quedó en 1—. A los 240 ms
+ * el que sale se desmonta y, en el mismo render, el que entra recupera su fondo:
+ * los dos están en opacidad 1, así que el cambio no se ve.
+ *
+ * No se usa una sola presencia para los dos diálogos: eso remonta el `Dialog` y
+ * el fondo hace el fundido a claro y vuelta (DECISIONES §7). Y solo cubre ese
+ * orden: el que sale antes que el que entra, que es el único relevo de la app. */
+.modal-presence.is-leaving:has(~ .modal-presence:not(.is-leaving)) > .modal-overlay,
+.modal-presence.is-leaving:has(~ .modal-presence:not(.is-leaving)) > .compose-overlay {
+  animation: none;
+}
+.modal-presence.is-leaving:has(~ .modal-presence:not(.is-leaving)) > .modal-overlay > *,
+.modal-presence.is-leaving:has(~ .modal-presence:not(.is-leaving)) > .compose-overlay > * {
+  animation:
+    modal-rise-out 160ms var(--theme-ease) forwards,
+    modal-fade-out 160ms var(--theme-ease) forwards;
+}
+.modal-presence.is-leaving ~ .modal-presence:not(.is-leaving) > .modal-overlay,
+.modal-presence.is-leaving ~ .modal-presence:not(.is-leaving) > .compose-overlay {
+  background: transparent;
+}
+
 /* La copia que termina de salir encima de otra vista (`exitAbove`) va suelta en
  * `body`, después de todo: el `z-index` del overlay ya la deja arriba. */
 
@@ -78,7 +110,9 @@
   .modal-presence.is-leaving > .modal-overlay,
   .modal-presence.is-leaving > .compose-overlay,
   .modal-presence.is-leaving > .modal-overlay > *,
-  .modal-presence.is-leaving > .compose-overlay > * {
+  .modal-presence.is-leaving > .compose-overlay > *,
+  .modal-presence.is-leaving:has(~ .modal-presence:not(.is-leaving)) > .modal-overlay > *,
+  .modal-presence.is-leaving:has(~ .modal-presence:not(.is-leaving)) > .compose-overlay > * {
     animation: none;
   }
 }
