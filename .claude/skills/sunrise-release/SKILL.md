@@ -155,10 +155,11 @@ firmando con la llave del updater y sube los cuatro archivos con `gh release cre
   sea la de `tauri.conf.json` antes de compilar.
 - **Los pasos 1 a 9 no cambian**: changelog, versión, PR con reviewer, merge y el
   tag empujado por el hook. Después, en `main` al día: `git checkout vX.Y.Z` y
-  `bin/release-local vX.Y.Z`. Vuelve a `main` al terminar.
+  `bin/release-local vX.Y.Z`. Vuelve a `main` al terminar. Los pasos 10 (los
+  cuatro archivos) y 11 (milestone y board) siguen igual después del script.
 - **El tag igual dispara `release.yml`.** Sin minutos se cae sin publicar nada. Si
-  corre, se encuentra con el Release ya creado: revisa que queden los cuatro
-  archivos.
+  llega a correr, cancélalo (`gh run cancel <id>`): pisaría los archivos del
+  Release con otro build.
 - **El binario sale con el SDK de esta máquina**, no con el de `macos-26`. Si la
   ventana se ve distinta a la versión anterior, es eso (DECISIONES §9).
 

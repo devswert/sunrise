@@ -301,6 +301,12 @@ push— y publica el `.dmg` en un GitHub Release. Sacar una versión es la skill
 `sunrise-release`: subir el número en los tres archivos y el changelog, mezclar y
 empujar el tag (las suites las corre `release.yml`).
 
+**Sin minutos de Actions, lo publica `bin/release-local`** desde la máquina del dev,
+con el tag ya empujado: corre `bin/gates`, compila firmando con la copia local de la
+llave del updater y sube los mismos cuatro archivos con `gh release create`. El
+binario sale con el SDK de esa máquina y no con el del runner; por eso es el plan B
+y no el camino normal (DECISIONES §9).
+
 El workflow corre en un runner **fijo** (`macos-26`) y no en `macos-latest`, y hay
 dos razones que no son la misma. La primera es la arquitectura: el proyecto compila
 solo arm64 y `macos-13` es Intel, así que ahí saldría un `.dmg` que no corre en
@@ -469,13 +475,15 @@ La app se actualiza sola desde el mismo Release de GitHub que publica el `.dmg`
 
 **El updater no usa el `.dmg`.** Con `createUpdaterArtifacts` el build produce
 además un `.app.tar.gz` con su firma al lado, y `tauri-action` escribe el
-`latest.json` que la app consulta. El `.dmg` sigue siendo solo para la primera
+`latest.json` que la app consulta (o `bin/release-local`, con jq y las mismas
+claves). El `.dmg` sigue siendo solo para la primera
 instalación.
 
 **La firma del updater no tiene nada que ver con la de Apple.** Es un par de
 llaves propio (`pnpm tauri signer generate`): la pública va versionada en
 `tauri.conf.json`, la privada vive en los secrets del repo y el workflow la pasa
-como `TAURI_SIGNING_PRIVATE_KEY`. Es lo que impide que alguien sirva una
+como `TAURI_SIGNING_PRIVATE_KEY`. Hay una copia en `~/.tauri/sunrise-updater.key`
+de la máquina del dev, fuera del repo, que es la que usa `bin/release-local`. Es lo que impide que alguien sirva una
 actualización falsa desde esa URL. Se generó **sin contraseña**: guardarla en el
 mismo almacén de secrets que la llave no protege de nada, pero la variable
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` va igual porque el firmador la exige aunque

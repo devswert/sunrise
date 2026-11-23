@@ -28,11 +28,20 @@ git fetch --quiet origin main --tags
 [ "$(git rev-parse HEAD)" = "$(git rev-parse "$tag^{commit}" 2>/dev/null)" ] \
   || fail "HEAD no es el commit del tag $tag (git checkout $tag)"
 git merge-base --is-ancestor HEAD origin/main || fail "el commit del tag no está en origin/main"
-git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null \
-  || fail "el tag $tag no está en origin: empújalo primero"
-if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+# El commit del tag en origin, pelado si es anotado: tiene que ser este mismo.
+remote_sha=$(git ls-remote --tags origin \
+  | awk -v t="refs/tags/$tag" '$2==t || $2==t"^{}" { s=$1 } END { print s }')
+[ -n "$remote_sha" ] || fail "el tag $tag no está en origin: empújalo primero"
+[ "$remote_sha" = "$(git rev-parse HEAD)" ] || fail "el tag $tag de origin apunta a otro commit"
+# Solo un 404 significa "no hay Release". Cualquier otro error (red, rate limit) se
+# corta acá y no después de diez minutos de gates y build.
+if api_out=$(gh api "repos/$repo/releases/tags/$tag" 2>&1); then
   fail "ya existe un Release $tag"
 fi
+case "$api_out" in
+  *"HTTP 404"*) ;;
+  *) fail "no pude revisar si existe el Release $tag: $api_out" ;;
+esac
 
 step "La versión en los tres archivos"
 cargo_v=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
@@ -94,6 +103,18 @@ tarball="$bundle/macos/sunrise.app.tar.gz"
 for f in "$dmg" "$tarball" "$tarball.sig"; do
   [ -s "$f" ] || fail "el build no dejó $f"
 done
+# La firma tiene que ser de la llave que conocen las apps instaladas. Una llave
+# privada que no es pareja de la pública firma igual, y el síntoma llega tarde y en
+# silencio: "nunca hay actualizaciones". Se compara el key id de minisign (bytes 2
+# a 9) de la firma con el de la pública de tauri.conf.json.
+node -e '
+  const fs = require("fs");
+  const line = (b64) => Buffer.from(b64.trim(), "base64").toString().split("\n")[1];
+  const keyId = (b64) => Buffer.from(line(b64), "base64").subarray(2, 10).toString("hex");
+  const sig = keyId(fs.readFileSync(process.argv[1], "utf8"));
+  const pub = keyId(process.argv[2]);
+  if (sig !== pub) { console.error(`firma ${sig}, pública ${pub}`); process.exit(1); }
+' "$tarball.sig" "$pub_conf" || fail "la firma no es de la llave pública de tauri.conf.json"
 # Nombres iguales a los de los Releases anteriores.
 cp "$dmg" "$out/"
 cp "$tarball" "$out/sunrise_aarch64.app.tar.gz"
