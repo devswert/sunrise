@@ -38,6 +38,8 @@ function task(over: Partial<Task> & { id: number }): Task {
 let enElTaximetro: Task = task({ id: 1 });
 /** Lo que devuelve `focus_queue`: lo pendiente de hoy. La reasignan los tests. */
 let pendientes: Task[] = [];
+/** Lo que devuelve `seconds_today` para la tarea del taxímetro. */
+let hoyEnLaBase = 120;
 
 const moveTask = vi.fn(async () => null);
 const setTaskStatus = vi.fn(async () => null);
@@ -56,6 +58,7 @@ vi.mock("../../lib/ipc", () => ({
         : [],
     ),
     focusQueue: vi.fn(async () => pendientes),
+    secondsToday: vi.fn(async () => hoyEnLaBase),
     stopTimer: vi.fn(async () => null),
     startTimer: (...a: unknown[]) => startTimer(...(a as [])),
     getActiveTimers: vi.fn(async () => []),
@@ -169,6 +172,7 @@ describe("refresh cuando la tarea del taxímetro se completó desde otro lado", 
   beforeEach(() => {
     localStorage.clear();
     pendientes = [];
+    hoyEnLaBase = 120;
     // Focus, la card o el modal la completaron: el timer ya está detenido.
     enElTaximetro = task({ id: 1, status: "DONE" });
     localStorage.setItem(
@@ -195,19 +199,22 @@ describe("refresh cuando la tarea del taxímetro se completó desde otro lado", 
     expect(localStorage.getItem("sunrise-last-task")).toBeNull();
   });
 
-  it("una tarea que sigue pendiente conserva los segundos de hoy", async () => {
+  it("una tarea que sigue pendiente toma los segundos de hoy de la base, no el acumulado", async () => {
     enElTaximetro = task({ id: 1, title: "Renombrada", actualSeconds: 9999 });
+    // La base dice otra cosa que la foto guardada (120): el tiempo cambió por
+    // fuera de este store, p. ej. un `log_time` del MCP (#38).
+    hoyEnLaBase = 300;
 
     await useTimerStore.getState().refresh();
 
     const { last } = useTimerStore.getState();
-    // Re-lee título y estimado, pero NO pisa el contador con el acumulado
-    // histórico: el taxímetro muestra lo de hoy.
+    // Re-lee título, estimado y lo de hoy, pero NO pisa el contador con el
+    // acumulado histórico: el taxímetro muestra lo de hoy.
     expect(last).toEqual({
       taskId: 1,
       title: "Renombrada",
       estimatedMinutes: 30,
-      seconds: 120,
+      seconds: 300,
     });
   });
 

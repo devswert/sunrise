@@ -459,9 +459,13 @@ oculta. Tres cosas que se rompen al editar esto:
 - **`refresh` NO hace `broadcast()`, y escribe solo si el registro cambió.**
   Refrescar no es mutar, y avisar haría que la otra ventana refresque y avise de
   vuelta — con un `focus_queue` por salto desde que `refresh` puede avanzar.
-- **La re-lectura de la tarea pausada refresca título y estimado, no el
-  contador.** `actual_seconds` es el total histórico; el taxímetro muestra lo de
-  hoy. Pisarlo ahí hacía saltar el número al primer refresco.
+- **La re-lectura de la tarea pausada refresca título, estimado y contador, y
+  el contador sale de `seconds_today`, nunca de `actualSeconds`.**
+  `actual_seconds` es el total histórico; el taxímetro muestra lo de hoy, y
+  pisarlo con el total hacía saltar el número al primer refresco. Releer lo de
+  hoy (comando `seconds_today`, #38) es lo que hace que la fila en pausa se entere
+  de un `stop_timer` o un `log_time` del MCP: antes conservaba la foto de cuando
+  arrancó la corrida.
 
 `completeAndAdvance` manda la tarea al final de **su propio día**, no de hoy.
 El taxímetro puede estar cronometrando una tarea de otro día —arrancada desde la
@@ -502,6 +506,9 @@ cruce más cercano sin que uno ya excedido la acorte. En el front,
 el tick por tarea), `FloatingTimer.test.tsx` la pila del taxímetro, y `src/features/timer/timerStore.test.ts` cubre `completeAndAdvance`
 (incluido que **no** arranque la siguiente) y el avance de `refresh`, y
 `FocusView.test.tsx` el `bumpData()` al completar, el resumen del día y que el
-confeti salga solo al vaciar la cola.
+confeti salga solo al vaciar la cola. `timerStore.external.test.ts` y
+`FocusView.external.test.tsx` escriben tiempo en el `mockDb` **sin pasar por el
+store** —como el MCP— y verifican que la fila en pausa y Focus muestren lo nuevo
+tras el aviso (#38).
 **Si tocas una de las reglas de arriba, el test correspondiente debería fallar.**
 Si no falla, el test es más débil de lo que parece y vale reforzarlo.

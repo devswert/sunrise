@@ -196,14 +196,16 @@ porque cada una tiene su propio store. En las dos, `dataVersion` vuelve a correr
 `useTimerRuntime`, que relee los timers: un `start_timer` del MCP, y lo que sigue
 corriendo tras un `stop_timer`, se ve en la vista y en el taxímetro a los ~2 s.
 
-**Lo que no se refleja bien: el contador de la fila en pausa del taxímetro**
-(`last`). Mientras una tarea corre, `last` queda en ella con los segundos de hoy
-**de cuando arrancó**; el `stop` del store de la app los actualiza, pero `refresh`
-solo relee título y estimado. Así que tras un `stop_timer` del MCP el taxímetro
-ofrece retomar esa misma tarea **con el contador de antes de la corrida** (se ve
-retroceder), y un `log_time` sobre la tarea en pausa no le cambia el contador. Los
-datos están bien —es lo que se muestra—; arreglarlo es que `refresh` relea los
-segundos de hoy de `last` (`timerStore.ts`, pendiente).
+**La fila en pausa del taxímetro** (`last`) es una foto guardada en `localStorage`,
+y por eso `refresh` le relee los segundos de hoy con el comando `seconds_today`
+(#38): mientras una tarea corre, `last` queda con lo de hoy **de cuando arrancó**,
+y el `stop` del store la actualiza, pero un `stop_timer` del MCP no pasa por el
+store. Antes de #38 el taxímetro ofrecía retomar esa tarea con el contador de antes
+de la corrida (se veía retroceder), y un `log_time` sobre la tarea en pausa no le
+cambiaba el número. **Focus no tenía el problema**: no guarda foto, muestra
+`actual_seconds` de la cola más lo corrido y relee la cola con cada `dataVersion`.
+Lo cubren `timerStore.external.test.ts` y `FocusView.external.test.tsx`, que
+escriben en el mock sin pasar por el store, como el MCP.
 
 Y `external.rs`
 **toca `bell::Armed`** con cada aviso: sin eso, un timer abierto por el MCP cuando

@@ -308,10 +308,14 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     const actives = await api.getActiveTimers();
     let last = readLast();
 
-    // Si hay una tarea pausada en el widget, re-léela: su título o su tiempo
-    // planned pueden haber cambiado desde que se guardó el snapshot.
+    // Si hay una tarea pausada en el widget, re-léela: su título, su tiempo
+    // planned o lo trabajado hoy pueden haber cambiado desde que se guardó el
+    // snapshot.
     if (actives.length === 0 && last) {
-      const fresh = await api.getTask(last.taskId);
+      const [fresh, secondsToday] = await Promise.all([
+        api.getTask(last.taskId),
+        api.secondsToday(last.taskId),
+      ]);
       if (!fresh) {
         // La tarea ya no está: la mandaron al basurero (#11) —desde la otra
         // ventana, desde esta o desde el MCP—, o se restauró un respaldo anterior a
@@ -325,10 +329,19 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         // nada pendiente, se oculta.
         last = await nextPaused(fresh.id);
       } else {
-        // `seconds` NO se toma de `actualSeconds`: eso es el total histórico y
-        // el taxímetro cuenta lo de hoy. Acá solo se refrescan el título y el
-        // estimado, que es para lo que existe esta re-lectura.
-        last = { ...last, title: fresh.title, estimatedMinutes: fresh.estimatedMinutes };
+        // El contador sale de `seconds_today`, lo cerrado **hoy** en la base, y
+        // NUNCA de `actualSeconds`: eso es el total histórico, y pisarlo hacía
+        // saltar el número al primer refresco. Releerlo es lo que hace que la
+        // fila en pausa se entere de lo que cambió por fuera de este store: un
+        // `stop_timer` del MCP la dejaba con la foto de cuando arrancó (se veía
+        // retroceder) y un `log_time` no la movía (#38). Las dos ventanas leen el
+        // mismo número, así que `persistLast` no arma un ida y vuelta.
+        last = {
+          ...last,
+          title: fresh.title,
+          estimatedMinutes: fresh.estimatedMinutes,
+          seconds: secondsToday,
+        };
       }
       // Sin `broadcast()`: refrescar no es mutar, y avisarle a la otra ventana
       // la haría refrescar y avisar de vuelta.

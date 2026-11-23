@@ -29,7 +29,7 @@ import type {
   ClaudeDesktopInfo,
 } from "./types";
 import { ClaudeStatus } from "./enums";
-import { toISODate, todayISO, weekDates } from "./date";
+import { startOfDayAt, toISODate, todayISO, weekDates } from "./date";
 import { clockOnDay, type ClockDay } from "./workday";
 import { bareName } from "./channelLabel";
 
@@ -175,9 +175,15 @@ function blankTask(input: NewTaskInput, position: number): Task {
  * hoy la suma se iría a negativo.
  */
 function secondsToday(taskId: number): number {
-  const today = todayISO();
+  // Desde la medianoche **de la zona del usuario**, como `started_at >= ?2` en
+  // Rust. Cortar el timestamp (`startedAt.slice(0, 10)`) comparaba la fecha UTC
+  // con la local: en Chile, lo arrancado después de las 21:00 caía "mañana" y el
+  // contador volvía a 0, según la hora a la que corrieran los tests.
+  const desde = startOfDayAt(Date.now()).getTime();
   const suma = entries
-    .filter((e) => e.taskId === taskId && e.endedAt !== null && e.startedAt.slice(0, 10) === today)
+    .filter(
+      (e) => e.taskId === taskId && e.endedAt !== null && new Date(e.startedAt).getTime() >= desde,
+    )
     .reduce((s, e) => s + e.seconds, 0);
   return Math.max(0, suma);
 }
@@ -815,6 +821,9 @@ export const mock = {
       return open ? [closeEntry(open, ended)] : [];
     });
   },
+
+  /** Espeja `repo::seconds_today`. */
+  secondsToday: async (taskId: number): Promise<number> => secondsToday(taskId),
 
   listTimeEntries: async (taskId: number): Promise<TimeEntry[]> =>
     entries.filter((e) => e.taskId === taskId),

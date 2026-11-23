@@ -211,8 +211,10 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   completaron desde otro lado (Focus, la card, el modal), pasa a la siguiente
   pendiente en pausa o se oculta. Antes quedaba en pantalla la tarea ya cerrada
   con su play, invitando a retomar algo terminado. Tres detalles que se rompen
-  al editarlo: la re-lectura refresca título y estimado pero **no** pisa el
-  contador con `actual_seconds` (total histórico, no lo de hoy); **no hace
+  al editarlo: la re-lectura refresca título, estimado **y el contador, que sale
+  de `seconds_today`** (comando `seconds_today`, #38) y **nunca** de
+  `actual_seconds` (total histórico, no lo de hoy) —así la fila en pausa se entera
+  de un `stop_timer` o un `log_time` del MCP—; **no hace
   `broadcast()`**, porque refrescar no es mutar y avisar haría que la otra
   ventana refresque y avise de vuelta, con un `focus_queue` por salto; y por eso
   mismo escribe solo si el registro cambió.

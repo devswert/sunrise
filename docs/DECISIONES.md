@@ -1286,6 +1286,36 @@ proceso. Las dos se arreglaron en el mismo PR: la raíz del taxímetro monta
 va en la raíz del taxímetro (`TimerRoot`) y no dentro de `useTimerRuntime` porque `main` ya lo monta en
 `Shell`: en el hook, `main` quedaría con dos y cada aviso invalidaría dos veces.
 
+**El aviso llegaba y la fila en pausa igual quedaba vieja (#38).** Un `stop_timer`
+o un `log_time` del MCP no se veían en la fila en pausa del taxímetro, y la causa no
+era el aviso: `external.rs` lo emitía, las dos ventanas corrían `refresh`, y las
+filas que corren se veían bien porque salen de `get_active_timers`, que trae
+`base_seconds` de la base (por eso el `start_timer` del MCP sí se veía). La pausada
+no: `last` es una foto en `localStorage` y `refresh` le releía título y estimado,
+no el contador. Tras un `stop_timer` quedaba con los segundos **de cuando
+arrancó** —la foto que deja `start`— y se veía retroceder; un `log_time` no la
+tocaba. La lección general: **un aviso solo invalida; lo que el store guarda como
+foto queda viejo en cada campo que `refresh` no relea.**
+
+**Un comando nuevo (`seconds_today`) y no calcularlo en el front.** Se podía sumar
+lo de hoy con `list_time_entries`, sin tocar Rust, pero "hoy" tiene una sola
+definición —`repo::start_of_today`, la que comparten el contador y la campana— y
+una segunda copia en TS es justo la clase de divergencia que ya costó caro (el
+contador y la campana hablando de días distintos). El comando envuelve la misma
+función que alimenta `base_seconds`, así que la fila en pausa y la que corre miden
+igual. Cuesta un IPC más por `refresh` con la pila vacía, en paralelo con
+`get_task`. Y como las dos ventanas leen el mismo número de la base, `persistLast`
+no arma un ida y vuelta.
+
+Dos consecuencias a sabiendas: **la pausada de ayer vuelve a 0:00:00 con el primer
+`refresh` de hoy** (antes conservaba el número hasta darle play, y al darle play
+arrancaba igual en lo de hoy), y **el mock dejó de comparar la fecha UTC**:
+`secondsToday` cortaba `startedAt` y lo comparaba con la fecha local, así que en
+Chile lo arrancado después de las 21:00 contaba como de mañana y el test nuevo
+dependía de la hora. Ahora mide desde `startOfDayAt`, como Rust. **Focus no tenía
+el bug**: no guarda foto, muestra `actual_seconds` más lo corrido y relee la cola
+con cada `dataVersion`; quedó un test que lo fija.
+
 **`log_time` es una corrida, no un ajuste.** Se pudo resolver con
 `set_actual_seconds`, pero el ajuste no tiene hora: el rail no lo dibuja y el
 rollup lo fecha en el día de la tarea, no en el que se trabajó. El tramo entra como
