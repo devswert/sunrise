@@ -319,7 +319,7 @@ cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcio
   8px mientras aparece; al cerrar, lo mismo al revés. Es el compás de los paneles de la
   tira —160 ms con `--theme-ease`— y un desplazamiento corto a propósito: el detalle se
   abre decenas de veces al día y una entrada que se hace notar cansa. El fundido va solo
-  en el overlay y el modal solo se mueve: si los dos se desvanecieran, las opacidades se
+  en el overlay y el modal solo se mueve —salvo en el relevo (abajo)—: si los dos se desvanecieran, las opacidades se
   multiplicarían y el modal llegaría tarde a su propio fondo. Los keyframes viven en
   `components/modal-presence.css`.
   - **Un modal no se monta con `{x && <Modal/>}`**: así desaparece de golpe, porque
@@ -351,6 +351,25 @@ cerrar. No es un link roto, es la app que desaparece. Dos piezas y ninguna opcio
     cambia de vista al instante y el modal se va igual. Una navegación que **no** pasa
     por `exitAbove` —una notificación, un click en el sidebar con un modal abierto—
     desmonta el modal de golpe, sin salida.
+  - **Un modal que sale mientras entra otro deja un solo fondo** (#40). La confirmación de
+    restaurar y su resultado son dos `ModalPresence` hermanos, y el mismo render cierra
+    uno y abre el otro: cada `Dialog` trae su `.modal-overlay`, así que durante la
+    salida había dos fondos superpuestos. El overlay sigue siendo de cada `Dialog`; lo
+    resuelve `modal-presence.css` con un relevo **opt-in**: los dos `ModalPresence`
+    llevan `relay` (clase `modal-presence--relay`), y si el primero sale mientras entra
+    el segundo, el fondo del que sale **no se desvanece** (se queda quieto hasta
+    desmontarse, y su modal se desvanece solo) y el del que entra va **transparente**
+    (su fundido solo trae el modal nuevo). Al desmontarse el que sale, el que entra
+    recupera su fondo en el mismo render, los dos en opacidad 1.
+    - Solo cubre ese orden —el que sale antes que el que entra en el DOM— y solo entre
+      dos `relay`. Los hermanos sin la marca —los de `App`: crear tarea, ⌘Q, "Lo
+      nuevo", el error de actualización— animan como siempre.
+    - Va entero bajo `@supports selector(:has(*))`: sin `:has` se aplicaría solo la
+      mitad (el que entra transparente mientras el fondo del que sale se desvanece),
+      que se ve peor que los dos fondos. Sin soporte queda la animación de siempre. Y
+      sus selectores con `:has` van en una regla **aparte** dentro del `@media` de
+      movimiento reducido: en la misma lista, un WebKit sin `:has` descartaría la regla
+      entera y todos los modales volverían a animar.
   - **Con `prefers-reduced-motion` no hay animación**: el modal se desmonta en el acto
     (`usePresence` no espera) y `exitAbove` no deja copia. Los popovers (`pop-in`)
     también respetan la preferencia, solo en su entrada: su salida no se anima.

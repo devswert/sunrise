@@ -8,7 +8,8 @@
  *
  * El fundido va **solo en el overlay**, y el modal hereda la opacidad de él: si el
  * modal también se desvaneciera, las dos opacidades se multiplicarían y el modal
- * aparecería más tarde que su fondo. El modal solo se mueve.
+ * aparecería más tarde que su fondo. El modal solo se mueve, salvo en el relevo
+ * (abajo).
  *
  * La duración está espejada en `src/lib/presence.ts`, que es quien mantiene el
  * modal montado mientras se va (con 80 ms de holgura, explicados allá). Si cambia
@@ -42,6 +43,55 @@
 .modal-presence.is-leaving > .modal-overlay > *,
 .modal-presence.is-leaving > .compose-overlay > * {
   animation: modal-rise-out 160ms var(--theme-ease) forwards;
+}
+
+/* El relevo: un modal que sale mientras **entra otro en el mismo instante**,
+ * hermano suyo y después de él en el DOM —la confirmación de restaurar y su
+ * resultado (`BackupCard`)—. Cada uno trae su `.modal-overlay`, y con las reglas
+ * de arriba un fondo se desvanecía mientras el otro aparecía: dos fondos
+ * superpuestos durante toda la salida.
+ *
+ * Es **opt-in**: solo lo hacen los `ModalPresence` con `relay`, que llevan
+ * `modal-presence--relay`, y tienen que llevarlo los dos. Otros hermanos —los de
+ * `App`, que pueden cerrarse uno con otro encima— no cambian.
+ *
+ * En el relevo hay **un solo fondo, quieto**: el del que sale. Deja de
+ * desvanecerse (`animation: none`) y se queda hasta desmontarse; el del que
+ * entra va transparente, y su fundido de entrada solo trae el modal nuevo. Como
+ * el overlay del que sale ya no se desvanece, su modal se desvanece solo —acá no
+ * se multiplican dos opacidades, porque el overlay se quedó en 1—. A los 240 ms
+ * el que sale se desmonta y, en el mismo render, el que entra recupera su fondo:
+ * los dos están en opacidad 1, así que el cambio no se ve.
+ *
+ * Va entero bajo `@supports selector(:has(*))`: la mitad que usa `:has` se
+ * descartaría en un WebKit sin soporte, y la otra mitad sola —el que entra
+ * transparente mientras el fondo del que sale se desvanece— se vería peor que
+ * los dos fondos. Sin `:has` queda la animación de siempre.
+ *
+ * No se usa una sola presencia para los dos diálogos: eso remonta el `Dialog` y
+ * el fondo hace el fundido a claro y vuelta (DECISIONES §7). Y solo cubre ese
+ * orden: el que sale antes que el que entra. */
+@supports selector(:has(*)) {
+  .modal-presence--relay.is-leaving:has(~ .modal-presence--relay:not(.is-leaving))
+    > .modal-overlay,
+  .modal-presence--relay.is-leaving:has(~ .modal-presence--relay:not(.is-leaving))
+    > .compose-overlay {
+    animation: none;
+  }
+  .modal-presence--relay.is-leaving:has(~ .modal-presence--relay:not(.is-leaving))
+    > .modal-overlay
+    > *,
+  .modal-presence--relay.is-leaving:has(~ .modal-presence--relay:not(.is-leaving))
+    > .compose-overlay
+    > * {
+    animation:
+      modal-rise-out 160ms var(--theme-ease) forwards,
+      modal-fade-out 160ms var(--theme-ease) forwards;
+  }
+  .modal-presence--relay.is-leaving ~ .modal-presence--relay:not(.is-leaving) > .modal-overlay,
+  .modal-presence--relay.is-leaving ~ .modal-presence--relay:not(.is-leaving) > .compose-overlay {
+    background: transparent;
+  }
 }
 
 /* La copia que termina de salir encima de otra vista (`exitAbove`) va suelta en
@@ -79,6 +129,16 @@
   .modal-presence.is-leaving > .compose-overlay,
   .modal-presence.is-leaving > .modal-overlay > *,
   .modal-presence.is-leaving > .compose-overlay > * {
+    animation: none;
+  }
+  /* Aparte y no en la lista de arriba: un WebKit sin `:has` descarta la regla
+   * entera si un solo selector no le sirve, y con ella todo lo de arriba. */
+  .modal-presence--relay.is-leaving:has(~ .modal-presence--relay:not(.is-leaving))
+    > .modal-overlay
+    > *,
+  .modal-presence--relay.is-leaving:has(~ .modal-presence--relay:not(.is-leaving))
+    > .compose-overlay
+    > * {
     animation: none;
   }
 }

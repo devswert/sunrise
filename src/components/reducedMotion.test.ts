@@ -21,6 +21,22 @@ describe("prefers-reduced-motion", () => {
     expect(rule).toContain(".modal-presence > .modal-overlay");
     expect(rule).toContain(".modal-presence.is-leaving > .modal-overlay > *");
     expect(rule).toContain(".modal-presence.is-leaving > .compose-overlay");
+    // El modal del relevo se desvanece solo (`:has`), con más especificidad.
+    expect(rule.replace(/\s+/g, "")).toContain(
+      ".modal-presence--relay.is-leaving:has(~.modal-presence--relay:not(.is-leaving))>.modal-overlay>*",
+    );
+  });
+
+  /**
+   * Un WebKit sin `:has` descarta la regla entera si un solo selector no le
+   * sirve: los de `:has` en la misma lista apagarían el movimiento reducido de
+   * todos los modales.
+   */
+  it("los selectores con `:has` van en una regla aparte, no en la lista general", () => {
+    const rule = reducedMotion(modals);
+    const general = rule.slice(0, rule.indexOf("animation: none"));
+    expect(general).toContain(".modal-presence > .modal-overlay");
+    expect(general).not.toContain(":has");
     expect(rule).toMatch(/animation:\s*none/);
   });
 
