@@ -121,6 +121,46 @@ describe("el contador de la pausada es lo de hoy", () => {
     expect(row()).toMatchObject({ taskId: id, seconds: 300 });
   });
 
+  it("pausar todo (stopAll) con una corrida que cruzó la medianoche muestra solo lo de hoy", async () => {
+    const { id } = await api.createTask({ title: "trasnochada", scheduledDate: todayISO() });
+    setNow(todayStart - 10 * MIN);
+    await act(() => useTimerStore.getState().start(id));
+    setNow(todayStart + 5 * MIN);
+
+    await act(async () => {
+      await useTimerStore.getState().stopAll();
+    });
+
+    expect(useTimerStore.getState().actives).toHaveLength(0);
+    expect(row()).toMatchObject({ taskId: id, seconds: 300 });
+    await act(() => useTimerStore.getState().refresh());
+    expect(row()).toMatchObject({ taskId: id, seconds: 300 });
+  });
+
+  it("si no se puede leer lo de hoy, pausar no lanza: el timer ya se cerró en la base", async () => {
+    const { id } = await api.createTask({ title: "sin lectura", scheduledDate: todayISO() });
+    await act(() => useTimerStore.getState().start(id));
+    advance(5 * MIN);
+    const fail = vi.spyOn(api, "secondsToday").mockRejectedValue(new Error("ipc caído"));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await act(async () => {
+        await expect(useTimerStore.getState().stop(id)).resolves.toEqual([id, 300]);
+      });
+      // La ventana se entera de la pausa igual, con el respaldo (lo de hoy de
+      // cuando arrancó); el próximo `refresh` que pueda leer lo corrige.
+      expect(useTimerStore.getState().actives).toHaveLength(0);
+      expect(row()).toMatchObject({ taskId: id, seconds: 0 });
+    } finally {
+      fail.mockRestore();
+      quiet.mockRestore();
+    }
+
+    await act(() => useTimerStore.getState().refresh());
+    expect(row()).toMatchObject({ taskId: id, seconds: 300 });
+  });
+
   it("la pausada de ayer vuelve a 0:00:00 con el primer refresh de hoy", async () => {
     const { id } = await api.createTask({ title: "de ayer", scheduledDate: todayISO() });
     setNow(todayStart - 12 * 60 * MIN);

@@ -180,12 +180,12 @@ function secondsToday(taskId: number): number {
   // con la local: en Chile, lo arrancado después de las 21:00 caía "mañana" y el
   // contador volvía a 0, según la hora a la que corrieran los tests.
   const from = startOfDayAt(Date.now()).getTime();
-  const suma = entries
+  const total = entries
     .filter(
       (e) => e.taskId === taskId && e.endedAt !== null && new Date(e.startedAt).getTime() >= from,
     )
     .reduce((s, e) => s + e.seconds, 0);
-  return Math.max(0, suma);
+  return Math.max(0, total);
 }
 
 /**

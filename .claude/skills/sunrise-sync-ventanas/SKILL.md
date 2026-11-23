@@ -49,7 +49,11 @@ así que no puede hacer eco. Del lado del front lo escucha `useExternalChanges`,
   fila en pausa (`last`) vive en `localStorage` y el aviso solo hace que `refresh`
   relea; si `refresh` no relee un campo, ese campo queda viejo aunque la base
   cambie. Fue #38: el contador de `last` no se releía y un `stop_timer` o
-  `log_time` del MCP no lo movía. Hoy sale de `seconds_today` en cada `refresh`.
+  `log_time` del MCP no lo movía. Hoy sale de `seconds_today` en cada `refresh`,
+  y también en `stop` y `stopAll`: no se suma lo que devuelve `stop_timer`, que es
+  la corrida entera, porque una que cruzó la medianoche se guarda partida por día
+  (I3) y la suma le cargaba a hoy lo de anoche. En `stop` y `stopAll` la pila y lo
+  de hoy se leen juntos (`Promise.all`) y no hay otro `await` antes del `set`.
   Si agregas un campo a `last`, relee también ese.
 - **"Ya no está" incluye el basurero** (#11). El taxímetro y Focus deciden que una
   tarea se fue cuando `api.getTask` devuelve `null`, y el comando `get_task`

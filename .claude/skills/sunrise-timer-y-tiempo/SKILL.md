@@ -466,6 +466,14 @@ oculta. Tres cosas que se rompen al editar esto:
   hoy (comando `seconds_today`, #38) es lo que hace que la fila en pausa se entere
   de un `stop_timer` o un `log_time` del MCP: antes conservaba la foto de cuando
   arrancó la corrida.
+- **Pausar (`stop`, `stopAll`) también lee `seconds_today`**, no `baseSeconds`
+  más lo que devuelve `stop_timer`. Ese número es la corrida **entera**, y una
+  corrida que cruzó la medianoche queda partida por día (I3): la suma le cargaba a
+  hoy lo de anoche y el contador saltaba dos veces, al pausar y en el `refresh`
+  siguiente. La pila y lo de hoy se leen juntos, sin otro `await` antes del `set`
+  (si no, un play que entre en el medio publica una pila vieja), y si la lectura
+  falla se usa `baseSeconds` como respaldo en vez de lanzar con el timer ya
+  cerrado en la base.
 
 `completeAndAdvance` manda la tarea al final de **su propio día**, no de hoy.
 El taxímetro puede estar cronometrando una tarea de otro día —arrancada desde la

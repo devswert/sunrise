@@ -212,8 +212,10 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   total de la tarea. Al pausar no se suma lo que devuelve `stop_timer`: es la
   corrida entera, y una que cruzó la medianoche le cargaba a hoy lo de anoche.
   **Los ajustes manuales ("Ajustar tiempo real") también mueven ese contador**
-  si la tarea es de hoy (la entrada del ajuste se fecha en el día de la tarea), con
-  piso en 0.
+  si la tarea es de hoy, del backlog o de un día futuro, con piso en 0: la entrada
+  del ajuste se fecha en el día de la tarea, y `adjustment_stamp` sella las del
+  backlog y las futuras con la hora actual, así que caen en hoy. Las de un día
+  pasado no lo mueven.
 - **`refresh` avanza igual que el check.** Re-lee la tarea pausada y, si la
   completaron desde otro lado (Focus, la card, el modal), pasa a la siguiente
   pendiente en pausa o se oculta. Antes quedaba en pantalla la tarea ya cerrada
