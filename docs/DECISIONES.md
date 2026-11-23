@@ -1187,6 +1187,20 @@ tiene barra de título nativa, ni eventos de cierre, ni sistema operativo al que
 registrar un LaunchAgent, y dibuja scrollbars distintos al webview. Cuando un test
 no puede fallar por la causa original, **eso se escribe en su comentario**.
 
+Dos más que dejó #39, los dos de jsdom:
+
+- **jsdom no reproduce el desmarcado de radios del mismo grupo** cuando no hay un
+  `<form>`. La copia de `exitAbove` le quita el `name` a sus radios porque en el
+  webview una copia marcada con el mismo `name` desmarca el original; en jsdom eso
+  no pasa, así que un `toBeChecked()` sobre el original queda verde con o sin el
+  arreglo. El test que lo cuida asierta que la copia no lleva `name`, que es lo
+  que sí se pone rojo si alguien quita el arreglo.
+- **El `afterEach` de un archivo corre antes que el `cleanup()` de RTL**: Vitest
+  ejecuta los hooks de cierre en orden inverso, y el de RTL se registró primero.
+  Restaurar un ajuste ahí, con el componente todavía montado, lo re-renderiza fuera
+  de `act` y llena la salida de warnings. Hay que llamar a `cleanup()` a mano antes
+  de restaurar (`BackupCard.test.tsx`, el describe "respaldar").
+
 Y un detalle que costó tiempo: **el panel del browser oculto devuelve rectángulos en
 cero**, así que la primera medición de un centrado da números sin sentido.
 

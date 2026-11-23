@@ -781,11 +781,9 @@ pub fn delete_task(conn: &Connection, p: TaskIdParams) -> ToolResult {
         .map_err(db_err)?
         .ok_or_else(|| format!("No existe una tarea con id {}.", p.id))?;
     let tz = repo::zone(conn);
-    let restorable_until = repo::list_trash(conn)
+    let restorable_until = repo::trash_purge_at(conn, p.id)
         .map_err(db_err)?
-        .into_iter()
-        .find(|t| t.task.id == p.id)
-        .map(|t| local_day(tz, &t.purge_at))
+        .map(|purge_at| local_day(tz, &purge_at))
         .unwrap_or_default();
     to_json(&DeletedView {
         deleted: view(task, &channels(conn)?),
@@ -1297,6 +1295,8 @@ mod tests {
         assert_eq!(trash[0]["id"], id);
         assert_eq!(trash[0]["title"], "Escribir");
         assert!(trash[0]["purge_on"].is_string());
+        // El plazo que da `delete_task` es el mismo día que muestra el basurero.
+        assert_eq!(out["restorable_until"], trash[0]["purge_on"]);
 
         let back = json(&restore_task(&c, TaskIdParams { id }).unwrap());
         assert_eq!(back["date"], "2026-10-15");

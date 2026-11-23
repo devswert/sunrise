@@ -8,6 +8,7 @@ import { shortDate, toISODate, todayISO } from "../../lib/date";
 import { SettingKey, useSettingsStore } from "../../lib/settings";
 import { useAppStore } from "../../lib/store";
 import { derive, useTimerStore } from "../timer/timerStore";
+import { addToRange, ignoredEvent } from "../../test/ignoredEvents";
 
 // El canvas de jsdom no implementa `getContext`: la llamada real reventaría en
 // cuanto un test aprete el botón del final. Por eso vive en su propio módulo.
@@ -250,26 +251,27 @@ describe("DailyPlanningView", () => {
 
   /**
    * #8: el medidor mide contra la capacidad de **hoy** —la jornada menos sus
-   * eventos ignorados—, y marcar uno la cambia sin recargar. Devuelve la marca al
-   * salir: la Weekly es de la semilla y la usan otros casos.
+   * eventos ignorados—, y marcar uno la cambia sin recargar. El evento es propio
+   * (`ignoredEvents`) y no uno de la semilla: así el caso no depende de la data de
+   * preview ni deja una marca que otro caso herede.
    */
   it("mide contra la jornada de hoy menos sus eventos ignorados", async () => {
-    const weekly = (await api.listTasksForRange(todayISO(), todayISO())).find(
-      (t) => t.title === "Weekly de equipo",
-    )!;
+    // Una reunión de 13:00 a 14:00: 9 h − 1 h = 8:00.
+    const evento = ignoredEvent(todayISO(), "13:00", 60);
+    let ignorado = false;
+    const spy = addToRange(() => [{ ...evento, railOnly: ignorado }]);
     const capLine = () => document.querySelector(".cap-line")?.textContent ?? "";
-    mount();
-    await goToToday();
-    await waitFor(() => expect(capLine()).toMatch(/ de 9:00/));
 
     try {
-      await act(async () => {
-        await api.setTaskRailOnly(weekly.id, true);
-        useAppStore.getState().bumpData();
-      });
+      mount();
+      await goToToday();
+      await waitFor(() => expect(capLine()).toMatch(/ de 9:00/));
+
+      ignorado = true;
+      act(() => useAppStore.getState().bumpData());
       await waitFor(() => expect(capLine()).toMatch(/ de 8:00/));
     } finally {
-      await api.setTaskRailOnly(weekly.id, false);
+      spy.mockRestore();
     }
   });
 
