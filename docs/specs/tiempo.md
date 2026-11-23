@@ -206,7 +206,14 @@ Respaldado en la DB (`time_entries`), no en memoria. Estado en
   > signifique lo mismo en los dos lados.
 - `last` (última tarea pausada) se persiste en `localStorage` para poder
   reanudar; el taxímetro se muestra mientras tenga filas (`timerRows`: algún
-  timer corriendo **o** `last`).
+  timer corriendo **o** `last`). **Su contador es lo de hoy** (`seconds_today`, al
+  pausar y en cada `refresh`), así que la pausada de ayer vuelve a 0:00:00 con el
+  primer `refresh` del día; el tiempo anterior sigue en `time_entries` y en el
+  total de la tarea. Al pausar no se suma lo que devuelve `stop_timer`: es la
+  corrida entera, y una que cruzó la medianoche le cargaba a hoy lo de anoche.
+  **Los ajustes manuales ("Ajustar tiempo real") también mueven ese contador**
+  si la tarea es de hoy (la entrada del ajuste se fecha en el día de la tarea), con
+  piso en 0.
 - **`refresh` avanza igual que el check.** Re-lee la tarea pausada y, si la
   completaron desde otro lado (Focus, la card, el modal), pasa a la siguiente
   pendiente en pausa o se oculta. Antes quedaba en pantalla la tarea ya cerrada

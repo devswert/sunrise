@@ -39,7 +39,7 @@ let enElTaximetro: Task = task({ id: 1 });
 /** Lo que devuelve `focus_queue`: lo pendiente de hoy. La reasignan los tests. */
 let pendientes: Task[] = [];
 /** Lo que devuelve `seconds_today` para la tarea del taxímetro. */
-let hoyEnLaBase = 120;
+let secondsTodayInDb = 120;
 
 const moveTask = vi.fn(async () => null);
 const setTaskStatus = vi.fn(async () => null);
@@ -58,7 +58,7 @@ vi.mock("../../lib/ipc", () => ({
         : [],
     ),
     focusQueue: vi.fn(async () => pendientes),
-    secondsToday: vi.fn(async () => hoyEnLaBase),
+    secondsToday: vi.fn(async () => secondsTodayInDb),
     stopTimer: vi.fn(async () => null),
     startTimer: (...a: unknown[]) => startTimer(...(a as [])),
     getActiveTimers: vi.fn(async () => []),
@@ -172,7 +172,7 @@ describe("refresh cuando la tarea del taxímetro se completó desde otro lado", 
   beforeEach(() => {
     localStorage.clear();
     pendientes = [];
-    hoyEnLaBase = 120;
+    secondsTodayInDb = 120;
     // Focus, la card o el modal la completaron: el timer ya está detenido.
     enElTaximetro = task({ id: 1, status: "DONE" });
     localStorage.setItem(
@@ -203,7 +203,7 @@ describe("refresh cuando la tarea del taxímetro se completó desde otro lado", 
     enElTaximetro = task({ id: 1, title: "Renombrada", actualSeconds: 9999 });
     // La base dice otra cosa que la foto guardada (120): el tiempo cambió por
     // fuera de este store, p. ej. un `log_time` del MCP (#38).
-    hoyEnLaBase = 300;
+    secondsTodayInDb = 300;
 
     await useTimerStore.getState().refresh();
 

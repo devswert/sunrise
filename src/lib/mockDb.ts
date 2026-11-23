@@ -179,10 +179,10 @@ function secondsToday(taskId: number): number {
   // Rust. Cortar el timestamp (`startedAt.slice(0, 10)`) comparaba la fecha UTC
   // con la local: en Chile, lo arrancado después de las 21:00 caía "mañana" y el
   // contador volvía a 0, según la hora a la que corrieran los tests.
-  const desde = startOfDayAt(Date.now()).getTime();
+  const from = startOfDayAt(Date.now()).getTime();
   const suma = entries
     .filter(
-      (e) => e.taskId === taskId && e.endedAt !== null && new Date(e.startedAt).getTime() >= desde,
+      (e) => e.taskId === taskId && e.endedAt !== null && new Date(e.startedAt).getTime() >= from,
     )
     .reduce((s, e) => s + e.seconds, 0);
   return Math.max(0, suma);

@@ -20,26 +20,26 @@ import { FocusView } from "./FocusView";
 const MIN = 60_000;
 
 /** Focus con el runtime del timer montado, como en `Shell`. */
-function FocusConTimer() {
+function FocusWithTimer() {
   useTimerRuntime();
   return <FocusView />;
 }
 
-const real = () => screen.getByRole("button", { name: "Ajustar tiempo real" }).textContent;
-const avisoExterno = () => act(() => useAppStore.getState().markDataStale());
+const actualTime = () => screen.getByRole("button", { name: "Ajustar tiempo real" }).textContent;
+const externalNotice = () => act(() => useAppStore.getState().markDataStale());
 
 describe("Focus tras un cambio de tiempo hecho por fuera (#38)", () => {
-  let ahora = 0;
-  const avanzar = (ms: number) => {
-    ahora += ms;
-    vi.setSystemTime(ahora);
+  let now = 0;
+  const advance = (ms: number) => {
+    now += ms;
+    vi.setSystemTime(now);
   };
 
   beforeEach(async () => {
     // Mediodía de hoy en la zona del usuario, lejos de la medianoche.
     vi.useFakeTimers({ toFake: ["Date"] });
-    ahora = startOfDayAt(Date.now()).getTime() + 12 * 60 * MIN;
-    vi.setSystemTime(ahora);
+    now = startOfDayAt(Date.now()).getTime() + 12 * 60 * MIN;
+    vi.setSystemTime(now);
     await api.stopAllTimers();
     localStorage.clear();
   });
@@ -49,11 +49,11 @@ describe("Focus tras un cambio de tiempo hecho por fuera (#38)", () => {
     vi.useRealTimers();
   });
 
-  it("muestra el total nuevo después de un stop_timer y de un log_time de afuera", async () => {
+  it("muestra el total nuevo tras un stop_timer de afuera y tras un tramo cerrado escrito en la base", async () => {
     const { id } = await api.createTask({ title: "con el agente", scheduledDate: todayISO() });
     render(
       <MemoryRouter>
-        <FocusConTimer />
+        <FocusWithTimer />
       </MemoryRouter>,
     );
     // El mock trae otras pendientes antes; al darle play, Focus salta a esta.
@@ -63,17 +63,18 @@ describe("Focus tras un cambio de tiempo hecho por fuera (#38)", () => {
     );
 
     // El MCP la detiene diez minutos después.
-    avanzar(10 * MIN);
+    advance(10 * MIN);
     await api.stopTimer(id);
-    avisoExterno();
+    externalNotice();
     await waitFor(() => expect(useTimerStore.getState().actives).toHaveLength(0));
-    await waitFor(() => expect(real()).toContain("0:10:00"));
+    await waitFor(() => expect(actualTime()).toContain("0:10:00"));
 
-    // Y después registra un tramo cerrado de cinco minutos.
+    // Y después un tramo cerrado de cinco minutos, como el que deja un
+    // `log_time`: el mock no tiene esa tool, así que se arma con start y stop.
     await api.startTimer(id);
-    avanzar(5 * MIN);
+    advance(5 * MIN);
     await api.stopTimer(id);
-    avisoExterno();
-    await waitFor(() => expect(real()).toContain("0:15:00"));
+    externalNotice();
+    await waitFor(() => expect(actualTime()).toContain("0:15:00"));
   });
 });

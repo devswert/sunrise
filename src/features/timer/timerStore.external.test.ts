@@ -6,6 +6,9 @@
  * Contra el `mockDb` real y escribiendo en él **sin pasar por el store**, que es
  * exactamente lo que hace el MCP: el store no se entera de la escritura, solo del
  * aviso, y lo único que puede hacer es releer.
+ *
+ * El contador de la pausada es **lo de hoy** (`seconds_today`), tanto al pausar
+ * como al refrescar: acá también se fija que los dos digan lo mismo.
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,76 +21,121 @@ import { useTimerRuntime } from "./useTimer";
 const MIN = 60_000;
 
 /** Lo que muestra el taxímetro en su única fila. */
-const fila = () => timerRows(useTimerStore.getState())[0];
+const row = () => timerRows(useTimerStore.getState())[0];
 
 /** Avisa como lo hace `useExternalChanges` al recibir `sunrise://data-changed`. */
-const avisoExterno = () => act(() => useAppStore.getState().markDataStale());
+const externalNotice = () => act(() => useAppStore.getState().markDataStale());
+
+let now = 0;
+const setNow = (ms: number) => {
+  now = ms;
+  vi.setSystemTime(now);
+};
+const advance = (ms: number) => setNow(now + ms);
+
+/** Medianoche de hoy en la zona del usuario, medida al empezar cada test. */
+let todayStart = 0;
+
+beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  todayStart = startOfDayAt(Date.now()).getTime();
+  // Mediodía de hoy: lejos de la medianoche, para que "lo de hoy" no dependa de
+  // la hora a la que corran los tests (ni de que `bin/gates` los corra en UTC).
+  setNow(todayStart + 12 * 60 * MIN);
+  await api.stopAllTimers();
+  localStorage.clear();
+  useTimerStore.setState({
+    actives: [],
+    elapsedById: {},
+    active: null,
+    elapsed: 0,
+    last: null,
+    loaded: false,
+  });
+});
+
+afterEach(async () => {
+  await api.stopAllTimers();
+  vi.useRealTimers();
+});
 
 describe("la fila en pausa tras un cambio de tiempo hecho por fuera (#38)", () => {
-  // Mediodía de hoy en la zona del usuario: lejos de la medianoche, para que
-  // "lo de hoy" no dependa de la hora a la que corran los tests (ni de que
-  // `bin/gates` los corra otra vez en UTC).
-  let ahora = 0;
-  const avanzar = (ms: number) => {
-    ahora += ms;
-    vi.setSystemTime(ahora);
-  };
-
-  beforeEach(async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    ahora = startOfDayAt(Date.now()).getTime() + 12 * 60 * MIN;
-    vi.setSystemTime(ahora);
-    await api.stopAllTimers();
-    localStorage.clear();
-    useTimerStore.setState({
-      actives: [],
-      elapsedById: {},
-      active: null,
-      elapsed: 0,
-      last: null,
-      loaded: false,
-    });
-  });
-
-  afterEach(async () => {
-    await api.stopAllTimers();
-    vi.useRealTimers();
-  });
-
   it("un stop_timer de afuera deja la fila con lo trabajado hoy, no con la foto de cuando arrancó", async () => {
     const { id } = await api.createTask({ title: "con el agente", scheduledDate: todayISO() });
     renderHook(() => useTimerRuntime());
     await act(() => useTimerStore.getState().start(id));
-    expect(fila()).toMatchObject({ taskId: id });
+    expect(row()).toMatchObject({ taskId: id });
 
     // Diez minutos después el MCP la detiene, sin pasar por este store.
-    avanzar(10 * MIN);
+    advance(10 * MIN);
     await api.stopTimer(id);
-    avisoExterno();
+    externalNotice();
 
     // El bug: la fila pasaba a pausa con los segundos del arranque (0:00:00).
     await waitFor(() => expect(useTimerStore.getState().actives).toHaveLength(0));
-    await waitFor(() => expect(fila()).toMatchObject({ taskId: id, seconds: 600 }));
+    await waitFor(() => expect(row()).toMatchObject({ taskId: id, seconds: 600 }));
   });
 
-  it("un log_time de afuera sobre la tarea en pausa le suma al contador", async () => {
+  it("un tramo cerrado de hoy escrito en la base (start y stop sin el store) le suma a la pausada", async () => {
     const { id } = await api.createTask({ title: "pausada", scheduledDate: todayISO() });
     renderHook(() => useTimerRuntime());
     await act(() => useTimerStore.getState().start(id));
-    avanzar(5 * MIN);
+    advance(5 * MIN);
     await act(async () => {
       await useTimerStore.getState().stop(id);
     });
-    expect(fila()).toMatchObject({ taskId: id, seconds: 300 });
+    expect(row()).toMatchObject({ taskId: id, seconds: 300 });
+    // Pausar y refrescar leen lo mismo: el número no se mueve.
+    await act(() => useTimerStore.getState().refresh());
+    expect(row()).toMatchObject({ taskId: id, seconds: 300 });
 
-    // El MCP registra un tramo cerrado de diez minutos de hoy. En la base queda
-    // igual que una corrida del taxímetro, que es como lo simula el mock.
+    // Lo que deja un `log_time` del MCP es un tramo cerrado de hoy. El mock no
+    // tiene esa tool, así que el tramo se arma con start y stop directo en la
+    // base: el efecto en `time_entries` es el mismo.
     await api.startTimer(id);
-    avanzar(10 * MIN);
+    advance(10 * MIN);
     await api.stopTimer(id);
-    avisoExterno();
+    externalNotice();
 
     // El bug: la fila seguía en 0:05:00.
-    await waitFor(() => expect(fila()).toMatchObject({ taskId: id, seconds: 900 }));
+    await waitFor(() => expect(row()).toMatchObject({ taskId: id, seconds: 900 }));
+  });
+});
+
+describe("el contador de la pausada es lo de hoy", () => {
+  it("pausar una corrida que cruzó la medianoche muestra solo lo de hoy, y refrescar no lo mueve", async () => {
+    const { id } = await api.createTask({ title: "trasnochada", scheduledDate: todayISO() });
+    // Arrancó a las 23:50 de ayer y se pausa a las 00:05 de hoy.
+    setNow(todayStart - 10 * MIN);
+    await act(() => useTimerStore.getState().start(id));
+    setNow(todayStart + 5 * MIN);
+
+    await act(async () => {
+      await useTimerStore.getState().stop(id);
+    });
+
+    // El bug: `stop_timer` devuelve la corrida entera (15 min) y la fila mostraba
+    // 0:15:00, para saltar a 0:05:00 en el `refresh` siguiente.
+    expect(row()).toMatchObject({ taskId: id, seconds: 300 });
+    await act(() => useTimerStore.getState().refresh());
+    expect(row()).toMatchObject({ taskId: id, seconds: 300 });
+  });
+
+  it("la pausada de ayer vuelve a 0:00:00 con el primer refresh de hoy", async () => {
+    const { id } = await api.createTask({ title: "de ayer", scheduledDate: todayISO() });
+    setNow(todayStart - 12 * 60 * MIN);
+    await act(() => useTimerStore.getState().start(id));
+    advance(10 * MIN);
+    await act(async () => {
+      await useTimerStore.getState().stop(id);
+    });
+    expect(row()).toMatchObject({ taskId: id, seconds: 600 });
+
+    // Al día siguiente: lo de ayer sigue en `time_entries`, pero no es de hoy.
+    setNow(todayStart + 12 * 60 * MIN);
+    await act(() => useTimerStore.getState().refresh());
+
+    expect(row()).toMatchObject({ taskId: id, seconds: 0 });
+    expect((await api.listTimeEntries(id)).reduce((s, e) => s + e.seconds, 0)).toBe(600);
   });
 });

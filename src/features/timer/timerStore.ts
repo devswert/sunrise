@@ -82,6 +82,20 @@ async function nextPaused(exceptId: number): Promise<LastTask | null> {
   };
 }
 
+/**
+ * El contador de la tarea que queda en pausa: lo cerrado **hoy**, leído de la
+ * base (`seconds_today`), igual que el que pone `refresh`.
+ *
+ * No `baseSeconds + seconds`: `stop_timer` devuelve el total de la corrida, y una
+ * corrida que cruzó la medianoche se guarda partida por día (I3), así que la
+ * suma le cargaba a hoy lo de anoche. El número saltaba dos veces: al pausar,
+ * hacia arriba, y en el `refresh` siguiente, a lo de hoy. Leyendo lo mismo que
+ * `refresh`, pausar y refrescar no pueden discrepar.
+ */
+function pausedSeconds(taskId: number): Promise<number> {
+  return api.secondsToday(taskId);
+}
+
 function broadcast() {
   try {
     localStorage.setItem(CHANNEL, String(Date.now()));
@@ -384,7 +398,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     const res = id == null ? null : await api.stopTimer(id);
     const actives = await api.getActiveTimers();
     if (res) {
-      const [stoppedId, seconds] = res;
+      const [stoppedId] = res;
       const guardada = readLast();
       const sameSaved = guardada?.taskId === stoppedId ? guardada : null;
       // Pausar una de varias la **saca** de la pila: las que siguen corriendo
@@ -397,7 +411,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
               taskId: stoppedId,
               title: prev?.title ?? sameSaved?.title ?? "",
               estimatedMinutes: prev?.estimatedMinutes ?? sameSaved?.estimatedMinutes ?? null,
-              seconds: (prev?.baseSeconds ?? 0) + seconds,
+              seconds: await pausedSeconds(stoppedId),
             };
       writeLast(last);
       set({ ...derive(actives), last });
@@ -415,7 +429,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // La pausada que queda en el taxímetro es la que mostraba: la primera.
     const first = res[0];
     if (first) {
-      const [stoppedId, seconds] = first;
+      const [stoppedId] = first;
       const p = prev.find((a) => a.taskId === stoppedId);
       const saved = readLast();
       const last: LastTask = {
@@ -423,7 +437,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         title: p?.title ?? (saved?.taskId === stoppedId ? saved.title : ""),
         estimatedMinutes:
           p?.estimatedMinutes ?? (saved?.taskId === stoppedId ? saved.estimatedMinutes : null),
-        seconds: (p?.baseSeconds ?? 0) + seconds,
+        seconds: await pausedSeconds(stoppedId),
       };
       writeLast(last);
       set({ ...derive(await api.getActiveTimers()), last });
