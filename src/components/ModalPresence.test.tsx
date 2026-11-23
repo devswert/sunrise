@@ -236,6 +236,10 @@ describe("ModalPresence", () => {
 
     act(() => exitAbove());
 
+    // Este `toBeChecked()` no vigila nada en jsdom: jsdom no desmarca los radios
+    // de un mismo grupo cuando no hay un `<form>`, así que pasa también sin el
+    // arreglo. Lo que protege el arreglo es el `not.toHaveAttribute("name")` de
+    // abajo (comprobado: sin el `removeAttribute`, el que se pone rojo es ese).
     expect(original).toBeChecked();
     const copy = document.querySelectorAll<HTMLInputElement>(".is-ghost input[type=radio]");
     expect(copy[1].checked).toBe(true);
