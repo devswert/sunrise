@@ -143,6 +143,25 @@ salió #N?" se responde mirando la issue.
 
     Y cada una de esas issues pasa de `Done` a `Released` en el board.
 
+## Sin minutos de Actions: `bin/release-local`
+
+Si Actions no puede correr (sin minutos de runner, como en noviembre de 2026), se
+publica desde esta máquina con `bin/release-local vX.Y.Z`. Hace lo mismo que
+`release.yml` y en el mismo orden: verifica tag y versión, corre `bin/gates`, compila
+firmando con la llave del updater y sube los cuatro archivos con `gh release create`.
+
+- **La llave privada** se lee de `~/.tauri/sunrise-updater.key` (o
+  `SUNRISE_UPDATER_KEY`). Nunca entra al repo. El script comprueba que su `.pub`
+  sea la de `tauri.conf.json` antes de compilar.
+- **Los pasos 1 a 9 no cambian**: changelog, versión, PR con reviewer, merge y el
+  tag empujado por el hook. Después, en `main` al día: `git checkout vX.Y.Z` y
+  `bin/release-local vX.Y.Z`. Vuelve a `main` al terminar.
+- **El tag igual dispara `release.yml`.** Sin minutos se cae sin publicar nada. Si
+  corre, se encuentra con el Release ya creado: revisa que queden los cuatro
+  archivos.
+- **El binario sale con el SDK de esta máquina**, no con el de `macos-26`. Si la
+  ventana se ve distinta a la versión anterior, es eso (DECISIONES §9).
+
 ## Si algo sale mal
 
 **Un tag no se mueve.** Si `release.yml` falla o el Release sale incompleto, borra
@@ -169,7 +188,8 @@ y el `latest.json` apuntando a uno de ellos. Si ya lo instaló alguien del equip
   (`signingIdentity: "-"`), que no evita el bloqueo de Gatekeeper pero lo deja
   levantable; la primera instalación pide `xattr -cr /Applications/sunrise.app` y
   está escrito en el README. Detalle y el modo de falla en `docs/specs/distribucion.md` §4.19.
-- **No toca la llave privada del updater.** Vive en los secrets del repo. Si falta,
+- **No toca la llave privada del updater.** Vive en los secrets del repo (y una
+  copia en `~/.tauri` de la máquina del dev, para `bin/release-local`). Si falta,
   los artefactos salen sin firmar y las apps los rechazan sin decir por qué.
 - **No decide el número por ti.** Un cambio que rompe datos o una migración que no
   se puede deshacer merece minor, no patch.
