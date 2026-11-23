@@ -1018,7 +1018,11 @@ peor que el problema. **Sacar el overlay de `Dialog`** a un fondo compartido toc
 todos los modales —`TaskModal` y `AddFeedModal` también lo usan— por un relevo que
 hoy ocurre en un solo lugar. Quedó una regla en `modal-presence.css`: si a un modal
 que sale lo sigue un hermano que entra, el fondo del que sale deja de desvanecerse
-(`:has`) y el del que entra va transparente (`~`). Lo que no se ve a primera vista:
+(`:has`) y el del que entra va transparente (`~`). Es opt-in (`relay` en los dos
+`ModalPresence`): sin marca habría alcanzado también a los hermanos de `App`, que
+se cierran uno con otro encima y no se relevan. Y va entero bajo `@supports
+selector(:has(*))`, porque sin `:has` la mitad con `~` sola —el que entra
+transparente mientras el otro se desvanece— parpadea peor que los dos fondos. Lo que no se ve a primera vista:
 quitarle el fundido al overlay del que sale obliga a darle uno propio a su modal,
 que hasta entonces se desvanecía heredando la opacidad del overlay. Y no se
 cambió la animación del que entra: un `animation: none` que dejara de aplicar al

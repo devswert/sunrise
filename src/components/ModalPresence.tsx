@@ -66,10 +66,17 @@ export function useModalExitAbove(): () => void {
  */
 export function ModalPresence<T>({
   value,
+  relay = false,
   children,
 }: {
   /** Abierto mientras no sea `null`, `undefined` ni `false`. */
   value: T | null | undefined | false;
+  /**
+   * Hace relevo con un hermano que también lo lleva: si este sale mientras el de
+   * después entra, queda un solo fondo en vez de dos (§7, `modal-presence.css`).
+   * Lo llevan los dos, y el que sale va antes en el DOM.
+   */
+  relay?: boolean;
   children: (value: T, exit: ModalExit) => ReactNode;
 }) {
   const open = value != null && value !== false;
@@ -160,7 +167,10 @@ export function ModalPresence<T>({
 
   return (
     <ExitContext.Provider value={exit}>
-      <div ref={wrap} className={`modal-presence${leaving ? " is-leaving" : ""}`}>
+      <div
+        ref={wrap}
+        className={`modal-presence${relay ? " modal-presence--relay" : ""}${leaving ? " is-leaving" : ""}`}
+      >
         <Fragment key={generation}>{children(last.current, exit)}</Fragment>
       </div>
     </ExitContext.Provider>

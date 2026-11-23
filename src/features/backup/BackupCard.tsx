@@ -543,7 +543,9 @@ export function BackupCard() {
 
       {version && <span className="resp-version">versión {version}</span>}
 
-      <ModalPresence value={toRestore}>
+      {/* `relay`: la confirmación sale mientras entra el resultado, y así queda
+          un solo fondo (#40). Este orden importa: el que sale va primero. */}
+      <ModalPresence value={toRestore} relay>
         {(zip) => (
           <ConfirmarRestore
             zip={zip}
@@ -554,7 +556,7 @@ export function BackupCard() {
         )}
       </ModalPresence>
 
-      <ModalPresence value={restaurado}>
+      <ModalPresence value={restaurado} relay>
         {(r) => <RestauracionLista r={r} onClose={() => setRestaurado(null)} />}
       </ModalPresence>
     </section>

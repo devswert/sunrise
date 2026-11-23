@@ -272,12 +272,12 @@ describe("ModalPresence", () => {
  * Dos modales hermanos, como la confirmación de restaurar y su resultado: un
  * mismo click cierra el primero y abre el segundo.
  */
-function Relay() {
+function Relay({ relay = true }: { relay?: boolean }) {
   const [first, setFirst] = useState(true);
   const [second, setSecond] = useState(false);
   return (
     <>
-      <ModalPresence value={first}>
+      <ModalPresence value={first} relay={relay}>
         {() => (
           <Dialog
             title="Primero"
@@ -297,7 +297,7 @@ function Relay() {
           </Dialog>
         )}
       </ModalPresence>
-      <ModalPresence value={second}>
+      <ModalPresence value={second} relay={relay}>
         {() => (
           <Dialog title="Segundo" label="Segundo" actions={null}>
             <p>Cuerpo</p>
@@ -320,11 +320,24 @@ function visibleBackgrounds(): Element[] {
   );
 }
 
+/**
+ * La hoja sin el `@supports selector(:has(*))` que envuelve el relevo: jsdom no
+ * evalúa esa condición y descarta el bloque. Se le quita la envoltura y queda lo
+ * que ve un WebKit con `:has`.
+ */
+function withoutSupports(css: string): string {
+  const head = "@supports selector(:has(*)) {";
+  const at = css.indexOf(head);
+  expect(at).toBeGreaterThan(-1);
+  const close = css.indexOf("\n}\n", at);
+  return css.slice(0, at) + css.slice(at + head.length, close) + css.slice(close + 2);
+}
+
 describe("ModalPresence · el relevo entre dos modales", () => {
   let sheet: HTMLStyleElement;
   beforeEach(() => {
     sheet = document.createElement("style");
-    sheet.textContent = dialogCss + presenceCss;
+    sheet.textContent = dialogCss + withoutSupports(presenceCss);
     document.head.appendChild(sheet);
   });
   afterEach(() => sheet.remove());
@@ -348,21 +361,51 @@ describe("ModalPresence · el relevo entre dos modales", () => {
   });
 
   /**
+   * El relevo es opt-in: los modales hermanos de `App` (crear tarea, ⌘Q, "Lo
+   * nuevo"…) pueden cerrarse uno con otro encima, y esos siguen como siempre.
+   */
+  it("sin `relay`, dos hermanos no hacen relevo: cada uno conserva su fondo", async () => {
+    render(<Relay relay={false} />);
+    await userEvent.click(screen.getByRole("button", { name: "Seguir" }));
+
+    expect(document.querySelectorAll(".modal-overlay")).toHaveLength(2);
+    expect(document.querySelector(".modal-presence--relay")).toBeNull();
+    expect(visibleBackgrounds()).toHaveLength(2);
+  });
+
+  /**
    * El fondo del que sale no se desvanece: si lo hiciera, el único fondo en
    * pantalla se iría a claro y volvería. Va por `:has`, que jsdom no evalúa,
    * así que se vigila el texto de la regla.
    */
   it("en el relevo, el fondo del que sale se queda quieto y su modal se desvanece solo", () => {
-    const leaving = ".modal-presence.is-leaving:has(~ .modal-presence:not(.is-leaving))";
+    // Biome parte los selectores largos en varias líneas: se comparan sin espacios.
+    const css = presenceCss.replace(/\s+/g, "");
+    const leaving =
+      ".modal-presence--relay.is-leaving:has(~.modal-presence--relay:not(.is-leaving))";
     const rule = (selector: string) => {
-      const at = presenceCss.indexOf(`${selector} {`);
+      const at = css.indexOf(`${selector}{`);
       expect(at).toBeGreaterThan(-1);
-      return presenceCss.slice(at, presenceCss.indexOf("}", at));
+      return css.slice(at, css.indexOf("}", at));
     };
-    expect(rule(`${leaving} > .compose-overlay`)).toMatch(/animation:\s*none/);
-    expect(presenceCss).toContain(`${leaving} > .modal-overlay,`);
-    const panel = rule(`${leaving} > .compose-overlay > *`);
+    expect(rule(`${leaving}>.compose-overlay`)).toContain("animation:none");
+    expect(css).toContain(`${leaving}>.modal-overlay,`);
+    const panel = rule(`${leaving}>.compose-overlay>*`);
     expect(panel).toContain("modal-rise-out");
     expect(panel).toContain("modal-fade-out");
+  });
+
+  /**
+   * Sin `:has` (WebKit anterior a Safari 15.4) se aplicaría solo la mitad: el que
+   * entra transparente mientras el fondo del que sale se desvanece. Todo el
+   * relevo va bajo `@supports`, y antes de él no hay ninguna regla del relevo.
+   */
+  it("el relevo entero va bajo `@supports selector(:has(*))`", () => {
+    const at = presenceCss.indexOf("@supports selector(:has(*))");
+    expect(at).toBeGreaterThan(-1);
+    expect(presenceCss.slice(0, at)).not.toMatch(/^\s*\.modal-presence--relay/m);
+    const media = presenceCss.indexOf("@media (prefers-reduced-motion: reduce)");
+    const outside = presenceCss.slice(presenceCss.indexOf("\n}\n", at) + 3, media);
+    expect(outside).not.toContain("modal-presence--relay");
   });
 });

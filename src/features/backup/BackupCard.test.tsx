@@ -316,10 +316,11 @@ describe("BackupCard · restaurar", () => {
   });
 
   /**
-   * El relevo de fondos (#40) depende del orden: la regla de
-   * `modal-presence.css` solo ve al que entra **después** del que sale, en el
-   * mismo padre. Si alguien invierte los dos `ModalPresence`, vuelven los dos
-   * fondos superpuestos sin que nada más se ponga rojo.
+   * El relevo de fondos (#40) depende de la marca y del orden: la regla de
+   * `modal-presence.css` solo ve a dos `relay` hermanos, con el que entra
+   * **después** del que sale. Si alguien invierte los dos `ModalPresence` o
+   * les quita la marca, vuelven los dos fondos superpuestos sin que nada más se
+   * ponga rojo.
    */
   it("al restaurar bien, la confirmación que sale va antes que el resumen que entra, como hermanos", async () => {
     render(<BackupCard />);
@@ -333,7 +334,8 @@ describe("BackupCard · restaurar", () => {
       const summary = screen.getByRole("alertdialog", { name: "Respaldo restaurado" });
       return [confirm.closest(".modal-presence"), summary.closest(".modal-presence")];
     });
-    expect(leaving).toHaveClass("is-leaving");
+    expect(leaving).toHaveClass("is-leaving", "modal-presence--relay");
+    expect(entering).toHaveClass("modal-presence--relay");
     expect(entering).not.toHaveClass("is-leaving");
     expect(leaving?.parentElement).toBe(entering?.parentElement);
     expect(
