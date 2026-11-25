@@ -4,30 +4,65 @@
 //! abre su propia conexión (`store::open`) y la suelta al volver.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 use rusqlite::Connection;
 
-use super::store;
+use super::exe::{self, ExeStamp};
+use super::store::{self, OpenError};
 use super::tools::{
     self, CreateTaskParams, ListTasksParams, LogTimeParams, MoveTaskParams, SetTaskTimeParams,
     StartTimerParams, TaskIdParams, UpdateTaskParams,
 };
 
+/// Lo que responde cada tool cuando este proceso quedó viejo y se va a reiniciar.
+///
+/// Está escrito para el modelo, que no tiene cómo reiniciar el servidor por su
+/// cuenta: le dice que no tiene que hacer nada más que repetir la llamada.
+pub const RESTARTING: &str = "Este servidor de sunrise quedó desactualizado: sunrise se \
+     actualizó mientras Claude Desktop lo tenía abierto. Se está reiniciando solo; repite \
+     la misma llamada y debería funcionar. Si vuelve a fallar con este mismo mensaje, \
+     reinicia Claude Desktop.";
+
 #[derive(Clone)]
 pub struct SunriseServer {
     db_path: PathBuf,
+    /// El ejecutable de este proceso y su identidad al arrancar (`exe.rs`).
+    exe_path: Option<PathBuf>,
+    exe_at_start: Option<ExeStamp>,
+    /// Encendida, el proceso ya decidió reiniciarse: toda llamada que llegue antes
+    /// de que salga responde lo mismo, sin tocar la base.
+    restarting: Arc<AtomicBool>,
+    /// La despierta `with_db` al decidir el reinicio; `mcp::run` la espera.
+    restart: Arc<tokio::sync::Notify>,
     tool_router: ToolRouter<Self>,
 }
 
 impl SunriseServer {
     pub fn new(db_path: PathBuf) -> Self {
+        Self::with_exe(db_path, std::env::current_exe().ok())
+    }
+
+    /// Con un ejecutable explícito: el de verdad en `new`, uno de prueba en tests.
+    pub fn with_exe(db_path: PathBuf, exe_path: Option<PathBuf>) -> Self {
+        let exe_at_start = exe_path.as_deref().and_then(exe::stamp);
         Self {
             db_path,
+            exe_path,
+            exe_at_start,
+            restarting: Arc::new(AtomicBool::new(false)),
+            restart: Arc::new(tokio::sync::Notify::new()),
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// La señal que espera `mcp::run` para cerrar el proceso.
+    pub fn restart_signal(&self) -> Arc<tokio::sync::Notify> {
+        self.restart.clone()
     }
 
     /// Abre la base, corre `f` y la cierra. Un error de apertura vuelve como
@@ -37,7 +72,14 @@ impl SunriseServer {
         &self,
         f: impl FnOnce(&Connection) -> Result<String, String>,
     ) -> Result<String, String> {
-        let conn = store::open(&self.db_path)?;
+        if self.restarting.load(Ordering::SeqCst) {
+            return Err(RESTARTING.into());
+        }
+        let conn = match store::open(&self.db_path) {
+            Ok(conn) => conn,
+            Err(OpenError::NewerSchema) => return Err(self.on_newer_schema()),
+            Err(e) => return Err(e.into_message()),
+        };
         // La zona se cachea por proceso y solo la invalida el `set_setting` de la
         // app, que es otro proceso. Este vive lo que Claude Desktop, y desde que
         // escribe tiempo una zona vieja dejaría tramos mal fechados para siempre:
@@ -47,6 +89,22 @@ impl SunriseServer {
         // caería a la del sistema con el caché frío.
         crate::repo::zone(&conn);
         f(&conn)
+    }
+
+    /// La base es más nueva que este binario (§4.32). Si el ejecutable en disco
+    /// cambió desde el arranque, sunrise se actualizó con este proceso vivo: se
+    /// pide el reinicio y el modelo solo tiene que repetir la llamada. Si no cambió,
+    /// el binario de verdad es viejo y reiniciar daría el mismo error en un ciclo.
+    fn on_newer_schema(&self) -> String {
+        let now = self.exe_path.as_deref().and_then(exe::stamp);
+        if !exe::replaced(self.exe_at_start, now) {
+            return store::NEWER_SCHEMA.into();
+        }
+        if !self.restarting.swap(true, Ordering::SeqCst) {
+            eprintln!("[sunrise-mcp] el ejecutable cambió y la base es más nueva: me reinicio");
+            self.restart.notify_one();
+        }
+        RESTARTING.into()
     }
 }
 
@@ -303,6 +361,84 @@ mod tests {
         let text = info.instructions.unwrap();
         assert!(!text.contains("no maneja el timer"));
         assert!(text.contains("log_time"));
+    }
+
+    /// Una base con una migración que ningún binario conoce, y un "ejecutable"
+    /// de prueba para poder cambiarlo.
+    fn newer_db_and_exe() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("sunrise.sqlite");
+        let conn = crate::db::open(&db_path).unwrap();
+        crate::db::migrate(&conn).unwrap();
+        conn.execute("INSERT INTO _migrations (version) VALUES (100000)", [])
+            .unwrap();
+        drop(conn);
+        let exe_path = dir.path().join("sunrise");
+        std::fs::write(&exe_path, "v1").unwrap();
+        (dir, db_path, exe_path)
+    }
+
+    fn replace_exe(exe_path: &std::path::Path) {
+        let next = exe_path.with_extension("new");
+        std::fs::write(&next, "v2").unwrap();
+        std::fs::rename(&next, exe_path).unwrap();
+    }
+
+    #[test]
+    fn con_el_ejecutable_reemplazado_pide_repetir_y_se_reinicia() {
+        let (_dir, db_path, exe_path) = newer_db_and_exe();
+        let server = SunriseServer::with_exe(db_path, Some(exe_path.clone()));
+        replace_exe(&exe_path);
+
+        let err = server.with_db(|_| Ok("no debería correr".into())).unwrap_err();
+        assert_eq!(err, RESTARTING);
+        assert!(server.restarting.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn con_el_mismo_ejecutable_no_se_reinicia() {
+        let (_dir, db_path, exe_path) = newer_db_and_exe();
+        let server = SunriseServer::with_exe(db_path, Some(exe_path));
+
+        let err = server.with_db(|_| Ok("no debería correr".into())).unwrap_err();
+        assert_eq!(err, store::NEWER_SCHEMA);
+        assert!(
+            !server.restarting.load(Ordering::SeqCst),
+            "un binario de verdad viejo no puede reiniciarse en ciclo"
+        );
+    }
+
+    #[test]
+    fn despues_de_decidir_el_reinicio_ninguna_llamada_toca_la_base() {
+        let (_dir, db_path, exe_path) = newer_db_and_exe();
+        let server = SunriseServer::with_exe(db_path.clone(), Some(exe_path.clone()));
+        replace_exe(&exe_path);
+        server.with_db(|_| Ok(String::new())).unwrap_err();
+
+        // Aunque la base vuelva a estar al día, el proceso ya se va.
+        let conn = crate::db::open(&db_path).unwrap();
+        conn.execute("DELETE FROM _migrations WHERE version = 100000", [])
+            .unwrap();
+        drop(conn);
+        let err = server.with_db(|_| Ok("no debería correr".into())).unwrap_err();
+        assert_eq!(err, RESTARTING);
+    }
+
+    #[test]
+    fn la_base_atrasada_no_reinicia_aunque_cambie_el_ejecutable() {
+        let (_dir, db_path, exe_path) = newer_db_and_exe();
+        let conn = crate::db::open(&db_path).unwrap();
+        conn.execute("DELETE FROM _migrations WHERE version >= ?1", [
+            crate::db::migrations::MIGRATIONS.last().unwrap().0,
+        ])
+        .unwrap();
+        drop(conn);
+        let server = SunriseServer::with_exe(db_path, Some(exe_path.clone()));
+        replace_exe(&exe_path);
+
+        let err = server.with_db(|_| Ok(String::new())).unwrap_err();
+        assert!(err.contains("anterior"), "{err}");
+        assert!(!server.restarting.load(Ordering::SeqCst));
     }
 
     #[test]

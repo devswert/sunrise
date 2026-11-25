@@ -1273,6 +1273,20 @@ migración a medio escribir sin testigos, y la app ya sabe hacerlo con respaldo 
 aviso. El desfase es real en las dos direcciones: la app se actualiza sola y Claude
 Desktop puede quedar apuntando a un binario viejo.
 
+**El proceso viejo se reinicia solo, sin migrar (#45).** Claude Desktop lanza
+`sunrise --mcp` una vez y lo deja vivo días. Al actualizarse, la app migra la base
+y el proceso, que sigue corriendo el binario anterior en memoria, empezaba a
+responder "actualiza sunrise" cuando sunrise ya estaba actualizado. El modelo no
+tiene cómo reiniciar un servidor MCP y el usuario no sabía qué hacer. Se
+descartaron dos salidas: una tool `restart` (depende de que el modelo elija
+llamarla y cambia el contrato publicado) y salir ante cualquier base más nueva
+(con un binario de verdad viejo, o la ruta de Claude Desktop apuntando a otro
+lado, cada relanzamiento daría el mismo error en ciclo). Lo que distingue los dos
+casos es el ejecutable en disco: si su inode o su fecha cambiaron desde el
+arranque, el proceso quedó viejo. Solo entonces responde y sale. Sale con
+`process::exit` y no volviendo de `run`, porque soltar el runtime de tokio espera
+la lectura bloqueante de stdin y el proceso no moría.
+
 **`PRAGMA data_version` y no un evento del MCP.** El MCP no puede emitir eventos de
 Tauri: es otro proceso. Lo que se puede observar desde la app es la base, y
 `data_version` tiene exactamente la semántica que hace falta: se mueve con los

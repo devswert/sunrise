@@ -32,7 +32,8 @@ Claude Desktop guarda en su log (`~/Library/Logs/Claude/mcp-server-sunrise.log`)
 |---|---|
 | `store.rs` | La ruta de la base sin Tauri y la apertura por llamada, con la guarda de esquema |
 | `tools.rs` | Lo que hace cada tool: funciones puras sobre `&Connection`, con su validación |
-| `server.rs` | El registro en `rmcp` (macros `#[tool_router]` / `#[tool_handler]`); no decide nada |
+| `server.rs` | El registro en `rmcp` (macros `#[tool_router]` / `#[tool_handler]`) y la decisión de reiniciarse cuando el proceso quedó viejo |
+| `exe.rs` | La identidad del ejecutable (inode + fecha) y si cambió desde el arranque |
 
 Mismo corte que `repo.rs` / `commands.rs`: lo que decide va en `tools.rs` para que
 se pruebe en memoria.
@@ -49,6 +50,16 @@ se pruebe en memoria.
 - **Si el archivo no existe, no lo crea**: pide abrir sunrise una vez.
 - **Nunca migra.** Si `MAX(_migrations.version)` no es la última de `MIGRATIONS`,
   cada tool responde un error que dice qué hacer (abrir la app, o actualizarla).
+- **Se reinicia solo si quedó viejo (#45).** Con la base más nueva que el binario,
+  `with_db` compara el ejecutable en disco con el del arranque (`exe.rs`). Si
+  cambió, sunrise se actualizó con este proceso vivo: la tool responde que el
+  servidor se reinicia y que se repita la llamada, y `mcp::run` sale con
+  `process::exit(0)` medio segundo después, para que la respuesta alcance a
+  salir. Claude Desktop lo relanza con el binario nuevo en la siguiente llamada.
+  Las llamadas que lleguen entretanto responden lo mismo sin tocar la base. Si el
+  ejecutable **no** cambió, el binario de verdad es viejo: queda el mensaje de
+  actualizar y el proceso sigue vivo, porque reiniciarlo repetiría el error en
+  ciclo.
 - **`busy_timeout` de 5 s** en `db::open`, que comparten los dos procesos. Sin él,
   una escritura que coincide con un commit del otro falla con `SQLITE_BUSY`.
 - **La zona** es la de `repo::zone`, que se cachea por proceso; el MCP **olvida el

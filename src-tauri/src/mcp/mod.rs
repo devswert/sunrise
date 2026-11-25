@@ -6,6 +6,7 @@
 //! corra acá corrompe el stream y Claude Desktop corta la conexión. Los mensajes
 //! para humanos van a stderr, que Claude Desktop guarda en su log.
 
+mod exe;
 mod server;
 mod store;
 mod tools;
@@ -26,10 +27,27 @@ pub fn run() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
     runtime.block_on(async {
-        let service = server::SunriseServer::new(db_path)
-            .serve(rmcp::transport::stdio())
-            .await?;
-        service.waiting().await?;
+        let server = server::SunriseServer::new(db_path);
+        let restart = server.restart_signal();
+        let service = server.serve(rmcp::transport::stdio()).await?;
+        tokio::select! {
+            r = service.waiting() => {
+                r?;
+            }
+            // Este proceso quedó viejo tras una actualización (§4.32). La tool que lo
+            // decidió todavía tiene que escribir su respuesta: se le da un momento
+            // antes de salir. Claude Desktop vuelve a lanzar el servidor, ya con el
+            // binario nuevo, en la siguiente llamada.
+            //
+            // `exit` y no volver de `run`: soltar el runtime espera a la lectura
+            // bloqueante de stdin, que no termina mientras Claude Desktop tenga la
+            // conexión abierta, y el proceso quedaría vivo.
+            _ = restart.notified() => {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                eprintln!("[sunrise-mcp] salgo para que Claude Desktop me relance");
+                std::process::exit(0);
+            }
+        }
         anyhow::Ok(())
     })
 }
