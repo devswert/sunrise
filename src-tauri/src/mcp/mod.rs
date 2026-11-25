@@ -35,9 +35,10 @@ pub fn run() -> anyhow::Result<()> {
                 r?;
             }
             // Este proceso quedó viejo tras una actualización (§4.32). La tool que lo
-            // decidió todavía tiene que escribir su respuesta: se le da un momento
-            // antes de salir. Claude Desktop vuelve a lanzar el servidor, ya con el
-            // binario nuevo, en la siguiente llamada.
+            // decidió todavía tiene que escribir su respuesta: el `send` de rmcp ya
+            // hace flush, y el medio segundo es solo margen antes de salir. Claude
+            // Desktop vuelve a lanzar el servidor, ya con el binario nuevo, en la
+            // siguiente llamada.
             //
             // `exit` y no volver de `run`: soltar el runtime espera a la lectura
             // bloqueante de stdin, que no termina mientras Claude Desktop tenga la

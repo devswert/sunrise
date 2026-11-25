@@ -25,8 +25,7 @@ use super::tools::{
 /// cuenta: le dice que no tiene que hacer nada más que repetir la llamada.
 pub const RESTARTING: &str = "Este servidor de sunrise quedó desactualizado: sunrise se \
      actualizó mientras Claude Desktop lo tenía abierto. Se está reiniciando solo; repite \
-     la misma llamada y debería funcionar. Si vuelve a fallar con este mismo mensaje, \
-     reinicia Claude Desktop.";
+     la misma llamada y debería funcionar. Si vuelve a fallar, reinicia Claude Desktop.";
 
 #[derive(Clone)]
 pub struct SunriseServer {

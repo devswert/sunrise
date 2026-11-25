@@ -59,7 +59,8 @@ se pruebe en memoria.
   Las llamadas que lleguen entretanto responden lo mismo sin tocar la base. Si el
   ejecutable **no** cambió, el binario de verdad es viejo: queda el mensaje de
   actualizar y el proceso sigue vivo, porque reiniciarlo repetiría el error en
-  ciclo.
+  ciclo. Solo lo hace un proceso que ya corre una versión con #45: la primera
+  actualización que lo trae todavía deja vivo un MCP anterior, sin esta lógica.
 - **`busy_timeout` de 5 s** en `db::open`, que comparten los dos procesos. Sin él,
   una escritura que coincide con un commit del otro falla con `SQLITE_BUSY`.
 - **La zona** es la de `repo::zone`, que se cachea por proceso; el MCP **olvida el
