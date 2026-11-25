@@ -15,6 +15,20 @@ El formato lo mantiene la skill `sunrise-release`, que además sube la versión 
 los tres archivos y crea el tag. Hay un test que se pone rojo si la versión de
 `package.json` no tiene sección acá.
 
+## v0.12.1 — 2026-11-25
+
+Si sunrise se actualiza mientras Claude Desktop lo tiene conectado, Claude ya no
+queda trabado pidiéndote que actualices algo que ya está al día: el servidor se
+reinicia solo y basta con repetirle lo que le pediste.
+
+### Detalle
+
+- El servidor MCP detecta que quedó corriendo el binario anterior tras una
+  actualización (el ejecutable en disco cambió y la base es más nueva), responde
+  que se reinicia y sale; Claude Desktop lo vuelve a lanzar con el binario nuevo.
+  Si el binario de verdad es viejo, mantiene el aviso de actualizar y no se
+  reinicia (#45)
+
 ## v0.12.0 — 2026-11-23
 
 Ahora puedes llevar el tiempo de varias tareas a la vez. Si estás en una reunión
