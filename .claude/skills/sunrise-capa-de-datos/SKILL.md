@@ -39,6 +39,8 @@ directo. Cuatro consecuencias:
   compilación del MCP, no solo la del comando.
 - **Una migración nueva deja al MCP rechazando llamadas** hasta que corra el
   binario nuevo, y es a propósito: el MCP nunca migra (`mcp::store::check_schema`).
+  Si el proceso quedó viejo tras una actualización (el ejecutable en disco cambió),
+  responde que se reinicia y sale solo; Claude Desktop lo relanza (§4.32, #45).
 - **Lo que escribe el MCP lo avisa `external.rs`, no un `bumpData()`**: la app se
   entera por `PRAGMA data_version`. Si agregas otra escritura desde fuera de la
   app, ya está cubierta.

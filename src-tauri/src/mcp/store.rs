@@ -38,17 +38,47 @@ pub fn db_path() -> Result<PathBuf, String> {
 ///
 /// Si el archivo no existe **no lo crea**: una base vacía nacida acá no tendría
 /// esquema, y la app la encontraría como suya al abrir.
-pub fn open(path: &Path) -> Result<Connection, String> {
+pub fn open(path: &Path) -> Result<Connection, OpenError> {
     if !path.exists() {
-        return Err(format!(
+        return Err(OpenError::Message(format!(
             "No encontré la base de sunrise en {}. Abre sunrise una vez para crearla.",
             path.display()
-        ));
+        )));
     }
-    let conn = db::open(path).map_err(|e| format!("No pude abrir la base de sunrise: {e}"))?;
+    let conn = db::open(path)
+        .map_err(|e| OpenError::Message(format!("No pude abrir la base de sunrise: {e}")))?;
     check_schema(&conn)?;
     Ok(conn)
 }
+
+/// Por qué no se pudo abrir la base.
+///
+/// La base más nueva que el binario es su propio caso y no un texto, porque quien
+/// llama decide distinto según el ejecutable en disco haya cambiado o no (§4.32):
+/// si cambió, este proceso quedó viejo y se reinicia; si no, el binario de verdad
+/// es viejo y reiniciarlo no arreglaría nada.
+#[derive(Debug, PartialEq, Eq)]
+pub enum OpenError {
+    /// Un error que se le muestra tal cual al modelo.
+    Message(String),
+    /// La base tiene migraciones que este binario no conoce.
+    NewerSchema,
+}
+
+impl OpenError {
+    /// El texto para el modelo cuando nadie decidió otra cosa.
+    pub fn into_message(self) -> String {
+        match self {
+            OpenError::Message(m) => m,
+            OpenError::NewerSchema => NEWER_SCHEMA.into(),
+        }
+    }
+}
+
+/// La base es más nueva y el ejecutable en disco es el mismo con el que arrancó
+/// este proceso: actualizar es lo único que sirve.
+pub const NEWER_SCHEMA: &str = "La base es de una versión más nueva que este servidor. \
+     Actualiza sunrise o revisa la ruta configurada en Claude Desktop.";
 
 /// Rechaza una base cuyo esquema no es el que este binario conoce.
 ///
@@ -56,26 +86,22 @@ pub fn open(path: &Path) -> Result<Connection, String> {
 /// hacerlo desde un proceso que nadie mira dejaría una migración a medio escribir
 /// sin testigos. Los dos desfases son reales: la app se actualiza sola y Claude
 /// Desktop puede seguir apuntando a un binario viejo, o al revés.
-pub fn check_schema(conn: &Connection) -> Result<(), String> {
+pub fn check_schema(conn: &Connection) -> Result<(), OpenError> {
     let found: Option<i64> = conn
         .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
-        .map_err(|e| format!("La base no tiene el formato de sunrise: {e}"))?;
+        .map_err(|e| OpenError::Message(format!("La base no tiene el formato de sunrise: {e}")))?;
     let expected = db::migrations::MIGRATIONS
         .last()
         .map(|(v, _)| *v)
         .unwrap_or_default();
     match found.unwrap_or_default() {
         v if v == expected => Ok(()),
-        v if v < expected => Err(
+        v if v < expected => Err(OpenError::Message(
             "La base es de una versión anterior de sunrise. Abre la app para que la \
              actualice y vuelve a intentarlo."
                 .into(),
-        ),
-        _ => Err(
-            "La base es de una versión más nueva que este servidor. Actualiza sunrise o \
-             revisa la ruta configurada en Claude Desktop."
-                .into(),
-        ),
+        )),
+        _ => Err(OpenError::NewerSchema),
     }
 }
 
@@ -113,7 +139,7 @@ mod tests {
         conn.execute("DELETE FROM _migrations WHERE version = ?1", [last])
             .unwrap();
 
-        let err = check_schema(&conn).unwrap_err();
+        let err = check_schema(&conn).unwrap_err().into_message();
         assert!(err.contains("anterior"), "{err}");
         let after: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |r| r.get(0))
@@ -127,7 +153,8 @@ mod tests {
         db::migrate(&conn).unwrap();
         conn.execute("INSERT INTO _migrations (version) VALUES (100000)", [])
             .unwrap();
-        assert!(check_schema(&conn).unwrap_err().contains("más nueva"));
+        assert_eq!(check_schema(&conn).unwrap_err(), OpenError::NewerSchema);
+        assert!(OpenError::NewerSchema.into_message().contains("más nueva"));
     }
 
     #[test]
